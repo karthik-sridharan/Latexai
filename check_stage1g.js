@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = __dirname;
-const stage = 'latex-stage1g-texlyre-preflight-reporting-hotfix-20260428-1';
+const stage = 'latex-stage1g-texlyre-preflight-first-hotfix-20260428-1';
 const requiredFiles = [
   'index.html', 'css/styles.css',
   'js/app-kernel.js', 'js/project-model.js', 'js/browser-wasm-provider.js', 'js/texlyre-busytex-provider.js', 'js/compiler-provider.js', 'js/ai-provider.js',

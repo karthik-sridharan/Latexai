@@ -1,6 +1,6 @@
 # Next Stage Context — Stage 1G Asset Preflight Hotfix
 
-Current stage: `latex-stage1g-texlyre-preflight-reporting-hotfix-20260428-1`.
+Current stage: `latex-stage1g-texlyre-preflight-first-hotfix-20260428-1`.
 
 The TeXlyre module import now works from jsDelivr. The likely remaining issue is BusyTeX asset layout, MIME type, or large-file serving on GitHub Pages/iPad Safari.
 

@@ -1,6 +1,6 @@
 # Lumina LaTeX Editor Stage 1G — TeXlyre Asset Preflight Hotfix
 
-Stage: `latex-stage1g-texlyre-preflight-reporting-hotfix-20260428-1`
+Stage: `latex-stage1g-texlyre-preflight-first-hotfix-20260428-1`
 
 This hotfix keeps the TeXlyre BusyTeX provider in Safari/iPad direct mode and adds explicit asset preflight diagnostics before BusyTeX runtime initialization.
 
