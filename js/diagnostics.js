@@ -7,12 +7,12 @@
 
   const REQUIRED_IDS = [
     'sourceEditor','lineGutter','fileTree','outlineList','draftPreview','pdfPreview','logPanel','problemList',
-    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','rootFileSelect','compileStatusCard','compileProgressBar'
+    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','rootFileSelect','compileStatusCard','compileProgressBar','copilotContextChips','patchReview','patchMeta','patchSummary','patchDiff','previewCopilotPatchBtn','applyCopilotPatchBtn','discardCopilotPatchBtn'
   ];
 
   function run() {
     const missingDomIds = REQUIRED_IDS.filter((id) => !document.getElementById(id));
-    const modules = ['Kernel','ProjectModel','ProjectStore','SyncProvider','EditorAdapter','PreviewAdapter','CompilerProvider','AIProvider','State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','Main'];
+    const modules = ['Kernel','ProjectModel','ProjectStore','SyncProvider','EditorAdapter','PreviewAdapter','CompilerProvider','AIProvider','PatchManager','State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','Main'];
     const missingModules = modules.filter((name) => !NS[name]);
     let localStorageWorks = false;
     try {
@@ -26,7 +26,7 @@
     const backendProbe = NS.CompilerProvider?.getLastBackendProbe?.() || null;
     const compileProxyValue = document.getElementById('compileProxyUrl')?.value || '';
     const report = {
-      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1',
+      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1e-copilot-workflows-20260428-1',
       checkedAt: new Date().toISOString(),
       url: location.href,
       userAgent: navigator.userAgent,
@@ -43,6 +43,8 @@
       compileJobsEnabled: !!document.getElementById('compileJobsCheck')?.checked,
       compileBackendAvailability: compilerAvailability,
       backendProbe,
+      copilotPatchActive: !!NS.PatchManager?.getActivePatch?.(),
+      copilotWorkflow: document.getElementById('copilotTask')?.value || null,
       staticBackendFallbackActive: !!compilerAvailability?.staticDraftFallbackActive,
       compileStatus: state?.compile || null,
       lastProblemCount: state?.lastProblems?.length || 0,

@@ -345,8 +345,8 @@
       schema: 'lumina-latex-compile-response-v1',
       mode: 'browser-wasm',
       pdfBase64: null,
-      log: `Browser-WASM compile is reserved but not bundled in Stage 1D. Root file: ${payload.rootFile}. Use backend-texlive or mock-draft for now.`,
-      problems: [{ level: 'warn', message: 'Browser-WASM provider is a placeholder in Stage 1D.', line: null }],
+      log: `Browser-WASM compile is reserved but not bundled in Stage 1E. Root file: ${payload.rootFile}. Use backend-texlive or mock-draft for now.`,
+      problems: [{ level: 'warn', message: 'Browser-WASM provider is a placeholder in Stage 1E.', line: null }],
       raw: { payloadSummary: { rootFile: payload.rootFile, engine: payload.engine, fileCount: payload.files.length } }
     });
   }

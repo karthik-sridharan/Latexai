@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1e-copilot-workflows-20260428-1';
   const SCHEMA = 'lumina-latex-project-v1';
   const FILE_SCHEMA = 'lumina-latex-file-v1';
 
@@ -24,7 +24,7 @@
 \maketitle
 
 \begin{abstract}
-This Stage 1D keeps the Lumina provider foundation and adds a real backend compile runner with TeX Live, isolated temporary workspaces, backend health checks, status polling, structured logs, and click-to-line diagnostics.
+This Stage 1E keeps the Lumina provider foundation and adds a real backend compile runner with TeX Live, isolated temporary workspaces, backend health checks, status polling, structured logs, and click-to-line diagnostics.
 \end{abstract}
 
 \section{Architecture}
@@ -41,7 +41,7 @@ The project is represented by stable file paths and ids. UI events update the pr
 
 \section{Next steps}
 \begin{itemize}
-  \item Stage 1D: real backend PDF compilation, backend health checks, and safer temporary workspaces.
+  \item Stage 1E: real backend PDF compilation, backend health checks, and safer temporary workspaces.
   \item Stage 1E: structured Copilot fix-error workflows with patch preview.
   \item Stage 1F: CodeMirror editor upgrade, source/PDF sync hooks, and import polish.
 \end{itemize}
@@ -137,7 +137,7 @@ The project is represented by stable file paths and ids. UI events update the pr
       settings: defaultSettings(),
       meta: {
         app: 'lumina-latex-editor',
-        architectureStage: 'stage1d-backend-compile-runner',
+        architectureStage: 'stage1e-backend-compile-runner',
         collaborationReady: true,
         websocketReady: true
       },
@@ -178,7 +178,7 @@ The project is represented by stable file paths and ids. UI events update the pr
     project.createdAt = project.createdAt || t;
     project.updatedAt = project.updatedAt || t;
     project.settings = Object.assign(defaultSettings(), project.settings || {});
-    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage1d-backend-compile-runner' }, project.meta || {});
+    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage1e-backend-compile-runner' }, project.meta || {});
     project.files = files.map((file) => normalizeFile(file)).filter(Boolean);
     if (!project.files.length) project.files = defaultProject().files;
     project.files.sort((a, b) => a.path.localeCompare(b.path));

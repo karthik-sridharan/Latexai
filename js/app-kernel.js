@@ -3,13 +3,15 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1e-copilot-workflows-20260428-1';
 
   const contracts = {
     projectSchema: 'lumina-latex-project-v1',
     compileRequest: 'lumina-latex-compile-request-v1',
     compileResponse: 'lumina-latex-compile-response-v1',
     aiRequest: 'lumina-latex-ai-request-v1',
+    aiPatch: 'lumina-latex-ai-patch-v1',
+    copilotContext: 'lumina-latex-copilot-context-v1',
     syncEvent: 'lumina-latex-sync-event-v1',
     websocket: {
       reservedPath: '/ws/lumina/projects/:projectId',
@@ -23,6 +25,8 @@
       backendStatus: 'GET /api/lumina/latex/status',
       compileEvents: 'GET /api/lumina/latex/compile/jobs/:jobId/events',
       ai: 'POST /api/lumina/ai',
+      aiStatus: 'GET /api/lumina/ai/status',
+      aiWorkflows: 'GET /api/lumina/ai/workflows',
       saveProject: 'POST /api/lumina/projects/:projectId',
       loadProject: 'GET /api/lumina/projects/:projectId'
     }
@@ -31,7 +35,7 @@
   const providers = {
     editor: 'textarea-adapter-now-codemirror-ready',
     compiler: 'backend-texlive-real-runner | browser-wasm-placeholder | mock-draft',
-    ai: 'backend-provider-proxy',
+    ai: 'backend-provider-proxy + structured-workflow-context',
     sync: 'local-only | http-project | websocket-placeholder',
     preview: 'draft-html | pdf-blob'
   };

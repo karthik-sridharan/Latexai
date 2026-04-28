@@ -14,6 +14,7 @@
     focus,
     getSelection,
     replaceSelection,
+    replaceRange,
     insertText,
     goToLine,
     softFormat,
@@ -87,7 +88,7 @@
     const activePill = document.getElementById('activeFilePill');
     if (activePill) activePill.textContent = file?.path || 'No file';
     editorApi.suppress = true;
-    editorApi.editor.value = file && State().textFile(file.path) ? file.text || '' : `% ${file?.path || 'asset'} is not editable as text in Stage 1D.`;
+    editorApi.editor.value = file && State().textFile(file.path) ? file.text || '' : `% ${file?.path || 'asset'} is not editable as text in Stage 1E.`;
     editorApi.editor.readOnly = !(file && State().textFile(file.path));
     editorApi.suppress = false;
     updateLineGutter();
@@ -132,6 +133,24 @@
     const newEnd = start + String(text).length;
     el.focus();
     el.setSelectionRange(selectInserted ? start : newEnd, newEnd);
+    State().updateActiveText(el.value);
+    updateLineGutter();
+    updateCursorStatus();
+    scheduleAutosave();
+    W.LuminaLatex.Preview?.scheduleDraftPreview?.();
+  }
+
+  function replaceRange(start, end, text, selectInserted = true) {
+    const el = editorApi.editor;
+    if (!el || el.readOnly) return;
+    const safeStart = Math.max(0, Math.min(Number(start) || 0, el.value.length));
+    const safeEnd = Math.max(safeStart, Math.min(Number(end) || safeStart, el.value.length));
+    const before = el.value.slice(0, safeStart);
+    const after = el.value.slice(safeEnd);
+    el.value = before + String(text ?? '') + after;
+    const newEnd = safeStart + String(text ?? '').length;
+    el.focus();
+    el.setSelectionRange(selectInserted ? safeStart : newEnd, newEnd);
     State().updateActiveText(el.value);
     updateLineGutter();
     updateCursorStatus();

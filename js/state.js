@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1e-copilot-workflows-20260428-1';
 
   const state = {
     project: Model().defaultProject(),
@@ -61,7 +61,7 @@
     try {
       normalizeState();
       const syncProvider = NS.SyncProvider?.providerForSettings?.(state.settings);
-      // Local save remains the guaranteed path in Stage 1D. Other sync providers are explicit future implementations.
+      // Local save remains the guaranteed path in Stage 1E. Other sync providers are explicit future implementations.
       const result = Store().saveLocal(state.project, state.settings);
       state.project = result.project;
       state.settings = result.settings;

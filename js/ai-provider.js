@@ -71,6 +71,29 @@
     }
   }
 
+
+  async function getStatus() {
+    const config = getConfig();
+    const statusUrl = config.proxyUrl.replace(/\/api\/lumina\/ai\/?$/, '/api/lumina/ai/status');
+    const headers = {};
+    if (config.proxyToken) headers.Authorization = `Bearer ${config.proxyToken}`;
+    const response = await fetch(statusUrl, { headers });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok === false) throw new Error(data?.error?.message || `AI status failed with HTTP ${response.status}.`);
+    return data;
+  }
+
+  async function getWorkflows() {
+    const config = getConfig();
+    const url = config.proxyUrl.replace(/\/api\/lumina\/ai\/?$/, '/api/lumina/ai/workflows');
+    const headers = {};
+    if (config.proxyToken) headers.Authorization = `Bearer ${config.proxyToken}`;
+    const response = await fetch(url, { headers });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok === false) throw new Error(data?.error?.message || `AI workflows failed with HTTP ${response.status}.`);
+    return data;
+  }
+
   async function ask(payload, meta = {}) {
     const config = persistConfig();
     const headers = { 'Content-Type': 'application/json' };
@@ -82,7 +105,7 @@
       task: meta.task || 'latex-copilot',
       payload,
       context: meta.context || {},
-      client: { app: 'lumina-latex-editor', stage: W.LUMINA_LATEX_STAGE || 'stage1d', sentAt: new Date().toISOString() }
+      client: { app: 'lumina-latex-editor', stage: W.LUMINA_LATEX_STAGE || 'stage1e', sentAt: new Date().toISOString() }
     };
     const response = await fetch(config.proxyUrl, { method: 'POST', headers, body: JSON.stringify(body) });
     const data = await response.json().catch(() => ({}));
@@ -107,6 +130,8 @@
     persistConfig,
     modelsFor,
     loadModelsFromProxy,
+    getStatus,
+    getWorkflows,
     ask,
     extractText
   };
