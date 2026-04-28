@@ -1,0 +1,13 @@
+{
+  "stage": "latex-stage1g-texlyre-busytex-20260428-1",
+  "checkedAt": "2026-04-28T07:47:35.393Z",
+  "missingFiles": [],
+  "missingIndexStrings": [],
+  "missingBackendContracts": [],
+  "missingFrontendContracts": [],
+  "missingCopilotContracts": [],
+  "missingPatchContracts": [],
+  "missingImportContracts": [],
+  "syntax": [],
+  "pass": true
+}

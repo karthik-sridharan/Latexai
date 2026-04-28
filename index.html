@@ -7,7 +7,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage1f-easy-compile-modes-20260428-1';
+  window.LUMINA_LATEX_STAGE='latex-stage1g-texlyre-busytex-20260428-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -37,10 +37,10 @@
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=latex-stage1f-easy-compile-modes-20260428-1" />
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1g-texlyre-busytex-20260428-1" />
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage1f-easy-compile-modes-20260428-1">
+<div class="app-shell" data-stage="latex-stage1g-texlyre-busytex-20260428-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -250,7 +250,8 @@
           <select id="compilerModeSelect">
             <option value="backend-texlive">Backend TeX Live</option>
             <option value="mock-draft">Mock draft check</option>
-            <option value="browser-wasm">Browser WASM experimental</option>
+            <option value="browser-wasm">Browser WASM: SwiftLaTeX experimental</option>
+            <option value="browser-wasm-texlyre">Browser WASM: TeXlyre BusyTeX experimental</option>
           </select>
         </label>
         <div id="wasmStatusCard" class="backend-status-card wasm-status-card">
@@ -269,7 +270,25 @@
         </label>
         <label class="field checkbox-field">
           <input id="browserWasmReuseCheck" type="checkbox" checked />
-          Reuse browser engine after first load (faster repeat compiles)
+          Reuse SwiftLaTeX engine after first load (faster repeat compiles)
+        </label>
+        <div id="texlyreStatusCard" class="backend-status-card wasm-status-card">
+          <div>
+            <div class="smallcaps">TeXlyre BusyTeX status</div>
+            <strong id="texlyreStatusText">Not checked</strong>
+            <p id="texlyreStatusDetail">TeXlyre BusyTeX can compile in the browser after the module and BusyTeX assets are configured. Click Test TeXlyre after adding assets.</p>
+          </div>
+          <button id="testTexlyreBtn" class="btn mini" type="button">Test TeXlyre</button>
+        </div>
+        <label class="field">TeXlyre module URL
+          <input id="texlyreModuleUrl" type="text" value="https://esm.sh/texlyre-busytex?bundle" placeholder="https://esm.sh/texlyre-busytex?bundle or vendor/texlyre/texlyre-busytex.es.js" />
+        </label>
+        <label class="field">TeXlyre BusyTeX asset base
+          <input id="texlyreBusytexBase" type="text" value="vendor/texlyre/core/busytex" placeholder="vendor/texlyre/core/busytex" />
+        </label>
+        <label class="field checkbox-field">
+          <input id="texlyreReuseCheck" type="checkbox" checked />
+          Reuse TeXlyre runner after first load (faster repeat compiles)
         </label>
         <div class="field-grid two">
           <label class="field">Root file
@@ -300,7 +319,7 @@
           </select>
         </label>
         <div class="settings-note">
-          Static GitHub Pages can run the editor and draft preview. Stage 1E adds a real backend compile runner; use Test backend to confirm that your TeX Live backend is reachable before compiling. Default relative /api URLs still fall back to draft validation on static hosts.
+          Static GitHub Pages can run the editor and draft preview. Stage 1G keeps the real backend runner and adds TeXlyre BusyTeX browser-WASM compile; use Test backend to confirm that your TeX Live backend is reachable before compiling. Default relative /api URLs still fall back to draft validation on static hosts.
         </div>
         <div class="settings-note">
           Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
@@ -312,23 +331,24 @@
   </main>
 </div>
 
-<script src="js/app-kernel.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/project-model.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/project-store.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/sync-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/editor-adapter.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/preview-adapter.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/browser-wasm-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/compiler-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/ai-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/state.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/editor.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/file-tree.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/preview.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/import-export.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/patch-manager.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/copilot.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/diagnostics.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
-<script src="js/main.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/app-kernel.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/project-model.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/project-store.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/sync-provider.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/editor-adapter.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/preview-adapter.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/browser-wasm-provider.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/compiler-provider.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/ai-provider.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/state.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/editor.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/file-tree.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/preview.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/patch-manager.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/copilot.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/diagnostics.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
+<script src="js/main.js?v=latex-stage1g-texlyre-busytex-20260428-1" defer></script>
 </body>
 </html>
