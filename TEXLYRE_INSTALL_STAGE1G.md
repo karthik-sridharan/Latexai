@@ -27,7 +27,7 @@ In the app:
 
 ```text
 Compiler provider: Browser WASM: TeXlyre BusyTeX experimental
-TeXlyre module URL: https://esm.sh/texlyre-busytex?bundle
+TeXlyre module URL: https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js
 TeXlyre BusyTeX asset base: vendor/texlyre/core/busytex
 ```
 

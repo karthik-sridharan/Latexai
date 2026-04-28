@@ -1,17 +1,26 @@
-# Release Notes — Stage 1G TeXlyre Direct-Mode Safari Hotfix
+# Lumina LaTeX Editor Stage 1G CDN Fallback Hotfix
 
-Stage: `latex-stage1g-texlyre-direct-mode-startup-hotfix-20260428-1`
+Stage: `latex-stage1g-texlyre-cdn-fallback-hotfix-20260428-1`
 
-This hotfix addresses Safari/iPad TeXlyre initialization reports where diagnostics still showed `texlyreUseWorker: true` after the worker-mode hotfix.
+This hotfix addresses Safari/iPad failures importing TeXlyre BusyTeX from `esm.sh`.
 
-Changes:
-- Force-disables TeXlyre Web Worker mode on Safari/iPad so direct mode is tested first.
-- Clears stale persisted `texlyreUseWorker: true` settings during state normalization.
-- Adds a “Reset TeXlyre to direct mode” button.
-- Diagnostics now report `directModeForced` and `directModeReason`.
-- The provider now passes `busytexBasePath`, `assetBasePath`, and `basePath` to the BusyTeX runner for compatibility with slightly different module builds.
+## Changes
 
-Expected diagnostic after deploy on Safari/iPad:
-- `settings.texlyreUseWorker: false`
-- `texlyreBusyTexStatus.useWorker: false`
-- `texlyreBusyTexStatus.directModeForced: true`
+- Default TeXlyre module URL changed to jsDelivr direct ESM:
+  `https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js`
+- TeXlyre provider now tries module candidates in order:
+  1. configured Module URL
+  2. jsDelivr direct package ESM
+  3. unpkg direct package ESM
+  4. esm.sh bundled URL
+  5. local vendored path `vendor/texlyre/texlyre-busytex/dist/index.js`
+- Diagnostics now include:
+  - `moduleLoadedFrom`
+  - `moduleFallbacks`
+  - `moduleImportAttempts`
+- Safari/iPad direct-mode guard remains active.
+- No backend files changed.
+
+## Expected next diagnostic
+
+If the module import succeeds, the next status should move past `cachedModuleReady: false`. If it then fails, the likely next blocker will be the BusyTeX asset folder contents rather than the TeXlyre module URL.
