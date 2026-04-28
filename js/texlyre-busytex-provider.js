@@ -14,6 +14,7 @@
     'vendor/texlyre/texlyre-busytex/dist/index.js'
   ];
   const DEFAULT_ASSET_BASE = 'vendor/texlyre/core/busytex/';
+  const PROVIDER_BUILD = 'texlyre-bibtex-auto-hotfix-20260428-1';
 
   function forceDirectMode() {
     return State()?.forceTeXlyreDirectMode?.() === true;
@@ -72,6 +73,7 @@
     return Object.assign({
       provider: 'browser-wasm-texlyre-busytex-experimental',
       stage: W.LUMINA_LATEX_STAGE || 'stage1g',
+      providerBuild: PROVIDER_BUILD,
       moduleUrl: moduleUrl(),
       moduleLoadedFrom: cachedModuleLoadedFrom || '',
       moduleFallbacks: moduleCandidates().filter((url) => url !== moduleUrl()),
@@ -122,6 +124,7 @@
         status: 'ready',
         checkedAt: new Date().toISOString(),
         moduleUrl: moduleUrl(settings),
+        providerBuild: PROVIDER_BUILD,
         moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings),
         busytexBasePath: base,
         resolvedBusytexBasePath: resolvedBusytexBasePath(settings),
@@ -192,6 +195,7 @@
         status: ok ? 'ready' : (resultSuccess ? 'compiled-no-pdf' : 'compile-diagnostics'),
         checkedAt: new Date().toISOString(),
         moduleUrl: moduleUrl(settings),
+        providerBuild: PROVIDER_BUILD,
         moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings),
         busytexBasePath: busytexBasePath(settings),
         resolvedBusytexBasePath: resolvedBusytexBasePath(settings),
@@ -200,6 +204,8 @@
         pdfExtracted: !!pdfBytes,
         pdfBytesLength: pdfBytes?.byteLength || pdfBytes?.length || 0,
         resultKeys: rawSummary.resultKeys,
+        resultValueTypes: rawSummary.resultValueTypes,
+        rawResultSnapshot: rawSummary.rawResultSnapshot,
         pdfCandidateSummary: rawSummary.pdfCandidateSummary,
         exitCode: rawSummary.exitCode,
         resultStatus: rawSummary.resultStatus,
@@ -308,6 +314,7 @@
 
   function buildCompileInput(payload) {
     const root = payload.files.find((file) => file.path === payload.rootFile) || payload.files[0];
+    const rootText = String(root?.text || '');
     const additionalFiles = [];
     for (const file of payload.files || []) {
       if (!file.path || file.path === root?.path) continue;
@@ -316,12 +323,22 @@
         content: file.encoding === 'base64' ? base64ToBytes(file.text || file.base64 || '') : String(file.text || '')
       });
     }
+    const bibliographyMode = String(payload.bibliography || '').toLowerCase();
+    const bibtexRequested = bibliographyMode === 'bibtex';
+    // BusyTeX treats a non-zero BibTeX pass as a failed compile. The default Lumina
+    // sample includes \bibliography{refs} but has no \cite or \nocite, which can
+    // make BibTeX exit with diagnostics even though the TeX document itself is valid.
+    // Only run BibTeX when the root actually contains citation commands.
+    const hasCitationCommand = /\\(?:cite|citep|citet|autocite|parencite|textcite|nocite)\b/.test(rootText);
+    const bibtexEnabled = bibtexRequested && hasCitationCommand;
     return {
-      input: root?.text || '',
+      input: rootText,
       mainFile: payload.rootFile,
       rootFile: payload.rootFile,
       additionalFiles,
-      bibtex: String(payload.bibliography || '').toLowerCase() === 'bibtex',
+      bibtex: bibtexEnabled,
+      bibtexRequested,
+      bibtexDisabledReason: bibtexRequested && !bibtexEnabled ? 'No citation command found in the root file; skipping BibTeX to avoid an avoidable BusyTeX BibTeX failure.' : '',
       makeindex: false,
       rerun: true,
       verbose: 'debug',
@@ -337,6 +354,8 @@
       rootFile: compileInput?.rootFile || '',
       engine: compileInput?.engine || '',
       bibtex: !!compileInput?.bibtex,
+      bibtexRequested: !!compileInput?.bibtexRequested,
+      bibtexDisabledReason: compileInput?.bibtexDisabledReason || '',
       rerun: !!compileInput?.rerun,
       additionalFileCount: Array.isArray(compileInput?.additionalFiles) ? compileInput.additionalFiles.length : 0,
       additionalFiles: Array.isArray(compileInput?.additionalFiles) ? compileInput.additionalFiles.map((f) => ({ path: f.path, type: valueType(f.content), length: valueLength(f.content) })) : []
@@ -612,11 +631,23 @@
       pdfExtracted: !!pdfBytes,
       pdfBytesLength: pdfBytes?.byteLength || pdfBytes?.length || 0,
       resultKeys: result && typeof result === 'object' ? Object.keys(result) : [],
+      resultValueTypes: summarizeResultValueTypes(result),
+      rawResultSnapshot: safeJson(result).slice(0, 6000),
       pdfCandidateSummary: summarizePdfCandidates(result),
       logsSummary: summarizeLogsArray(result?.logs),
       logHints: logHints(extractLog(result)),
       ...logHeadTail(extractLog(result))
     };
+  }
+
+
+  function summarizeResultValueTypes(result) {
+    if (!result || typeof result !== 'object') return { type: valueType(result), length: valueLength(result) };
+    const out = {};
+    for (const [key, value] of Object.entries(result)) {
+      out[key] = { type: valueType(value), length: valueLength(value), keys: value && typeof value === 'object' && !ArrayBuffer.isView(value) ? Object.keys(value).slice(0, 12) : [] };
+    }
+    return out;
   }
 
   function summarizePdfCandidates(result) {
