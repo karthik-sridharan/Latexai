@@ -6,7 +6,13 @@
   const State = () => NS.State;
   const Model = () => NS.ProjectModel;
 
-  const DEFAULT_MODULE_URL = 'https://esm.sh/texlyre-busytex?bundle';
+  const DEFAULT_MODULE_URL = 'https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js';
+  const FALLBACK_MODULE_URLS = [
+    DEFAULT_MODULE_URL,
+    'https://unpkg.com/texlyre-busytex@1.1.1/dist/index.js',
+    'https://esm.sh/texlyre-busytex?bundle',
+    'vendor/texlyre/texlyre-busytex/dist/index.js'
+  ];
   const DEFAULT_ASSET_BASE = 'vendor/texlyre/core/busytex/';
 
   function forceDirectMode() {
@@ -20,6 +26,8 @@
   let cachedRunner = null;
   let cachedModule = null;
   let cachedModuleUrlForCache = '';
+  let cachedModuleLoadedFrom = '';
+  let lastModuleImportAttempts = [];
   let runnerBaseForCache = '';
   let runnerWorkerModeForCache = false;
 
@@ -60,6 +68,8 @@
       provider: 'browser-wasm-texlyre-busytex-experimental',
       stage: W.LUMINA_LATEX_STAGE || 'stage1g',
       moduleUrl: moduleUrl(),
+      moduleLoadedFrom: cachedModuleLoadedFrom || '',
+      moduleFallbacks: moduleCandidates().filter((url) => url !== moduleUrl()),
       busytexBasePath: busytexBasePath(),
       cachedModuleReady: !!cachedModule,
       cachedRunnerReady: !!cachedRunner,
@@ -100,6 +110,7 @@
         status: 'ready',
         checkedAt: new Date().toISOString(),
         moduleUrl: moduleUrl(settings),
+        moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings),
         busytexBasePath: base,
         likelyAssets: assets,
         useWorker: settings.texlyreUseWorker === true,
@@ -140,7 +151,7 @@
         cachedRunner = null;
       }
       State().setCompileStatus({ status: ok ? 'succeeded' : 'failed', jobId: 'browser-wasm-texlyre', progress: 100, message: ok ? 'TeXlyre browser PDF compile completed.' : 'TeXlyre browser compile finished with diagnostics.' });
-      lastProbe = { ok: true, status: 'ready', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), busytexBasePath: busytexBasePath(settings), message: `TeXlyre compile completed in ${Math.round((Date.now() - start) / 100) / 10}s.` };
+      lastProbe = { ok: true, status: 'ready', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings), busytexBasePath: busytexBasePath(settings), message: `TeXlyre compile completed in ${Math.round((Date.now() - start) / 100) / 10}s.` };
       renderStatus();
       return {
         ok,
@@ -174,13 +185,35 @@
   async function loadModule(settings) {
     const configuredUrl = moduleUrl(settings);
     if (cachedModule && cachedModuleUrlForCache === configuredUrl) return cachedModule;
-    const url = resolveUrl(configuredUrl);
-    const mod = await import(/* webpackIgnore: true */ url);
-    // ES module namespace objects are read-only in strict-mode browsers such as Safari.
-    // Keep cache metadata separately rather than mutating the imported module object.
-    cachedModule = mod;
-    cachedModuleUrlForCache = configuredUrl;
-    return mod;
+    const attempts = [];
+    for (const candidate of moduleCandidates(settings)) {
+      try {
+        const resolved = resolveUrl(candidate);
+        const mod = await import(/* webpackIgnore: true */ resolved);
+        cachedModule = mod;
+        cachedModuleUrlForCache = configuredUrl;
+        cachedModuleLoadedFrom = candidate;
+        lastModuleImportAttempts = attempts.concat([{ url: candidate, resolved, ok: true }]);
+        return mod;
+      } catch (err) {
+        attempts.push({ url: candidate, resolved: safeResolve(candidate), ok: false, message: err?.message || String(err) });
+      }
+    }
+    cachedModule = null;
+    cachedModuleLoadedFrom = '';
+    lastModuleImportAttempts = attempts;
+    const error = new Error('TeXlyre module import failed for all configured CDN/local candidates.');
+    error.moduleImportAttempts = attempts;
+    throw error;
+  }
+
+  function moduleCandidates(settings = currentSettings()) {
+    const configured = String(settings.texlyreModuleUrl || DEFAULT_MODULE_URL).trim() || DEFAULT_MODULE_URL;
+    return Array.from(new Set([configured].concat(FALLBACK_MODULE_URLS).filter(Boolean)));
+  }
+
+  function safeResolve(url) {
+    try { return resolveUrl(url); } catch (_err) { return String(url || ''); }
   }
 
   function assertBusyTexModule(mod) {
@@ -309,6 +342,7 @@
       engine: payload.engine,
       fileCount: payload.files.length,
       moduleUrl: moduleUrl(settings),
+      moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings),
       busytexBasePath: busytexBasePath(settings),
       durationMs,
       resultKeys: result && typeof result === 'object' ? Object.keys(result) : []
@@ -320,12 +354,13 @@
     const base = busytexBasePath(settings);
     const module = moduleUrl(settings);
     const readonlyModule = /readonly property|read-only|Cannot assign to read only/i.test(message);
-    const missingModule = /(Failed to fetch dynamically imported module|Importing a module script failed|Cannot find module|404|not found)/i.test(message) && /texlyre|module|import|esm/i.test(message);
+    const importAttempts = err?.moduleImportAttempts || lastModuleImportAttempts || [];
+    const missingModule = /(Failed to fetch dynamically imported module|Importing a module script failed|Cannot find module|404|not found|module import failed)/i.test(message) && /texlyre|module|import|esm|cdn|candidate/i.test(message);
     const workerFailure = /Worker error|Timeout waiting for BusyTeX worker|Failed to initialize BusyTeX/i.test(message);
     const missingAssets = /(busytexBasePath|wasm|data|asset|404|Failed to fetch|NetworkError|not found|instantiate|WebAssembly)/i.test(message) && !missingModule && !readonlyModule;
     let friendly = message;
     if (readonlyModule) friendly = 'TeXlyre module loaded, but the provider hit a read-only ES module namespace. This Stage 1G hotfix caches module metadata separately and should remove that error.';
-    else if (missingModule) friendly = `TeXlyre BusyTeX module could not be imported from ${module}. Use the CDN module URL for testing or copy a bundled ESM build into vendor/texlyre/.`;
+    else if (missingModule) friendly = `TeXlyre BusyTeX module could not be imported. The provider tried the configured URL plus fallbacks. Recommended testing URL: ${DEFAULT_MODULE_URL}. If CDN imports keep failing in Safari/iPad, copy the npm package dist/ folder into vendor/texlyre/texlyre-busytex/dist/ and use that local path.`;
     else if (workerFailure) friendly = `TeXlyre BusyTeX worker failed to initialize from ${base}. This often happens on Safari/iPad when the worker script or its wasm/data fetch fails with an unhelpful message. Leave “Use TeXlyre Web Worker mode” off and retry in direct mode; also verify busytex_pipeline.js, busytex.js, and busytex.wasm are reachable.`;
     else if (missingAssets) friendly = `TeXlyre BusyTeX assets could not be loaded from ${base}. Run npx texlyre-busytex download-assets vendor/texlyre/core so the app has vendor/texlyre/core/busytex/.`;
     return {
@@ -338,7 +373,9 @@
       rawMessage: message,
       useWorker: settings.texlyreUseWorker === true,
       directModeForced: forceDirectMode(),
-      directModeReason: forcedDirectReason()
+      directModeReason: forcedDirectReason(),
+      moduleLoadedFrom: cachedModuleLoadedFrom || '',
+      moduleImportAttempts: importAttempts
     };
   }
 
@@ -350,7 +387,7 @@
       '',
       'How to test this provider:',
       '1. In Settings, choose Compiler provider = Browser WASM: TeXlyre BusyTeX.',
-      '2. For quick testing, leave Module URL as https://esm.sh/texlyre-busytex?bundle.',
+      '2. For quick testing, use Module URL: https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js. The provider will also try unpkg and esm.sh as fallbacks.',
       '3. Download BusyTeX assets with: npx texlyre-busytex download-assets vendor/texlyre/core',
       '4. Upload the resulting vendor/texlyre/core/busytex/ folder to the deployed GitHub Pages project.',
       '5. Set BusyTeX asset base to vendor/texlyre/core/busytex. On Safari/iPad, Web Worker mode is force-disabled by this hotfix so direct mode is tested first.',
@@ -432,6 +469,8 @@
     document.getElementById('texlyreModuleUrl')?.addEventListener('change', (event) => {
       cachedModule = null;
       cachedModuleUrlForCache = '';
+      cachedModuleLoadedFrom = '';
+      lastModuleImportAttempts = [];
       cachedRunner = null;
       lastProbe = null;
       State()?.setSetting?.('texlyreModuleUrl', event.target.value.trim() || DEFAULT_MODULE_URL);
@@ -455,5 +494,5 @@
     renderStatus();
   }
 
-  NS.TexlyreBusyTexProvider = { DEFAULT_MODULE_URL, DEFAULT_ASSET_BASE, forceDirectMode, forcedDirectReason, currentSettings, moduleUrl, busytexBasePath, compile, probe, status, renderStatus, init };
+  NS.TexlyreBusyTexProvider = { DEFAULT_MODULE_URL, FALLBACK_MODULE_URLS, DEFAULT_ASSET_BASE, moduleCandidates, forceDirectMode, forcedDirectReason, currentSettings, moduleUrl, busytexBasePath, compile, probe, status, renderStatus, init };
 })();

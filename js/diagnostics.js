@@ -26,7 +26,7 @@
     const backendProbe = NS.CompilerProvider?.getLastBackendProbe?.() || null;
     const compileProxyValue = document.getElementById('compileProxyUrl')?.value || '';
     const report = {
-      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-direct-mode-startup-hotfix-20260428-1',
+      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-cdn-fallback-hotfix-20260428-1',
       checkedAt: new Date().toISOString(),
       url: location.href,
       userAgent: navigator.userAgent,

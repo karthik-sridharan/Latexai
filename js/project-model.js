@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-direct-mode-startup-hotfix-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-cdn-fallback-hotfix-20260428-1';
   const SCHEMA = 'lumina-latex-project-v1';
   const FILE_SCHEMA = 'lumina-latex-file-v1';
 
@@ -112,7 +112,7 @@ The project is represented by stable file paths and ids. UI events update the pr
       browserWasmAssetBase: 'vendor/swiftlatex/pdftex/',
       browserWasmTexliveEndpoint: 'https://texlive.swiftlatex.com/',
       browserWasmReuseEngine: true,
-      texlyreModuleUrl: 'https://esm.sh/texlyre-busytex?bundle',
+      texlyreModuleUrl: 'https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js',
       texlyreBusytexBase: 'vendor/texlyre/core/busytex',
       texlyreReuseRunner: true,
       texlyreUseWorker: false,
