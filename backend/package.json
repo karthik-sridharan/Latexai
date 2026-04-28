@@ -1,6 +1,6 @@
 {
-  "name": "lumina-latex-backend-stage1e",
-  "version": "1.0.0-stage1e",
+  "name": "lumina-latex-backend-stage1e-cloudrun-buildfix",
+  "version": "1.0.1-stage1e-cloudrun-buildfix",
   "type": "module",
   "private": true,
   "scripts": {
@@ -9,8 +9,6 @@
     "check": "node --check server.mjs && node --check providers/compile-texlive.mjs && node --check security/validate-project.mjs && node --check security/sandbox-policy.mjs"
   },
   "dependencies": {
-    "@express-rate-limit/core": "^8.1.0",
-    "express-rate-limit": "^8.1.0",
     "cors": "^2.8.5",
     "express": "^4.18.3"
   }

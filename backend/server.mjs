@@ -1,12 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import { compileWithTexLive, detectTeXLive } from './providers/compile-texlive.mjs';
 import { sandboxPolicyFromEnv } from './security/sandbox-policy.mjs';
 import { validateCompilePayload, normalizeProjectPayload, safeProjectId, httpError } from './security/validate-project.mjs';
 
-const STAGE = 'latex-stage1e-copilot-workflows-20260428-1';
+const STAGE = 'latex-stage1e-cloudrun-buildfix-20260428-1';
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const PROVIDERS = new Set(['openai', 'anthropic', 'gemini']);
@@ -54,8 +53,36 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: process.env.JSON_LIMIT || '10mb' }));
-app.use('/api/lumina/ai', rateLimit({ windowMs: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE || 20), standardHeaders: true, legacyHeaders: false }));
-app.use('/api/lumina/latex/compile', rateLimit({ windowMs: 60_000, limit: Number(process.env.COMPILE_RATE_LIMIT_PER_MINUTE || 10), standardHeaders: true, legacyHeaders: false }));
+function memoryRateLimit({ windowMs = 60_000, limit = 20 } = {}) {
+  const hits = new Map();
+  return function luminaMemoryRateLimit(req, res, next) {
+    const now = Date.now();
+    const key = String(req.ip || req.socket?.remoteAddress || 'unknown') + ':' + String(req.baseUrl || req.path || '');
+    const entry = hits.get(key) || { count: 0, resetAt: now + windowMs };
+    if (now > entry.resetAt) {
+      entry.count = 0;
+      entry.resetAt = now + windowMs;
+    }
+    entry.count += 1;
+    hits.set(key, entry);
+    res.setHeader('RateLimit-Limit', String(limit));
+    res.setHeader('RateLimit-Remaining', String(Math.max(0, limit - entry.count)));
+    res.setHeader('RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
+    if (entry.count > limit) {
+      return res.status(429).json({
+        ok: false,
+        error: {
+          message: 'Too many requests. Please wait before trying again.',
+          retryAfterMs: Math.max(0, entry.resetAt - now)
+        }
+      });
+    }
+    return next();
+  };
+}
+
+app.use('/api/lumina/ai', memoryRateLimit({ windowMs: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE || 20) }));
+app.use('/api/lumina/latex/compile', memoryRateLimit({ windowMs: 60_000, limit: Number(process.env.COMPILE_RATE_LIMIT_PER_MINUTE || 10) }));
 
 function requireProxyToken(req, res, next) {
   const token = process.env.LUMINA_PROXY_TOKEN || '';
