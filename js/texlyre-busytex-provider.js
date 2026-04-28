@@ -201,6 +201,14 @@
         pdfBytesLength: pdfBytes?.byteLength || pdfBytes?.length || 0,
         resultKeys: rawSummary.resultKeys,
         pdfCandidateSummary: rawSummary.pdfCandidateSummary,
+        exitCode: rawSummary.exitCode,
+        resultStatus: rawSummary.resultStatus,
+        logsSummary: rawSummary.logsSummary,
+        logHints: rawSummary.logHints,
+        logLineCount: rawSummary.logLineCount,
+        logHead: rawSummary.logHead,
+        logTail: rawSummary.logTail,
+        compileInputSummary: summarizeCompileInput(compileInput),
         message: ok ? `TeXlyre PDF compile completed in ${durationSeconds}s.` : `TeXlyre compile finished in ${durationSeconds}s, but no PDF bytes were extracted.`
       };
       renderStatus();
@@ -212,7 +220,7 @@
         pdfBase64: pdfBytes ? bytesToBase64(pdfBytes) : null,
         log: decorateLog(log, payload, settings, rawSummary),
         problems,
-        raw: rawSummary
+        raw: Object.assign({}, rawSummary, { compileInputSummary: summarizeCompileInput(compileInput) })
       };
     } catch (err) {
       const fallback = NS.Preview?.analyzeTex?.(root?.text || '', payload.files.map((f) => ({ path: f.path, kind: f.kind, text: f.text }))) || { problems: [] };
@@ -316,8 +324,22 @@
       bibtex: String(payload.bibliography || '').toLowerCase() === 'bibtex',
       makeindex: false,
       rerun: true,
-      verbose: 'info',
+      verbose: 'debug',
       engine: payload.engine || 'pdflatex'
+    };
+  }
+
+  function summarizeCompileInput(compileInput) {
+    return {
+      inputLength: String(compileInput?.input || '').length,
+      inputHead: String(compileInput?.input || '').slice(0, 500),
+      mainFile: compileInput?.mainFile || '',
+      rootFile: compileInput?.rootFile || '',
+      engine: compileInput?.engine || '',
+      bibtex: !!compileInput?.bibtex,
+      rerun: !!compileInput?.rerun,
+      additionalFileCount: Array.isArray(compileInput?.additionalFiles) ? compileInput.additionalFiles.length : 0,
+      additionalFiles: Array.isArray(compileInput?.additionalFiles) ? compileInput.additionalFiles.map((f) => ({ path: f.path, type: valueType(f.content), length: valueLength(f.content) })) : []
     };
   }
 
@@ -475,7 +497,92 @@
 
   function extractLog(result) {
     if (!result) return 'TeXlyre compile returned no result.';
-    return String(result.log || result.stdout || result.stderr || result.outputLog || result.message || JSON.stringify(stripLargeFields(result), null, 2));
+    const pieces = [];
+    const add = (label, value) => {
+      const text = stringifyLogValue(value);
+      if (text) pieces.push(label ? `--- ${label} ---\n${text}` : text);
+    };
+    add('log', result.log);
+    add('logs', result.logs);
+    add('stdout', result.stdout);
+    add('stderr', result.stderr);
+    add('outputLog', result.outputLog);
+    add('message', result.message);
+    if (!pieces.length) add('raw result summary', stripLargeFields(result));
+    return pieces.join('\n\n').trim() || 'TeXlyre returned an empty compile log.';
+  }
+
+  function stringifyLogValue(value) {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (value instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer)) return '[binary log omitted]';
+    if (Array.isArray(value)) {
+      return value.map((entry, index) => {
+        if (typeof entry === 'string') return entry;
+        if (!entry || typeof entry !== 'object') return String(entry ?? '');
+        const level = entry.level || entry.type || entry.kind || entry.severity || '';
+        const msg = entry.message || entry.text || entry.line || entry.content || '';
+        const code = entry.code || entry.exitCode || '';
+        const compact = [level, code, msg].filter(Boolean).join(' ');
+        return compact || `${index}: ${safeJson(entry)}`;
+      }).filter(Boolean).join('\n');
+    }
+    if (typeof value === 'object') {
+      if (value.message || value.text || value.content) return String(value.message || value.text || value.content);
+      return safeJson(value);
+    }
+    return String(value);
+  }
+
+  function safeJson(value) {
+    try { return JSON.stringify(stripLargeFields(value), null, 2); } catch (_err) { return String(value); }
+  }
+
+  function logHeadTail(log) {
+    const lines = String(log || '').split(/\r?\n/);
+    return {
+      logLineCount: lines.length,
+      logHead: lines.slice(0, 60).join('\n'),
+      logTail: lines.slice(-90).join('\n')
+    };
+  }
+
+  function logHints(log) {
+    const text = String(log || '');
+    const hints = [];
+    const tests = [
+      [/LaTeX Error: File `([^']+)' not found/i, 'missing-file-or-package'],
+      [/! Undefined control sequence/i, 'undefined-control-sequence'],
+      [/! Emergency stop/i, 'emergency-stop'],
+      [/Fatal error occurred/i, 'fatal-error'],
+      [/No pages of output/i, 'no-pages-output'],
+      [/I can\'t find file `([^']+)'/i, 'tex-input-file-missing'],
+      [/Citation .* undefined/i, 'undefined-citation'],
+      [/Package .* Error/i, 'package-error'],
+      [/Runaway argument/i, 'runaway-argument']
+    ];
+    for (const [re, label] of tests) {
+      const m = text.match(re);
+      if (m) hints.push({ label, match: m[0], detail: m[1] || '' });
+    }
+    return hints;
+  }
+
+  function summarizeLogsArray(logs) {
+    if (!Array.isArray(logs)) return { type: valueType(logs), length: valueLength(logs), sample: stringifyLogValue(logs).slice(0, 1600) };
+    return {
+      type: 'Array',
+      length: logs.length,
+      sample: logs.slice(0, 20).map((entry) => {
+        if (typeof entry === 'string') return entry.slice(0, 500);
+        if (!entry || typeof entry !== 'object') return String(entry ?? '');
+        return {
+          keys: Object.keys(entry).slice(0, 12),
+          level: entry.level || entry.type || entry.kind || entry.severity || '',
+          message: String(entry.message || entry.text || entry.line || entry.content || '').slice(0, 700)
+        };
+      })
+    };
   }
 
   function stripLargeFields(value) {
@@ -501,10 +608,14 @@
       durationMs,
       resultSuccess: result?.success === true || result?.status === 'success' || result?.exitCode === 0,
       exitCode: result?.exitCode,
+      resultStatus: result?.status || '',
       pdfExtracted: !!pdfBytes,
       pdfBytesLength: pdfBytes?.byteLength || pdfBytes?.length || 0,
       resultKeys: result && typeof result === 'object' ? Object.keys(result) : [],
-      pdfCandidateSummary: summarizePdfCandidates(result)
+      pdfCandidateSummary: summarizePdfCandidates(result),
+      logsSummary: summarizeLogsArray(result?.logs),
+      logHints: logHints(extractLog(result)),
+      ...logHeadTail(extractLog(result))
     };
   }
 
