@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-module-readonly-hotfix-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-worker-mode-hotfix-20260428-1';
   const SCHEMA = 'lumina-latex-project-v1';
   const FILE_SCHEMA = 'lumina-latex-file-v1';
 
@@ -115,6 +115,7 @@ The project is represented by stable file paths and ids. UI events update the pr
       texlyreModuleUrl: 'https://esm.sh/texlyre-busytex?bundle',
       texlyreBusytexBase: 'vendor/texlyre/core/busytex',
       texlyreReuseRunner: true,
+      texlyreUseWorker: false,
       previewMode: 'draft',
       syncMode: 'local-only',
       httpProjectUrl: '/api/lumina/projects',
@@ -143,7 +144,7 @@ The project is represented by stable file paths and ids. UI events update the pr
       settings: defaultSettings(),
       meta: {
         app: 'lumina-latex-editor',
-        architectureStage: 'stage1g-texlyre-module-readonly-hotfix',
+        architectureStage: 'stage1g-texlyre-worker-mode-hotfix',
         collaborationReady: true,
         websocketReady: true
       },
@@ -184,7 +185,7 @@ The project is represented by stable file paths and ids. UI events update the pr
     project.createdAt = project.createdAt || t;
     project.updatedAt = project.updatedAt || t;
     project.settings = Object.assign(defaultSettings(), project.settings || {});
-    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage1g-texlyre-module-readonly-hotfix' }, project.meta || {});
+    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage1g-texlyre-worker-mode-hotfix' }, project.meta || {});
     project.files = files.map((file) => normalizeFile(file)).filter(Boolean);
     if (!project.files.length) project.files = defaultProject().files;
     project.files.sort((a, b) => a.path.localeCompare(b.path));

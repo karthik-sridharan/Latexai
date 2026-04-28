@@ -23,6 +23,7 @@
     const texlyreModuleUrl = document.getElementById('texlyreModuleUrl')?.value?.trim();
     const texlyreBusytexBase = document.getElementById('texlyreBusytexBase')?.value?.trim();
     const texlyreReuse = document.getElementById('texlyreReuseCheck')?.checked;
+    const texlyreUseWorker = document.getElementById('texlyreUseWorkerCheck')?.checked;
     const pollMs = Number(document.getElementById('compilePollSelect')?.value || settings.compilePollMs || 1000);
     if (compileUrl) settings.compileUrl = compileUrl;
     if (token) settings.compileProxyToken = token;
@@ -37,6 +38,7 @@
     if (texlyreModuleUrl) settings.texlyreModuleUrl = texlyreModuleUrl;
     if (texlyreBusytexBase) settings.texlyreBusytexBase = texlyreBusytexBase;
     if (typeof texlyreReuse === 'boolean') settings.texlyreReuseRunner = texlyreReuse;
+    if (typeof texlyreUseWorker === 'boolean') settings.texlyreUseWorker = texlyreUseWorker;
     settings.compilePollMs = Math.max(300, Math.min(pollMs || 1000, 5000));
     return settings;
   }

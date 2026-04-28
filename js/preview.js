@@ -62,6 +62,7 @@
     const texlyreModule = document.getElementById('texlyreModuleUrl');
     const texlyreBase = document.getElementById('texlyreBusytexBase');
     const texlyreReuse = document.getElementById('texlyreReuseCheck');
+    const texlyreUseWorker = document.getElementById('texlyreUseWorkerCheck');
     if (compileUrl) compileUrl.value = settings.compileUrl || '/api/lumina/latex/compile';
     if (engine) engine.value = settings.engine || 'pdflatex';
     if (compilerMode) compilerMode.value = settings.compilerMode || 'backend-texlive';
@@ -73,6 +74,7 @@
     if (texlyreModule) texlyreModule.value = settings.texlyreModuleUrl || 'https://esm.sh/texlyre-busytex?bundle';
     if (texlyreBase) texlyreBase.value = settings.texlyreBusytexBase || 'vendor/texlyre/core/busytex';
     if (texlyreReuse) texlyreReuse.checked = settings.texlyreReuseRunner !== false;
+    if (texlyreUseWorker) texlyreUseWorker.checked = settings.texlyreUseWorker === true;
     const shellAllowed = shellEscapeUiAllowed();
     if (shellEscape) {
       shellEscape.checked = shellAllowed && !!settings.shellEscape;

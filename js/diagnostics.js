@@ -7,7 +7,7 @@
 
   const REQUIRED_IDS = [
     'sourceEditor','lineGutter','fileTree','outlineList','draftPreview','pdfPreview','logPanel','problemList',
-    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','wasmStatusCard','wasmStatusText','wasmStatusDetail','testBrowserWasmBtn','browserWasmAssetBase','browserWasmTexliveEndpoint','browserWasmReuseCheck','texlyreStatusCard','texlyreStatusText','texlyreStatusDetail','testTexlyreBtn','texlyreModuleUrl','texlyreBusytexBase','texlyreReuseCheck','openOverleafBtn','rootFileSelect','compileStatusCard','compileProgressBar','copilotContextChips','patchReview','patchMeta','patchSummary','patchDiff','previewCopilotPatchBtn','applyCopilotPatchBtn','discardCopilotPatchBtn'
+    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','wasmStatusCard','wasmStatusText','wasmStatusDetail','testBrowserWasmBtn','browserWasmAssetBase','browserWasmTexliveEndpoint','browserWasmReuseCheck','texlyreStatusCard','texlyreStatusText','texlyreStatusDetail','testTexlyreBtn','texlyreModuleUrl','texlyreBusytexBase','texlyreReuseCheck','texlyreUseWorkerCheck','openOverleafBtn','rootFileSelect','compileStatusCard','compileProgressBar','copilotContextChips','patchReview','patchMeta','patchSummary','patchDiff','previewCopilotPatchBtn','applyCopilotPatchBtn','discardCopilotPatchBtn'
   ];
 
   function run() {
@@ -26,7 +26,7 @@
     const backendProbe = NS.CompilerProvider?.getLastBackendProbe?.() || null;
     const compileProxyValue = document.getElementById('compileProxyUrl')?.value || '';
     const report = {
-      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-module-readonly-hotfix-20260428-1',
+      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-worker-mode-hotfix-20260428-1',
       checkedAt: new Date().toISOString(),
       url: location.href,
       userAgent: navigator.userAgent,

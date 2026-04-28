@@ -13,15 +13,18 @@
   let cachedModule = null;
   let cachedModuleUrlForCache = '';
   let runnerBaseForCache = '';
+  let runnerWorkerModeForCache = false;
 
   function currentSettings(base = State()?.state?.settings || {}) {
     const settings = Object.assign(Model()?.defaultSettings?.() || {}, base || {});
     const moduleInput = document.getElementById('texlyreModuleUrl')?.value?.trim();
     const baseInput = document.getElementById('texlyreBusytexBase')?.value?.trim();
     const cacheInput = document.getElementById('texlyreReuseCheck')?.checked;
+    const workerInput = document.getElementById('texlyreUseWorkerCheck')?.checked;
     if (moduleInput) settings.texlyreModuleUrl = moduleInput;
     if (baseInput) settings.texlyreBusytexBase = baseInput;
     if (typeof cacheInput === 'boolean') settings.texlyreReuseRunner = cacheInput;
+    if (typeof workerInput === 'boolean') settings.texlyreUseWorker = workerInput;
     return settings;
   }
 
@@ -42,7 +45,8 @@
       moduleUrl: moduleUrl(),
       busytexBasePath: busytexBasePath(),
       cachedModuleReady: !!cachedModule,
-      cachedRunnerReady: !!cachedRunner
+      cachedRunnerReady: !!cachedRunner,
+      useWorker: currentSettings().texlyreUseWorker === true
     }, lastProbe || {});
   }
 
@@ -53,7 +57,7 @@
     const probe = status();
     const state = probe.status || 'not-checked';
     if (text) text.textContent = state === 'ready' ? 'Ready' : state === 'missing-assets' ? 'Assets missing' : state === 'loading' ? 'Loading' : state === 'error' ? 'Error' : 'Not checked';
-    if (detail) detail.textContent = probe.message || 'Choose TeXlyre BusyTeX and click Test TeXlyre. It needs the texlyre-busytex module plus downloaded BusyTeX assets.';
+    if (detail) detail.textContent = probe.message || 'Choose TeXlyre BusyTeX and click Test TeXlyre. Direct mode is the safer default for Safari/iPad; Worker mode can be enabled after the assets are verified.';
     if (card) {
       card.classList.toggle('ok', state === 'ready');
       card.classList.toggle('warn', state === 'not-checked' || state === 'missing-assets' || state === 'loading');
@@ -64,7 +68,7 @@
   async function probe(settings = currentSettings()) {
     settings = currentSettings(settings);
     const base = busytexBasePath(settings);
-    lastProbe = { ok: false, status: 'loading', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), busytexBasePath: base, message: 'Checking TeXlyre BusyTeX module and asset base...' };
+    lastProbe = { ok: false, status: 'loading', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), busytexBasePath: base, message: `Checking TeXlyre BusyTeX module and asset base (${settings.texlyreUseWorker === true ? 'worker' : 'direct'} mode)...` };
     renderStatus();
     try {
       const mod = await loadModule(settings);
@@ -79,7 +83,7 @@
         moduleUrl: moduleUrl(settings),
         busytexBasePath: base,
         likelyAssets: assets,
-        message: 'TeXlyre BusyTeX module loaded and runner initialized. First compile may still download/cache large TeX data in this browser.'
+        message: `TeXlyre BusyTeX module loaded and runner initialized (${settings.texlyreUseWorker === true ? 'worker' : 'direct'} mode). First compile may still download/cache large TeX data in this browser.`
       };
     } catch (err) {
       lastProbe = classifyError(err, settings);
@@ -167,14 +171,16 @@
   async function getRunner(mod, settings, options = {}) {
     const base = busytexBasePath(settings);
     const reuse = settings.texlyreReuseRunner !== false && !options.forceNew;
-    if (reuse && cachedRunner && runnerBaseForCache === base) return cachedRunner;
-    const runner = new mod.BusyTexRunner({ busytexBasePath: base });
-    if (typeof runner.initialize === 'function') await runner.initialize();
+    const useWorker = settings.texlyreUseWorker === true;
+    if (reuse && cachedRunner && runnerBaseForCache === base && runnerWorkerModeForCache === useWorker) return cachedRunner;
+    const runner = new mod.BusyTexRunner({ busytexBasePath: base, verbose: true });
+    if (typeof runner.initialize === 'function') await runner.initialize(settings.texlyreUseWorker === true);
     else if (typeof runner.init === 'function') await runner.init();
     else throw new Error('BusyTexRunner exists but has no initialize() method. Check texlyre-busytex module version.');
     if (settings.texlyreReuseRunner !== false) {
       cachedRunner = runner;
       runnerBaseForCache = base;
+      runnerWorkerModeForCache = useWorker;
     }
     return runner;
   }
@@ -217,7 +223,11 @@
 
   async function checkLikelyAssets(settings) {
     const base = busytexBasePath(settings).replace(/\/$/, '') + '/';
-    const candidates = ['busytex_worker.js', 'busytex_pipeline.js', 'busytex.js', 'busytex.wasm', 'texlive-basic.js', 'texlive-basic.data'];
+    const modeCandidates = settings.texlyreUseWorker === true
+      ? ['busytex_worker.js', 'busytex.js', 'busytex.wasm']
+      : ['busytex_pipeline.js', 'busytex.js', 'busytex.wasm'];
+    const packageCandidates = ['texlive-basic.js', 'texlive-basic.data'];
+    const candidates = Array.from(new Set(modeCandidates.concat(packageCandidates)));
     const results = [];
     for (const name of candidates) {
       try {
@@ -289,14 +299,16 @@
     const module = moduleUrl(settings);
     const readonlyModule = /readonly property|read-only|Cannot assign to read only/i.test(message);
     const missingModule = /(Failed to fetch dynamically imported module|Importing a module script failed|Cannot find module|404|not found)/i.test(message) && /texlyre|module|import|esm/i.test(message);
+    const workerFailure = /Worker error|Timeout waiting for BusyTeX worker|Failed to initialize BusyTeX/i.test(message);
     const missingAssets = /(busytexBasePath|wasm|data|asset|404|Failed to fetch|NetworkError|not found|instantiate|WebAssembly)/i.test(message) && !missingModule && !readonlyModule;
     let friendly = message;
     if (readonlyModule) friendly = 'TeXlyre module loaded, but the provider hit a read-only ES module namespace. This Stage 1G hotfix caches module metadata separately and should remove that error.';
     else if (missingModule) friendly = `TeXlyre BusyTeX module could not be imported from ${module}. Use the CDN module URL for testing or copy a bundled ESM build into vendor/texlyre/.`;
+    else if (workerFailure) friendly = `TeXlyre BusyTeX worker failed to initialize from ${base}. This often happens on Safari/iPad when the worker script or its wasm/data fetch fails with an unhelpful message. Leave “Use TeXlyre Web Worker mode” off and retry in direct mode; also verify busytex_pipeline.js, busytex.js, and busytex.wasm are reachable.`;
     else if (missingAssets) friendly = `TeXlyre BusyTeX assets could not be loaded from ${base}. Run npx texlyre-busytex download-assets vendor/texlyre/core so the app has vendor/texlyre/core/busytex/.`;
     return {
       ok: false,
-      status: missingModule || missingAssets ? 'missing-assets' : 'error',
+      status: missingModule || missingAssets || workerFailure ? 'missing-assets' : 'error',
       checkedAt: new Date().toISOString(),
       moduleUrl: module,
       busytexBasePath: base,
@@ -316,7 +328,8 @@
       '2. For quick testing, leave Module URL as https://esm.sh/texlyre-busytex?bundle.',
       '3. Download BusyTeX assets with: npx texlyre-busytex download-assets vendor/texlyre/core',
       '4. Upload the resulting vendor/texlyre/core/busytex/ folder to the deployed GitHub Pages project.',
-      '5. Set BusyTeX asset base to vendor/texlyre/core/busytex and click Test TeXlyre.',
+      '5. Set BusyTeX asset base to vendor/texlyre/core/busytex and leave Web Worker mode off for Safari/iPad testing.',
+      '6. Click Test TeXlyre, then Compile.',
       '',
       `Root file: ${payload.rootFile}`,
       `Files: ${payload.files.length}`,
@@ -390,6 +403,12 @@
       renderStatus();
     });
     document.getElementById('texlyreReuseCheck')?.addEventListener('change', (event) => State()?.setSetting?.('texlyreReuseRunner', !!event.target.checked));
+    document.getElementById('texlyreUseWorkerCheck')?.addEventListener('change', (event) => {
+      cachedRunner = null;
+      lastProbe = null;
+      State()?.setSetting?.('texlyreUseWorker', !!event.target.checked);
+      renderStatus();
+    });
     renderStatus();
   }
 
