@@ -242,7 +242,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -.035em; }
   .field-grid.two { grid-template-columns: 1fr; }
 }
 
-/* Stage 1C compile pipeline */
+/* Stage 1D compile pipeline */
 .compile-status-card {
   border: 1px solid rgba(15,23,42,.08);
   background: rgba(255,255,255,.76);
@@ -259,3 +259,24 @@ h1, h2, h3 { margin: 0; letter-spacing: -.035em; }
 .problem.clickable { cursor:pointer; outline:none; }
 .problem.clickable:hover, .problem.clickable:focus { transform:translateY(-1px); box-shadow:0 8px 22px rgba(15,23,42,.10); }
 .hidden { display:none !important; }
+
+/* Stage 1D backend status probe */
+.backend-status-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: .25rem 0 .75rem;
+  padding: .72rem .78rem;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 16px;
+  background: rgba(248,250,252,.92);
+}
+.backend-status-card strong { display: block; margin-top: .1rem; color: #334155; }
+.backend-status-card p { margin: .18rem 0 0; color: var(--muted); font-size: .78rem; line-height: 1.35; font-weight: 650; }
+.backend-status-card.ok { border-color: rgba(4,120,87,.22); background: #effcf6; }
+.backend-status-card.warn { border-color: rgba(145,90,0,.20); background: #fff8eb; }
+.backend-status-card.error { border-color: rgba(180,35,24,.20); background: #fff1f0; }
+.backend-status-card.ok strong { color: var(--success); }
+.backend-status-card.warn strong { color: var(--warn); }
+.backend-status-card.error strong { color: var(--danger); }
