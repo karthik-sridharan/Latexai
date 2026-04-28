@@ -52,7 +52,7 @@ export async function compileWithTexLive(payload, options = {}) {
     return {
       ok,
       schema: 'lumina-latex-compile-response-v1',
-      stage: options.stage || 'latex-stage1e-copilot-workflows-20260428-1',
+      stage: options.stage || 'latex-stage1e-safety-guard-20260428-1',
       runner: policy.runner || 'native-texlive',
       jobId: job?.jobId || null,
       projectId: payload.projectId || null,
