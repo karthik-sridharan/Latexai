@@ -7,7 +7,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage1e-copilot-workflows-20260428-1';
+  window.LUMINA_LATEX_STAGE='latex-stage1f-easy-compile-modes-20260428-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -37,10 +37,10 @@
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=latex-stage1e-copilot-workflows-20260428-1" />
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1f-easy-compile-modes-20260428-1" />
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage1e-copilot-workflows-20260428-1">
+<div class="app-shell" data-stage="latex-stage1f-easy-compile-modes-20260428-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -72,7 +72,7 @@
         </div>
         <div class="project-meta">
           <span id="autosaveStatus">Autosaved locally</span>
-          <span id="stageBadge">latex-stage1e</span>
+          <span id="stageBadge">latex-stage1f</span>
         </div>
       </section>
 
@@ -250,8 +250,26 @@
           <select id="compilerModeSelect">
             <option value="backend-texlive">Backend TeX Live</option>
             <option value="mock-draft">Mock draft check</option>
-            <option value="browser-wasm">Browser WASM placeholder</option>
+            <option value="browser-wasm">Browser WASM experimental</option>
           </select>
+        </label>
+        <div id="wasmStatusCard" class="backend-status-card wasm-status-card">
+          <div>
+            <div class="smallcaps">Browser engine status</div>
+            <strong id="wasmStatusText">Not checked</strong>
+            <p id="wasmStatusDetail">Browser-WASM compile uses SwiftLaTeX-compatible assets in the browser. Click Test browser engine after setting the asset folder.</p>
+          </div>
+          <button id="testBrowserWasmBtn" class="btn mini" type="button">Test browser engine</button>
+        </div>
+        <label class="field">Browser-WASM asset folder
+          <input id="browserWasmAssetBase" type="text" value="vendor/swiftlatex/pdftex/" placeholder="vendor/swiftlatex/pdftex/" />
+        </label>
+        <label class="field">SwiftLaTeX TeXLive-on-demand endpoint
+          <input id="browserWasmTexliveEndpoint" type="url" value="https://texlive.swiftlatex.com/" placeholder="https://texlive.swiftlatex.com/" />
+        </label>
+        <label class="field checkbox-field">
+          <input id="browserWasmReuseCheck" type="checkbox" checked />
+          Reuse browser engine after first load (faster repeat compiles)
         </label>
         <div class="field-grid two">
           <label class="field">Root file
@@ -268,7 +286,7 @@
         </div>
         <label class="field checkbox-field">
           <input id="shellEscapeCheck" type="checkbox" />
-          Allow shell escape, backend must explicitly permit it
+          Allow shell escape (disabled on static fallback unless backend permits it)
         </label>
         <label class="field checkbox-field">
           <input id="compileJobsCheck" type="checkbox" checked />
@@ -287,28 +305,30 @@
         <div class="settings-note">
           Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
         </div>
+        <button id="openOverleafBtn" class="btn ghost" type="button">Open root in Overleaf</button>
         <button id="runAppDiagnosticsBtn" class="btn ghost" type="button">Run app diagnostics</button>
       </section>
     </aside>
   </main>
 </div>
 
-<script src="js/app-kernel.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/project-model.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/project-store.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/sync-provider.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/editor-adapter.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/preview-adapter.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/compiler-provider.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/ai-provider.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/state.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/editor.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/file-tree.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/preview.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/import-export.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/patch-manager.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/copilot.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/diagnostics.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
-<script src="js/main.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/app-kernel.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/project-model.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/project-store.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/sync-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/editor-adapter.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/preview-adapter.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/browser-wasm-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/compiler-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/ai-provider.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/state.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/editor.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/file-tree.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/preview.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/patch-manager.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/copilot.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/diagnostics.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
+<script src="js/main.js?v=latex-stage1f-easy-compile-modes-20260428-1" defer></script>
 </body>
 </html>

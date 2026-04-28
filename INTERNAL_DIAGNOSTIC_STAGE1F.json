@@ -1,0 +1,13 @@
+{
+  "stage": "latex-stage1f-easy-compile-modes-20260428-1",
+  "checkedAt": "2026-04-28T07:18:09.555Z",
+  "missingFiles": [],
+  "missingIndexStrings": [],
+  "missingBackendContracts": [],
+  "missingFrontendContracts": [],
+  "missingCopilotContracts": [],
+  "missingPatchContracts": [],
+  "missingImportContracts": [],
+  "syntax": [],
+  "pass": true
+}
