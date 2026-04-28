@@ -1,5 +1,5 @@
 {
-  "stage": "latex-stage1g-texlyre-preflight-first-hotfix-20260428-1",
+  "stage": "latex-stage1g-texlyre-log-tail-hotfix-20260428-1",
   "contracts": {
     "projectSchema": "lumina-latex-project-v1",
     "compileRequest": "lumina-latex-compile-request-v1",
