@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lumina LaTeX Editor</title>
+<script>
+(function(){
+  window.LUMINA_LATEX_BOOT_ERRORS=[];
+  window.LUMINA_LATEX_STAGE='latex-stage1a-20260427-1';
+  try{
+    var p=new URLSearchParams(location.search);
+    if(p.has('clearLuminaStorage')){
+      Object.keys(localStorage).forEach(function(k){
+        var low=String(k).toLowerCase();
+        if(low.indexOf('lumina-latex')>=0 || low.indexOf('latex-editor')>=0){ localStorage.removeItem(k); }
+      });
+      sessionStorage.setItem('lumina-latex-storage-cleared','1');
+    }
+  }catch(e){ window.LUMINA_LATEX_BOOT_ERRORS.push('Storage clear check failed: '+(e.message||e)); }
+  window.luminaLatexBootError=function(message){ window.LUMINA_LATEX_BOOT_ERRORS.push(String(message)); };
+  window.addEventListener('error',function(event){
+    var where=event.filename?(' at '+event.filename.split('/').slice(-1)[0]+':'+event.lineno+':'+event.colno):'';
+    window.luminaLatexBootError((event.message||'Script error')+where);
+  });
+  window.addEventListener('unhandledrejection',function(event){
+    window.luminaLatexBootError('Unhandled promise rejection: '+(event.reason&&(event.reason.stack||event.reason.message||event.reason)||'unknown'));
+  });
+  window.addEventListener('DOMContentLoaded',function(){
+    setTimeout(function(){
+      if(!window.LUMINA_LATEX_BOOT_ERRORS.length)return;
+      var box=document.createElement('pre');
+      box.className='boot-error-box';
+      box.textContent='Lumina LaTeX startup error(s):\n\n'+window.LUMINA_LATEX_BOOT_ERRORS.join('\n\n');
+      document.body.appendChild(box);
+    },650);
+  });
+})();
+</script>
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1a-20260427-1" />
+</head>
+<body>
+<div class="app-shell" data-stage="latex-stage1a-20260427-1">
+  <header class="topbar">
+    <div class="brand-block">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="smallcaps">Lumina LaTeX</div>
+        <h1>Web LaTeX Editor</h1>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="newProjectBtn" class="btn ghost" type="button">New project</button>
+      <button id="saveProjectBtn" class="btn ghost" type="button">Save local</button>
+      <button id="importFilesBtn" class="btn ghost" type="button">Import</button>
+      <button id="exportZipBtn" class="btn ghost" type="button">Export zip</button>
+      <button id="compileBtn" class="btn primary" type="button">Compile PDF</button>
+      <input id="importFileInput" class="hidden" type="file" multiple accept=".tex,.bib,.cls,.sty,.json,.txt,.md,.png,.jpg,.jpeg,.pdf" />
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="left-panel panel">
+      <section class="panel-section project-card">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Project</div>
+            <h2 id="projectTitleDisplay">Untitled LaTeX Project</h2>
+          </div>
+          <button id="renameProjectBtn" class="icon-btn" type="button" title="Rename project">✎</button>
+        </div>
+        <div class="project-meta">
+          <span id="autosaveStatus">Autosaved locally</span>
+          <span id="stageBadge">latex-stage1a</span>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Files</div>
+            <h2>Source tree</h2>
+          </div>
+          <button id="newFileBtn" class="icon-btn" type="button" title="New file">＋</button>
+        </div>
+        <div id="fileTree" class="file-tree" role="tree"></div>
+        <div class="micro-actions">
+          <button id="addTemplateBtn" class="btn mini" type="button">Add template</button>
+          <button id="downloadActiveBtn" class="btn mini" type="button">Download file</button>
+        </div>
+      </section>
+
+      <section class="panel-section outline-card">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Outline</div>
+            <h2>Document map</h2>
+          </div>
+        </div>
+        <div id="outlineList" class="outline-list"></div>
+      </section>
+    </aside>
+
+    <section class="editor-panel panel">
+      <div class="editor-toolbar">
+        <div class="active-file-info">
+          <span class="file-pill" id="activeFilePill">main.tex</span>
+          <span id="cursorStatus">Ln 1, Col 1</span>
+        </div>
+        <div class="toolbar-actions">
+          <button id="formatTexBtn" class="btn mini" type="button">Soft format</button>
+          <button id="wrapSelectionBtn" class="btn mini" type="button">Wrap selection</button>
+          <button id="togglePreviewBtn" class="btn mini" type="button">Refresh preview</button>
+        </div>
+      </div>
+      <div class="source-shell">
+        <pre id="lineGutter" class="line-gutter" aria-hidden="true">1</pre>
+        <textarea id="sourceEditor" spellcheck="false" aria-label="LaTeX source editor"></textarea>
+      </div>
+    </section>
+
+    <aside class="right-panel panel">
+      <div class="right-tabs" role="tablist" aria-label="Right panel tabs">
+        <button class="right-tab active" data-right-tab="preview" type="button">Preview</button>
+        <button class="right-tab" data-right-tab="logs" type="button">Logs</button>
+        <button class="right-tab" data-right-tab="copilot" type="button">Copilot</button>
+        <button class="right-tab" data-right-tab="settings" type="button">Settings</button>
+      </div>
+
+      <section id="previewTab" class="right-tab-panel active">
+        <div class="section-head preview-head">
+          <div>
+            <div class="smallcaps">Preview</div>
+            <h2>Draft / PDF</h2>
+          </div>
+          <div class="preview-mode-toggle" aria-label="Preview mode">
+            <button id="showDraftPreviewBtn" class="seg active" type="button">Draft</button>
+            <button id="showPdfPreviewBtn" class="seg" type="button">PDF</button>
+          </div>
+        </div>
+        <div id="draftPreview" class="draft-preview"></div>
+        <iframe id="pdfPreview" class="pdf-preview hidden" title="Compiled PDF preview"></iframe>
+      </section>
+
+      <section id="logsTab" class="right-tab-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Diagnostics</div>
+            <h2>Compile and app logs</h2>
+          </div>
+          <button id="copyDiagnosticsBtn" class="btn mini" type="button">Copy diagnostics</button>
+        </div>
+        <div id="problemList" class="problem-list"></div>
+        <pre id="logPanel" class="log-panel">No compile has been run yet.</pre>
+      </section>
+
+      <section id="copilotTab" class="right-tab-panel copilot-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">AI</div>
+            <h2>LaTeX Copilot</h2>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <label class="field">Provider
+            <select id="aiProvider" data-lumina-ai-provider>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Claude / Anthropic</option>
+              <option value="gemini">Gemini / Google</option>
+            </select>
+          </label>
+          <label class="field">Model
+            <select id="aiModel" data-lumina-ai-model></select>
+          </label>
+        </div>
+        <label class="field">Backend proxy URL
+          <input id="aiProxyUrl" data-lumina-ai-proxy-url type="url" value="/api/lumina/ai" placeholder="https://your-backend.example.com/api/lumina/ai" />
+        </label>
+        <label class="field">Proxy token, optional
+          <input id="aiProxyToken" data-lumina-ai-proxy-token type="password" autocomplete="off" placeholder="Optional bearer token" />
+        </label>
+        <label class="field">Task
+          <select id="copilotTask">
+            <option value="fix-error">Fix current compile error</option>
+            <option value="rewrite-selection">Rewrite selected LaTeX</option>
+            <option value="new-section">Draft a new section</option>
+            <option value="beamer-outline">Create Beamer outline</option>
+            <option value="explain-log">Explain compile log</option>
+          </select>
+        </label>
+        <label class="field">Prompt
+          <textarea id="copilotPrompt" rows="5" placeholder="Ask for a theorem rewrite, table, proof sketch, Beamer frame, bibliography fix, etc."></textarea>
+        </label>
+        <div class="micro-actions stretch">
+          <button id="askCopilotBtn" class="btn primary" type="button">Ask Copilot</button>
+          <button id="insertCopilotBtn" class="btn mini" type="button">Insert result</button>
+          <button id="replaceCopilotBtn" class="btn mini" type="button">Replace selection</button>
+        </div>
+        <pre id="copilotOutput" class="copilot-output">Copilot responses will appear here.</pre>
+      </section>
+
+      <section id="settingsTab" class="right-tab-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Settings</div>
+            <h2>Compile settings</h2>
+          </div>
+        </div>
+        <label class="field">Compile backend URL
+          <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-backend.example.com/api/lumina/latex/compile" />
+        </label>
+        <div class="field-grid two">
+          <label class="field">Root file
+            <select id="rootFileSelect"></select>
+          </label>
+          <label class="field">Engine
+            <select id="engineSelect">
+              <option value="pdflatex">pdfLaTeX</option>
+              <option value="xelatex">XeLaTeX</option>
+              <option value="lualatex">LuaLaTeX</option>
+              <option value="latexmk">latexmk auto</option>
+            </select>
+          </label>
+        </div>
+        <label class="field checkbox-field">
+          <input id="shellEscapeCheck" type="checkbox" />
+          Allow shell escape, backend must explicitly permit it
+        </label>
+        <div class="settings-note">
+          Static GitHub Pages can run the editor and draft preview. Real PDF compilation needs the included backend or another trusted compile service.
+        </div>
+        <button id="runAppDiagnosticsBtn" class="btn ghost" type="button">Run app diagnostics</button>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="js/state.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/editor.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/file-tree.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/preview.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/copilot.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/diagnostics.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/main.js?v=latex-stage1a-20260427-1" defer></script>
+</body>
+</html>

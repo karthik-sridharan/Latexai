@@ -1,0 +1,21 @@
+{
+  "stage": "latex-stage1a-20260427-1",
+  "checkedAt": "2026-04-28T03:13:35.710Z",
+  "requiredCount": 13,
+  "scripts": [
+    "js/state.js",
+    "js/editor.js",
+    "js/file-tree.js",
+    "js/preview.js",
+    "js/import-export.js",
+    "js/copilot.js",
+    "js/diagnostics.js",
+    "js/main.js"
+  ],
+  "missing": [],
+  "missingIds": [],
+  "missingScripts": [],
+  "hasBackendCompileRoute": true,
+  "hasAiProxyRoute": true,
+  "pass": true
+}
