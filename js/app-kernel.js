@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-busytex-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-module-readonly-hotfix-20260428-1';
 
   const contracts = {
     projectSchema: 'lumina-latex-project-v1',

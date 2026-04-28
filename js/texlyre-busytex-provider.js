@@ -11,6 +11,7 @@
   let lastProbe = null;
   let cachedRunner = null;
   let cachedModule = null;
+  let cachedModuleUrlForCache = '';
   let runnerBaseForCache = '';
 
   function currentSettings(base = State()?.state?.settings || {}) {
@@ -145,11 +146,14 @@
   }
 
   async function loadModule(settings) {
-    if (cachedModule && cachedModule.__luminaModuleUrl === moduleUrl(settings)) return cachedModule;
-    const url = resolveUrl(moduleUrl(settings));
+    const configuredUrl = moduleUrl(settings);
+    if (cachedModule && cachedModuleUrlForCache === configuredUrl) return cachedModule;
+    const url = resolveUrl(configuredUrl);
     const mod = await import(/* webpackIgnore: true */ url);
-    mod.__luminaModuleUrl = moduleUrl(settings);
+    // ES module namespace objects are read-only in strict-mode browsers such as Safari.
+    // Keep cache metadata separately rather than mutating the imported module object.
     cachedModule = mod;
+    cachedModuleUrlForCache = configuredUrl;
     return mod;
   }
 
@@ -184,43 +188,36 @@
 
   function buildCompileInput(payload) {
     const root = payload.files.find((file) => file.path === payload.rootFile) || payload.files[0];
-    const files = {};
+    const additionalFiles = [];
     for (const file of payload.files || []) {
-      if (!file.path) continue;
-      files[file.path] = file.encoding === 'base64' ? base64ToBytes(file.text || file.base64 || '') : String(file.text || '');
+      if (!file.path || file.path === root?.path) continue;
+      additionalFiles.push({
+        path: file.path,
+        content: file.encoding === 'base64' ? base64ToBytes(file.text || file.base64 || '') : String(file.text || '')
+      });
     }
     return {
       input: root?.text || '',
       mainFile: payload.rootFile,
       rootFile: payload.rootFile,
-      files,
-      fileMap: files,
+      additionalFiles,
+      bibtex: String(payload.bibliography || '').toLowerCase() === 'bibtex',
+      makeindex: false,
+      rerun: true,
+      verbose: 'info',
       engine: payload.engine || 'pdflatex'
     };
   }
 
   async function runCompile(engine, compileInput) {
-    const attempts = [
-      () => engine.compile(compileInput),
-      () => engine.compile({ input: compileInput.input, files: compileInput.files, mainFile: compileInput.mainFile }),
-      () => engine.compile({ input: compileInput.input }),
-      () => engine.compile(compileInput.input)
-    ];
-    let lastErr = null;
-    for (const attempt of attempts) {
-      try {
-        const result = await attempt();
-        return result;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-    throw lastErr || new Error('TeXlyre compile failed before returning a result.');
+    if (!engine || typeof engine.compile !== 'function') throw new Error('TeXlyre engine class did not create an object with compile().');
+    // TeXlyre BusyTeX expects CompileOptions: { input, additionalFiles, bibtex, makeindex, rerun, verbose }.
+    return engine.compile(compileInput);
   }
 
   async function checkLikelyAssets(settings) {
     const base = busytexBasePath(settings).replace(/\/$/, '') + '/';
-    const candidates = ['busytex-worker.js', 'busytex.wasm', 'busytex.data', 'core.wasm', 'pdftex.wasm'];
+    const candidates = ['busytex_worker.js', 'busytex_pipeline.js', 'busytex.js', 'busytex.wasm', 'texlive-basic.js', 'texlive-basic.data'];
     const results = [];
     for (const name of candidates) {
       try {
@@ -290,10 +287,12 @@
     const message = err?.message || String(err || 'Unknown TeXlyre BusyTeX error');
     const base = busytexBasePath(settings);
     const module = moduleUrl(settings);
+    const readonlyModule = /readonly property|read-only|Cannot assign to read only/i.test(message);
     const missingModule = /(Failed to fetch dynamically imported module|Importing a module script failed|Cannot find module|404|not found)/i.test(message) && /texlyre|module|import|esm/i.test(message);
-    const missingAssets = /(busytexBasePath|wasm|data|asset|404|Failed to fetch|NetworkError|not found|instantiate|WebAssembly)/i.test(message) && !missingModule;
+    const missingAssets = /(busytexBasePath|wasm|data|asset|404|Failed to fetch|NetworkError|not found|instantiate|WebAssembly)/i.test(message) && !missingModule && !readonlyModule;
     let friendly = message;
-    if (missingModule) friendly = `TeXlyre BusyTeX module could not be imported from ${module}. Use the CDN module URL for testing or copy a bundled ESM build into vendor/texlyre/.`;
+    if (readonlyModule) friendly = 'TeXlyre module loaded, but the provider hit a read-only ES module namespace. This Stage 1G hotfix caches module metadata separately and should remove that error.';
+    else if (missingModule) friendly = `TeXlyre BusyTeX module could not be imported from ${module}. Use the CDN module URL for testing or copy a bundled ESM build into vendor/texlyre/.`;
     else if (missingAssets) friendly = `TeXlyre BusyTeX assets could not be loaded from ${base}. Run npx texlyre-busytex download-assets vendor/texlyre/core so the app has vendor/texlyre/core/busytex/.`;
     return {
       ok: false,
@@ -378,6 +377,7 @@
     });
     document.getElementById('texlyreModuleUrl')?.addEventListener('change', (event) => {
       cachedModule = null;
+      cachedModuleUrlForCache = '';
       cachedRunner = null;
       lastProbe = null;
       State()?.setSetting?.('texlyreModuleUrl', event.target.value.trim() || DEFAULT_MODULE_URL);
