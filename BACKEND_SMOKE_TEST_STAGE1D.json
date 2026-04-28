@@ -1,0 +1,11 @@
+{
+  "stage": "latex-stage1d-backend-compile-runner-20260428-1",
+  "test": "direct compileWithTexLive minimal article",
+  "environment": "local container with pdflatex and latexmk available",
+  "result": {
+    "ok": true,
+    "pdfBytes": 13014,
+    "exitCode": 0,
+    "problemCount": 0
+  }
+}

@@ -7,7 +7,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage1c-compile-pipeline-20260427-1';
+  window.LUMINA_LATEX_STAGE='latex-stage1d-backend-compile-runner-20260428-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -37,10 +37,10 @@
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=latex-stage1c-compile-pipeline-20260427-1" />
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1d-backend-compile-runner-20260428-1" />
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage1c-compile-pipeline-20260427-1">
+<div class="app-shell" data-stage="latex-stage1d-backend-compile-runner-20260428-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -72,7 +72,7 @@
         </div>
         <div class="project-meta">
           <span id="autosaveStatus">Autosaved locally</span>
-          <span id="stageBadge">latex-stage1c</span>
+          <span id="stageBadge">latex-stage1d</span>
         </div>
       </section>
 
@@ -217,6 +217,14 @@
         <label class="field">Compile backend URL
           <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-backend.example.com/api/lumina/latex/compile" />
         </label>
+        <div id="backendStatusCard" class="backend-status-card">
+          <div>
+            <div class="smallcaps">Backend status</div>
+            <strong id="backendStatusText">Not checked</strong>
+            <p id="backendStatusDetail">Use Test backend after setting a compile URL.</p>
+          </div>
+          <button id="testCompileBackendBtn" class="btn mini" type="button">Test backend</button>
+        </div>
         <label class="field">Compile proxy token, optional
           <input id="compileProxyToken" type="password" autocomplete="off" placeholder="Optional bearer token for backend compile" />
         </label>
@@ -256,7 +264,7 @@
           </select>
         </label>
         <div class="settings-note">
-          Static GitHub Pages can run the editor and draft preview. Real PDF compilation needs the included backend or another trusted compile service. Stage 1C uses the provider architecture from 1B and adds a production compile pipeline: job submission, status polling, PDF return, log parsing, and click-to-line diagnostics.
+          Static GitHub Pages can run the editor and draft preview. Stage 1D adds a real backend compile runner; use Test backend to confirm that your TeX Live backend is reachable before compiling. Default relative /api URLs still fall back to draft validation on static hosts.
         </div>
         <div class="settings-note">
           Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
@@ -267,21 +275,21 @@
   </main>
 </div>
 
-<script src="js/app-kernel.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/project-model.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/project-store.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/sync-provider.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/editor-adapter.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/preview-adapter.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/compiler-provider.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/ai-provider.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/state.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/editor.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/file-tree.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/preview.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/import-export.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/copilot.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/diagnostics.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
-<script src="js/main.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/app-kernel.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/project-model.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/project-store.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/sync-provider.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/editor-adapter.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/preview-adapter.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/compiler-provider.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/ai-provider.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/state.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/editor.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/file-tree.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/preview.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/copilot.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/diagnostics.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/main.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
 </body>
 </html>

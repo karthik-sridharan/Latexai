@@ -1,0 +1,41 @@
+{
+  "stage": "latex-stage1d-backend-compile-runner-20260428-1",
+  "contracts": {
+    "projectSchema": "lumina-latex-project-v1",
+    "compileRequest": "lumina-latex-compile-request-v1",
+    "compileResponse": "lumina-latex-compile-response-v1",
+    "compileJobResponse": "lumina-latex-compile-job-response-v1",
+    "backendStatus": "lumina-latex-backend-status-v1",
+    "aiRequest": "lumina-latex-ai-request-v1",
+    "syncEvent": "lumina-latex-sync-event-v1",
+    "http": {
+      "backendStatus": "GET /api/lumina/latex/status",
+      "compile": "POST /api/lumina/latex/compile",
+      "compileJob": "POST /api/lumina/latex/compile/jobs",
+      "compileStatus": "GET /api/lumina/latex/compile/jobs/:jobId",
+      "compileEvents": "GET /api/lumina/latex/compile/jobs/:jobId/events",
+      "cancelCompile": "DELETE /api/lumina/latex/compile/jobs/:jobId",
+      "ai": "POST /api/lumina/ai",
+      "saveProject": "POST /api/lumina/projects/:projectId",
+      "loadProject": "GET /api/lumina/projects/:projectId"
+    },
+    "websocket": {
+      "reservedPath": "/ws/lumina/projects/:projectId",
+      "status": "reserved-for-stage2-collaboration"
+    }
+  },
+  "providers": {
+    "editor": "textarea-adapter-now-codemirror-ready",
+    "compiler": "backend-texlive-real-runner | browser-wasm-placeholder | mock-draft",
+    "ai": "backend-provider-proxy",
+    "sync": "local-only | http-project | websocket-placeholder",
+    "preview": "draft-html | pdf-blob"
+  },
+  "backendSecurity": {
+    "workspace": "temporary isolated directory per compile",
+    "cleanup": "enabled by default",
+    "shellEscape": "disabled unless ALLOW_SHELL_ESCAPE=true",
+    "limits": ["MAX_PROJECT_BYTES", "MAX_PROJECT_FILES", "COMPILE_TIMEOUT_MS", "MAX_PDF_BYTES", "MAX_COMPILE_LOG_BYTES"],
+    "rateLimits": ["COMPILE_RATE_LIMIT_PER_MINUTE", "RATE_LIMIT_PER_MINUTE"]
+  }
+}
