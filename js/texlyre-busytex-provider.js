@@ -28,6 +28,7 @@
   let cachedModuleUrlForCache = '';
   let cachedModuleLoadedFrom = '';
   let lastModuleImportAttempts = [];
+  let lastAssetPreflight = null;
   let runnerBaseForCache = '';
   let runnerWorkerModeForCache = false;
 
@@ -63,6 +64,10 @@
     return base.endsWith('/') ? base.slice(0, -1) : base;
   }
 
+  function resolvedBusytexBasePath(settings = currentSettings()) {
+    return String(settings.__texlyreResolvedBusytexBase || busytexBasePath(settings)).replace(/\/$/, '');
+  }
+
   function status() {
     return Object.assign({
       provider: 'browser-wasm-texlyre-busytex-experimental',
@@ -75,7 +80,8 @@
       cachedRunnerReady: !!cachedRunner,
       useWorker: currentSettings().texlyreUseWorker === true,
       directModeForced: forceDirectMode(),
-      directModeReason: forcedDirectReason()
+      directModeReason: forcedDirectReason(),
+      assetPreflight: lastAssetPreflight
     }, lastProbe || {});
   }
 
@@ -102,7 +108,13 @@
     try {
       const mod = await loadModule(settings);
       assertBusyTexModule(mod);
-      const assets = await checkLikelyAssets(settings);
+      const assetPreflight = await preflightAssets(settings);
+      if (!assetPreflight.ok) {
+        const error = new Error(`BusyTeX assets are not reachable from ${assetPreflight.requestedBase}.`);
+        error.assetPreflight = assetPreflight;
+        throw error;
+      }
+      if (assetPreflight.selectedBase) settings.__texlyreResolvedBusytexBase = assetPreflight.selectedBase;
       const runner = await getRunner(mod, settings, { forceNew: true, probe: true });
       if (settings.texlyreReuseRunner === false) await closeRunner(runner);
       lastProbe = {
@@ -112,7 +124,8 @@
         moduleUrl: moduleUrl(settings),
         moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings),
         busytexBasePath: base,
-        likelyAssets: assets,
+        resolvedBusytexBasePath: resolvedBusytexBasePath(settings),
+        assetPreflight,
         useWorker: settings.texlyreUseWorker === true,
         directModeForced: forceDirectMode(),
         directModeReason: forcedDirectReason(),
@@ -135,6 +148,13 @@
     try {
       const mod = await loadModule(settings);
       assertBusyTexModule(mod);
+      const assetPreflight = await preflightAssets(settings);
+      if (!assetPreflight.ok) {
+        const error = new Error(`BusyTeX assets are not reachable from ${assetPreflight.requestedBase}.`);
+        error.assetPreflight = assetPreflight;
+        throw error;
+      }
+      if (assetPreflight.selectedBase) settings.__texlyreResolvedBusytexBase = assetPreflight.selectedBase;
       const runner = await getRunner(mod, settings);
       State().setCompileStatus({ status: 'running', jobId: 'browser-wasm-texlyre', progress: 45, message: 'Preparing TeXlyre compile input...' });
       const EngineClass = selectEngineClass(mod, settings.engine || payload.engine || 'pdflatex');
@@ -151,7 +171,7 @@
         cachedRunner = null;
       }
       State().setCompileStatus({ status: ok ? 'succeeded' : 'failed', jobId: 'browser-wasm-texlyre', progress: 100, message: ok ? 'TeXlyre browser PDF compile completed.' : 'TeXlyre browser compile finished with diagnostics.' });
-      lastProbe = { ok: true, status: 'ready', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings), busytexBasePath: busytexBasePath(settings), message: `TeXlyre compile completed in ${Math.round((Date.now() - start) / 100) / 10}s.` };
+      lastProbe = { ok: true, status: 'ready', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings), busytexBasePath: busytexBasePath(settings), resolvedBusytexBasePath: resolvedBusytexBasePath(settings), assetPreflight: lastAssetPreflight, message: `TeXlyre compile completed in ${Math.round((Date.now() - start) / 100) / 10}s.` };
       renderStatus();
       return {
         ok,
@@ -224,7 +244,7 @@
   }
 
   async function getRunner(mod, settings, options = {}) {
-    const base = busytexBasePath(settings);
+    const base = resolvedBusytexBasePath(settings);
     const reuse = settings.texlyreReuseRunner !== false && !options.forceNew;
     const useWorker = settings.texlyreUseWorker === true;
     if (reuse && cachedRunner && runnerBaseForCache === base && runnerWorkerModeForCache === useWorker) return cachedRunner;
@@ -276,23 +296,77 @@
     return engine.compile(compileInput);
   }
 
-  async function checkLikelyAssets(settings) {
-    const base = busytexBasePath(settings).replace(/\/$/, '') + '/';
-    const modeCandidates = settings.texlyreUseWorker === true
+  async function preflightAssets(settings) {
+    const requestedBase = busytexBasePath(settings).replace(/\/$/, '');
+    const required = settings.texlyreUseWorker === true
       ? ['busytex_worker.js', 'busytex.js', 'busytex.wasm']
       : ['busytex_pipeline.js', 'busytex.js', 'busytex.wasm'];
-    const packageCandidates = ['texlive-basic.js', 'texlive-basic.data'];
-    const candidates = Array.from(new Set(modeCandidates.concat(packageCandidates)));
-    const results = [];
-    for (const name of candidates) {
-      try {
-        const res = await fetch(resolveUrl(base + name), { method: 'HEAD', cache: 'no-store' });
-        results.push({ file: name, ok: res.ok, status: res.status });
-      } catch (err) {
-        results.push({ file: name, ok: false, error: err.message || String(err) });
+    const optional = ['texlive-basic.js', 'texlive-basic.data'];
+    const bases = candidateAssetBases(requestedBase);
+    const checkedBases = [];
+    for (const base of bases) {
+      const files = [];
+      for (const file of Array.from(new Set(required.concat(optional)))) {
+        files.push(await fetchAssetProbe(base, file, required.includes(file)));
+      }
+      const requiredOk = files.filter((f) => f.required).every((f) => f.ok);
+      checkedBases.push({ base, requiredOk, files });
+      if (requiredOk) {
+        lastAssetPreflight = {
+          ok: true,
+          requestedBase,
+          selectedBase: base,
+          mode: settings.texlyreUseWorker === true ? 'worker' : 'direct',
+          required,
+          optional,
+          checkedBases
+        };
+        return lastAssetPreflight;
       }
     }
-    return results;
+    lastAssetPreflight = {
+      ok: false,
+      requestedBase,
+      selectedBase: '',
+      mode: settings.texlyreUseWorker === true ? 'worker' : 'direct',
+      required,
+      optional,
+      checkedBases,
+      message: 'No checked BusyTeX asset base contained all required direct/worker runtime files.'
+    };
+    return lastAssetPreflight;
+  }
+
+  function candidateAssetBases(requestedBase) {
+    const base = String(requestedBase || DEFAULT_ASSET_BASE).replace(/\/$/, '');
+    const candidates = [base];
+    if (!/\/busytex$/.test(base)) candidates.push(base + '/busytex');
+    if (/\/busytex$/.test(base)) candidates.push(base.replace(/\/busytex$/, ''));
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }
+
+  async function fetchAssetProbe(base, file, required) {
+    const url = resolveUrl(base.replace(/\/$/, '') + '/' + file);
+    const out = { file, required, url, ok: false, status: 0, contentType: '', contentLength: '', method: 'HEAD' };
+    try {
+      let res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      out.status = res.status;
+      out.ok = res.ok;
+      out.contentType = res.headers.get('content-type') || '';
+      out.contentLength = res.headers.get('content-length') || '';
+      if (!res.ok || (!out.contentType && !out.contentLength)) {
+        res = await fetch(url, { method: 'GET', cache: 'no-store', headers: { Range: 'bytes=0-0' } });
+        out.method = 'GET range';
+        out.status = res.status;
+        out.ok = res.ok || res.status === 206;
+        out.contentType = res.headers.get('content-type') || '';
+        out.contentLength = res.headers.get('content-length') || res.headers.get('content-range') || '';
+        try { await res.body?.cancel?.(); } catch (_err) {}
+      }
+    } catch (err) {
+      out.error = err?.message || String(err);
+    }
+    return out;
   }
 
   async function closeRunner(runner) {
@@ -353,15 +427,20 @@
     const message = err?.message || String(err || 'Unknown TeXlyre BusyTeX error');
     const base = busytexBasePath(settings);
     const module = moduleUrl(settings);
+    const assetPreflight = err?.assetPreflight || lastAssetPreflight;
     const readonlyModule = /readonly property|read-only|Cannot assign to read only/i.test(message);
     const importAttempts = err?.moduleImportAttempts || lastModuleImportAttempts || [];
     const missingModule = /(Failed to fetch dynamically imported module|Importing a module script failed|Cannot find module|404|not found|module import failed)/i.test(message) && /texlyre|module|import|esm|cdn|candidate/i.test(message);
     const workerFailure = /Worker error|Timeout waiting for BusyTeX worker|Failed to initialize BusyTeX/i.test(message);
+    const assetPreflightFailure = assetPreflight && assetPreflight.ok === false;
     const missingAssets = /(busytexBasePath|wasm|data|asset|404|Failed to fetch|NetworkError|not found|instantiate|WebAssembly)/i.test(message) && !missingModule && !readonlyModule;
     let friendly = message;
     if (readonlyModule) friendly = 'TeXlyre module loaded, but the provider hit a read-only ES module namespace. This Stage 1G hotfix caches module metadata separately and should remove that error.';
     else if (missingModule) friendly = `TeXlyre BusyTeX module could not be imported. The provider tried the configured URL plus fallbacks. Recommended testing URL: ${DEFAULT_MODULE_URL}. If CDN imports keep failing in Safari/iPad, copy the npm package dist/ folder into vendor/texlyre/texlyre-busytex/dist/ and use that local path.`;
-    else if (workerFailure) friendly = `TeXlyre BusyTeX worker failed to initialize from ${base}. This often happens on Safari/iPad when the worker script or its wasm/data fetch fails with an unhelpful message. Leave “Use TeXlyre Web Worker mode” off and retry in direct mode; also verify busytex_pipeline.js, busytex.js, and busytex.wasm are reachable.`;
+    else if (assetPreflightFailure) friendly = `TeXlyre BusyTeX assets are not reachable from ${base}. Check assetPreflight.checkedBases for the exact missing URL/status. Required files in direct mode are busytex_pipeline.js, busytex.js, and busytex.wasm.`;
+    else if (workerFailure) friendly = settings.texlyreUseWorker === true
+      ? `TeXlyre BusyTeX worker failed to initialize from ${base}. Check assetPreflight.checkedBases; if assets are reachable, keep worker mode off on Safari/iPad.`
+      : `TeXlyre BusyTeX direct runtime failed to initialize from ${base}. Check assetPreflight.checkedBases for exact asset URLs and HTTP statuses; direct mode requires busytex_pipeline.js, busytex.js, and busytex.wasm.`;
     else if (missingAssets) friendly = `TeXlyre BusyTeX assets could not be loaded from ${base}. Run npx texlyre-busytex download-assets vendor/texlyre/core so the app has vendor/texlyre/core/busytex/.`;
     return {
       ok: false,
@@ -375,7 +454,8 @@
       directModeForced: forceDirectMode(),
       directModeReason: forcedDirectReason(),
       moduleLoadedFrom: cachedModuleLoadedFrom || '',
-      moduleImportAttempts: importAttempts
+      moduleImportAttempts: importAttempts,
+      assetPreflight
     };
   }
 
@@ -391,6 +471,7 @@
       '3. Download BusyTeX assets with: npx texlyre-busytex download-assets vendor/texlyre/core',
       '4. Upload the resulting vendor/texlyre/core/busytex/ folder to the deployed GitHub Pages project.',
       '5. Set BusyTeX asset base to vendor/texlyre/core/busytex. On Safari/iPad, Web Worker mode is force-disabled by this hotfix so direct mode is tested first.',
+      '6. Diagnostics now include assetPreflight.checkedBases with exact URL/status/content-type information for each required BusyTeX asset.',
       '6. Click Test TeXlyre, then Compile.',
       '',
       `Root file: ${payload.rootFile}`,
@@ -494,5 +575,5 @@
     renderStatus();
   }
 
-  NS.TexlyreBusyTexProvider = { DEFAULT_MODULE_URL, FALLBACK_MODULE_URLS, DEFAULT_ASSET_BASE, moduleCandidates, forceDirectMode, forcedDirectReason, currentSettings, moduleUrl, busytexBasePath, compile, probe, status, renderStatus, init };
+  NS.TexlyreBusyTexProvider = { DEFAULT_MODULE_URL, FALLBACK_MODULE_URLS, DEFAULT_ASSET_BASE, moduleCandidates, forceDirectMode, forcedDirectReason, currentSettings, moduleUrl, busytexBasePath, resolvedBusytexBasePath, preflightAssets, compile, probe, status, renderStatus, init };
 })();
