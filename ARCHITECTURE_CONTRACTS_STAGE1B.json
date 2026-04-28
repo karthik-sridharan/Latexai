@@ -1,0 +1,24 @@
+{
+  "stage": "latex-stage1b-foundation-20260427-1",
+  "projectSchema": "lumina-latex-project-v1",
+  "compileRequestSchema": "lumina-latex-compile-request-v1",
+  "compileResponseSchema": "lumina-latex-compile-response-v1",
+  "aiRequestSchema": "lumina-latex-ai-request-v1",
+  "syncEventSchema": "lumina-latex-sync-event-v1",
+  "frontendProviders": {
+    "editor": ["textarea", "codemirror-placeholder"],
+    "compiler": ["backend-texlive", "mock-draft", "browser-wasm-placeholder"],
+    "ai": ["backend-provider-proxy"],
+    "sync": ["local-only", "http-project", "websocket-placeholder"],
+    "preview": ["draft-html", "pdf-blob"]
+  },
+  "reservedRoutes": {
+    "compile": "POST /api/lumina/latex/compile",
+    "compileJobs": "POST /api/lumina/latex/compile/jobs",
+    "ai": "POST /api/lumina/ai",
+    "models": "GET /api/lumina/models",
+    "saveProject": "POST /api/lumina/projects/:projectId",
+    "loadProject": "GET /api/lumina/projects/:projectId",
+    "websocket": "WS /ws/lumina/projects/:projectId"
+  }
+}

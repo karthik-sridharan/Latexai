@@ -1,0 +1,11 @@
+{
+  "stage": "latex-stage1b-foundation-20260427-1",
+  "checkedAt": "2026-04-28T03:48:02.118Z",
+  "root": "/mnt/data/lumina-latex-editor-stage1b/",
+  "requiredFileCount": 22,
+  "missingFiles": [],
+  "missingIndexStrings": [],
+  "syntax": [],
+  "missingBackendContracts": [],
+  "pass": true
+}

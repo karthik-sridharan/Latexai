@@ -7,7 +7,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage1a-20260427-1';
+  window.LUMINA_LATEX_STAGE='latex-stage1b-foundation-20260427-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -37,10 +37,10 @@
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=latex-stage1a-20260427-1" />
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1b-foundation-20260427-1" />
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage1a-20260427-1">
+<div class="app-shell" data-stage="latex-stage1b-foundation-20260427-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -71,7 +71,7 @@
         </div>
         <div class="project-meta">
           <span id="autosaveStatus">Autosaved locally</span>
-          <span id="stageBadge">latex-stage1a</span>
+          <span id="stageBadge">latex-stage1b</span>
         </div>
       </section>
 
@@ -209,6 +209,13 @@
         <label class="field">Compile backend URL
           <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-backend.example.com/api/lumina/latex/compile" />
         </label>
+        <label class="field">Compiler provider
+          <select id="compilerModeSelect">
+            <option value="backend-texlive">Backend TeX Live</option>
+            <option value="mock-draft">Mock draft check</option>
+            <option value="browser-wasm">Browser WASM placeholder</option>
+          </select>
+        </label>
         <div class="field-grid two">
           <label class="field">Root file
             <select id="rootFileSelect"></select>
@@ -227,7 +234,10 @@
           Allow shell escape, backend must explicitly permit it
         </label>
         <div class="settings-note">
-          Static GitHub Pages can run the editor and draft preview. Real PDF compilation needs the included backend or another trusted compile service.
+          Static GitHub Pages can run the editor and draft preview. Real PDF compilation needs the included backend or another trusted compile service. Stage 1B now routes editor, compiler, AI, sync, and preview through provider contracts so backend compile jobs and WebSocket collaboration can be added without changing the project format.
+        </div>
+        <div class="settings-note">
+          Reserved sync contract: <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. The default remains local-only.
         </div>
         <button id="runAppDiagnosticsBtn" class="btn ghost" type="button">Run app diagnostics</button>
       </section>
@@ -235,13 +245,21 @@
   </main>
 </div>
 
-<script src="js/state.js?v=latex-stage1a-20260427-1" defer></script>
-<script src="js/editor.js?v=latex-stage1a-20260427-1" defer></script>
-<script src="js/file-tree.js?v=latex-stage1a-20260427-1" defer></script>
-<script src="js/preview.js?v=latex-stage1a-20260427-1" defer></script>
-<script src="js/import-export.js?v=latex-stage1a-20260427-1" defer></script>
-<script src="js/copilot.js?v=latex-stage1a-20260427-1" defer></script>
-<script src="js/diagnostics.js?v=latex-stage1a-20260427-1" defer></script>
-<script src="js/main.js?v=latex-stage1a-20260427-1" defer></script>
+<script src="js/app-kernel.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/project-model.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/project-store.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/sync-provider.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/editor-adapter.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/preview-adapter.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/compiler-provider.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/ai-provider.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/state.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/editor.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/file-tree.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/preview.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/copilot.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/diagnostics.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/main.js?v=latex-stage1b-foundation-20260427-1" defer></script>
 </body>
 </html>
