@@ -1,0 +1,40 @@
+{
+  "stage": "latex-stage1c-compile-pipeline-20260427-1",
+  "projectSchema": "lumina-latex-project-v1",
+  "compileRequestSchema": "lumina-latex-compile-request-v1",
+  "compileResponseSchema": "lumina-latex-compile-response-v1",
+  "compileJobSchema": "lumina-latex-compile-job-response-v1",
+  "aiRequestSchema": "lumina-latex-ai-request-v1",
+  "syncEventSchema": "lumina-latex-sync-event-v1",
+  "frontendProviders": {
+    "editor": "EditorAdapter: textarea now, CodeMirror-ready later",
+    "compiler": "CompilerProvider: backend job API, synchronous fallback, mock draft, browser-WASM placeholder",
+    "ai": "AIProvider: backend proxy for OpenAI, Claude/Anthropic, Gemini",
+    "sync": "SyncProvider: local-only, HTTP project save/load, reserved WebSocket sync",
+    "preview": "PreviewAdapter: draft HTML preview and PDF blob iframe"
+  },
+  "backendContracts": {
+    "saveProject": "POST /api/lumina/projects/:projectId",
+    "loadProject": "GET /api/lumina/projects/:projectId",
+    "compileSync": "POST /api/lumina/latex/compile",
+    "createCompileJob": "POST /api/lumina/latex/compile/jobs",
+    "readCompileJob": "GET /api/lumina/latex/compile/jobs/:jobId",
+    "streamCompileJob": "GET /api/lumina/latex/compile/jobs/:jobId/events",
+    "cancelCompileJob": "DELETE /api/lumina/latex/compile/jobs/:jobId",
+    "aiProxy": "POST /api/lumina/ai",
+    "reservedWebSocketSync": "WS /ws/lumina/projects/:projectId"
+  },
+  "stage1cAdds": [
+    "Compile jobs are first-class objects with queued/running/succeeded/failed/canceled statuses.",
+    "Frontend submits jobs, polls status, updates progress, renders PDF when ready, and falls back to synchronous compile if needed.",
+    "Backend writes each compile into an isolated temporary workspace, enforces path validation, byte limits, shell-escape policy, and compile timeouts.",
+    "Compile logs are parsed into structured diagnostics with file/line where possible.",
+    "Diagnostics are clickable and jump to the matching source line."
+  ],
+  "notYetImplemented": [
+    "Full CRDT/Yjs real-time collaboration",
+    "Browser WASM TeX engine",
+    "Source/PDF forward-inverse SyncTeX",
+    "Persistent database-backed projects"
+  ]
+}

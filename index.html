@@ -7,7 +7,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage1b-foundation-20260427-1';
+  window.LUMINA_LATEX_STAGE='latex-stage1c-compile-pipeline-20260427-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -37,10 +37,10 @@
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=latex-stage1b-foundation-20260427-1" />
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1c-compile-pipeline-20260427-1" />
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage1b-foundation-20260427-1">
+<div class="app-shell" data-stage="latex-stage1c-compile-pipeline-20260427-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -55,6 +55,7 @@
       <button id="importFilesBtn" class="btn ghost" type="button">Import</button>
       <button id="exportZipBtn" class="btn ghost" type="button">Export zip</button>
       <button id="compileBtn" class="btn primary" type="button">Compile PDF</button>
+      <button id="cancelCompileBtn" class="btn ghost hidden" type="button">Cancel compile</button>
       <input id="importFileInput" class="hidden" type="file" multiple accept=".tex,.bib,.cls,.sty,.json,.txt,.md,.png,.jpg,.jpeg,.pdf" />
     </div>
   </header>
@@ -71,7 +72,7 @@
         </div>
         <div class="project-meta">
           <span id="autosaveStatus">Autosaved locally</span>
-          <span id="stageBadge">latex-stage1b</span>
+          <span id="stageBadge">latex-stage1c</span>
         </div>
       </section>
 
@@ -150,6 +151,13 @@
           </div>
           <button id="copyDiagnosticsBtn" class="btn mini" type="button">Copy diagnostics</button>
         </div>
+        <div id="compileStatusCard" class="compile-status-card" aria-live="polite">
+          <div class="compile-status-row">
+            <strong id="compileStatusText">Idle</strong>
+            <span id="compileJobIdText">No compile job</span>
+          </div>
+          <div class="compile-progress-track"><div id="compileProgressBar" class="compile-progress-bar" style="width:0%"></div></div>
+        </div>
         <div id="problemList" class="problem-list"></div>
         <pre id="logPanel" class="log-panel">No compile has been run yet.</pre>
       </section>
@@ -209,6 +217,9 @@
         <label class="field">Compile backend URL
           <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-backend.example.com/api/lumina/latex/compile" />
         </label>
+        <label class="field">Compile proxy token, optional
+          <input id="compileProxyToken" type="password" autocomplete="off" placeholder="Optional bearer token for backend compile" />
+        </label>
         <label class="field">Compiler provider
           <select id="compilerModeSelect">
             <option value="backend-texlive">Backend TeX Live</option>
@@ -233,11 +244,22 @@
           <input id="shellEscapeCheck" type="checkbox" />
           Allow shell escape, backend must explicitly permit it
         </label>
+        <label class="field checkbox-field">
+          <input id="compileJobsCheck" type="checkbox" checked />
+          Use job-based compile pipeline with status polling
+        </label>
+        <label class="field">Compile poll interval
+          <select id="compilePollSelect">
+            <option value="600">Fast, 0.6s</option>
+            <option value="1000" selected>Normal, 1s</option>
+            <option value="2000">Conservative, 2s</option>
+          </select>
+        </label>
         <div class="settings-note">
-          Static GitHub Pages can run the editor and draft preview. Real PDF compilation needs the included backend or another trusted compile service. Stage 1B now routes editor, compiler, AI, sync, and preview through provider contracts so backend compile jobs and WebSocket collaboration can be added without changing the project format.
+          Static GitHub Pages can run the editor and draft preview. Real PDF compilation needs the included backend or another trusted compile service. Stage 1C uses the provider architecture from 1B and adds a production compile pipeline: job submission, status polling, PDF return, log parsing, and click-to-line diagnostics.
         </div>
         <div class="settings-note">
-          Reserved sync contract: <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. The default remains local-only.
+          Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
         </div>
         <button id="runAppDiagnosticsBtn" class="btn ghost" type="button">Run app diagnostics</button>
       </section>
@@ -245,21 +267,21 @@
   </main>
 </div>
 
-<script src="js/app-kernel.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/project-model.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/project-store.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/sync-provider.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/editor-adapter.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/preview-adapter.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/compiler-provider.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/ai-provider.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/state.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/editor.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/file-tree.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/preview.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/import-export.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/copilot.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/diagnostics.js?v=latex-stage1b-foundation-20260427-1" defer></script>
-<script src="js/main.js?v=latex-stage1b-foundation-20260427-1" defer></script>
+<script src="js/app-kernel.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/project-model.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/project-store.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/sync-provider.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/editor-adapter.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/preview-adapter.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/compiler-provider.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/ai-provider.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/state.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/editor.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/file-tree.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/preview.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/copilot.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/diagnostics.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
+<script src="js/main.js?v=latex-stage1c-compile-pipeline-20260427-1" defer></script>
 </body>
 </html>

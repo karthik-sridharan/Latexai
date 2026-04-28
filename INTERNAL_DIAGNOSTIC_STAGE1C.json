@@ -1,0 +1,12 @@
+{
+  "stage": "latex-stage1c-compile-pipeline-20260427-1",
+  "checkedAt": "2026-04-28T04:01:25.847Z",
+  "root": "/mnt/data/lumina-latex-editor-stage1c/",
+  "requiredFileCount": 22,
+  "missingFiles": [],
+  "missingIndexStrings": [],
+  "syntax": [],
+  "missingBackendContracts": [],
+  "missingFrontendContracts": [],
+  "pass": true
+}
