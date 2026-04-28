@@ -241,3 +241,21 @@ h1, h2, h3 { margin: 0; letter-spacing: -.035em; }
   .editor-toolbar { align-items: flex-start; flex-direction: column; }
   .field-grid.two { grid-template-columns: 1fr; }
 }
+
+/* Stage 1C compile pipeline */
+.compile-status-card {
+  border: 1px solid rgba(15,23,42,.08);
+  background: rgba(255,255,255,.76);
+  border-radius: 16px;
+  padding: .7rem .75rem;
+  margin-bottom: .7rem;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.65);
+}
+.compile-status-row { display:flex; justify-content:space-between; align-items:center; gap:.75rem; font-size:.84rem; }
+.compile-status-row strong { color:#172033; }
+.compile-status-row span { color:#64748b; font-size:.78rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.compile-progress-track { height:7px; border-radius:999px; background:rgba(15,23,42,.08); overflow:hidden; margin-top:.55rem; }
+.compile-progress-bar { height:100%; border-radius:999px; background:linear-gradient(90deg,#7957d5,#c084fc); transition:width .22s ease; }
+.problem.clickable { cursor:pointer; outline:none; }
+.problem.clickable:hover, .problem.clickable:focus { transform:translateY(-1px); box-shadow:0 8px 22px rgba(15,23,42,.10); }
+.hidden { display:none !important; }
