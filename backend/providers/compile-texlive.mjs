@@ -1,4 +1,4 @@
-// Stage 1B provider seam for TeX Live compilation.
+// Stage 1C provider seam for TeX Live compilation.
 // server.mjs still exposes the working compile route, but future stages should move
 // the implementation here so the API contract and sandbox policy are decoupled.
 export const providerName = 'backend-texlive';
