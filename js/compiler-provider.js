@@ -39,6 +39,7 @@
     if (texlyreBusytexBase) settings.texlyreBusytexBase = texlyreBusytexBase;
     if (typeof texlyreReuse === 'boolean') settings.texlyreReuseRunner = texlyreReuse;
     if (typeof texlyreUseWorker === 'boolean') settings.texlyreUseWorker = texlyreUseWorker;
+    if (State()?.forceTeXlyreDirectMode?.() === true) settings.texlyreUseWorker = false;
     settings.compilePollMs = Math.max(300, Math.min(pollMs || 1000, 5000));
     return settings;
   }

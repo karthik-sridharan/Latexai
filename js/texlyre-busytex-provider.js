@@ -8,6 +8,14 @@
 
   const DEFAULT_MODULE_URL = 'https://esm.sh/texlyre-busytex?bundle';
   const DEFAULT_ASSET_BASE = 'vendor/texlyre/core/busytex/';
+
+  function forceDirectMode() {
+    return State()?.forceTeXlyreDirectMode?.() === true;
+  }
+
+  function forcedDirectReason() {
+    return forceDirectMode() ? 'Safari/iPad direct-mode guard: worker mode is disabled because BusyTeX worker initialization has been unreliable in this browser.' : '';
+  }
   let lastProbe = null;
   let cachedRunner = null;
   let cachedModule = null;
@@ -25,6 +33,15 @@
     if (baseInput) settings.texlyreBusytexBase = baseInput;
     if (typeof cacheInput === 'boolean') settings.texlyreReuseRunner = cacheInput;
     if (typeof workerInput === 'boolean') settings.texlyreUseWorker = workerInput;
+    if (forceDirectMode()) {
+      settings.texlyreUseWorker = false;
+      const box = document.getElementById('texlyreUseWorkerCheck');
+      if (box) {
+        box.checked = false;
+        box.disabled = true;
+        box.title = forcedDirectReason();
+      }
+    }
     return settings;
   }
 
@@ -46,7 +63,9 @@
       busytexBasePath: busytexBasePath(),
       cachedModuleReady: !!cachedModule,
       cachedRunnerReady: !!cachedRunner,
-      useWorker: currentSettings().texlyreUseWorker === true
+      useWorker: currentSettings().texlyreUseWorker === true,
+      directModeForced: forceDirectMode(),
+      directModeReason: forcedDirectReason()
     }, lastProbe || {});
   }
 
@@ -57,7 +76,7 @@
     const probe = status();
     const state = probe.status || 'not-checked';
     if (text) text.textContent = state === 'ready' ? 'Ready' : state === 'missing-assets' ? 'Assets missing' : state === 'loading' ? 'Loading' : state === 'error' ? 'Error' : 'Not checked';
-    if (detail) detail.textContent = probe.message || 'Choose TeXlyre BusyTeX and click Test TeXlyre. Direct mode is the safer default for Safari/iPad; Worker mode can be enabled after the assets are verified.';
+    if (detail) detail.textContent = probe.message || (forceDirectMode() ? forcedDirectReason() : 'Choose TeXlyre BusyTeX and click Test TeXlyre. Direct mode is the safer default for Safari/iPad; Worker mode can be enabled after the assets are verified.');
     if (card) {
       card.classList.toggle('ok', state === 'ready');
       card.classList.toggle('warn', state === 'not-checked' || state === 'missing-assets' || state === 'loading');
@@ -68,7 +87,7 @@
   async function probe(settings = currentSettings()) {
     settings = currentSettings(settings);
     const base = busytexBasePath(settings);
-    lastProbe = { ok: false, status: 'loading', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), busytexBasePath: base, message: `Checking TeXlyre BusyTeX module and asset base (${settings.texlyreUseWorker === true ? 'worker' : 'direct'} mode)...` };
+    lastProbe = { ok: false, status: 'loading', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), busytexBasePath: base, useWorker: settings.texlyreUseWorker === true, directModeForced: forceDirectMode(), directModeReason: forcedDirectReason(), message: `Checking TeXlyre BusyTeX module and asset base (${settings.texlyreUseWorker === true ? 'worker' : 'direct'} mode)...` };
     renderStatus();
     try {
       const mod = await loadModule(settings);
@@ -83,6 +102,9 @@
         moduleUrl: moduleUrl(settings),
         busytexBasePath: base,
         likelyAssets: assets,
+        useWorker: settings.texlyreUseWorker === true,
+        directModeForced: forceDirectMode(),
+        directModeReason: forcedDirectReason(),
         message: `TeXlyre BusyTeX module loaded and runner initialized (${settings.texlyreUseWorker === true ? 'worker' : 'direct'} mode). First compile may still download/cache large TeX data in this browser.`
       };
     } catch (err) {
@@ -173,8 +195,8 @@
     const reuse = settings.texlyreReuseRunner !== false && !options.forceNew;
     const useWorker = settings.texlyreUseWorker === true;
     if (reuse && cachedRunner && runnerBaseForCache === base && runnerWorkerModeForCache === useWorker) return cachedRunner;
-    const runner = new mod.BusyTexRunner({ busytexBasePath: base, verbose: true });
-    if (typeof runner.initialize === 'function') await runner.initialize(settings.texlyreUseWorker === true);
+    const runner = new mod.BusyTexRunner({ busytexBasePath: base, assetBasePath: base, basePath: base, verbose: true });
+    if (typeof runner.initialize === 'function') await runner.initialize(useWorker);
     else if (typeof runner.init === 'function') await runner.init();
     else throw new Error('BusyTexRunner exists but has no initialize() method. Check texlyre-busytex module version.');
     if (settings.texlyreReuseRunner !== false) {
@@ -313,7 +335,10 @@
       moduleUrl: module,
       busytexBasePath: base,
       message: friendly,
-      rawMessage: message
+      rawMessage: message,
+      useWorker: settings.texlyreUseWorker === true,
+      directModeForced: forceDirectMode(),
+      directModeReason: forcedDirectReason()
     };
   }
 
@@ -328,7 +353,7 @@
       '2. For quick testing, leave Module URL as https://esm.sh/texlyre-busytex?bundle.',
       '3. Download BusyTeX assets with: npx texlyre-busytex download-assets vendor/texlyre/core',
       '4. Upload the resulting vendor/texlyre/core/busytex/ folder to the deployed GitHub Pages project.',
-      '5. Set BusyTeX asset base to vendor/texlyre/core/busytex and leave Web Worker mode off for Safari/iPad testing.',
+      '5. Set BusyTeX asset base to vendor/texlyre/core/busytex. On Safari/iPad, Web Worker mode is force-disabled by this hotfix so direct mode is tested first.',
       '6. Click Test TeXlyre, then Compile.',
       '',
       `Root file: ${payload.rootFile}`,
@@ -375,6 +400,22 @@
   }
 
   function init() {
+    const workerBox = document.getElementById('texlyreUseWorkerCheck');
+    if (workerBox && forceDirectMode()) {
+      workerBox.checked = false;
+      workerBox.disabled = true;
+      workerBox.title = forcedDirectReason();
+      State()?.setSetting?.('texlyreUseWorker', false);
+    }
+    const resetBtn = document.getElementById('resetTexlyreDirectModeBtn');
+    resetBtn?.addEventListener('click', () => {
+      cachedRunner = null;
+      lastProbe = null;
+      if (workerBox) workerBox.checked = false;
+      State()?.setSetting?.('texlyreUseWorker', false);
+      renderStatus();
+      NS.Main?.toast?.('TeXlyre reset to direct mode. Click Test TeXlyre again.');
+    });
     const btn = document.getElementById('testTexlyreBtn');
     btn?.addEventListener('click', async () => {
       const old = btn.textContent;
@@ -406,11 +447,13 @@
     document.getElementById('texlyreUseWorkerCheck')?.addEventListener('change', (event) => {
       cachedRunner = null;
       lastProbe = null;
-      State()?.setSetting?.('texlyreUseWorker', !!event.target.checked);
+      const value = forceDirectMode() ? false : !!event.target.checked;
+      event.target.checked = value;
+      State()?.setSetting?.('texlyreUseWorker', value);
       renderStatus();
     });
     renderStatus();
   }
 
-  NS.TexlyreBusyTexProvider = { DEFAULT_MODULE_URL, DEFAULT_ASSET_BASE, currentSettings, moduleUrl, busytexBasePath, compile, probe, status, renderStatus, init };
+  NS.TexlyreBusyTexProvider = { DEFAULT_MODULE_URL, DEFAULT_ASSET_BASE, forceDirectMode, forcedDirectReason, currentSettings, moduleUrl, busytexBasePath, compile, probe, status, renderStatus, init };
 })();

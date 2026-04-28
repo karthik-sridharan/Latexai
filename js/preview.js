@@ -74,7 +74,13 @@
     if (texlyreModule) texlyreModule.value = settings.texlyreModuleUrl || 'https://esm.sh/texlyre-busytex?bundle';
     if (texlyreBase) texlyreBase.value = settings.texlyreBusytexBase || 'vendor/texlyre/core/busytex';
     if (texlyreReuse) texlyreReuse.checked = settings.texlyreReuseRunner !== false;
-    if (texlyreUseWorker) texlyreUseWorker.checked = settings.texlyreUseWorker === true;
+    if (texlyreUseWorker) {
+      const forcedDirect = State().forceTeXlyreDirectMode?.() === true;
+      texlyreUseWorker.checked = forcedDirect ? false : settings.texlyreUseWorker === true;
+      texlyreUseWorker.disabled = forcedDirect;
+      texlyreUseWorker.title = forcedDirect ? 'Disabled on Safari/iPad for this hotfix so TeXlyre direct mode is tested first.' : 'Experimental worker mode.';
+      if (forcedDirect && settings.texlyreUseWorker === true) State().setSetting('texlyreUseWorker', false);
+    }
     const shellAllowed = shellEscapeUiAllowed();
     if (shellEscape) {
       shellEscape.checked = shellAllowed && !!settings.shellEscape;

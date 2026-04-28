@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-worker-mode-hotfix-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-direct-mode-safari-hotfix-20260428-1';
 
   const state = {
     project: Model().defaultProject(),
@@ -38,6 +38,24 @@
   function textFile(pathOrFile) { return Model().textFile(pathOrFile); }
   function defaultProject() { return Model().defaultProject(); }
 
+
+  function forceTeXlyreDirectMode() {
+    const ua = String(W.navigator?.userAgent || '');
+    const vendor = String(W.navigator?.vendor || '');
+    const isIOS = /iPad|iPhone|iPod/i.test(ua) || (W.navigator?.platform === 'MacIntel' && W.navigator?.maxTouchPoints > 1);
+    const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg//i.test(ua) && /Apple/i.test(vendor || 'Apple');
+    return isIOS || isSafari;
+  }
+
+  function enforceSafetySettings() {
+    if (forceTeXlyreDirectMode() && state.settings?.texlyreUseWorker === true) {
+      state.settings.texlyreUseWorker = false;
+    }
+    if (forceTeXlyreDirectMode() && state.project?.settings?.texlyreUseWorker === true) {
+      state.project.settings.texlyreUseWorker = false;
+    }
+  }
+
   function emit(reason) {
     const snapshot = clone(state);
     for (const fn of listeners) {
@@ -53,6 +71,7 @@
   function normalizeState() {
     state.project = Model().normalizeProject(state.project);
     state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {}, state.settings || {});
+    enforceSafetySettings();
     state.project.settings = Object.assign({}, state.settings);
     ensureValidActiveFile();
   }
@@ -83,6 +102,7 @@
       const result = Store().loadLocal();
       state.project = result.project;
       state.settings = Object.assign(Model().defaultSettings(), result.settings || {});
+      enforceSafetySettings();
       state.project.settings = Object.assign({}, state.settings);
       state.lastSavedAt = result.loaded ? nowIso() : null;
       state.sync = { provider: 'local-only', status: result.loaded ? 'loaded-local' : 'default-project', lastEvent: state.lastSavedAt };
@@ -93,6 +113,8 @@
       console.warn('Could not load saved project', err);
       state.project = Model().defaultProject();
       state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {});
+      enforceSafetySettings();
+      state.project.settings = Object.assign({}, state.settings);
       ensureValidActiveFile();
       emit('load-error');
       return false;
@@ -102,6 +124,7 @@
   function resetProject(project) {
     state.project = Model().normalizeProject(project || Model().defaultProject());
     state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {});
+    enforceSafetySettings();
     state.project.settings = Object.assign({}, state.settings);
     state.dirty = true;
     ensureValidActiveFile();
@@ -240,6 +263,7 @@
   }
 
   function setSetting(key, value) {
+    if (key === 'texlyreUseWorker' && value === true && forceTeXlyreDirectMode()) value = false;
     state.settings[key] = value;
     state.project.settings = Object.assign({}, state.settings);
     state.dirty = true;
@@ -282,6 +306,7 @@
     load,
     resetProject,
     ensureValidActiveFile,
+    forceTeXlyreDirectMode,
     getFile,
     getActiveFile,
     setActivePath,
