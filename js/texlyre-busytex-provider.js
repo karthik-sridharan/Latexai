@@ -162,16 +162,47 @@
       const compileInput = buildCompileInput(payload);
       State().setCompileStatus({ status: 'running', jobId: 'browser-wasm-texlyre', progress: 70, message: 'Running TeXlyre BusyTeX compile...' });
       const result = await withTimeout(runCompile(engine, compileInput), Math.max(15000, Number(settings.compileTimeoutMs || 90000)));
-      const pdfBytes = extractPdfBytes(result);
+      const pdfBytes = await extractPdfBytes(result);
       const log = extractLog(result);
-      const problems = NS.CompilerProvider?.parseCompileLog?.(log) || [];
-      const ok = !!pdfBytes && !problems.some((p) => p.level === 'error');
+      const parsedProblems = NS.CompilerProvider?.parseCompileLog?.(log) || [];
+      const resultSuccess = result?.success === true || result?.status === 'success' || result?.exitCode === 0;
+      const extractionProblem = !pdfBytes
+        ? [{ level: resultSuccess ? 'warn' : 'error', message: resultSuccess
+          ? 'TeXlyre reported a successful compile, but Lumina could not extract PDF bytes from the result. Check raw.pdfCandidateSummary in diagnostics.'
+          : 'TeXlyre did not return PDF bytes. Check the LaTeX log and raw result summary.', line: null }]
+        : [];
+      const problems = parsedProblems.concat(extractionProblem);
+      const hasError = problems.some((p) => p.level === 'error');
+      const ok = !!pdfBytes && !hasError && (resultSuccess || !parsedProblems.some((p) => p.level === 'error'));
       if (settings.texlyreReuseRunner === false) {
         await closeRunner(runner);
         cachedRunner = null;
       }
-      State().setCompileStatus({ status: ok ? 'succeeded' : 'failed', jobId: 'browser-wasm-texlyre', progress: 100, message: ok ? 'TeXlyre browser PDF compile completed.' : 'TeXlyre browser compile finished with diagnostics.' });
-      lastProbe = { ok: true, status: 'ready', checkedAt: new Date().toISOString(), moduleUrl: moduleUrl(settings), moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings), busytexBasePath: busytexBasePath(settings), resolvedBusytexBasePath: resolvedBusytexBasePath(settings), assetPreflight: lastAssetPreflight, message: `TeXlyre compile completed in ${Math.round((Date.now() - start) / 100) / 10}s.` };
+      const durationSeconds = Math.round((Date.now() - start) / 100) / 10;
+      const rawSummary = summarizeRaw(result, payload, settings, Date.now() - start, pdfBytes);
+      State().setCompileStatus({
+        status: ok ? 'succeeded' : 'failed',
+        jobId: 'browser-wasm-texlyre',
+        progress: 100,
+        message: ok ? 'TeXlyre browser PDF compile completed.' : (resultSuccess ? 'TeXlyre compile succeeded, but PDF extraction needs attention.' : 'TeXlyre browser compile finished with diagnostics.'),
+        finishedAt: new Date().toISOString()
+      });
+      lastProbe = {
+        ok,
+        status: ok ? 'ready' : (resultSuccess ? 'compiled-no-pdf' : 'compile-diagnostics'),
+        checkedAt: new Date().toISOString(),
+        moduleUrl: moduleUrl(settings),
+        moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings),
+        busytexBasePath: busytexBasePath(settings),
+        resolvedBusytexBasePath: resolvedBusytexBasePath(settings),
+        assetPreflight: lastAssetPreflight,
+        resultSuccess,
+        pdfExtracted: !!pdfBytes,
+        pdfBytesLength: pdfBytes?.byteLength || pdfBytes?.length || 0,
+        resultKeys: rawSummary.resultKeys,
+        pdfCandidateSummary: rawSummary.pdfCandidateSummary,
+        message: ok ? `TeXlyre PDF compile completed in ${durationSeconds}s.` : `TeXlyre compile finished in ${durationSeconds}s, but no PDF bytes were extracted.`
+      };
       renderStatus();
       return {
         ok,
@@ -179,9 +210,9 @@
         mode: 'browser-wasm-texlyre-busytex-experimental',
         jobId: 'browser-wasm-texlyre',
         pdfBase64: pdfBytes ? bytesToBase64(pdfBytes) : null,
-        log: decorateLog(log, payload, settings),
+        log: decorateLog(log, payload, settings, rawSummary),
         problems,
-        raw: summarizeRaw(result, payload, settings, Date.now() - start)
+        raw: rawSummary
       };
     } catch (err) {
       const fallback = NS.Preview?.analyzeTex?.(root?.text || '', payload.files.map((f) => ({ path: f.path, kind: f.kind, text: f.text }))) || { problems: [] };
@@ -378,17 +409,66 @@
     } catch (_err) {}
   }
 
-  function extractPdfBytes(result) {
+  async function extractPdfBytes(result) {
     if (!result) return null;
-    const candidates = [result.pdf, result.outputPdf, result.pdfBytes, result.output, result?.files?.['main.pdf'], result?.outputFiles?.['main.pdf']];
-    for (const value of candidates) {
-      if (!value) continue;
-      if (value instanceof Uint8Array) return value;
-      if (value instanceof ArrayBuffer) return new Uint8Array(value);
-      if (Array.isArray(value)) return new Uint8Array(value);
-      if (typeof value === 'string' && /^[A-Za-z0-9+/=\s]+$/.test(value) && value.length > 100) {
-        try { return base64ToBytes(value); } catch (_err) {}
+    const candidates = pdfCandidateEntries(result);
+    for (const item of candidates) {
+      const bytes = await coercePdfBytes(item.value);
+      if (bytes && bytes.byteLength > 0) return bytes;
+    }
+    return null;
+  }
+
+  function pdfCandidateEntries(result) {
+    const entries = [];
+    const add = (label, value) => { if (value != null) entries.push({ label, value }); };
+    add('pdf', result.pdf);
+    add('outputPdf', result.outputPdf);
+    add('outputPDF', result.outputPDF);
+    add('pdfBytes', result.pdfBytes);
+    add('pdfData', result.pdfData);
+    add('pdfBuffer', result.pdfBuffer);
+    add('output', result.output);
+    add('data', result.data);
+    const maps = [result.files, result.outputFiles, result.artifacts, result.outputs];
+    for (const map of maps) {
+      if (!map) continue;
+      if (Array.isArray(map)) {
+        for (const file of map) {
+          const name = String(file?.path || file?.name || file?.filename || '');
+          if (/\.pdf$/i.test(name)) add(`array:${name}`, file.content ?? file.data ?? file.bytes ?? file.buffer ?? file.value);
+        }
+      } else if (typeof map === 'object') {
+        for (const [name, value] of Object.entries(map)) {
+          if (/\.pdf$/i.test(name)) add(`map:${name}`, value?.content ?? value?.data ?? value?.bytes ?? value?.buffer ?? value);
+        }
       }
+    }
+    return entries;
+  }
+
+  async function coercePdfBytes(value) {
+    if (value == null) return null;
+    if (value instanceof Uint8Array) return value;
+    if (typeof ArrayBuffer !== 'undefined') {
+      if (value instanceof ArrayBuffer) return new Uint8Array(value);
+      if (ArrayBuffer.isView && ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+    if (typeof Blob !== 'undefined' && value instanceof Blob) return new Uint8Array(await value.arrayBuffer());
+    if (Array.isArray(value)) return new Uint8Array(value);
+    if (typeof value === 'string') {
+      const clean = value.replace(/^data:application\/pdf;base64,/, '').replace(/\s+/g, '');
+      if (/^[A-Za-z0-9+/=]+$/.test(clean) && clean.length > 100) {
+        try { return base64ToBytes(clean); } catch (_err) {}
+      }
+      return null;
+    }
+    if (typeof value === 'object') {
+      if (value.type === 'Buffer' && Array.isArray(value.data)) return new Uint8Array(value.data);
+      const nested = value.bytes ?? value.data ?? value.content ?? value.buffer ?? value.value;
+      if (nested && nested !== value) return coercePdfBytes(nested);
+      const numericKeys = Object.keys(value).filter((key) => /^\d+$/.test(key));
+      if (numericKeys.length > 100) return new Uint8Array(numericKeys.sort((a, b) => Number(a) - Number(b)).map((key) => value[key]));
     }
     return null;
   }
@@ -410,7 +490,7 @@
     }
   }
 
-  function summarizeRaw(result, payload, settings, durationMs) {
+  function summarizeRaw(result, payload, settings, durationMs, pdfBytes = null) {
     return {
       rootFile: payload.rootFile,
       engine: payload.engine,
@@ -419,8 +499,38 @@
       moduleLoadedFrom: cachedModuleLoadedFrom || moduleUrl(settings),
       busytexBasePath: busytexBasePath(settings),
       durationMs,
-      resultKeys: result && typeof result === 'object' ? Object.keys(result) : []
+      resultSuccess: result?.success === true || result?.status === 'success' || result?.exitCode === 0,
+      exitCode: result?.exitCode,
+      pdfExtracted: !!pdfBytes,
+      pdfBytesLength: pdfBytes?.byteLength || pdfBytes?.length || 0,
+      resultKeys: result && typeof result === 'object' ? Object.keys(result) : [],
+      pdfCandidateSummary: summarizePdfCandidates(result)
     };
+  }
+
+  function summarizePdfCandidates(result) {
+    if (!result || typeof result !== 'object') return [];
+    return pdfCandidateEntries(result).map((item) => ({
+      label: item.label,
+      type: valueType(item.value),
+      length: valueLength(item.value),
+      keys: item.value && typeof item.value === 'object' && !ArrayBuffer.isView(item.value) ? Object.keys(item.value).slice(0, 12) : []
+    }));
+  }
+
+  function valueType(value) {
+    if (value == null) return String(value);
+    if (value instanceof Uint8Array) return 'Uint8Array';
+    if (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) return 'ArrayBuffer';
+    if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(value)) return value.constructor?.name || 'TypedArray';
+    if (typeof Blob !== 'undefined' && value instanceof Blob) return 'Blob';
+    if (Array.isArray(value)) return 'Array';
+    return typeof value === 'object' ? (value.constructor?.name || 'Object') : typeof value;
+  }
+
+  function valueLength(value) {
+    if (value == null) return 0;
+    return value.byteLength || value.length || value.size || (typeof value === 'object' ? Object.keys(value).length : 0) || 0;
   }
 
   function classifyError(err, settings) {
@@ -481,15 +591,20 @@
     ].join('\n');
   }
 
-  function decorateLog(log, payload, settings) {
-    return [
+  function decorateLog(log, payload, settings, rawSummary = null) {
+    const lines = [
       `TeXlyre BusyTeX experimental compile for ${payload.rootFile}`,
       `Module: ${moduleUrl(settings)}`,
       `Assets: ${busytexBasePath(settings)}`,
-      `Files: ${payload.files.length}`,
-      '--- LaTeX log ---',
-      log || ''
-    ].join('\n');
+      `Files: ${payload.files.length}`
+    ];
+    if (rawSummary && rawSummary.pdfExtracted === false) {
+      lines.push('PDF extraction: no PDF bytes were found in the TeXlyre result.');
+      lines.push(`Result keys: ${(rawSummary.resultKeys || []).join(', ') || '(none)'}`);
+      lines.push(`PDF candidates: ${JSON.stringify(rawSummary.pdfCandidateSummary || [])}`);
+    }
+    lines.push('--- LaTeX log ---', log || '');
+    return lines.join('\n');
   }
 
   function resolveUrl(url) {
