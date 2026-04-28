@@ -1,26 +1,25 @@
-# Lumina LaTeX Editor Stage 1G CDN Fallback Hotfix
+# Lumina LaTeX Editor Stage 1G — TeXlyre Asset Preflight Hotfix
 
-Stage: `latex-stage1g-texlyre-cdn-fallback-hotfix-20260428-1`
+Stage: `latex-stage1g-texlyre-asset-preflight-hotfix-20260428-1`
 
-This hotfix addresses Safari/iPad failures importing TeXlyre BusyTeX from `esm.sh`.
+This hotfix keeps the TeXlyre BusyTeX provider in Safari/iPad direct mode and adds explicit asset preflight diagnostics before BusyTeX runtime initialization.
 
 ## Changes
 
-- Default TeXlyre module URL changed to jsDelivr direct ESM:
-  `https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js`
-- TeXlyre provider now tries module candidates in order:
-  1. configured Module URL
-  2. jsDelivr direct package ESM
-  3. unpkg direct package ESM
-  4. esm.sh bundled URL
-  5. local vendored path `vendor/texlyre/texlyre-busytex/dist/index.js`
-- Diagnostics now include:
-  - `moduleLoadedFrom`
-  - `moduleFallbacks`
-  - `moduleImportAttempts`
-- Safari/iPad direct-mode guard remains active.
-- No backend files changed.
+- Adds asset preflight for BusyTeX runtime files before `BusyTexRunner.initialize()`.
+- Reports exact URLs, HTTP status, content type, and content length for required assets.
+- Uses an absolute `busytexBasePath` when constructing `BusyTexRunner`.
+- Checks common nested folder layouts such as `.../busytex/busytex`.
+- Adds `assetPreflight.checkedBases` to diagnostics and TeXlyre status.
+- Improves error messages for Safari `[object Event]` initialization failures.
 
-## Expected next diagnostic
+## Required direct-mode assets
 
-If the module import succeeds, the next status should move past `cachedModuleReady: false`. If it then fails, the likely next blocker will be the BusyTeX asset folder contents rather than the TeXlyre module URL.
+- `busytex_pipeline.js`
+- `busytex.js`
+- `busytex.wasm`
+
+Optional but recommended package assets:
+
+- `texlive-basic.js`
+- `texlive-basic.data`

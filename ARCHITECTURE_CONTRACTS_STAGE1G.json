@@ -1,5 +1,5 @@
 {
-  "stage": "latex-stage1g-texlyre-cdn-fallback-hotfix-20260428-1",
+  "stage": "latex-stage1g-texlyre-asset-preflight-hotfix-20260428-1",
   "contracts": {
     "projectSchema": "lumina-latex-project-v1",
     "compileRequest": "lumina-latex-compile-request-v1",
@@ -7,14 +7,11 @@
     "aiRequest": "lumina-latex-ai-request-v1",
     "aiPatch": "lumina-latex-ai-patch-v1",
     "copilotContext": "lumina-latex-copilot-context-v1",
-    "syncEvent": "lumina-latex-sync-event-v1"
+    "syncEvent": "lumina-latex-sync-event-v1",
+    "texlyreAssetPreflight": "lumina-latex-texlyre-asset-preflight-v1"
   },
   "providers": {
     "compiler": "backend-texlive-real-runner | browser-wasm-swiftlatex-experimental | browser-wasm-texlyre-busytex-experimental | mock-draft | overleaf-export",
-    "texlyreBusyTex": {
-      "directModeSafariGuard": true,
-      "workerMode": "disabled on Safari/iPad by default",
-      "assetBaseDefault": "vendor/texlyre/core/busytex"
-    }
+    "texlyre": "module-cdn-fallback + safari-direct-mode + asset-preflight"
   }
 }
