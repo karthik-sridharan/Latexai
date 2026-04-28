@@ -84,7 +84,7 @@
     return {
       type: 'codemirror-placeholder',
       ready: false,
-      reason: 'Stage 1B keeps the adapter seam. CodeMirror 6 can be mounted here without changing project/editor callers.'
+      reason: 'Stage 1C keeps the adapter seam. CodeMirror 6 can be mounted here without changing project/editor callers.'
     };
   }
 

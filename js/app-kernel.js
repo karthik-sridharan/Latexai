@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1b-foundation-20260427-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1c-compile-pipeline-20260427-1';
 
   const contracts = {
     projectSchema: 'lumina-latex-project-v1',

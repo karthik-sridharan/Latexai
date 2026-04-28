@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1b-foundation-20260427-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1c-compile-pipeline-20260427-1';
 
   const state = {
     project: Model().defaultProject(),
@@ -14,6 +14,14 @@
     lastSavedAt: null,
     lastLog: 'No compile has been run yet.',
     lastProblems: [],
+    compile: {
+      status: 'idle',
+      jobId: null,
+      progress: 0,
+      message: 'No compile job has run yet.',
+      startedAt: null,
+      finishedAt: null
+    },
     sync: {
       provider: 'local-only',
       status: 'offline',
@@ -53,7 +61,7 @@
     try {
       normalizeState();
       const syncProvider = NS.SyncProvider?.providerForSettings?.(state.settings);
-      // Local save remains the guaranteed path in Stage 1B. Other sync providers are explicit future implementations.
+      // Local save remains the guaranteed path in Stage 1C. Other sync providers are explicit future implementations.
       const result = Store().saveLocal(state.project, state.settings);
       state.project = result.project;
       state.settings = result.settings;
@@ -242,6 +250,14 @@
     emit('logs');
   }
 
+  function setCompileStatus(update = {}) {
+    state.compile = Object.assign({}, state.compile || {}, update || {});
+    if (update.status && ['succeeded','failed','canceled','error'].includes(update.status)) {
+      state.compile.finishedAt = state.compile.finishedAt || nowIso();
+    }
+    emit('compile-status');
+  }
+
   function snapshot(label = 'manual') {
     const key = Store().saveSnapshot(state.project, label);
     emit('snapshot');
@@ -277,6 +293,7 @@
     setRootFile,
     setSetting,
     setLog,
+    setCompileStatus,
     snapshot
   };
 })();

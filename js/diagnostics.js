@@ -7,7 +7,7 @@
 
   const REQUIRED_IDS = [
     'sourceEditor','lineGutter','fileTree','outlineList','draftPreview','pdfPreview','logPanel','problemList',
-    'compileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compilerModeSelect','rootFileSelect'
+    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','compileJobsCheck','compilePollSelect','compilerModeSelect','rootFileSelect','compileStatusCard','compileProgressBar'
   ];
 
   function run() {
@@ -23,7 +23,7 @@
     } catch (_err) {}
     const state = State?.().state;
     const report = {
-      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1b-foundation-20260427-1',
+      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1c-compile-pipeline-20260427-1',
       checkedAt: new Date().toISOString(),
       url: location.href,
       userAgent: navigator.userAgent,
@@ -37,6 +37,8 @@
       draftPreviewPresent: !!document.getElementById('draftPreview')?.textContent?.trim(),
       aiProxyConfigured: !!document.getElementById('aiProxyUrl')?.value,
       compileProxyConfigured: !!document.getElementById('compileProxyUrl')?.value,
+      compileJobsEnabled: !!document.getElementById('compileJobsCheck')?.checked,
+      compileStatus: state?.compile || null,
       lastProblemCount: state?.lastProblems?.length || 0,
       architecture: NS.Kernel?.getArchitectureReport?.() || null,
       pass: missingDomIds.length === 0 && missingModules.length === 0 && localStorageWorks && !!state?.project?.files?.length

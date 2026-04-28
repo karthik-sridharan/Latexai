@@ -59,7 +59,7 @@
 
   function renderStage() {
     const badge = document.getElementById('stageBadge');
-    if (badge) badge.textContent = (W.LUMINA_LATEX_STAGE || 'latex-stage1b').replace('-foundation-20260427-1', '').replace('-20260427-1', '');
+    if (badge) badge.textContent = (W.LUMINA_LATEX_STAGE || 'latex-stage1c').replace('-foundation-20260427-1', '').replace('-20260427-1', '');
   }
 
   function updateProjectTitle() {

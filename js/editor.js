@@ -87,7 +87,7 @@
     const activePill = document.getElementById('activeFilePill');
     if (activePill) activePill.textContent = file?.path || 'No file';
     editorApi.suppress = true;
-    editorApi.editor.value = file && State().textFile(file.path) ? file.text || '' : `% ${file?.path || 'asset'} is not editable as text in Stage 1B.`;
+    editorApi.editor.value = file && State().textFile(file.path) ? file.text || '' : `% ${file?.path || 'asset'} is not editable as text in Stage 1C.`;
     editorApi.editor.readOnly = !(file && State().textFile(file.path));
     editorApi.suppress = false;
     updateLineGutter();

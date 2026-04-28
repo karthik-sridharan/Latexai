@@ -11,11 +11,14 @@
   function init() {
     document.getElementById('togglePreviewBtn')?.addEventListener('click', renderDraftPreview);
     document.getElementById('compileBtn')?.addEventListener('click', compile);
+    document.getElementById('cancelCompileBtn')?.addEventListener('click', () => NS.CompilerProvider?.cancelActiveJob?.());
     document.getElementById('showDraftPreviewBtn')?.addEventListener('click', () => setPreviewMode('draft'));
     document.getElementById('showPdfPreviewBtn')?.addEventListener('click', () => setPreviewMode('pdf'));
     document.getElementById('engineSelect')?.addEventListener('change', (event) => State().setSetting('engine', event.target.value));
     document.getElementById('compilerModeSelect')?.addEventListener('change', (event) => State().setSetting('compilerMode', event.target.value));
     document.getElementById('compileProxyUrl')?.addEventListener('change', (event) => State().setSetting('compileUrl', event.target.value.trim() || '/api/lumina/latex/compile'));
+    document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => State().setSetting('useCompileJobs', !!event.target.checked));
+    document.getElementById('compilePollSelect')?.addEventListener('change', (event) => State().setSetting('compilePollMs', Number(event.target.value) || 1000));
     document.getElementById('shellEscapeCheck')?.addEventListener('change', (event) => State().setSetting('shellEscape', !!event.target.checked));
 
     State().subscribe((snapshot, reason) => {
@@ -24,6 +27,7 @@
         renderDraftPreview();
       }
       if (reason === 'logs') renderLogs();
+      if (reason === 'compile-status') renderCompileStatus();
     });
 
     syncSettingsUi();
@@ -36,10 +40,14 @@
     const compileUrl = document.getElementById('compileProxyUrl');
     const engine = document.getElementById('engineSelect');
     const shellEscape = document.getElementById('shellEscapeCheck');
+    const compileJobs = document.getElementById('compileJobsCheck');
+    const compilePoll = document.getElementById('compilePollSelect');
     const compilerMode = document.getElementById('compilerModeSelect');
     if (compileUrl) compileUrl.value = settings.compileUrl || '/api/lumina/latex/compile';
     if (engine) engine.value = settings.engine || 'pdflatex';
     if (compilerMode) compilerMode.value = settings.compilerMode || 'backend-texlive';
+    if (compileJobs) compileJobs.checked = settings.useCompileJobs !== false;
+    if (compilePoll) compilePoll.value = String(settings.compilePollMs || 1000);
     if (shellEscape) shellEscape.checked = !!settings.shellEscape;
   }
 
@@ -167,11 +175,47 @@
     const log = document.getElementById('logPanel');
     const state = State().state;
     if (problems) {
-      problems.innerHTML = (state.lastProblems || [])
-        .map((p) => `<div class="problem ${escapeHtml(p.level || 'warn')}">${p.line ? `Line ${p.line}: ` : ''}${escapeHtml(p.message || p)}</div>`)
-        .join('') || '<div class="problem ok">No diagnostics yet.</div>';
+      problems.innerHTML = '';
+      const items = state.lastProblems || [];
+      if (!items.length) {
+        problems.innerHTML = '<div class="problem ok">No diagnostics yet.</div>';
+      } else {
+        for (const p of items) {
+          const div = document.createElement('div');
+          div.className = `problem ${escapeHtml(p.level || 'warn')}`;
+          const where = p.line ? `${p.file ? p.file + ':' : 'Line '}${p.line}: ` : (p.file ? p.file + ': ' : '');
+          div.textContent = where + String(p.message || p);
+          if (p.line) {
+            div.classList.add('clickable');
+            div.title = 'Jump to diagnostic line';
+            div.tabIndex = 0;
+            div.addEventListener('click', () => jumpToProblem(p));
+            div.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') jumpToProblem(p); });
+          }
+          problems.appendChild(div);
+        }
+      }
     }
     if (log) log.textContent = state.lastLog || 'No compile has been run yet.';
+    renderCompileStatus();
+  }
+
+  function jumpToProblem(problem) {
+    if (problem.file && State().getFile(problem.file)) State().setActivePath(problem.file);
+    NS.Editor?.goToLine?.(problem.line || 1);
+  }
+
+  function renderCompileStatus() {
+    const compile = State().state.compile || {};
+    const text = document.getElementById('compileStatusText');
+    const job = document.getElementById('compileJobIdText');
+    const bar = document.getElementById('compileProgressBar');
+    const cancel = document.getElementById('cancelCompileBtn');
+    const status = compile.status || 'idle';
+    if (text) text.textContent = `Compile: ${status}${compile.message ? ' · ' + compile.message : ''}`;
+    if (job) job.textContent = compile.jobId ? `Job ${compile.jobId}` : 'No compile job';
+    if (bar) bar.style.width = Math.max(0, Math.min(Number(compile.progress || 0), 100)) + '%';
+    if (cancel) cancel.classList.toggle('hidden', !['submitting','queued','running'].includes(status));
   }
 
   function setPreviewMode(mode) {
@@ -191,9 +235,11 @@
     State().save();
     const compileBtn = document.getElementById('compileBtn');
     if (compileBtn) compileBtn.disabled = true;
+    document.getElementById('cancelCompileBtn')?.classList.remove('hidden');
     try {
       const { project } = State().state;
       const settings = NS.CompilerProvider?.currentSettings?.() || State().state.settings;
+      State().setCompileStatus({ status: 'submitting', jobId: null, progress: 5, message: `Preparing ${project.rootFile}...`, startedAt: new Date().toISOString(), finishedAt: null });
       State().setLog(`Compiling ${project.rootFile} with ${settings.engine || 'pdflatex'} via ${settings.compilerMode || 'backend-texlive'}...`, []);
       renderLogs();
       const result = await NS.CompilerProvider.compile(project, settings);
@@ -204,13 +250,16 @@
       } else {
         setPreviewMode('draft');
       }
+      State().setCompileStatus({ status: result.ok ? 'succeeded' : 'failed', jobId: result.jobId || State().state.compile?.jobId || null, progress: 100, message: result.ok ? 'PDF compile completed.' : 'Compile finished with diagnostics.' });
       if (!result.ok) showLogsTab();
     } catch (err) {
       const message = `Compile provider error: ${err.message || err}`;
+      State().setCompileStatus({ status: 'error', progress: 100, message });
       State().setLog(message, [{ level: 'error', message, line: null }]);
       showLogsTab();
     } finally {
       if (compileBtn) compileBtn.disabled = false;
+      document.getElementById('cancelCompileBtn')?.classList.add('hidden');
       renderLogs();
     }
   }
