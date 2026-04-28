@@ -1,5 +1,5 @@
 {
-  "name": "lumina-latex-backend-stage1a",
+  "name": "lumina-latex-backend-stage1b",
   "version": "1.0.0",
   "description": "Optional backend for Lumina LaTeX Editor: AI provider proxy plus TeX compile endpoint.",
   "type": "module",

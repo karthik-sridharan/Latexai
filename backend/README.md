@@ -1,4 +1,4 @@
-# Lumina LaTeX Backend — Stage 1A
+# Lumina LaTeX Backend — Stage 1B
 
 This optional backend gives the static Lumina LaTeX Editor two capabilities that should not run directly in browser code:
 
@@ -58,3 +58,16 @@ This is a starting backend, not a full Overleaf security sandbox. For public dep
 - Restrict `ALLOWED_ORIGINS` to your site.
 - Keep provider keys only in `.env` on the backend host.
 - Consider stronger sandboxing before allowing arbitrary public users to compile TeX.
+
+## Stage 1B reserved contracts
+
+These routes are included so the frontend can be built against durable contracts before collaboration and job streaming are implemented:
+
+```text
+POST /api/lumina/projects/:projectId
+GET  /api/lumina/projects/:projectId
+POST /api/lumina/latex/compile/jobs
+GET  /ws/lumina/projects/:projectId
+```
+
+`/api/lumina/projects/:projectId` is memory-backed in Stage 1B and should be replaced with a database or object store in a later stage. The `/ws/...` path currently returns HTTP 426 to mark the future WebSocket upgrade endpoint.

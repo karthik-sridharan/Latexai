@@ -15,6 +15,7 @@ const MAX_PROJECT_BYTES = Number(process.env.MAX_PROJECT_BYTES || 4_000_000);
 const COMPILE_TIMEOUT_MS = Number(process.env.COMPILE_TIMEOUT_MS || 25_000);
 const ALLOW_SHELL_ESCAPE = String(process.env.ALLOW_SHELL_ESCAPE || 'false').toLowerCase() === 'true';
 const RETURN_RAW = String(process.env.RETURN_RAW_PROVIDER_RESPONSE || 'false').toLowerCase() === 'true';
+const PROJECTS = new Map();
 
 function envList(name, fallback = '') {
   return String(process.env[name] || fallback || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -57,13 +58,59 @@ function requireProxyToken(req, res, next) {
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'lumina-latex-backend', stage: 'latex-stage1a-20260427-1' });
+  res.json({ ok: true, service: 'lumina-latex-backend', stage: 'latex-stage1b-foundation-20260427-1' });
 });
 
 app.get('/api/lumina/models', (_req, res) => {
   res.json({
     ok: true,
     providers: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set).map((model) => ({ model }))]))
+  });
+});
+
+ 
+app.post('/api/lumina/projects/:projectId', requireProxyToken, async (req, res) => {
+  try {
+    const projectId = safeProjectId(req.params.projectId);
+    const project = normalizeProjectPayload(req.body?.project || req.body || {});
+    if ((project.projectId || project.id) && String(project.projectId || project.id) !== projectId) {
+      project.projectId = projectId;
+      project.id = project.id || projectId;
+    }
+    const savedAt = new Date().toISOString();
+    PROJECTS.set(projectId, { project, settings: req.body?.settings || project.settings || {}, savedAt });
+    res.json({ ok: true, schema: 'lumina-latex-project-save-response-v1', projectId, savedAt });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: { message: err.message || String(err) } });
+  }
+});
+
+app.get('/api/lumina/projects/:projectId', requireProxyToken, async (req, res) => {
+  try {
+    const projectId = safeProjectId(req.params.projectId);
+    const entry = PROJECTS.get(projectId);
+    if (!entry) throw httpError(404, `Project not found in Stage 1B memory store: ${projectId}`);
+    res.json({ ok: true, schema: 'lumina-latex-project-load-response-v1', projectId, ...entry });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: { message: err.message || String(err) } });
+  }
+});
+
+app.post('/api/lumina/latex/compile/jobs', requireProxyToken, async (_req, res) => {
+  res.status(202).json({
+    ok: true,
+    schema: 'lumina-latex-compile-job-response-v1',
+    stage: 'latex-stage1b-foundation-20260427-1',
+    status: 'reserved',
+    message: 'Compile jobs and progress streaming are reserved in Stage 1B. Use POST /api/lumina/latex/compile for synchronous compilation.'
+  });
+});
+
+app.get('/ws/lumina/projects/:projectId', (_req, res) => {
+  res.status(426).json({
+    ok: false,
+    schema: 'lumina-latex-sync-event-v1',
+    message: 'WebSocket project sync is reserved in Stage 1B. Use this path for the future upgrade endpoint.'
   });
 });
 
@@ -127,6 +174,18 @@ app.post('/api/lumina/latex/compile', requireProxyToken, async (req, res) => {
     if (workdir) rm(workdir, { recursive: true, force: true }).catch(() => {});
   }
 });
+
+function safeProjectId(value) {
+  const id = String(value || '').trim();
+  if (!id || !/^[a-zA-Z0-9_.:-]{1,128}$/.test(id)) throw httpError(400, 'Unsafe or empty project id.');
+  return id;
+}
+
+function normalizeProjectPayload(project) {
+  const p = project && typeof project === 'object' ? project : {};
+  if (!Array.isArray(p.files) || !p.files.length) throw httpError(400, 'Project must include files.');
+  return { ...p, schema: p.schema || 'lumina-latex-project-v1', updatedAt: new Date().toISOString() };
+}
 
 function httpError(status, message) {
   const err = new Error(message);
