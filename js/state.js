@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-direct-mode-safari-hotfix-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-direct-mode-startup-hotfix-20260428-1';
 
   const state = {
     project: Model().defaultProject(),
@@ -43,7 +43,7 @@
     const ua = String(W.navigator?.userAgent || '');
     const vendor = String(W.navigator?.vendor || '');
     const isIOS = /iPad|iPhone|iPod/i.test(ua) || (W.navigator?.platform === 'MacIntel' && W.navigator?.maxTouchPoints > 1);
-    const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg//i.test(ua) && /Apple/i.test(vendor || 'Apple');
+    const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg\//i.test(ua) && /Apple/i.test(vendor || 'Apple');
     return isIOS || isSafari;
   }
 
