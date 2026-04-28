@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-cdn-fallback-hotfix-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-asset-preflight-hotfix-20260428-1';
 
   const state = {
     project: Model().defaultProject(),
