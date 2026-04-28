@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1c-compile-pipeline-20260427-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1';
 
   const state = {
     project: Model().defaultProject(),
@@ -61,7 +61,7 @@
     try {
       normalizeState();
       const syncProvider = NS.SyncProvider?.providerForSettings?.(state.settings);
-      // Local save remains the guaranteed path in Stage 1C. Other sync providers are explicit future implementations.
+      // Local save remains the guaranteed path in Stage 1D. Other sync providers are explicit future implementations.
       const result = Store().saveLocal(state.project, state.settings);
       state.project = result.project;
       state.settings = result.settings;
@@ -153,10 +153,11 @@
 
   function updateActiveText(text) { return updateFile(state.project.activePath, text); }
 
-  function createFile(path, text = '') {
+  function createFile(path, text = '', options = {}) {
     const normalized = normalizePath(path || 'untitled.tex');
     if (!normalized || getFile(normalized)) return null;
     const file = Model().makeFile(normalized, text);
+    if (options.base64) { file.text = ''; file.base64 = String(options.base64 || ''); file.encoding = 'base64'; }
     state.project.files.push(file);
     state.project.files.sort((a, b) => a.path.localeCompare(b.path));
     state.project.activePath = normalized;
@@ -172,13 +173,14 @@
     const existing = getFile(normalized);
     if (existing) {
       if (!options.overwrite) return null;
-      existing.text = String(text ?? '');
       existing.kind = fileKind(normalized);
+      if (options.base64) { existing.text = ''; existing.base64 = String(options.base64 || ''); existing.encoding = 'base64'; }
+      else { existing.text = String(text ?? ''); existing.base64 = ''; existing.encoding = 'utf8'; }
       touch(existing);
       emit('file-import-overwrite');
       return existing;
     }
-    return createFile(normalized, text);
+    return createFile(normalized, text, options);
   }
 
   function removeFile(path) {

@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1c-compile-pipeline-20260427-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1';
 
   const contracts = {
     projectSchema: 'lumina-latex-project-v1',
@@ -20,6 +20,8 @@
       compile: 'POST /api/lumina/latex/compile',
       compileJob: 'POST /api/lumina/latex/compile/jobs',
       compileStatus: 'GET /api/lumina/latex/compile/jobs/:jobId',
+      backendStatus: 'GET /api/lumina/latex/status',
+      compileEvents: 'GET /api/lumina/latex/compile/jobs/:jobId/events',
       ai: 'POST /api/lumina/ai',
       saveProject: 'POST /api/lumina/projects/:projectId',
       loadProject: 'GET /api/lumina/projects/:projectId'
@@ -28,7 +30,7 @@
 
   const providers = {
     editor: 'textarea-adapter-now-codemirror-ready',
-    compiler: 'backend-texlive | browser-wasm-placeholder | mock-draft',
+    compiler: 'backend-texlive-real-runner | browser-wasm-placeholder | mock-draft',
     ai: 'backend-provider-proxy',
     sync: 'local-only | http-project | websocket-placeholder',
     preview: 'draft-html | pdf-blob'

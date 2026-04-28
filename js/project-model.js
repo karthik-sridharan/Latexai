@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1c-compile-pipeline-20260427-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1';
   const SCHEMA = 'lumina-latex-project-v1';
   const FILE_SCHEMA = 'lumina-latex-file-v1';
 
@@ -24,7 +24,7 @@
 \maketitle
 
 \begin{abstract}
-This Stage 1C keeps the Lumina provider foundation and adds a job-based compile pipeline with isolated backend workspaces, status polling, structured logs, and click-to-line diagnostics.
+This Stage 1D keeps the Lumina provider foundation and adds a real backend compile runner with TeX Live, isolated temporary workspaces, backend health checks, status polling, structured logs, and click-to-line diagnostics.
 \end{abstract}
 
 \section{Architecture}
@@ -41,9 +41,9 @@ The project is represented by stable file paths and ids. UI events update the pr
 
 \section{Next steps}
 \begin{itemize}
-  \item Stage 1C: compile jobs, status polling, sandboxed backend workspaces, and click-to-line diagnostics.
-  \item Stage 1D: finish the AI provider selector through a backend proxy and add richer fix-error workflows.
-  \item Stage 1E: add templates, source/PDF sync hooks, and import polish.
+  \item Stage 1D: real backend PDF compilation, backend health checks, and safer temporary workspaces.
+  \item Stage 1E: structured Copilot fix-error workflows with patch preview.
+  \item Stage 1F: CodeMirror editor upgrade, source/PDF sync hooks, and import polish.
 \end{itemize}
 
 \bibliographystyle{plain}
@@ -137,7 +137,7 @@ The project is represented by stable file paths and ids. UI events update the pr
       settings: defaultSettings(),
       meta: {
         app: 'lumina-latex-editor',
-        architectureStage: 'stage1c-compile-pipeline',
+        architectureStage: 'stage1d-backend-compile-runner',
         collaborationReady: true,
         websocketReady: true
       },
@@ -178,7 +178,7 @@ The project is represented by stable file paths and ids. UI events update the pr
     project.createdAt = project.createdAt || t;
     project.updatedAt = project.updatedAt || t;
     project.settings = Object.assign(defaultSettings(), project.settings || {});
-    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage1c-compile-pipeline' }, project.meta || {});
+    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage1d-backend-compile-runner' }, project.meta || {});
     project.files = files.map((file) => normalizeFile(file)).filter(Boolean);
     if (!project.files.length) project.files = defaultProject().files;
     project.files.sort((a, b) => a.path.localeCompare(b.path));
@@ -196,13 +196,16 @@ The project is represented by stable file paths and ids. UI events update the pr
     const path = normalizePath(file.path || file.name || 'untitled.tex');
     if (!path) return null;
     const t = file.updatedAt || nowIso();
+    const kind = file.kind || fileKind(path);
+    const encoding = file.encoding || (file.base64 ? 'base64' : 'utf8');
     return {
       schema: file.schema || FILE_SCHEMA,
       id: file.id || uid('file'),
       path,
-      kind: file.kind || fileKind(path),
-      text: String(file.text ?? file.content ?? ''),
-      encoding: file.encoding || 'utf8',
+      kind,
+      text: encoding === 'base64' ? '' : String(file.text ?? file.content ?? ''),
+      base64: encoding === 'base64' ? String(file.base64 ?? file.content ?? file.text ?? '') : '',
+      encoding,
       updatedAt: t,
       version: Number(file.version || 1)
     };
@@ -229,8 +232,9 @@ The project is represented by stable file paths and ids. UI events update the pr
         id: file.id,
         path: file.path,
         kind: file.kind,
-        text: textFile(file) ? file.text || '' : file.text || '',
-        encoding: file.encoding || 'utf8'
+        text: textFile(file) ? file.text || '' : '',
+        base64: textFile(file) ? '' : (file.base64 || ''),
+        encoding: textFile(file) ? 'utf8' : (file.encoding === 'base64' ? 'base64' : 'utf8')
       })),
       client: {
         app: 'lumina-latex-editor',

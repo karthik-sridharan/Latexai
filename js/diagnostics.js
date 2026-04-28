@@ -7,7 +7,7 @@
 
   const REQUIRED_IDS = [
     'sourceEditor','lineGutter','fileTree','outlineList','draftPreview','pdfPreview','logPanel','problemList',
-    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','compileJobsCheck','compilePollSelect','compilerModeSelect','rootFileSelect','compileStatusCard','compileProgressBar'
+    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','rootFileSelect','compileStatusCard','compileProgressBar'
   ];
 
   function run() {
@@ -22,8 +22,11 @@
       localStorageWorks = true;
     } catch (_err) {}
     const state = State?.().state;
+    const compilerAvailability = NS.CompilerProvider?.backendAvailability?.() || null;
+    const backendProbe = NS.CompilerProvider?.getLastBackendProbe?.() || null;
+    const compileProxyValue = document.getElementById('compileProxyUrl')?.value || '';
     const report = {
-      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1c-compile-pipeline-20260427-1',
+      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1d-backend-compile-runner-20260428-1',
       checkedAt: new Date().toISOString(),
       url: location.href,
       userAgent: navigator.userAgent,
@@ -36,8 +39,11 @@
       fileCount: state?.project?.files?.length || 0,
       draftPreviewPresent: !!document.getElementById('draftPreview')?.textContent?.trim(),
       aiProxyConfigured: !!document.getElementById('aiProxyUrl')?.value,
-      compileProxyConfigured: !!document.getElementById('compileProxyUrl')?.value,
+      compileProxyConfigured: !!compileProxyValue,
       compileJobsEnabled: !!document.getElementById('compileJobsCheck')?.checked,
+      compileBackendAvailability: compilerAvailability,
+      backendProbe,
+      staticBackendFallbackActive: !!compilerAvailability?.staticDraftFallbackActive,
       compileStatus: state?.compile || null,
       lastProblemCount: state?.lastProblems?.length || 0,
       architecture: NS.Kernel?.getArchitectureReport?.() || null,
@@ -64,7 +70,10 @@
     document.getElementById('copyDiagnosticsBtn')?.addEventListener('click', copy);
     document.getElementById('runAppDiagnosticsBtn')?.addEventListener('click', () => {
       const report = run();
-      State().setLog(JSON.stringify(report, null, 2), report.pass ? [{ level: 'ok', message: 'App diagnostics passed.', line: null }] : [{ level: 'error', message: 'App diagnostics found missing pieces.', line: null }]);
+      const statusMessage = report.staticBackendFallbackActive
+        ? 'App diagnostics passed. Static deployment detected; compile falls back to draft validation until a backend URL is configured.'
+        : 'App diagnostics passed.';
+      State().setLog(JSON.stringify(report, null, 2), report.pass ? [{ level: 'ok', message: statusMessage, line: null }] : [{ level: 'error', message: 'App diagnostics found missing pieces.', line: null }]);
       document.querySelector('[data-right-tab="logs"]')?.click();
     });
   }

@@ -82,7 +82,7 @@
       task: meta.task || 'latex-copilot',
       payload,
       context: meta.context || {},
-      client: { app: 'lumina-latex-editor', stage: W.LUMINA_LATEX_STAGE || 'stage1c', sentAt: new Date().toISOString() }
+      client: { app: 'lumina-latex-editor', stage: W.LUMINA_LATEX_STAGE || 'stage1d', sentAt: new Date().toISOString() }
     };
     const response = await fetch(config.proxyUrl, { method: 'POST', headers, body: JSON.stringify(body) });
     const data = await response.json().catch(() => ({}));

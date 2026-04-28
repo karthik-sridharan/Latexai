@@ -12,6 +12,7 @@
     NS.FileTree.bind();
     NS.FileTree.render();
     NS.Preview.init();
+    NS.CompilerProvider?.init?.();
     NS.ImportExport.init();
     NS.Copilot.init();
     NS.Diagnostics.init();
@@ -59,7 +60,7 @@
 
   function renderStage() {
     const badge = document.getElementById('stageBadge');
-    if (badge) badge.textContent = (W.LUMINA_LATEX_STAGE || 'latex-stage1c').replace('-foundation-20260427-1', '').replace('-20260427-1', '');
+    if (badge) badge.textContent = (W.LUMINA_LATEX_STAGE || 'latex-stage1d').replace('-foundation-20260427-1', '').replace('-20260427-1', '');
   }
 
   function updateProjectTitle() {

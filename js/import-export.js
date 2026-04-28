@@ -38,7 +38,8 @@
         State().importFile(path, await file.text(), { overwrite: confirm(`Overwrite ${path} if it exists?`) });
         imported++;
       } else {
-        State().importFile(path + '.placeholder.txt', `% Binary asset imported as placeholder in Stage 1C: ${file.name}\n% Add real asset upload support in the compile backend stage.\n`, { overwrite: true });
+        const base64 = await fileToBase64(file);
+        State().importFile(path, '', { overwrite: confirm(`Overwrite ${path} if it exists?`), base64 });
         imported++;
       }
     }
@@ -67,7 +68,7 @@
   function exportZip() {
     State().save();
     const project = State().state.project;
-    const files = project.files.map((file) => ({ path: file.path, content: file.text || '' }));
+    const files = project.files.map((file) => ({ path: file.path, content: file.text || '', base64: file.base64 || '', encoding: file.encoding || 'utf8' }));
     files.push({ path: 'lumina-project.json', content: JSON.stringify(project, null, 2) });
     files.push({ path: 'README_LUMINA_LATEX.txt', content: `Lumina LaTeX export\nProject: ${project.name}\nRoot file: ${project.rootFile}\nStage: ${State().STAGE}\n` });
     const blob = makeZip(files);
@@ -84,7 +85,7 @@
     for (const file of files) {
       const name = State().normalizePath(file.path || 'file.txt');
       const nameBytes = encoder.encode(name);
-      const contentBytes = encoder.encode(String(file.content ?? ''));
+      const contentBytes = file.encoding === 'base64' && file.base64 ? base64ToBytes(file.base64) : encoder.encode(String(file.content ?? ''));
       const crc = crc32(contentBytes);
       const mod = dosDateTime(new Date());
 
@@ -168,6 +169,22 @@
       time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
       date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
     };
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '');
+      reader.onerror = () => reject(reader.error || new Error('File read failed.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function base64ToBytes(base64) {
+    const binary = atob(String(base64 || '').replace(/\s+/g, ''));
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
   }
 
   function downloadBlob(blob, filename) {

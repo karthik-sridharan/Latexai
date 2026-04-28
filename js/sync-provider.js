@@ -67,7 +67,7 @@
           ok: false,
           mode: 'websocket-placeholder',
           projectId,
-          message: 'Stage 1C reserves the WebSocket contract but does not open a collaboration socket yet.'
+          message: 'Stage 1D reserves the WebSocket contract but does not open a collaboration socket yet.'
         };
       },
       disconnect() {

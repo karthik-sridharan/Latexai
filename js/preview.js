@@ -250,8 +250,9 @@
       } else {
         setPreviewMode('draft');
       }
-      State().setCompileStatus({ status: result.ok ? 'succeeded' : 'failed', jobId: result.jobId || State().state.compile?.jobId || null, progress: 100, message: result.ok ? 'PDF compile completed.' : 'Compile finished with diagnostics.' });
-      if (!result.ok) showLogsTab();
+      const finalMessage = compileResultMessage(result);
+      State().setCompileStatus({ status: result.ok ? 'succeeded' : 'failed', jobId: result.jobId || State().state.compile?.jobId || null, progress: 100, message: finalMessage });
+      if (!result.ok || result.mode === 'static-draft-fallback') showLogsTab();
     } catch (err) {
       const message = `Compile provider error: ${err.message || err}`;
       State().setCompileStatus({ status: 'error', progress: 100, message });
@@ -266,6 +267,18 @@
 
   function showPdf(base64) {
     lastPdfObjectUrl = NS.PreviewAdapter?.showPdf?.(base64) || lastPdfObjectUrl;
+  }
+  function compileResultMessage(result) {
+    if (result?.mode === 'static-draft-fallback') {
+      return result.ok
+        ? 'Draft preview ready; configure a backend URL for real PDF compilation.'
+        : 'Draft checks found diagnostics; configure a backend URL for real PDF compilation.';
+    }
+    if (result?.mode === 'mock-draft') {
+      return result.ok ? 'Draft checks completed.' : 'Draft checks found diagnostics.';
+    }
+    if (result?.pdfBase64) return result.ok ? 'PDF compile completed.' : 'Compile finished with diagnostics.';
+    return result.ok ? 'Compile provider completed without a PDF.' : 'Compile finished with diagnostics.';
   }
 
   function parseCompileLog(logText) {

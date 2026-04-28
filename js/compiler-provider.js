@@ -7,6 +7,7 @@
   const Model = () => NS.ProjectModel;
 
   let activeJobAbort = null;
+  let lastBackendProbe = null;
 
   function currentSettings() {
     const settings = Object.assign(Model().defaultSettings(), State()?.state?.settings || {});
@@ -32,18 +33,31 @@
     const mode = settings.compilerMode || 'backend-texlive';
     if (mode === 'mock-draft') return mockCompile(project, settings);
     if (mode === 'browser-wasm') return browserWasmPlaceholder(project, settings);
-    if (settings.useCompileJobs !== false) {
-      try {
-        return await backendCompileJob(project, settings);
-      } catch (err) {
-        if (err && err.allowFallback) {
-          State().setCompileStatus({ status: 'running', message: 'Job endpoint unavailable; falling back to synchronous compile.', progress: 30 });
-          return backendCompile(project, settings);
-        }
-        throw err;
-      }
+
+    if (shouldUseStaticFallback(settings)) {
+      return staticBackendFallback(project, settings, 'Static deployment detected with the default relative compile endpoint.');
     }
-    return backendCompile(project, settings);
+
+    try {
+      if (settings.useCompileJobs !== false) {
+        try {
+          return await backendCompileJob(project, settings);
+        } catch (err) {
+          if (err && err.staticFallback) return staticBackendFallback(project, settings, err.message);
+          if (err && err.allowFallback) {
+            State().setCompileStatus({ status: 'running', message: 'Job endpoint unavailable; falling back to synchronous compile.', progress: 30 });
+            return await backendCompile(project, settings);
+          }
+          throw err;
+        }
+      }
+      return await backendCompile(project, settings);
+    } catch (err) {
+      if (shouldUseStaticFallback(settings) || isRelativeBackendMiss(err, settings)) {
+        return staticBackendFallback(project, settings, err?.message || 'Compile backend is unavailable.');
+      }
+      throw err;
+    }
   }
 
   function authHeaders(settings, json = true) {
@@ -55,6 +69,17 @@
 
   function compileBaseUrl(settings) {
     return (settings.compileUrl || '/api/lumina/latex/compile').replace(/\/+$/, '');
+  }
+
+  function compileApiRoot(settings) {
+    const base = compileBaseUrl(settings);
+    if (/\/compile\/jobs$/i.test(base)) return base.replace(/\/compile\/jobs$/i, '');
+    if (/\/compile$/i.test(base)) return base.replace(/\/compile$/i, '');
+    return base.replace(/\/+$/, '');
+  }
+
+  function statusUrl(settings) {
+    return compileApiRoot(settings) + '/status';
   }
 
   function jobsUrl(settings) {
@@ -73,16 +98,125 @@
     return `${jobsUrl(settings)}/${encodeURIComponent(jobId)}`;
   }
 
+  function isRelativeUrl(url) {
+    return !!url && !/^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith('//');
+  }
+
+  function isDefaultRelativeCompileUrl(settings) {
+    const url = compileBaseUrl(settings);
+    return isRelativeUrl(url) && /(^|\/)api\/lumina\/latex\/compile$/.test(url);
+  }
+
+  function isStaticHost() {
+    const host = String(location.hostname || '').toLowerCase();
+    return location.protocol === 'file:' || host.endsWith('.github.io') || host.includes('githubusercontent.com') || host === '';
+  }
+
+  function shouldUseStaticFallback(settings) {
+    if (settings.forceBackendOnStatic) return false;
+    return isStaticHost() && isDefaultRelativeCompileUrl(settings);
+  }
+
+  function isRelativeBackendMiss(err, settings) {
+    const message = String(err?.message || err || '');
+    return isDefaultRelativeCompileUrl(settings) && /(404|405|501|not found|failed to fetch|unexpected token|html|endpoint is unavailable)/i.test(message);
+  }
+
+  function backendAvailability(settings = currentSettings()) {
+    return {
+      compileUrl: compileBaseUrl(settings),
+      jobsUrl: jobsUrl(settings),
+      statusUrl: statusUrl(settings),
+      staticHost: isStaticHost(),
+      defaultRelativeCompileUrl: isDefaultRelativeCompileUrl(settings),
+      staticDraftFallbackActive: shouldUseStaticFallback(settings),
+      note: shouldUseStaticFallback(settings)
+        ? 'Static deployment using default /api compile URL; compile button will run draft validation until a backend URL is configured.'
+        : 'Backend URL is treated as configured; compile attempts will be sent to that endpoint.'
+    };
+  }
+
+  async function probeBackend(settings = currentSettings()) {
+    const availability = backendAvailability(settings);
+    const startedAt = new Date().toISOString();
+    if (availability.staticDraftFallbackActive) {
+      lastBackendProbe = { ok: false, status: 'static-fallback', checkedAt: startedAt, availability, message: availability.note };
+      renderBackendStatus();
+      return lastBackendProbe;
+    }
+    try {
+      const response = await fetch(availability.statusUrl, { method: 'GET', headers: authHeaders(settings, false) });
+      const data = await response.json().catch(() => ({}));
+      lastBackendProbe = {
+        ok: response.ok && data.ok !== false,
+        status: response.ok && data.ok !== false ? 'online' : 'degraded',
+        checkedAt: new Date().toISOString(),
+        httpStatus: response.status,
+        availability,
+        stage: data.stage || null,
+        tex: data.tex || null,
+        policy: data.policy || null,
+        message: data?.tex?.ok ? 'Backend reachable; TeX Live engines detected.' : (data?.error?.message || data?.message || 'Backend reachable; TeX availability may be limited.'),
+        raw: data
+      };
+    } catch (err) {
+      lastBackendProbe = { ok: false, status: 'offline', checkedAt: new Date().toISOString(), availability, message: err.message || String(err) };
+    }
+    renderBackendStatus();
+    return lastBackendProbe;
+  }
+
+  function renderBackendStatus() {
+    const text = document.getElementById('backendStatusText');
+    const detail = document.getElementById('backendStatusDetail');
+    const card = document.getElementById('backendStatusCard');
+    const probe = lastBackendProbe || { status: 'unknown', message: 'Backend has not been checked yet.' };
+    if (text) text.textContent = probe.status === 'online' ? 'Online' : probe.status === 'static-fallback' ? 'Static fallback' : probe.status === 'offline' ? 'Offline' : probe.status === 'degraded' ? 'Degraded' : 'Not checked';
+    if (detail) detail.textContent = probe.message || 'No backend status detail.';
+    if (card) {
+      card.classList.toggle('ok', probe.status === 'online');
+      card.classList.toggle('warn', probe.status === 'static-fallback' || probe.status === 'degraded');
+      card.classList.toggle('error', probe.status === 'offline');
+    }
+  }
+
+  function init() {
+    const button = document.getElementById('testCompileBackendBtn');
+    button?.addEventListener('click', async () => {
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Checking...';
+      try {
+        const result = await probeBackend();
+        NS.Main?.toast?.(result.ok ? 'Compile backend is reachable.' : 'Compile backend is not ready.');
+      } finally {
+        button.disabled = false;
+        button.textContent = original || 'Test backend';
+      }
+    });
+    document.getElementById('compileProxyUrl')?.addEventListener('change', () => { lastBackendProbe = null; renderBackendStatus(); });
+    renderBackendStatus();
+  }
+
   async function backendCompileJob(project, settings) {
     const payload = Model().toCompilePayload(project, settings);
     const url = jobsUrl(settings);
     activeJobAbort = new AbortController();
     State().setCompileStatus({ status: 'submitting', jobId: null, progress: 8, message: 'Submitting compile job...', startedAt: new Date().toISOString(), finishedAt: null });
-    const response = await fetch(url, { method: 'POST', headers: authHeaders(settings), body: JSON.stringify(payload), signal: activeJobAbort.signal });
+    let response;
+    try {
+      response = await fetch(url, { method: 'POST', headers: authHeaders(settings), body: JSON.stringify(payload), signal: activeJobAbort.signal });
+    } catch (err) {
+      if (shouldUseStaticFallback(settings)) {
+        err.staticFallback = true;
+      }
+      throw err;
+    }
     const data = await response.json().catch(() => ({}));
     if (response.status === 404 || response.status === 405 || response.status === 501) {
-      const err = new Error('Compile jobs endpoint is unavailable.');
-      err.allowFallback = true;
+      const err = new Error(`Compile jobs endpoint is unavailable at ${url} (HTTP ${response.status}).`);
+      if (shouldUseStaticFallback(settings)) err.staticFallback = true;
+      else err.allowFallback = true;
       throw err;
     }
     if (!response.ok || data.ok === false) {
@@ -138,8 +272,17 @@
     const payload = Model().toCompilePayload(project, settings);
     const url = compileBaseUrl(settings).replace(/\/jobs$/, '');
     State().setCompileStatus({ status: 'running', jobId: null, progress: 25, message: 'Running synchronous backend compile...', startedAt: new Date().toISOString(), finishedAt: null });
-    const response = await fetch(url, { method: 'POST', headers: authHeaders(settings), body: JSON.stringify(payload) });
+    let response;
+    try {
+      response = await fetch(url, { method: 'POST', headers: authHeaders(settings), body: JSON.stringify(payload) });
+    } catch (err) {
+      if (shouldUseStaticFallback(settings)) return staticBackendFallback(project, settings, err?.message || 'Synchronous compile endpoint unavailable.');
+      throw err;
+    }
     const data = await response.json().catch(() => ({}));
+    if ((response.status === 404 || response.status === 405 || response.status === 501) && shouldUseStaticFallback(settings)) {
+      return staticBackendFallback(project, settings, `Synchronous compile endpoint unavailable at ${url} (HTTP ${response.status}).`);
+    }
     if (!response.ok || data.ok === false) {
       const message = data?.error?.message || data?.message || `Compile request failed with HTTP ${response.status}.`;
       State().setCompileStatus({ status: 'failed', progress: 100, message });
@@ -166,6 +309,34 @@
     });
   }
 
+  async function staticBackendFallback(project, settings, reason) {
+    const payload = Model().toCompilePayload(project, settings);
+    const root = payload.files.find((file) => file.path === payload.rootFile) || payload.files[0];
+    const analysis = NS.Preview?.analyzeTex?.(root?.text || '', payload.files.map((f) => ({ path: f.path, kind: f.kind, text: f.text }))) || { problems: [] };
+    const ok = !analysis.problems.some((p) => p.level === 'error');
+    const note = `Static draft fallback for ${payload.rootFile}. ${reason || 'No backend compile service was reached.'} Real PDF compilation needs the included backend, a hosted compile proxy, or a browser-WASM provider in a later stage.`;
+    State().setCompileStatus({
+      status: ok ? 'succeeded' : 'failed',
+      jobId: null,
+      progress: 100,
+      message: ok ? 'Draft preview ready; backend compile unavailable on this static deployment.' : 'Draft checks found diagnostics; backend compile unavailable.'
+    });
+    return normalizeCompileResult({
+      ok,
+      schema: 'lumina-latex-compile-response-v1',
+      mode: 'static-draft-fallback',
+      pdfBase64: null,
+      log: note,
+      problems: analysis.problems,
+      raw: {
+        staticFallback: true,
+        reason,
+        availability: backendAvailability(settings),
+        payloadSummary: { rootFile: payload.rootFile, engine: payload.engine, fileCount: payload.files.length }
+      }
+    });
+  }
+
   async function browserWasmPlaceholder(project, settings) {
     const payload = Model().toCompilePayload(project, settings);
     State().setCompileStatus({ status: 'failed', jobId: 'browser-wasm-placeholder', progress: 100, message: 'Browser-WASM provider is not bundled yet.' });
@@ -174,8 +345,8 @@
       schema: 'lumina-latex-compile-response-v1',
       mode: 'browser-wasm',
       pdfBase64: null,
-      log: `Browser-WASM compile is reserved but not bundled in Stage 1C. Root file: ${payload.rootFile}. Use backend-texlive or mock-draft for now.`,
-      problems: [{ level: 'warn', message: 'Browser-WASM provider is a placeholder in Stage 1C.', line: null }],
+      log: `Browser-WASM compile is reserved but not bundled in Stage 1D. Root file: ${payload.rootFile}. Use backend-texlive or mock-draft for now.`,
+      problems: [{ level: 'warn', message: 'Browser-WASM provider is a placeholder in Stage 1D.', line: null }],
       raw: { payloadSummary: { rootFile: payload.rootFile, engine: payload.engine, fileCount: payload.files.length } }
     });
   }
@@ -185,7 +356,8 @@
     const parsed = parseCompileLog(log);
     const supplied = Array.isArray(data.problems) ? data.problems : [];
     const problems = supplied.length ? supplied : parsed;
-    const ok = data.ok !== false && !problems.some((p) => p.level === 'error') && (data.pdfBase64 || data.mode === 'mock-draft');
+    const draftOnly = data.mode === 'mock-draft' || data.mode === 'static-draft-fallback';
+    const ok = data.ok !== false && !problems.some((p) => p.level === 'error') && (data.pdfBase64 || draftOnly);
     return {
       ok: !!ok,
       schema: data.schema || 'lumina-latex-compile-response-v1',
@@ -193,7 +365,7 @@
       jobId: data.jobId || null,
       pdfBase64: data.pdfBase64 || null,
       log,
-      problems: problems.length ? problems : [{ level: ok ? 'ok' : 'warn', message: ok ? 'PDF compile completed.' : 'Compile completed without structured diagnostics.', line: null }],
+      problems: problems.length ? problems : [],
       raw: data.raw || data
     };
   }
@@ -257,5 +429,21 @@
 
   function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
-  NS.CompilerProvider = { currentSettings, compile, backendCompile, backendCompileJob, mockCompile, browserWasmPlaceholder, parseCompileLog, cancelActiveJob };
+  NS.CompilerProvider = {
+    currentSettings,
+    compile,
+    backendCompile,
+    backendCompileJob,
+    mockCompile,
+    staticBackendFallback,
+    browserWasmPlaceholder,
+    parseCompileLog,
+    cancelActiveJob,
+    backendAvailability,
+    probeBackend,
+    renderBackendStatus,
+    getLastBackendProbe: () => lastBackendProbe,
+    shouldUseStaticFallback,
+    init
+  };
 })();
