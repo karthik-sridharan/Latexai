@@ -15,7 +15,11 @@
     document.getElementById('showDraftPreviewBtn')?.addEventListener('click', () => setPreviewMode('draft'));
     document.getElementById('showPdfPreviewBtn')?.addEventListener('click', () => setPreviewMode('pdf'));
     document.getElementById('engineSelect')?.addEventListener('change', (event) => State().setSetting('engine', event.target.value));
-    document.getElementById('compilerModeSelect')?.addEventListener('change', (event) => { State().setSetting('compilerMode', event.target.value); NS.BrowserWasmProvider?.renderStatus?.(); });
+    document.getElementById('compilerModeSelect')?.addEventListener('change', (event) => {
+      State().setSetting('compilerMode', event.target.value);
+      NS.BrowserWasmProvider?.renderStatus?.();
+      NS.TexlyreBusyTexProvider?.renderStatus?.();
+    });
     document.getElementById('compileProxyUrl')?.addEventListener('change', (event) => State().setSetting('compileUrl', event.target.value.trim() || '/api/lumina/latex/compile'));
     document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => State().setSetting('useCompileJobs', !!event.target.checked));
     document.getElementById('compilePollSelect')?.addEventListener('change', (event) => State().setSetting('compilePollMs', Number(event.target.value) || 1000));
@@ -55,6 +59,9 @@
     const wasmAssetBase = document.getElementById('browserWasmAssetBase');
     const wasmEndpoint = document.getElementById('browserWasmTexliveEndpoint');
     const wasmReuse = document.getElementById('browserWasmReuseCheck');
+    const texlyreModule = document.getElementById('texlyreModuleUrl');
+    const texlyreBase = document.getElementById('texlyreBusytexBase');
+    const texlyreReuse = document.getElementById('texlyreReuseCheck');
     if (compileUrl) compileUrl.value = settings.compileUrl || '/api/lumina/latex/compile';
     if (engine) engine.value = settings.engine || 'pdflatex';
     if (compilerMode) compilerMode.value = settings.compilerMode || 'backend-texlive';
@@ -63,6 +70,9 @@
     if (wasmAssetBase) wasmAssetBase.value = settings.browserWasmAssetBase || 'vendor/swiftlatex/pdftex/';
     if (wasmEndpoint) wasmEndpoint.value = settings.browserWasmTexliveEndpoint || 'https://texlive.swiftlatex.com/';
     if (wasmReuse) wasmReuse.checked = settings.browserWasmReuseEngine !== false;
+    if (texlyreModule) texlyreModule.value = settings.texlyreModuleUrl || 'https://esm.sh/texlyre-busytex?bundle';
+    if (texlyreBase) texlyreBase.value = settings.texlyreBusytexBase || 'vendor/texlyre/core/busytex';
+    if (texlyreReuse) texlyreReuse.checked = settings.texlyreReuseRunner !== false;
     const shellAllowed = shellEscapeUiAllowed();
     if (shellEscape) {
       shellEscape.checked = shellAllowed && !!settings.shellEscape;

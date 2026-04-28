@@ -61,12 +61,20 @@
   }
 
   async function probe(settings = currentSettings()) {
+    settings = currentSettings(settings);
     const base = assetBase(settings);
-    lastProbe = { ok: false, status: 'loading', checkedAt: new Date().toISOString(), assetBase: base, message: 'Checking browser-WASM engine assets...' };
+    lastProbe = { ok: false, status: 'loading', checkedAt: new Date().toISOString(), assetBase: base, message: 'Checking browser-WASM engine assets and worker runtime...' };
     renderStatus();
     try {
-      await ensureEngineClass(settings, { probeOnly: true });
-      lastProbe = { ok: true, status: 'ready', checkedAt: new Date().toISOString(), assetBase: base, texliveEndpoint: endpoint(settings), message: 'Browser-WASM engine script is reachable. Compile will run in this browser; first run can be slow.' };
+      const assets = await checkCoreAssets(settings);
+      const EngineClass = await ensureEngineClass(settings, { probeOnly: true });
+      const engine = await getEngine(EngineClass, settings, { forceNew: true, probe: true });
+      assertLiveEngine(engine, 'Test browser engine');
+      if (settings.browserWasmReuseEngine === false && typeof engine.closeWorker === 'function') {
+        try { engine.closeWorker(); } catch (_err) {}
+        if (cachedEngine === engine) cachedEngine = null;
+      }
+      lastProbe = { ok: true, status: 'ready', checkedAt: new Date().toISOString(), assetBase: base, texliveEndpoint: endpoint(settings), coreAssets: assets, message: 'Browser-WASM engine worker is ready. Compile will run in this browser; first run can be slow.' };
     } catch (err) {
       lastProbe = classifyEngineError(err, base);
     }
@@ -85,6 +93,7 @@
     try {
       const EngineClass = await ensureEngineClass(settings);
       const engine = await getEngine(EngineClass, settings);
+      assertLiveEngine(engine, 'Compile');
       State().setCompileStatus({ status: 'running', jobId: 'browser-wasm', progress: 35, message: 'Writing project files into browser engine memory...' });
       await writeProjectToEngine(engine, payload);
       if (endpoint(settings) && typeof engine.setTexliveEndpoint === 'function') engine.setTexliveEndpoint(endpoint(settings));
@@ -146,17 +155,22 @@
     return EngineClass;
   }
 
-  async function getEngine(EngineClass, settings) {
+  async function getEngine(EngineClass, settings, options = {}) {
     const base = assetBase(settings);
-    const reuse = settings.browserWasmReuseEngine !== false;
-    if (reuse && cachedEngine && engineBaseForCache === base && cachedEngine.isReady?.()) {
-      try { cachedEngine.flushCache?.(); } catch (_err) {}
-      return cachedEngine;
+    const reuse = settings.browserWasmReuseEngine !== false && !options.forceNew;
+    if (reuse && cachedEngine && engineBaseForCache === base) {
+      if (isLiveEngine(cachedEngine)) {
+        try { cachedEngine.flushCache?.(); } catch (_err) {}
+        return cachedEngine;
+      }
+      try { cachedEngine.closeWorker?.(); } catch (_err) {}
+      cachedEngine = null;
     }
     const engine = new EngineClass();
     await engine.loadEngine();
+    assertLiveEngine(engine, options.probe ? 'Test browser engine' : 'Compile');
     if (endpoint(settings) && typeof engine.setTexliveEndpoint === 'function') engine.setTexliveEndpoint(endpoint(settings));
-    if (reuse) {
+    if (settings.browserWasmReuseEngine !== false) {
       cachedEngine = engine;
       engineBaseForCache = base;
     }
@@ -182,6 +196,47 @@
       if (file.encoding === 'base64' && file.base64) engine.writeMemFSFile(file.path, base64ToBytes(file.base64));
       else engine.writeMemFSFile(file.path, file.text || '');
     }
+  }
+
+  async function checkCoreAssets(settings = currentSettings()) {
+    const base = assetBase(settings);
+    const checks = [];
+    for (const name of ['PdfTeXEngine.js', 'swiftlatexpdftex.js', 'pdftex.wasm']) {
+      const url = new URL(name, new URL(base, location.href)).toString();
+      const ok = await assetExists(url);
+      checks.push({ name, url, ok });
+    }
+    const missingRequired = checks.filter((item) => item.name !== 'pdftex.wasm' && !item.ok);
+    if (missingRequired.length) {
+      throw new Error(`Missing browser-WASM assets: ${missingRequired.map((item) => item.name).join(', ')} under ${base}.`);
+    }
+    return checks;
+  }
+
+  async function assetExists(url) {
+    try {
+      let response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      if (response.ok) return true;
+      if (response.status === 405 || response.status === 403) {
+        response = await fetch(url, { method: 'GET', cache: 'no-store' });
+        return response.ok;
+      }
+      return false;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function isLiveEngine(engine) {
+    return !!engine && engine.isReady?.() === true && !!engine.latexWorker && typeof engine.latexWorker.postMessage === 'function';
+  }
+
+  function assertLiveEngine(engine, phase) {
+    if (isLiveEngine(engine)) return;
+    const ready = engine?.isReady?.() === true;
+    const hasWorker = !!engine?.latexWorker;
+    const status = engine?.latexWorkerStatus;
+    throw new Error(`${phase}: SwiftLaTeX runtime is not usable after loadEngine(). ready=${ready}, hasWorker=${hasWorker}, workerStatus=${status}. Reload the page, disable “Reuse browser engine”, and confirm PdfTeXEngine.js and swiftlatexpdftex.js are from the same SwiftLaTeX release.`);
   }
 
   async function fetchText(url, probeOnly = false) {
@@ -214,15 +269,17 @@
 
   function classifyEngineError(err, base) {
     const message = err?.message || String(err || 'Unknown browser-WASM error');
-    const missingAssets = /(Could not load|404|Failed to fetch|NetworkError|PdfTeXEngine\.js)/i.test(message);
+    const missingAssets = /(Could not load|404|Failed to fetch|NetworkError|PdfTeXEngine\.js|Missing browser-WASM assets)/i.test(message);
+    const workerMissing = /(latexWorker|worker|SwiftLaTeX runtime is not usable|undefined is not an object)/i.test(message);
+    let friendly = message;
+    if (missingAssets) friendly = `Browser-WASM assets were not found at ${base}. Add SwiftLaTeX PdfTeXEngine.js, swiftlatexpdftex.js, and matching wasm/data files there, or set a different asset base URL.`;
+    else if (workerMissing) friendly = `SwiftLaTeX loaded but its worker did not stay alive. Reload the page, turn off “Reuse browser engine”, and confirm PdfTeXEngine.js, swiftlatexpdftex.js, and the wasm files are from the same SwiftLaTeX release in ${base}.`;
     return {
       ok: false,
       status: missingAssets ? 'missing-assets' : 'error',
       checkedAt: new Date().toISOString(),
       assetBase: base,
-      message: missingAssets
-        ? `Browser-WASM assets were not found at ${base}. Add SwiftLaTeX PdfTeXEngine.js, swiftlatexpdftex.js, and matching wasm/data files there, or set a different asset base URL.`
-        : message,
+      message: friendly,
       rawMessage: message
     };
   }
@@ -235,9 +292,9 @@
       '',
       'How to test this provider:',
       '1. Put SwiftLaTeX pdfTeX browser-engine assets in vendor/swiftlatex/pdftex/.',
-      '2. The folder must include PdfTeXEngine.js plus the worker/wasm files expected by that script, such as swiftlatexpdftex.js.',
+      '2. The folder must include PdfTeXEngine.js plus the worker/wasm files expected by that script, such as swiftlatexpdftex.js, from the same SwiftLaTeX release.',
       '3. In Settings, set Compiler provider = Browser WASM experimental.',
-      '4. Click Test browser engine, then Compile.',
+      '4. Turn off Reuse browser engine if you saw a stale worker error. Click Test browser engine, then Compile.',
       '',
       `Root file: ${payload.rootFile}`,
       `Files: ${payload.files.length}`,

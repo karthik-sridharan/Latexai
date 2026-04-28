@@ -20,6 +20,9 @@
     const wasmAssetBase = document.getElementById('browserWasmAssetBase')?.value?.trim();
     const wasmTexliveEndpoint = document.getElementById('browserWasmTexliveEndpoint')?.value?.trim();
     const wasmReuse = document.getElementById('browserWasmReuseCheck')?.checked;
+    const texlyreModuleUrl = document.getElementById('texlyreModuleUrl')?.value?.trim();
+    const texlyreBusytexBase = document.getElementById('texlyreBusytexBase')?.value?.trim();
+    const texlyreReuse = document.getElementById('texlyreReuseCheck')?.checked;
     const pollMs = Number(document.getElementById('compilePollSelect')?.value || settings.compilePollMs || 1000);
     if (compileUrl) settings.compileUrl = compileUrl;
     if (token) settings.compileProxyToken = token;
@@ -31,6 +34,9 @@
     if (wasmAssetBase) settings.browserWasmAssetBase = wasmAssetBase;
     if (wasmTexliveEndpoint) settings.browserWasmTexliveEndpoint = wasmTexliveEndpoint;
     if (typeof wasmReuse === 'boolean') settings.browserWasmReuseEngine = wasmReuse;
+    if (texlyreModuleUrl) settings.texlyreModuleUrl = texlyreModuleUrl;
+    if (texlyreBusytexBase) settings.texlyreBusytexBase = texlyreBusytexBase;
+    if (typeof texlyreReuse === 'boolean') settings.texlyreReuseRunner = texlyreReuse;
     settings.compilePollMs = Math.max(300, Math.min(pollMs || 1000, 5000));
     return settings;
   }
@@ -42,6 +48,9 @@
     if (mode === 'browser-wasm') return NS.BrowserWasmProvider?.compile
       ? NS.BrowserWasmProvider.compile(project, settings)
       : browserWasmPlaceholder(project, settings);
+    if (mode === 'browser-wasm-texlyre') return NS.TexlyreBusyTexProvider?.compile
+      ? NS.TexlyreBusyTexProvider.compile(project, settings)
+      : texlyrePlaceholder(project, settings);
 
     if (shouldUseStaticFallback(settings)) {
       return staticBackendFallback(project, settings, 'Static deployment detected with the default relative compile endpoint.');
@@ -141,6 +150,7 @@
       defaultRelativeCompileUrl: isDefaultRelativeCompileUrl(settings),
       staticDraftFallbackActive,
       browserWasm: NS.BrowserWasmProvider?.status?.() || null,
+      texlyreBusyTex: NS.TexlyreBusyTexProvider?.status?.() || null,
       shellEscapeUiAllowed: !staticDraftFallbackActive,
       shellEscapeEffective: !staticDraftFallbackActive && !!settings.shellEscape,
       note: staticDraftFallbackActive
@@ -209,6 +219,7 @@
     });
     document.getElementById('compileProxyUrl')?.addEventListener('change', () => { lastBackendProbe = null; renderBackendStatus(); });
     NS.BrowserWasmProvider?.init?.();
+    NS.TexlyreBusyTexProvider?.init?.();
     renderBackendStatus();
   }
 
@@ -361,6 +372,20 @@
       pdfBase64: null,
       log: `Browser-WASM compile provider is not initialized. Root file: ${payload.rootFile}. Check that js/browser-wasm-provider.js is loaded and that SwiftLaTeX assets are configured.`,
       problems: [{ level: 'warn', message: 'Browser-WASM provider is not initialized or assets are missing.', line: null }],
+      raw: { payloadSummary: { rootFile: payload.rootFile, engine: payload.engine, fileCount: payload.files.length } }
+    });
+  }
+
+  async function texlyrePlaceholder(project, settings) {
+    const payload = Model().toCompilePayload(project, settings);
+    State().setCompileStatus({ status: 'failed', jobId: 'browser-wasm-texlyre-placeholder', progress: 100, message: 'TeXlyre BusyTeX provider could not initialize.' });
+    return normalizeCompileResult({
+      ok: false,
+      schema: 'lumina-latex-compile-response-v1',
+      mode: 'browser-wasm-texlyre-busytex-experimental',
+      pdfBase64: null,
+      log: `TeXlyre BusyTeX provider is not initialized. Root file: ${payload.rootFile}. Check that js/texlyre-busytex-provider.js is loaded and that TeXlyre assets are configured.`,
+      problems: [{ level: 'warn', message: 'TeXlyre BusyTeX provider is not initialized or assets are missing.', line: null }],
       raw: { payloadSummary: { rootFile: payload.rootFile, engine: payload.engine, fileCount: payload.files.length } }
     });
   }

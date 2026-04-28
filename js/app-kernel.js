@@ -3,7 +3,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1f-easy-compile-modes-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-busytex-20260428-1';
 
   const contracts = {
     projectSchema: 'lumina-latex-project-v1',
@@ -34,7 +34,7 @@
 
   const providers = {
     editor: 'textarea-adapter-now-codemirror-ready',
-    compiler: 'backend-texlive-real-runner | browser-wasm-swiftlatex-experimental | mock-draft | overleaf-export',
+    compiler: 'backend-texlive-real-runner | browser-wasm-swiftlatex-experimental | browser-wasm-texlyre-busytex-experimental | mock-draft | overleaf-export',
     ai: 'backend-provider-proxy + structured-workflow-context',
     sync: 'local-only | http-project | websocket-placeholder',
     preview: 'draft-html | pdf-blob'
