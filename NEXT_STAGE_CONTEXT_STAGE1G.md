@@ -1,3 +1,3 @@
-# Next Stage Context
+# Next Context
 
-Stage 1G hotfix removes the read-only ES module mutation error seen on Safari/iPad. Next recommended stage: CodeMirror 6 editor upgrade, or continue hardening TeXlyre provider after live diagnostics.
+If direct mode still fails, the next step is not another blind integration tweak. Add a local self-test page for TeXlyre that imports the module and runs the minimal BusyTeX example outside Lumina, then adapt the provider to the exact module API returned in Safari.

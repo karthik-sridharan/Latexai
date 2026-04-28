@@ -1,19 +1,17 @@
-# Lumina LaTeX Editor Stage 1G Hotfix: TeXlyre Module Readonly
+# Release Notes — Stage 1G TeXlyre Direct-Mode Safari Hotfix
 
-Stage: `latex-stage1g-texlyre-worker-mode-hotfix-20260428-1`
+Stage: `latex-stage1g-texlyre-direct-mode-safari-hotfix-20260428-1`
 
-This hotfix addresses Safari/iPad failures where the TeXlyre BusyTeX ES module loaded but the provider attempted to attach cache metadata directly to the read-only module namespace object.
+This hotfix addresses Safari/iPad TeXlyre initialization reports where diagnostics still showed `texlyreUseWorker: true` after the worker-mode hotfix.
 
 Changes:
-- Do not mutate imported ES module namespace objects.
-- Cache TeXlyre module URL metadata separately.
-- Use TeXlyre's documented `additionalFiles` compile shape.
-- Check BusyTeX asset names documented by BusyTeX/TeXlyre: `busytex_worker.js`, `busytex_pipeline.js`, `busytex.js`, `busytex.wasm`, `texlive-basic.js`, and `texlive-basic.data`.
-- Improve diagnostics for module-readonly errors.
+- Force-disables TeXlyre Web Worker mode on Safari/iPad so direct mode is tested first.
+- Clears stale persisted `texlyreUseWorker: true` settings during state normalization.
+- Adds a “Reset TeXlyre to direct mode” button.
+- Diagnostics now report `directModeForced` and `directModeReason`.
+- The provider now passes `busytexBasePath`, `assetBasePath`, and `basePath` to the BusyTeX runner for compatibility with slightly different module builds.
 
-## Worker-mode hotfix 2026-04-28
-
-- Added a TeXlyre Web Worker mode toggle.
-- Default TeXlyre initialization now uses direct mode, which is safer on Safari/iPad when worker errors are reported as `undefined`.
-- TeXlyre diagnostics now distinguish direct-mode assets from worker-mode assets.
-- Added `texlyreUseWorker` to settings and copied diagnostics.
+Expected diagnostic after deploy on Safari/iPad:
+- `settings.texlyreUseWorker: false`
+- `texlyreBusyTexStatus.useWorker: false`
+- `texlyreBusyTexStatus.directModeForced: true`
