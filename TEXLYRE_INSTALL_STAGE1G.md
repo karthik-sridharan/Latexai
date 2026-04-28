@@ -48,3 +48,17 @@ TeXlyre module URL: vendor/texlyre/texlyre-busytex.es.js
 ```
 
 The CDN module URL is easier for initial testing.
+
+## Safari/iPad worker error note
+
+If you see `Failed to initialize BusyTeX: Worker error: undefined`, deploy the worker-mode hotfix and leave **Use TeXlyre Web Worker mode** unchecked. This forces BusyTeX direct mode, which uses `busytex_pipeline.js` instead of `busytex_worker.js`.
+
+In direct mode, verify these URLs first:
+
+- `vendor/texlyre/core/busytex/busytex_pipeline.js`
+- `vendor/texlyre/core/busytex/busytex.js`
+- `vendor/texlyre/core/busytex/busytex.wasm`
+
+Worker mode additionally needs:
+
+- `vendor/texlyre/core/busytex/busytex_worker.js`
