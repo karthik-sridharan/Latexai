@@ -6,7 +6,7 @@ import { compileWithTexLive, detectTeXLive } from './providers/compile-texlive.m
 import { sandboxPolicyFromEnv } from './security/sandbox-policy.mjs';
 import { validateCompilePayload, normalizeProjectPayload, safeProjectId, httpError } from './security/validate-project.mjs';
 
-const STAGE = 'latex-stage1d-backend-compile-runner-20260428-1';
+const STAGE = 'latex-stage1e-copilot-workflows-20260428-1';
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const PROVIDERS = new Set(['openai', 'anthropic', 'gemini']);
@@ -31,6 +31,17 @@ const ALLOWED_MODELS = {
   gemini: new Set(envList('GEMINI_ALLOWED_MODELS', DEFAULT_MODELS.gemini))
 };
 for (const provider of Object.keys(DEFAULT_MODELS)) ALLOWED_MODELS[provider].add(DEFAULT_MODELS[provider]);
+
+const COPILOT_WORKFLOWS = [
+  { id: 'fix-error-patch', label: 'Fix current compile error as patch', output: 'lumina-latex-ai-patch-v1' },
+  { id: 'explain-log', label: 'Explain compile log', output: 'text' },
+  { id: 'rewrite-selection-patch', label: 'Rewrite selected LaTeX as patch', output: 'lumina-latex-ai-patch-v1' },
+  { id: 'insert-section-patch', label: 'Draft section and insert', output: 'lumina-latex-ai-patch-v1' },
+  { id: 'beamer-outline-patch', label: 'Create Beamer outline', output: 'lumina-latex-ai-patch-v1' },
+  { id: 'table-helper-patch', label: 'Create table / align environment', output: 'lumina-latex-ai-patch-v1' },
+  { id: 'raw-advice', label: 'General LaTeX advice', output: 'text' }
+];
+
 const ALLOWED_ORIGINS = envList('ALLOWED_ORIGINS', '');
 
 app.use(cors({
@@ -83,6 +94,26 @@ app.get('/api/lumina/latex/status', requireProxyToken, async (_req, res) => {
 
 app.get('/api/lumina/models', (_req, res) => {
   res.json({ ok: true, providers: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set).map((model) => ({ model }))])) });
+});
+
+app.get('/api/lumina/ai/status', requireProxyToken, (_req, res) => {
+  res.json({
+    ok: true,
+    schema: 'lumina-latex-ai-status-v1',
+    stage: STAGE,
+    providers: {
+      openai: { configured: !!process.env.OPENAI_API_KEY, defaultModel: DEFAULT_MODELS.openai, allowedModels: Array.from(ALLOWED_MODELS.openai) },
+      anthropic: { configured: !!process.env.ANTHROPIC_API_KEY, defaultModel: DEFAULT_MODELS.anthropic, allowedModels: Array.from(ALLOWED_MODELS.anthropic) },
+      gemini: { configured: !!process.env.GEMINI_API_KEY, defaultModel: DEFAULT_MODELS.gemini, allowedModels: Array.from(ALLOWED_MODELS.gemini) }
+    },
+    workflows: COPILOT_WORKFLOWS,
+    patchSchema: 'lumina-latex-ai-patch-v1',
+    note: 'API keys remain backend-only. Browser requests must go through this proxy.'
+  });
+});
+
+app.get('/api/lumina/ai/workflows', requireProxyToken, (_req, res) => {
+  res.json({ ok: true, schema: 'lumina-latex-ai-workflows-v1', stage: STAGE, workflows: COPILOT_WORKFLOWS });
 });
 
 app.post('/api/lumina/projects/:projectId', requireProxyToken, async (req, res) => {
@@ -176,7 +207,7 @@ app.get('/ws/lumina/projects/:projectId', (_req, res) => {
     ok: false,
     schema: 'lumina-latex-sync-event-v1',
     stage: STAGE,
-    message: 'WebSocket project sync remains reserved. Stage 1D uses HTTP project sync plus SSE compile job events; this endpoint is reserved for Stage 2 collaboration.'
+    message: 'WebSocket project sync remains reserved. Stage 1E uses HTTP project sync plus SSE compile job events; this endpoint is reserved for Stage 2 collaboration.'
   });
 });
 
@@ -188,7 +219,7 @@ app.post('/api/lumina/ai', requireProxyToken, async (req, res) => {
     if (provider === 'openai') result = await callOpenAi(model, payload);
     else if (provider === 'anthropic') result = await callAnthropic(model, payload);
     else result = await callGemini(model, payload);
-    res.json({ ok: true, provider, model, text: result.text, raw: RETURN_RAW ? result.raw : undefined });
+    res.json({ ok: true, schema: 'lumina-latex-ai-response-v1', stage: STAGE, provider, model, task: req.body?.task || 'latex-copilot', text: result.text, raw: RETURN_RAW ? result.raw : undefined });
   } catch (err) {
     sendError(res, err);
   }
