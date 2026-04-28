@@ -242,7 +242,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -.035em; }
   .field-grid.two { grid-template-columns: 1fr; }
 }
 
-/* Stage 1D compile pipeline */
+/* Stage 1E compile pipeline */
 .compile-status-card {
   border: 1px solid rgba(15,23,42,.08);
   background: rgba(255,255,255,.76);
@@ -260,7 +260,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -.035em; }
 .problem.clickable:hover, .problem.clickable:focus { transform:translateY(-1px); box-shadow:0 8px 22px rgba(15,23,42,.10); }
 .hidden { display:none !important; }
 
-/* Stage 1D backend status probe */
+/* Stage 1E backend status probe */
 .backend-status-card {
   display: flex;
   align-items: center;
@@ -280,3 +280,71 @@ h1, h2, h3 { margin: 0; letter-spacing: -.035em; }
 .backend-status-card.ok strong { color: var(--success); }
 .backend-status-card.warn strong { color: var(--warn); }
 .backend-status-card.error strong { color: var(--danger); }
+
+
+/* Stage 1E Copilot workflows and patch preview */
+.context-chips {
+  display: flex;
+  gap: .38rem;
+  flex-wrap: wrap;
+  margin: .1rem 0 .68rem;
+}
+.context-chip {
+  display: inline-flex;
+  gap: .34rem;
+  align-items: center;
+  padding: .32rem .5rem;
+  border: 1px solid rgba(47,111,237,.12);
+  border-radius: 999px;
+  background: rgba(47,111,237,.07);
+  color: #31537f;
+  font-size: .72rem;
+  font-weight: 760;
+}
+.context-chip strong {
+  color: #174ea6;
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.patch-review {
+  margin: .7rem 0;
+  padding: .72rem;
+  border: 1px solid rgba(47,111,237,.18);
+  border-radius: 18px;
+  background: rgba(255,255,255,.82);
+  box-shadow: var(--shadow-soft);
+}
+.patch-review-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .65rem;
+  align-items: flex-start;
+  margin-bottom: .5rem;
+}
+.patch-review-head strong {
+  display: block;
+  margin-top: .08rem;
+  color: #172033;
+  font-size: .88rem;
+}
+.patch-summary {
+  margin: .2rem 0 .55rem;
+  color: #475569;
+  font-size: .82rem;
+  line-height: 1.4;
+  font-weight: 650;
+}
+.patch-diff {
+  max-height: 250px;
+  overflow: auto;
+  margin: 0;
+  padding: .7rem;
+  border-radius: 14px;
+  background: #0f172a;
+  color: #e5e7eb;
+  border: 1px solid rgba(255,255,255,.08);
+  white-space: pre-wrap;
+  font: 12px/1.43 var(--mono);
+}
+.patch-diff::selection { background: rgba(47,111,237,.46); }
