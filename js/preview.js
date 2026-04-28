@@ -15,11 +15,20 @@
     document.getElementById('showDraftPreviewBtn')?.addEventListener('click', () => setPreviewMode('draft'));
     document.getElementById('showPdfPreviewBtn')?.addEventListener('click', () => setPreviewMode('pdf'));
     document.getElementById('engineSelect')?.addEventListener('change', (event) => State().setSetting('engine', event.target.value));
-    document.getElementById('compilerModeSelect')?.addEventListener('change', (event) => State().setSetting('compilerMode', event.target.value));
+    document.getElementById('compilerModeSelect')?.addEventListener('change', (event) => { State().setSetting('compilerMode', event.target.value); NS.BrowserWasmProvider?.renderStatus?.(); });
     document.getElementById('compileProxyUrl')?.addEventListener('change', (event) => State().setSetting('compileUrl', event.target.value.trim() || '/api/lumina/latex/compile'));
     document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => State().setSetting('useCompileJobs', !!event.target.checked));
     document.getElementById('compilePollSelect')?.addEventListener('change', (event) => State().setSetting('compilePollMs', Number(event.target.value) || 1000));
-    document.getElementById('shellEscapeCheck')?.addEventListener('change', (event) => State().setSetting('shellEscape', !!event.target.checked));
+    document.getElementById('shellEscapeCheck')?.addEventListener('change', (event) => {
+      const allowed = shellEscapeUiAllowed();
+      if (!allowed && event.target.checked) {
+        event.target.checked = false;
+        State().setSetting('shellEscape', false);
+        NS.Main?.toast?.('Shell escape is disabled until a real backend explicitly permits it.');
+        return;
+      }
+      State().setSetting('shellEscape', allowed && !!event.target.checked);
+    });
 
     State().subscribe((snapshot, reason) => {
       if (['load','reset','active-file','file-create','file-remove','file-rename','file-import-overwrite'].includes(reason)) {
@@ -43,12 +52,39 @@
     const compileJobs = document.getElementById('compileJobsCheck');
     const compilePoll = document.getElementById('compilePollSelect');
     const compilerMode = document.getElementById('compilerModeSelect');
+    const wasmAssetBase = document.getElementById('browserWasmAssetBase');
+    const wasmEndpoint = document.getElementById('browserWasmTexliveEndpoint');
+    const wasmReuse = document.getElementById('browserWasmReuseCheck');
     if (compileUrl) compileUrl.value = settings.compileUrl || '/api/lumina/latex/compile';
     if (engine) engine.value = settings.engine || 'pdflatex';
     if (compilerMode) compilerMode.value = settings.compilerMode || 'backend-texlive';
     if (compileJobs) compileJobs.checked = settings.useCompileJobs !== false;
     if (compilePoll) compilePoll.value = String(settings.compilePollMs || 1000);
-    if (shellEscape) shellEscape.checked = !!settings.shellEscape;
+    if (wasmAssetBase) wasmAssetBase.value = settings.browserWasmAssetBase || 'vendor/swiftlatex/pdftex/';
+    if (wasmEndpoint) wasmEndpoint.value = settings.browserWasmTexliveEndpoint || 'https://texlive.swiftlatex.com/';
+    if (wasmReuse) wasmReuse.checked = settings.browserWasmReuseEngine !== false;
+    const shellAllowed = shellEscapeUiAllowed();
+    if (shellEscape) {
+      shellEscape.checked = shellAllowed && !!settings.shellEscape;
+      shellEscape.disabled = !shellAllowed;
+      shellEscape.title = shellAllowed
+        ? 'Only enable if your backend is configured with ALLOW_SHELL_ESCAPE=true.'
+        : 'Disabled on static/default backend deployments. Configure and test a real backend before enabling.';
+    }
+    if (!shellAllowed && settings.shellEscape) {
+      State().setSetting('shellEscape', false);
+    }
+  }
+
+  function shellEscapeUiAllowed() {
+    const settings = Object.assign({}, State().state.settings || {});
+    const compileUrl = document.getElementById('compileProxyUrl')?.value?.trim();
+    if (compileUrl) settings.compileUrl = compileUrl;
+    const availability = NS.CompilerProvider?.backendAvailability?.(settings);
+    if (!availability || availability.staticDraftFallbackActive) return false;
+    const probe = NS.CompilerProvider?.getLastBackendProbe?.();
+    if (probe?.policy && probe.policy.allowShellEscape === false) return false;
+    return true;
   }
 
   function scheduleDraftPreview() {

@@ -17,13 +17,20 @@
     const engine = document.getElementById('engineSelect')?.value;
     const shellEscape = document.getElementById('shellEscapeCheck')?.checked;
     const compileJobs = document.getElementById('compileJobsCheck')?.checked;
+    const wasmAssetBase = document.getElementById('browserWasmAssetBase')?.value?.trim();
+    const wasmTexliveEndpoint = document.getElementById('browserWasmTexliveEndpoint')?.value?.trim();
+    const wasmReuse = document.getElementById('browserWasmReuseCheck')?.checked;
     const pollMs = Number(document.getElementById('compilePollSelect')?.value || settings.compilePollMs || 1000);
     if (compileUrl) settings.compileUrl = compileUrl;
     if (token) settings.compileProxyToken = token;
     if (mode) settings.compilerMode = mode;
     if (engine) settings.engine = engine;
     if (typeof shellEscape === 'boolean') settings.shellEscape = shellEscape;
+    if (shouldUseStaticFallback(settings)) settings.shellEscape = false;
     if (typeof compileJobs === 'boolean') settings.useCompileJobs = compileJobs;
+    if (wasmAssetBase) settings.browserWasmAssetBase = wasmAssetBase;
+    if (wasmTexliveEndpoint) settings.browserWasmTexliveEndpoint = wasmTexliveEndpoint;
+    if (typeof wasmReuse === 'boolean') settings.browserWasmReuseEngine = wasmReuse;
     settings.compilePollMs = Math.max(300, Math.min(pollMs || 1000, 5000));
     return settings;
   }
@@ -32,7 +39,9 @@
     const settings = Object.assign(currentSettings(), overrides || {});
     const mode = settings.compilerMode || 'backend-texlive';
     if (mode === 'mock-draft') return mockCompile(project, settings);
-    if (mode === 'browser-wasm') return browserWasmPlaceholder(project, settings);
+    if (mode === 'browser-wasm') return NS.BrowserWasmProvider?.compile
+      ? NS.BrowserWasmProvider.compile(project, settings)
+      : browserWasmPlaceholder(project, settings);
 
     if (shouldUseStaticFallback(settings)) {
       return staticBackendFallback(project, settings, 'Static deployment detected with the default relative compile endpoint.');
@@ -123,14 +132,18 @@
   }
 
   function backendAvailability(settings = currentSettings()) {
+    const staticDraftFallbackActive = shouldUseStaticFallback(settings);
     return {
       compileUrl: compileBaseUrl(settings),
       jobsUrl: jobsUrl(settings),
       statusUrl: statusUrl(settings),
       staticHost: isStaticHost(),
       defaultRelativeCompileUrl: isDefaultRelativeCompileUrl(settings),
-      staticDraftFallbackActive: shouldUseStaticFallback(settings),
-      note: shouldUseStaticFallback(settings)
+      staticDraftFallbackActive,
+      browserWasm: NS.BrowserWasmProvider?.status?.() || null,
+      shellEscapeUiAllowed: !staticDraftFallbackActive,
+      shellEscapeEffective: !staticDraftFallbackActive && !!settings.shellEscape,
+      note: staticDraftFallbackActive
         ? 'Static deployment using default /api compile URL; compile button will run draft validation until a backend URL is configured.'
         : 'Backend URL is treated as configured; compile attempts will be sent to that endpoint.'
     };
@@ -195,6 +208,7 @@
       }
     });
     document.getElementById('compileProxyUrl')?.addEventListener('change', () => { lastBackendProbe = null; renderBackendStatus(); });
+    NS.BrowserWasmProvider?.init?.();
     renderBackendStatus();
   }
 
@@ -314,7 +328,7 @@
     const root = payload.files.find((file) => file.path === payload.rootFile) || payload.files[0];
     const analysis = NS.Preview?.analyzeTex?.(root?.text || '', payload.files.map((f) => ({ path: f.path, kind: f.kind, text: f.text }))) || { problems: [] };
     const ok = !analysis.problems.some((p) => p.level === 'error');
-    const note = `Static draft fallback for ${payload.rootFile}. ${reason || 'No backend compile service was reached.'} Real PDF compilation needs the included backend, a hosted compile proxy, or a browser-WASM provider in a later stage.`;
+    const note = `Static draft fallback for ${payload.rootFile}. ${reason || 'No backend compile service was reached.'} Real PDF compilation needs the included backend, a hosted compile proxy, or the Stage 1F browser-WASM provider.`;
     State().setCompileStatus({
       status: ok ? 'succeeded' : 'failed',
       jobId: null,
@@ -339,14 +353,14 @@
 
   async function browserWasmPlaceholder(project, settings) {
     const payload = Model().toCompilePayload(project, settings);
-    State().setCompileStatus({ status: 'failed', jobId: 'browser-wasm-placeholder', progress: 100, message: 'Browser-WASM provider is not bundled yet.' });
+    State().setCompileStatus({ status: 'failed', jobId: 'browser-wasm-placeholder', progress: 100, message: 'Browser-WASM provider could not initialize.' });
     return normalizeCompileResult({
       ok: false,
       schema: 'lumina-latex-compile-response-v1',
       mode: 'browser-wasm',
       pdfBase64: null,
-      log: `Browser-WASM compile is reserved but not bundled in Stage 1E. Root file: ${payload.rootFile}. Use backend-texlive or mock-draft for now.`,
-      problems: [{ level: 'warn', message: 'Browser-WASM provider is a placeholder in Stage 1E.', line: null }],
+      log: `Browser-WASM compile provider is not initialized. Root file: ${payload.rootFile}. Check that js/browser-wasm-provider.js is loaded and that SwiftLaTeX assets are configured.`,
+      problems: [{ level: 'warn', message: 'Browser-WASM provider is not initialized or assets are missing.', line: null }],
       raw: { payloadSummary: { rootFile: payload.rootFile, engine: payload.engine, fileCount: payload.files.length } }
     });
   }

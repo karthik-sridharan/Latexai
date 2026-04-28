@@ -10,6 +10,7 @@
     document.getElementById('importFileInput')?.addEventListener('change', importFilesFromInput);
     document.getElementById('exportZipBtn')?.addEventListener('click', exportZip);
     document.getElementById('downloadActiveBtn')?.addEventListener('click', downloadActiveFile);
+    document.getElementById('openOverleafBtn')?.addEventListener('click', openRootInOverleaf);
   }
 
   async function importFilesFromInput(event) {
@@ -206,5 +207,39 @@
     return String(path || 'file.txt').split('/').pop() || 'file.txt';
   }
 
-  NS.ImportExport = { init, exportZip, exportProjectJson, downloadActiveFile, makeZip };
+
+  function openRootInOverleaf() {
+    State().save();
+    const project = State().state.project;
+    const rootFile = State().getFile(project.rootFile) || State().getActiveFile();
+    const source = rootFile?.text || '';
+    if (!source.trim()) {
+      W.LuminaLatex.Main?.toast?.('No root LaTeX source to send to Overleaf.');
+      return;
+    }
+    const form = document.createElement('form');
+    form.action = 'https://www.overleaf.com/docs';
+    form.method = 'post';
+    form.target = '_blank';
+    form.style.display = 'none';
+    addHidden(form, 'encoded_snip', encodeURIComponent(source.replace(/\r\n?/g, '\n')));
+    addHidden(form, 'snip_name', rootFile.path || 'main.tex');
+    addHidden(form, 'main_document', rootFile.path || 'main.tex');
+    const engine = State().state.settings?.engine || 'pdflatex';
+    if (['pdflatex','xelatex','lualatex'].includes(engine)) addHidden(form, 'engine', engine);
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(() => form.remove(), 1000);
+    W.LuminaLatex.Main?.toast?.('Opening root file in Overleaf.');
+  }
+
+  function addHidden(form, name, value) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+
+  NS.ImportExport = { init, exportZip, exportProjectJson, downloadActiveFile, openRootInOverleaf, makeZip };
 })();
