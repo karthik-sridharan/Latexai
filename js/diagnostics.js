@@ -7,12 +7,12 @@
 
   const REQUIRED_IDS = [
     'sourceEditor','lineGutter','fileTree','outlineList','draftPreview','pdfPreview','logPanel','problemList',
-    'compileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','rootFileSelect'
+    'compileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compilerModeSelect','rootFileSelect'
   ];
 
   function run() {
     const missingDomIds = REQUIRED_IDS.filter((id) => !document.getElementById(id));
-    const modules = ['State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','Main'];
+    const modules = ['Kernel','ProjectModel','ProjectStore','SyncProvider','EditorAdapter','PreviewAdapter','CompilerProvider','AIProvider','State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','Main'];
     const missingModules = modules.filter((name) => !NS[name]);
     let localStorageWorks = false;
     try {
@@ -23,7 +23,7 @@
     } catch (_err) {}
     const state = State?.().state;
     const report = {
-      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1a-20260427-1',
+      stage: W.LUMINA_LATEX_STAGE || 'latex-stage1b-foundation-20260427-1',
       checkedAt: new Date().toISOString(),
       url: location.href,
       userAgent: navigator.userAgent,
@@ -38,6 +38,7 @@
       aiProxyConfigured: !!document.getElementById('aiProxyUrl')?.value,
       compileProxyConfigured: !!document.getElementById('compileProxyUrl')?.value,
       lastProblemCount: state?.lastProblems?.length || 0,
+      architecture: NS.Kernel?.getArchitectureReport?.() || null,
       pass: missingDomIds.length === 0 && missingModules.length === 0 && localStorageWorks && !!state?.project?.files?.length
     };
     W.LUMINA_LATEX_LAST_DIAGNOSTIC = report;

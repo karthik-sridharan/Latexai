@@ -14,6 +14,7 @@
     document.getElementById('showDraftPreviewBtn')?.addEventListener('click', () => setPreviewMode('draft'));
     document.getElementById('showPdfPreviewBtn')?.addEventListener('click', () => setPreviewMode('pdf'));
     document.getElementById('engineSelect')?.addEventListener('change', (event) => State().setSetting('engine', event.target.value));
+    document.getElementById('compilerModeSelect')?.addEventListener('change', (event) => State().setSetting('compilerMode', event.target.value));
     document.getElementById('compileProxyUrl')?.addEventListener('change', (event) => State().setSetting('compileUrl', event.target.value.trim() || '/api/lumina/latex/compile'));
     document.getElementById('shellEscapeCheck')?.addEventListener('change', (event) => State().setSetting('shellEscape', !!event.target.checked));
 
@@ -35,8 +36,10 @@
     const compileUrl = document.getElementById('compileProxyUrl');
     const engine = document.getElementById('engineSelect');
     const shellEscape = document.getElementById('shellEscapeCheck');
+    const compilerMode = document.getElementById('compilerModeSelect');
     if (compileUrl) compileUrl.value = settings.compileUrl || '/api/lumina/latex/compile';
     if (engine) engine.value = settings.engine || 'pdflatex';
+    if (compilerMode) compilerMode.value = settings.compilerMode || 'backend-texlive';
     if (shellEscape) shellEscape.checked = !!settings.shellEscape;
   }
 
@@ -189,35 +192,21 @@
     const compileBtn = document.getElementById('compileBtn');
     if (compileBtn) compileBtn.disabled = true;
     try {
-      const { project, settings } = State().state;
-      const url = settings.compileUrl || document.getElementById('compileProxyUrl')?.value || '/api/lumina/latex/compile';
-      const payload = {
-        projectName: project.name,
-        rootFile: project.rootFile,
-        engine: settings.engine || 'pdflatex',
-        shellEscape: !!settings.shellEscape,
-        files: project.files.map((f) => ({ path: f.path, text: f.text || '', kind: f.kind }))
-      };
-      State().setLog(`Compiling ${project.rootFile} with ${payload.engine} through ${url}...`, []);
+      const { project } = State().state;
+      const settings = NS.CompilerProvider?.currentSettings?.() || State().state.settings;
+      State().setLog(`Compiling ${project.rootFile} with ${settings.engine || 'pdflatex'} via ${settings.compilerMode || 'backend-texlive'}...`, []);
       renderLogs();
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.ok === false) {
-        const message = data?.error?.message || data?.message || `Compile request failed with HTTP ${response.status}.`;
-        State().setLog(`${message}\n\n${data.log || ''}`, [{ level: 'error', message, line: null }]);
-        showLogsTab();
-        return;
+      const result = await NS.CompilerProvider.compile(project, settings);
+      State().setLog(result.log || 'Compile completed.', result.problems || []);
+      if (result.pdfBase64) {
+        showPdf(result.pdfBase64);
+        setPreviewMode('pdf');
+      } else {
+        setPreviewMode('draft');
       }
-      const compileProblems = parseCompileLog(data.log || 'Compile completed.');
-      State().setLog(data.log || 'Compile completed.', compileProblems.length ? compileProblems : [{ level: 'ok', message: 'PDF compile completed.', line: null }]);
-      if (data.pdfBase64) showPdf(data.pdfBase64);
-      setPreviewMode(data.pdfBase64 ? 'pdf' : 'draft');
+      if (!result.ok) showLogsTab();
     } catch (err) {
-      const message = `Compile backend is not reachable or returned invalid data: ${err.message || err}`;
+      const message = `Compile provider error: ${err.message || err}`;
       State().setLog(message, [{ level: 'error', message, line: null }]);
       showLogsTab();
     } finally {
@@ -227,13 +216,7 @@
   }
 
   function showPdf(base64) {
-    const pdf = document.getElementById('pdfPreview');
-    if (!pdf) return;
-    if (lastPdfObjectUrl) URL.revokeObjectURL(lastPdfObjectUrl);
-    const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0));
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    lastPdfObjectUrl = URL.createObjectURL(blob);
-    pdf.src = lastPdfObjectUrl;
+    lastPdfObjectUrl = NS.PreviewAdapter?.showPdf?.(base64) || lastPdfObjectUrl;
   }
 
   function parseCompileLog(logText) {

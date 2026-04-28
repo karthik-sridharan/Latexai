@@ -38,7 +38,7 @@
         State().importFile(path, await file.text(), { overwrite: confirm(`Overwrite ${path} if it exists?`) });
         imported++;
       } else {
-        State().importFile(path + '.placeholder.txt', `% Binary asset imported as placeholder in Stage 1A: ${file.name}\n% Add real asset upload support in the compile backend stage.\n`, { overwrite: true });
+        State().importFile(path + '.placeholder.txt', `% Binary asset imported as placeholder in Stage 1B: ${file.name}\n% Add real asset upload support in the compile backend stage.\n`, { overwrite: true });
         imported++;
       }
     }

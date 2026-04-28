@@ -59,7 +59,7 @@
   }
 
   function modelsFor(provider) {
-    return (NS.Copilot.models && NS.Copilot.models[provider]) || FALLBACK_MODELS[provider] || [];
+    return NS.AIProvider?.modelsFor?.(provider) || FALLBACK_MODELS[provider] || [];
   }
 
   function renderModels() {
@@ -74,22 +74,9 @@
   }
 
   async function loadModelsFromProxy() {
-    const proxyUrl = getProxyUrl();
-    const modelsUrl = proxyUrl.replace(/\/api\/lumina\/ai\/?$/, '/api/lumina/models');
-    try {
-      const response = await fetch(modelsUrl);
-      const data = await response.json();
-      if (!response.ok || !data?.ok || !data?.providers) return false;
-      const mapped = {};
-      for (const [provider, list] of Object.entries(data.providers)) {
-        mapped[provider] = (list || []).map((item) => ({ value: item.model, label: `${provider} · ${item.model}` }));
-      }
-      NS.Copilot.models = mapped;
-      renderModels();
-      return true;
-    } catch (_err) {
-      return false;
-    }
+    const ok = await NS.AIProvider?.loadModelsFromProxy?.();
+    if (ok) renderModels();
+    return !!ok;
   }
 
   function getProxyUrl() {
@@ -97,35 +84,15 @@
   }
 
   function getConfig() {
-    return {
-      provider: document.getElementById('aiProvider')?.value || localStorage.getItem(LS_PROVIDER) || 'openai',
-      model: document.getElementById('aiModel')?.value || '',
-      proxyUrl: getProxyUrl(),
-      proxyToken: document.getElementById('aiProxyToken')?.value?.trim() || localStorage.getItem(LS_PROXY_TOKEN) || ''
-    };
+    return NS.AIProvider?.getConfig?.() || { provider: 'openai', model: '', proxyUrl: getProxyUrl(), proxyToken: '' };
   }
 
   async function callProxy(payload, meta = {}) {
-    const config = getConfig();
-    const headers = { 'Content-Type': 'application/json' };
-    if (config.proxyToken) headers.Authorization = `Bearer ${config.proxyToken}`;
-    const response = await fetch(config.proxyUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ provider: config.provider, model: config.model, task: meta.task || 'latex-copilot', payload })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok === false) throw new Error(data?.error?.message || data?.message || `AI proxy failed with HTTP ${response.status}.`);
-    return data;
+    return NS.AIProvider.ask(payload, meta);
   }
 
   function extractText(data) {
-    if (typeof data?.text === 'string') return data.text;
-    if (typeof data?.output_text === 'string') return data.output_text;
-    if (Array.isArray(data?.output)) {
-      return data.output.flatMap((item) => item.content || []).map((c) => c.text || '').join('\n').trim();
-    }
-    return JSON.stringify(data, null, 2);
+    return NS.AIProvider?.extractText?.(data) || JSON.stringify(data, null, 2);
   }
 
   async function askCopilot() {

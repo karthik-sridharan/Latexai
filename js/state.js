@@ -3,139 +3,37 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1a-20260427-1';
-  const STORAGE_KEY = 'lumina-latex-editor.project.v1';
-  const SETTINGS_KEY = 'lumina-latex-editor.settings.v1';
-
-  const DEFAULT_MAIN_TEX = String.raw`\documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,amsthm}
-\usepackage{graphicx}
-\usepackage{hyperref}
-
-\title{A Lumina LaTeX Project}
-\author{Karthik Sridharan}
-\date{\today}
-
-\newtheorem{theorem}{Theorem}
-\newtheorem{lemma}{Lemma}
-
-\begin{document}
-\maketitle
-
-\begin{abstract}
-This is the first stage of a Lumina-style web LaTeX editor. The draft preview is local and approximate; real PDF compilation is routed through the optional backend included in this package.
-\end{abstract}
-
-\section{Introduction}
-Write your paper here. Inline math such as $E = mc^2$ appears in the draft preview, and display math is preserved:
-\[
-  \nabla f(x_t)^\top (x_t - x^*) \leq \frac{1}{2\eta}\left(\|x_t-x^*\|^2 - \|x_{t+1}-x^*\|^2\right) + \frac{\eta}{2}\|\nabla f(x_t)\|^2.
-\]
-
-\section{A Result}
-\begin{theorem}[Example]
-If the compile backend is configured, this project can be compiled into a PDF while keeping API keys and TeX execution out of the browser.
-\end{theorem}
-
-\begin{proof}
-The browser sends source files to a trusted backend. The backend runs TeX in an isolated temporary directory and returns the resulting PDF and log.
-\end{proof}
-
-\section{Next steps}
-\begin{itemize}
-  \item Add files from the left rail.
-  \item Use the Copilot tab to draft or fix LaTeX through your backend AI proxy.
-  \item Export the project as a zip for storage.
-\end{itemize}
-
-\bibliographystyle{plain}
-\bibliography{refs}
-\end{document}
-`;
-
-  const DEFAULT_BIB = String.raw`@article{knuth1984tex,
-  title={The TeXbook},
-  author={Knuth, Donald E.},
-  year={1984},
-  publisher={Addison-Wesley}
-}
-`;
-
-  function uid(prefix = 'id') {
-    const random = Math.random().toString(36).slice(2, 9);
-    return `${prefix}-${Date.now().toString(36)}-${random}`;
-  }
-
-  function nowIso() {
-    return new Date().toISOString();
-  }
-
-  function clone(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function normalizePath(path) {
-    return String(path || '')
-      .replace(/\\/g, '/')
-      .replace(/^\/+/, '')
-      .replace(/\/+/g, '/')
-      .trim();
-  }
-
-  function fileKind(path) {
-    const lower = String(path || '').toLowerCase();
-    if (lower.endsWith('.tex')) return 'tex';
-    if (lower.endsWith('.bib')) return 'bib';
-    if (lower.endsWith('.sty')) return 'sty';
-    if (lower.endsWith('.cls')) return 'cls';
-    if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.pdf')) return 'asset';
-    return 'text';
-  }
-
-  function textFile(path) {
-    const kind = fileKind(path);
-    return kind !== 'asset';
-  }
-
-  function defaultProject() {
-    const t = nowIso();
-    return {
-      id: uid('project'),
-      stage: STAGE,
-      name: 'Untitled Lumina LaTeX Project',
-      rootFile: 'main.tex',
-      activePath: 'main.tex',
-      updatedAt: t,
-      files: [
-        { id: uid('file'), path: 'main.tex', kind: 'tex', text: DEFAULT_MAIN_TEX, updatedAt: t },
-        { id: uid('file'), path: 'refs.bib', kind: 'bib', text: DEFAULT_BIB, updatedAt: t },
-        { id: uid('file'), path: 'notes/todo.tex', kind: 'tex', text: String.raw`% Notes for this project
-% TODO: Add related work notes here.
-`, updatedAt: t }
-      ]
-    };
-  }
+  const Model = () => NS.ProjectModel;
+  const Store = () => NS.ProjectStore;
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1b-foundation-20260427-1';
 
   const state = {
-    project: defaultProject(),
-    settings: {
-      compileUrl: '/api/lumina/latex/compile',
-      engine: 'pdflatex',
-      shellEscape: false,
-      previewMode: 'draft'
-    },
+    project: Model().defaultProject(),
+    settings: Model().defaultSettings(),
     dirty: false,
     lastSavedAt: null,
     lastLog: 'No compile has been run yet.',
-    lastProblems: []
+    lastProblems: [],
+    sync: {
+      provider: 'local-only',
+      status: 'offline',
+      lastEvent: null
+    }
   };
 
   const listeners = new Set();
 
+  function clone(value) { return Model().clone(value); }
+  function nowIso() { return Model().nowIso(); }
+  function normalizePath(path) { return Model().normalizePath(path); }
+  function fileKind(path) { return Model().fileKind(path); }
+  function textFile(pathOrFile) { return Model().textFile(pathOrFile); }
+  function defaultProject() { return Model().defaultProject(); }
+
   function emit(reason) {
+    const snapshot = clone(state);
     for (const fn of listeners) {
-      try { fn(clone(state), reason || 'state'); } catch (err) { console.error(err); }
+      try { fn(snapshot, reason || 'state'); } catch (err) { console.error(err); }
     }
   }
 
@@ -144,50 +42,59 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     return () => listeners.delete(fn);
   }
 
+  function normalizeState() {
+    state.project = Model().normalizeProject(state.project);
+    state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {}, state.settings || {});
+    state.project.settings = Object.assign({}, state.settings);
+    ensureValidActiveFile();
+  }
+
   function save() {
     try {
-      state.project.updatedAt = nowIso();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.project));
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      normalizeState();
+      const syncProvider = NS.SyncProvider?.providerForSettings?.(state.settings);
+      // Local save remains the guaranteed path in Stage 1B. Other sync providers are explicit future implementations.
+      const result = Store().saveLocal(state.project, state.settings);
+      state.project = result.project;
+      state.settings = result.settings;
       state.dirty = false;
-      state.lastSavedAt = nowIso();
+      state.lastSavedAt = result.savedAt;
+      state.sync = { provider: syncProvider?.name || 'local-only', status: 'saved-local', lastEvent: result.savedAt };
       emit('save');
       return true;
     } catch (err) {
       state.lastLog = `Local save failed: ${err.message || err}`;
+      state.sync = { provider: 'local-only', status: 'error', lastEvent: state.lastLog };
       emit('save-error');
       return false;
     }
   }
 
   function load() {
-    let loaded = false;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.files) && parsed.files.length) {
-          state.project = parsed;
-          loaded = true;
-        }
-      }
+      const result = Store().loadLocal();
+      state.project = result.project;
+      state.settings = Object.assign(Model().defaultSettings(), result.settings || {});
+      state.project.settings = Object.assign({}, state.settings);
+      state.lastSavedAt = result.loaded ? nowIso() : null;
+      state.sync = { provider: 'local-only', status: result.loaded ? 'loaded-local' : 'default-project', lastEvent: state.lastSavedAt };
+      normalizeState();
+      emit('load');
+      return result.loaded;
     } catch (err) {
       console.warn('Could not load saved project', err);
+      state.project = Model().defaultProject();
+      state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {});
+      ensureValidActiveFile();
+      emit('load-error');
+      return false;
     }
-    try {
-      const rawSettings = localStorage.getItem(SETTINGS_KEY);
-      if (rawSettings) state.settings = Object.assign({}, state.settings, JSON.parse(rawSettings));
-    } catch (err) {
-      console.warn('Could not load saved settings', err);
-    }
-    ensureValidActiveFile();
-    state.lastSavedAt = loaded ? nowIso() : null;
-    emit('load');
-    return loaded;
   }
 
   function resetProject(project) {
-    state.project = project || defaultProject();
+    state.project = Model().normalizeProject(project || Model().defaultProject());
+    state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {});
+    state.project.settings = Object.assign({}, state.settings);
     state.dirty = true;
     ensureValidActiveFile();
     save();
@@ -201,16 +108,15 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
       const firstTex = p.files.find((file) => file.kind === 'tex');
       p.rootFile = firstTex?.path || p.files[0]?.path || 'main.tex';
     }
+    p.mainFile = p.rootFile;
   }
 
   function getFile(path) {
-    const target = path || state.project.activePath;
+    const target = normalizePath(path || state.project.activePath);
     return state.project.files.find((file) => file.path === target) || null;
   }
 
-  function getActiveFile() {
-    return getFile(state.project.activePath);
-  }
+  function getActiveFile() { return getFile(state.project.activePath); }
 
   function setActivePath(path) {
     const normalized = normalizePath(path);
@@ -222,28 +128,27 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
 
   function touch(file) {
     file.updatedAt = nowIso();
+    file.version = Number(file.version || 1) + 1;
     state.project.updatedAt = file.updatedAt;
+    state.project.settings = Object.assign({}, state.settings);
     state.dirty = true;
   }
 
   function updateFile(path, text) {
     const file = getFile(path);
-    if (!file || !textFile(file.path)) return false;
+    if (!file || !textFile(file)) return false;
     file.text = String(text ?? '');
     touch(file);
     emit('file-change');
     return true;
   }
 
-  function updateActiveText(text) {
-    return updateFile(state.project.activePath, text);
-  }
+  function updateActiveText(text) { return updateFile(state.project.activePath, text); }
 
   function createFile(path, text = '') {
     const normalized = normalizePath(path || 'untitled.tex');
-    if (!normalized) return null;
-    if (getFile(normalized)) return null;
-    const file = { id: uid('file'), path: normalized, kind: fileKind(normalized), text: String(text ?? ''), updatedAt: nowIso() };
+    if (!normalized || getFile(normalized)) return null;
+    const file = Model().makeFile(normalized, text);
     state.project.files.push(file);
     state.project.files.sort((a, b) => a.path.localeCompare(b.path));
     state.project.activePath = normalized;
@@ -278,6 +183,7 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     if (state.project.rootFile === normalized) {
       const firstTex = state.project.files.find((file) => file.kind === 'tex');
       state.project.rootFile = firstTex?.path || state.project.files[0].path;
+      state.project.mainFile = state.project.rootFile;
     }
     state.dirty = true;
     emit('file-remove');
@@ -294,7 +200,10 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     file.kind = fileKind(newNormalized);
     touch(file);
     if (state.project.activePath === oldNormalized) state.project.activePath = newNormalized;
-    if (state.project.rootFile === oldNormalized) state.project.rootFile = newNormalized;
+    if (state.project.rootFile === oldNormalized) {
+      state.project.rootFile = newNormalized;
+      state.project.mainFile = newNormalized;
+    }
     state.project.files.sort((a, b) => a.path.localeCompare(b.path));
     emit('file-rename');
     return true;
@@ -304,6 +213,7 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     const clean = String(name || '').trim();
     if (!clean) return false;
     state.project.name = clean;
+    state.project.title = clean;
     state.dirty = true;
     emit('project-rename');
     return true;
@@ -313,6 +223,7 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     const file = getFile(path);
     if (!file || file.kind !== 'tex') return false;
     state.project.rootFile = file.path;
+    state.project.mainFile = file.path;
     state.dirty = true;
     emit('settings');
     return true;
@@ -320,6 +231,7 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
 
   function setSetting(key, value) {
     state.settings[key] = value;
+    state.project.settings = Object.assign({}, state.settings);
     state.dirty = true;
     emit('settings');
   }
@@ -330,10 +242,16 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     emit('logs');
   }
 
+  function snapshot(label = 'manual') {
+    const key = Store().saveSnapshot(state.project, label);
+    emit('snapshot');
+    return key;
+  }
+
   NS.State = {
     STAGE,
-    STORAGE_KEY,
-    SETTINGS_KEY,
+    STORAGE_KEY: Store().STORAGE_KEY,
+    SETTINGS_KEY: Store().SETTINGS_KEY,
     state,
     defaultProject,
     clone,
@@ -345,6 +263,7 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     save,
     load,
     resetProject,
+    ensureValidActiveFile,
     getFile,
     getActiveFile,
     setActivePath,
@@ -357,6 +276,7 @@ The browser sends source files to a trusted backend. The backend runs TeX in an 
     renameProject,
     setRootFile,
     setSetting,
-    setLog
+    setLog,
+    snapshot
   };
 })();

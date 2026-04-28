@@ -5,6 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
 
   function init() {
+    NS.Kernel?.mark?.('main:init');
     bindRightTabs();
     NS.State.load();
     NS.Editor.init();
@@ -58,7 +59,7 @@
 
   function renderStage() {
     const badge = document.getElementById('stageBadge');
-    if (badge) badge.textContent = (W.LUMINA_LATEX_STAGE || 'latex-stage1a').replace('-20260427-1', '');
+    if (badge) badge.textContent = (W.LUMINA_LATEX_STAGE || 'latex-stage1b').replace('-foundation-20260427-1', '').replace('-20260427-1', '');
   }
 
   function updateProjectTitle() {

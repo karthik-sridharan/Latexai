@@ -24,6 +24,7 @@
     editorApi.editor = document.getElementById('sourceEditor');
     editorApi.gutter = document.getElementById('lineGutter');
     if (!editorApi.editor || !editorApi.gutter) return false;
+    editorApi.adapter = NS.EditorAdapter?.createTextAreaAdapter?.(editorApi.editor, { language: 'latex', stage: W.LUMINA_LATEX_STAGE }) || null;
 
     editorApi.editor.addEventListener('input', () => {
       if (editorApi.suppress) return;
@@ -86,7 +87,7 @@
     const activePill = document.getElementById('activeFilePill');
     if (activePill) activePill.textContent = file?.path || 'No file';
     editorApi.suppress = true;
-    editorApi.editor.value = file && State().textFile(file.path) ? file.text || '' : `% ${file?.path || 'asset'} is not editable as text in Stage 1A.`;
+    editorApi.editor.value = file && State().textFile(file.path) ? file.text || '' : `% ${file?.path || 'asset'} is not editable as text in Stage 1B.`;
     editorApi.editor.readOnly = !(file && State().textFile(file.path));
     editorApi.suppress = false;
     updateLineGutter();
@@ -194,5 +195,7 @@
     replaceSelection(map[choice] || `\\${choice}{${body}}`, true);
   }
 
+  editorApi.getText = function () { return editorApi.editor?.value || ''; };
+  editorApi.setText = function (text) { if (editorApi.editor) { editorApi.editor.value = String(text ?? ''); State().updateActiveText(editorApi.editor.value); updateLineGutter(); updateCursorStatus(); } };
   NS.Editor = editorApi;
 })();
