@@ -1,21 +1,12 @@
-# Stage 1G release notes
+# Lumina LaTeX Editor Stage 1G Hotfix: TeXlyre Module Readonly
 
-Stage: `latex-stage1g-texlyre-busytex-20260428-1`
+Stage: `latex-stage1g-texlyre-module-readonly-hotfix-20260428-1`
 
-## Added
+This hotfix addresses Safari/iPad failures where the TeXlyre BusyTeX ES module loaded but the provider attempted to attach cache metadata directly to the read-only module namespace object.
 
-- `js/texlyre-busytex-provider.js`
-- Compiler provider option: `Browser WASM: TeXlyre BusyTeX experimental`
-- TeXlyre module URL setting
-- TeXlyre BusyTeX asset base setting
-- TeXlyre status/test card
-- Diagnostics fields for TeXlyre provider status
-- Asset placeholder at `vendor/texlyre/core/busytex/README.md`
-
-## Preserved
-
-- Backend TeX Live compile runner
-- SwiftLaTeX experimental provider
-- Copilot workflow/patch UI
-- Overleaf export button
-- Static draft fallback on GitHub Pages
+Changes:
+- Do not mutate imported ES module namespace objects.
+- Cache TeXlyre module URL metadata separately.
+- Use TeXlyre's documented `additionalFiles` compile shape.
+- Check BusyTeX asset names documented by BusyTeX/TeXlyre: `busytex_worker.js`, `busytex_pipeline.js`, `busytex.js`, `busytex.wasm`, `texlive-basic.js`, and `texlive-basic.data`.
+- Improve diagnostics for module-readonly errors.

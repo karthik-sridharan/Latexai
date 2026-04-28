@@ -1,9 +1,3 @@
-# Next stage context after 1G
+# Next Stage Context
 
-Recommended Stage 1H: CodeMirror 6 editor upgrade.
-
-Goals:
-- Replace textarea adapter with CodeMirror 6 behind the existing editor adapter API.
-- Add LaTeX syntax highlighting and line numbers.
-- Improve click-to-error navigation.
-- Keep compiler providers unchanged.
+Stage 1G hotfix removes the read-only ES module mutation error seen on Safari/iPad. Next recommended stage: CodeMirror 6 editor upgrade, or continue hardening TeXlyre provider after live diagnostics.
