@@ -1,6 +1,6 @@
 # Release Notes — Stage 1G TeXlyre Direct-Mode Safari Hotfix
 
-Stage: `latex-stage1g-texlyre-direct-mode-safari-hotfix-20260428-1`
+Stage: `latex-stage1g-texlyre-direct-mode-startup-hotfix-20260428-1`
 
 This hotfix addresses Safari/iPad TeXlyre initialization reports where diagnostics still showed `texlyreUseWorker: true` after the worker-mode hotfix.
 
