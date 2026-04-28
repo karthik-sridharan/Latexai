@@ -1,73 +1,59 @@
-# Lumina LaTeX Backend — Stage 1B
+# Lumina LaTeX Backend — Stage 1D
 
-This optional backend gives the static Lumina LaTeX Editor two capabilities that should not run directly in browser code:
+Stage 1D is the first real PDF compile runner. The static frontend can still live on GitHub Pages, while this backend runs separately and exposes trusted compile + AI proxy endpoints.
 
-1. AI provider proxy for OpenAI / Anthropic / Gemini.
-2. TeX compilation through a trusted server process.
+## What it provides
 
-## Local install
+- `GET /health`
+- `GET /api/lumina/latex/status`
+- `POST /api/lumina/latex/compile/jobs`
+- `GET /api/lumina/latex/compile/jobs/:jobId`
+- `GET /api/lumina/latex/compile/jobs/:jobId/events` for SSE progress
+- `DELETE /api/lumina/latex/compile/jobs/:jobId`
+- `POST /api/lumina/latex/compile` synchronous fallback
+- `POST /api/lumina/ai`
+- in-memory project save/load endpoints
+
+## Recommended run mode
+
+Run the backend in the provided Docker image. The image includes Node plus a TeX Live subset large enough for common article/beamer/amsmath/graphicx/bibtex workflows.
 
 ```bash
 cd backend
-npm install
 cp .env.example .env
-npm run dev
+npm install
+npm start
 ```
 
-Health check:
+For real TeX compilation without installing TeX on your machine:
 
 ```bash
-curl http://localhost:3000/health
+cd backend
+docker build -t lumina-latex-backend:stage1d .
+docker run --rm -p 3000:3000 \
+  --env-file .env \
+  lumina-latex-backend:stage1d
 ```
 
-Then set these in the app UI:
+Then set the frontend compile URL to:
 
 ```text
-AI proxy URL:       http://localhost:3000/api/lumina/ai
-Compile backend:   http://localhost:3000/api/lumina/latex/compile
+http://localhost:3000/api/lumina/latex/compile
 ```
 
-## LaTeX requirements
-
-The compile endpoint shells out to one of:
+For production with GitHub Pages frontend, set it to something like:
 
 ```text
-pdflatex, xelatex, lualatex, latexmk
+https://your-backend.example.com/api/lumina/latex/compile
 ```
 
-Install TeX Live locally or use the included Dockerfile. On Debian/Ubuntu a reasonable local install is:
+## Security posture in Stage 1D
 
-```bash
-sudo apt-get install latexmk texlive-latex-base texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended texlive-bibtex-extra
-```
+- Project files are written to a temporary workspace.
+- Workspaces are deleted after compile by default.
+- Shell escape is blocked unless `ALLOW_SHELL_ESCAPE=true`.
+- File extensions are allowlisted.
+- Project size, file count, compile timeout, PDF size, and rate limits are configurable.
+- API keys live only on the backend.
 
-## Docker
-
-```bash
-docker build -t lumina-latex-backend .
-docker run --rm -p 3000:3000 --env-file .env lumina-latex-backend
-```
-
-## Security notes
-
-This is a starting backend, not a full Overleaf security sandbox. For public deployment:
-
-- Run the backend in an isolated container.
-- Keep `ALLOW_SHELL_ESCAPE=false` unless you know exactly why you need it.
-- Use rate limits and request-size limits.
-- Restrict `ALLOWED_ORIGINS` to your site.
-- Keep provider keys only in `.env` on the backend host.
-- Consider stronger sandboxing before allowing arbitrary public users to compile TeX.
-
-## Stage 1B reserved contracts
-
-These routes are included so the frontend can be built against durable contracts before collaboration and job streaming are implemented:
-
-```text
-POST /api/lumina/projects/:projectId
-GET  /api/lumina/projects/:projectId
-POST /api/lumina/latex/compile/jobs
-GET  /ws/lumina/projects/:projectId
-```
-
-`/api/lumina/projects/:projectId` is memory-backed in Stage 1B and should be replaced with a database or object store in a later stage. The `/ws/...` path currently returns HTTP 426 to mark the future WebSocket upgrade endpoint.
+This is not yet a multi-user isolation system. For a public multi-user service, keep this backend behind auth, use per-user quotas, and run each compile in a stronger container/job sandbox.

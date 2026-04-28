@@ -1,21 +1,20 @@
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, dirname, normalize, basename, extname } from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { compileWithTexLive, detectTeXLive } from './providers/compile-texlive.mjs';
+import { sandboxPolicyFromEnv } from './security/sandbox-policy.mjs';
+import { validateCompilePayload, normalizeProjectPayload, safeProjectId, httpError } from './security/validate-project.mjs';
 
+const STAGE = 'latex-stage1d-backend-compile-runner-20260428-1';
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const PROVIDERS = new Set(['openai', 'anthropic', 'gemini']);
-const ENGINES = new Set(['pdflatex', 'xelatex', 'lualatex', 'latexmk']);
-const MAX_PROJECT_BYTES = Number(process.env.MAX_PROJECT_BYTES || 4_000_000);
-const COMPILE_TIMEOUT_MS = Number(process.env.COMPILE_TIMEOUT_MS || 25_000);
-const ALLOW_SHELL_ESCAPE = String(process.env.ALLOW_SHELL_ESCAPE || 'false').toLowerCase() === 'true';
-const RETURN_RAW = String(process.env.RETURN_RAW_PROVIDER_RESPONSE || 'false').toLowerCase() === 'true';
 const PROJECTS = new Map();
+const JOBS = new Map();
+const JOB_TTL_MS = Number(process.env.COMPILE_JOB_TTL_MS || 15 * 60_000);
+const RETURN_RAW = String(process.env.RETURN_RAW_PROVIDER_RESPONSE || 'false').toLowerCase() === 'true';
+const POLICY = sandboxPolicyFromEnv(process.env);
 
 function envList(name, fallback = '') {
   return String(process.env[name] || fallback || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -26,14 +25,12 @@ const DEFAULT_MODELS = {
   anthropic: process.env.ANTHROPIC_DEFAULT_MODEL || 'claude-sonnet-4-5',
   gemini: process.env.GEMINI_DEFAULT_MODEL || 'gemini-2.5-flash'
 };
-
 const ALLOWED_MODELS = {
   openai: new Set(envList('OPENAI_ALLOWED_MODELS', DEFAULT_MODELS.openai)),
   anthropic: new Set(envList('ANTHROPIC_ALLOWED_MODELS', DEFAULT_MODELS.anthropic)),
   gemini: new Set(envList('GEMINI_ALLOWED_MODELS', DEFAULT_MODELS.gemini))
 };
 for (const provider of Object.keys(DEFAULT_MODELS)) ALLOWED_MODELS[provider].add(DEFAULT_MODELS[provider]);
-
 const ALLOWED_ORIGINS = envList('ALLOWED_ORIGINS', '');
 
 app.use(cors({
@@ -42,13 +39,12 @@ app.use(cors({
     if (!ALLOWED_ORIGINS.length || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
     return callback(new Error(`Origin not allowed: ${origin}`));
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
-app.use(express.json({ limit: '6mb' }));
+app.use(express.json({ limit: process.env.JSON_LIMIT || '10mb' }));
 app.use('/api/lumina/ai', rateLimit({ windowMs: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE || 20), standardHeaders: true, legacyHeaders: false }));
-app.use('/api/lumina/latex/compile', rateLimit({ windowMs: 60_000, limit: Number(process.env.COMPILE_RATE_LIMIT_PER_MINUTE || 8), standardHeaders: true, legacyHeaders: false }));
+app.use('/api/lumina/latex/compile', rateLimit({ windowMs: 60_000, limit: Number(process.env.COMPILE_RATE_LIMIT_PER_MINUTE || 10), standardHeaders: true, legacyHeaders: false }));
 
 function requireProxyToken(req, res, next) {
   const token = process.env.LUMINA_PROXY_TOKEN || '';
@@ -57,31 +53,49 @@ function requireProxyToken(req, res, next) {
   return next();
 }
 
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'lumina-latex-backend', stage: 'latex-stage1b-foundation-20260427-1' });
+app.get('/health', async (_req, res) => {
+  const tex = await detectTeXLive(POLICY).catch((err) => ({ ok: false, error: err.message }));
+  res.json({ ok: true, service: 'lumina-latex-backend', stage: STAGE, compileJobs: true, jobCount: JOBS.size, tex });
 });
 
-app.get('/api/lumina/models', (_req, res) => {
+app.get('/api/lumina/latex/status', requireProxyToken, async (_req, res) => {
+  const tex = await detectTeXLive(POLICY).catch((err) => ({ ok: false, error: err.message }));
   res.json({
-    ok: true,
-    providers: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set).map((model) => ({ model }))]))
+    ok: !!tex.ok,
+    schema: 'lumina-latex-backend-status-v1',
+    stage: STAGE,
+    service: 'lumina-latex-backend',
+    compileJobs: true,
+    synchronousCompile: true,
+    events: 'sse',
+    activeJobs: JOBS.size,
+    policy: {
+      runner: POLICY.runner,
+      allowShellEscape: POLICY.allowShellEscape,
+      compileTimeoutMs: POLICY.compileTimeoutMs,
+      maxProjectBytes: POLICY.maxProjectBytes,
+      maxFileCount: POLICY.maxFileCount,
+      cleanupWorkspaces: POLICY.cleanupWorkspaces
+    },
+    tex
   });
 });
 
- 
+app.get('/api/lumina/models', (_req, res) => {
+  res.json({ ok: true, providers: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set).map((model) => ({ model }))])) });
+});
+
 app.post('/api/lumina/projects/:projectId', requireProxyToken, async (req, res) => {
   try {
     const projectId = safeProjectId(req.params.projectId);
     const project = normalizeProjectPayload(req.body?.project || req.body || {});
-    if ((project.projectId || project.id) && String(project.projectId || project.id) !== projectId) {
-      project.projectId = projectId;
-      project.id = project.id || projectId;
-    }
+    project.projectId = projectId;
+    project.id = project.id || projectId;
     const savedAt = new Date().toISOString();
     PROJECTS.set(projectId, { project, settings: req.body?.settings || project.settings || {}, savedAt });
     res.json({ ok: true, schema: 'lumina-latex-project-save-response-v1', projectId, savedAt });
   } catch (err) {
-    res.status(err.status || 500).json({ ok: false, error: { message: err.message || String(err) } });
+    sendError(res, err);
   }
 });
 
@@ -89,28 +103,80 @@ app.get('/api/lumina/projects/:projectId', requireProxyToken, async (req, res) =
   try {
     const projectId = safeProjectId(req.params.projectId);
     const entry = PROJECTS.get(projectId);
-    if (!entry) throw httpError(404, `Project not found in Stage 1B memory store: ${projectId}`);
+    if (!entry) throw httpError(404, `Project not found in memory store: ${projectId}`);
     res.json({ ok: true, schema: 'lumina-latex-project-load-response-v1', projectId, ...entry });
   } catch (err) {
-    res.status(err.status || 500).json({ ok: false, error: { message: err.message || String(err) } });
+    sendError(res, err);
   }
 });
 
-app.post('/api/lumina/latex/compile/jobs', requireProxyToken, async (_req, res) => {
-  res.status(202).json({
-    ok: true,
-    schema: 'lumina-latex-compile-job-response-v1',
-    stage: 'latex-stage1b-foundation-20260427-1',
-    status: 'reserved',
-    message: 'Compile jobs and progress streaming are reserved in Stage 1B. Use POST /api/lumina/latex/compile for synchronous compilation.'
-  });
+app.post('/api/lumina/latex/compile/jobs', requireProxyToken, async (req, res) => {
+  try {
+    const payload = validateCompilePayload(req.body || {}, { maxProjectBytes: POLICY.maxProjectBytes, maxFileCount: POLICY.maxFileCount });
+    const job = createJob(payload);
+    res.status(202)
+      .location(`/api/lumina/latex/compile/jobs/${job.jobId}`)
+      .json(jobPublic(job, { includeResult: false, message: 'Compile job accepted.' }));
+    queueMicrotask(() => runCompileJob(job).catch((err) => failJob(job, err)));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.get('/api/lumina/latex/compile/jobs/:jobId', requireProxyToken, (req, res) => {
+  try {
+    const job = getJob(req.params.jobId);
+    res.json(jobPublic(job, { includeResult: true }));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.get('/api/lumina/latex/compile/jobs/:jobId/events', requireProxyToken, (req, res) => {
+  try {
+    const job = getJob(req.params.jobId);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    const send = (event) => res.write(`event: ${event.type || 'status'}\ndata: ${JSON.stringify(jobPublic(job, { includeResult: event.final }))}\n\n`);
+    send({ type: 'status', final: isFinalStatus(job.status) });
+    const listener = (event) => send(event);
+    job.listeners.add(listener);
+    req.on('close', () => job.listeners.delete(listener));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.delete('/api/lumina/latex/compile/jobs/:jobId', requireProxyToken, (req, res) => {
+  try {
+    const job = getJob(req.params.jobId);
+    job.cancelRequested = true;
+    if (job.child) job.child.kill('SIGKILL');
+    updateJob(job, { status: 'canceled', progress: 100, message: 'Compile canceled by user.', finishedAt: new Date().toISOString() }, true);
+    res.json(jobPublic(job, { includeResult: true }));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.post('/api/lumina/latex/compile', requireProxyToken, async (req, res) => {
+  try {
+    const payload = validateCompilePayload(req.body || {}, { maxProjectBytes: POLICY.maxProjectBytes, maxFileCount: POLICY.maxFileCount });
+    const result = await compileWithTexLive(payload, { policy: POLICY, stage: STAGE, onEvent: () => {} });
+    res.status(result.ok ? 200 : 422).json(result);
+  } catch (err) {
+    sendError(res, err);
+  }
 });
 
 app.get('/ws/lumina/projects/:projectId', (_req, res) => {
   res.status(426).json({
     ok: false,
     schema: 'lumina-latex-sync-event-v1',
-    message: 'WebSocket project sync is reserved in Stage 1B. Use this path for the future upgrade endpoint.'
+    stage: STAGE,
+    message: 'WebSocket project sync remains reserved. Stage 1D uses HTTP project sync plus SSE compile job events; this endpoint is reserved for Stage 2 collaboration.'
   });
 });
 
@@ -124,73 +190,100 @@ app.post('/api/lumina/ai', requireProxyToken, async (req, res) => {
     else result = await callGemini(model, payload);
     res.json({ ok: true, provider, model, text: result.text, raw: RETURN_RAW ? result.raw : undefined });
   } catch (err) {
-    res.status(err.status || 500).json({ ok: false, error: { message: err.message || String(err) } });
+    sendError(res, err);
   }
 });
 
-app.post('/api/lumina/latex/compile', requireProxyToken, async (req, res) => {
-  let workdir = null;
-  try {
-    const body = req.body || {};
-    const files = validateFiles(body.files || []);
-    const rootFile = safeRelativePath(body.rootFile || 'main.tex');
-    const root = files.find((f) => f.path === rootFile);
-    if (!root) throw httpError(400, `Root file not found in project: ${rootFile}`);
-    if (!root.path.endsWith('.tex')) throw httpError(400, 'Root file must be a .tex file.');
-    const engine = String(body.engine || 'pdflatex').trim();
-    if (!ENGINES.has(engine)) throw httpError(400, `Unsupported engine: ${engine}`);
-    const wantsShellEscape = !!body.shellEscape;
-    if (wantsShellEscape && !ALLOW_SHELL_ESCAPE) throw httpError(400, 'Shell escape requested but backend ALLOW_SHELL_ESCAPE=false.');
+function createJob(payload) {
+  const now = new Date().toISOString();
+  const job = {
+    ok: true,
+    schema: 'lumina-latex-compile-job-response-v1',
+    jobId: `compile-${randomUUID()}`,
+    status: 'queued',
+    progress: 10,
+    message: 'Compile job queued.',
+    createdAt: now,
+    updatedAt: now,
+    finishedAt: null,
+    payload,
+    log: '',
+    result: null,
+    child: null,
+    cancelRequested: false,
+    listeners: new Set()
+  };
+  JOBS.set(job.jobId, job);
+  return job;
+}
 
-    workdir = await mkdtemp(join(tmpdir(), 'lumina-latex-'));
-    for (const file of files) {
-      const out = join(workdir, file.path);
-      if (!out.startsWith(workdir)) throw httpError(400, `Unsafe file path: ${file.path}`);
-      await mkdirp(dirname(out));
-      await writeFile(out, file.text ?? '', 'utf8');
+async function runCompileJob(job) {
+  updateJob(job, { status: 'running', progress: 18, message: 'Preparing compile runner.' });
+  const result = await compileWithTexLive(job.payload, {
+    policy: POLICY,
+    stage: STAGE,
+    job,
+    onEvent(event = {}) {
+      if (event.logChunk) job.log = trimLog(job.log + event.logChunk);
+      updateJob(job, { status: 'running', progress: event.progress ?? job.progress, message: event.message || job.message });
     }
+  });
+  job.result = result;
+  job.log = trimLog(result.log || job.log || '');
+  updateJob(job, { status: result.ok ? 'succeeded' : 'failed', progress: 100, message: result.ok ? 'PDF compile completed.' : 'Compile failed. Review diagnostics.', finishedAt: new Date().toISOString() }, true);
+}
 
-    const compileResult = await runCompile({ workdir, rootFile, engine, shellEscape: wantsShellEscape });
-    const pdfPath = join(workdir, replaceExt(rootFile, '.pdf'));
-    let pdfBase64 = null;
-    try {
-      const st = await stat(pdfPath);
-      if (st.isFile() && st.size > 0) pdfBase64 = (await readFile(pdfPath)).toString('base64');
-    } catch (_err) {}
+function failJob(job, err) {
+  const message = err.message || String(err);
+  job.result = { ok: false, schema: 'lumina-latex-compile-response-v1', stage: STAGE, jobId: job.jobId, log: `${job.log || ''}\n[backend error] ${message}`, problems: [{ level: 'error', message, line: null }] };
+  job.log = trimLog(job.result.log);
+  updateJob(job, { status: 'error', progress: 100, message, finishedAt: new Date().toISOString() }, true);
+}
 
-    const ok = !!pdfBase64 && compileResult.code === 0;
-    res.status(ok ? 200 : 422).json({
-      ok,
-      projectName: body.projectName || '',
-      rootFile,
-      engine,
-      pdfBase64,
-      log: compileResult.log.slice(-120_000),
-      exitCode: compileResult.code
-    });
-  } catch (err) {
-    res.status(err.status || 500).json({ ok: false, error: { message: err.message || String(err) } });
-  } finally {
-    if (workdir) rm(workdir, { recursive: true, force: true }).catch(() => {});
+function jobPublic(job, options = {}) {
+  return {
+    ok: true,
+    schema: 'lumina-latex-compile-job-response-v1',
+    stage: STAGE,
+    jobId: job.jobId,
+    status: job.status,
+    progress: job.progress,
+    message: options.message || job.message,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    finishedAt: job.finishedAt,
+    rootFile: job.payload?.rootFile,
+    engine: job.payload?.engine,
+    log: trimLog(job.log || job.result?.log || ''),
+    result: options.includeResult && job.result ? { ...job.result, log: trimLog(job.result.log || '') } : undefined,
+    statusUrl: `/api/lumina/latex/compile/jobs/${job.jobId}`,
+    eventsUrl: `/api/lumina/latex/compile/jobs/${job.jobId}/events`
+  };
+}
+
+function getJob(jobId) {
+  const id = String(jobId || '').trim();
+  const job = JOBS.get(id);
+  if (!job) throw httpError(404, `Compile job not found: ${id}`);
+  return job;
+}
+
+function updateJob(job, patch, final = false) {
+  Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+  for (const listener of Array.from(job.listeners)) {
+    try { listener({ type: final ? 'final' : 'status', final }); } catch (_err) { job.listeners.delete(listener); }
   }
-});
-
-function safeProjectId(value) {
-  const id = String(value || '').trim();
-  if (!id || !/^[a-zA-Z0-9_.:-]{1,128}$/.test(id)) throw httpError(400, 'Unsafe or empty project id.');
-  return id;
 }
 
-function normalizeProjectPayload(project) {
-  const p = project && typeof project === 'object' ? project : {};
-  if (!Array.isArray(p.files) || !p.files.length) throw httpError(400, 'Project must include files.');
-  return { ...p, schema: p.schema || 'lumina-latex-project-v1', updatedAt: new Date().toISOString() };
+function isFinalStatus(status) {
+  return ['succeeded', 'failed', 'canceled', 'error'].includes(status);
 }
 
-function httpError(status, message) {
-  const err = new Error(message);
-  err.status = status;
-  return err;
+function trimLog(value) {
+  const text = String(value || '');
+  const maxBytes = POLICY.maxLogBytes || 180_000;
+  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
+  return text.slice(-maxBytes);
 }
 
 function pickProviderAndModel(body) {
@@ -244,11 +337,7 @@ async function callGemini(model, payload) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: payload.system }] },
-      contents: [{ role: 'user', parts: [{ text: payload.input }] }],
-      generationConfig: { temperature: payload.temperature, maxOutputTokens: payload.maxOutputTokens }
-    })
+    body: JSON.stringify({ system_instruction: { parts: [{ text: payload.system }] }, contents: [{ role: 'user', parts: [{ text: payload.input }] }], generationConfig: { temperature: payload.temperature, maxOutputTokens: payload.maxOutputTokens } })
   });
   const data = await response.json();
   if (!response.ok) throw httpError(response.status, data?.error?.message || 'Gemini request failed.');
@@ -266,90 +355,21 @@ function extractGeminiText(data) {
   return (data?.candidates || []).flatMap((c) => c?.content?.parts || []).map((p) => p?.text || '').filter(Boolean).join('\n').trim();
 }
 
-function validateFiles(files) {
-  if (!Array.isArray(files) || !files.length) throw httpError(400, 'No files supplied.');
-  let bytes = 0;
-  const out = [];
-  for (const item of files) {
-    const path = safeRelativePath(item.path);
-    const text = String(item.text ?? item.content ?? '');
-    bytes += Buffer.byteLength(text, 'utf8');
-    if (bytes > MAX_PROJECT_BYTES) throw httpError(413, `Project is larger than MAX_PROJECT_BYTES=${MAX_PROJECT_BYTES}.`);
-    out.push({ path, text });
+function sendError(res, err) {
+  const status = err.status || 500;
+  res.status(status).json({ ok: false, stage: STAGE, error: { message: err.message || String(err) } });
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [jobId, job] of JOBS) {
+    if (isFinalStatus(job.status) && now - Date.parse(job.updatedAt || job.createdAt) > JOB_TTL_MS) JOBS.delete(jobId);
   }
-  return out;
-}
+}, Math.min(JOB_TTL_MS, 60_000)).unref?.();
 
-function safeRelativePath(path) {
-  const p = normalize(String(path || '').replace(/\\/g, '/')).replace(/^\/+/, '');
-  if (!p || p === '.' || p.includes('..') || p.startsWith('/') || /^[a-zA-Z]:/.test(p)) throw httpError(400, `Unsafe or empty path: ${path}`);
-  if (!/\.(tex|bib|sty|cls|txt|md|png|jpg|jpeg|pdf|eps)$/i.test(p)) throw httpError(400, `Unsupported file extension: ${p}`);
-  return p;
-}
-
-async function mkdirp(path) {
-  await import('node:fs/promises').then(({ mkdir }) => mkdir(path, { recursive: true }));
-}
-
-function replaceExt(path, ext) {
-  return path.slice(0, path.length - extname(path).length) + ext;
-}
-
-async function runCompile({ workdir, rootFile, engine, shellEscape }) {
-  const rootBase = basename(rootFile, '.tex');
-  const dir = dirname(rootFile) === '.' ? workdir : join(workdir, dirname(rootFile));
-  const rootName = basename(rootFile);
-  const argsShell = shellEscape ? ['-shell-escape'] : ['-no-shell-escape'];
-  let commands;
-  if (engine === 'latexmk') {
-    commands = [['latexmk', ['-pdf', '-interaction=nonstopmode', '-halt-on-error', ...argsShell, rootName]]];
-  } else {
-    commands = [
-      [engine, ['-interaction=nonstopmode', '-halt-on-error', ...argsShell, rootName]],
-      ['bibtex', [rootBase], { optional: true }],
-      [engine, ['-interaction=nonstopmode', '-halt-on-error', ...argsShell, rootName]],
-      [engine, ['-interaction=nonstopmode', '-halt-on-error', ...argsShell, rootName]]
-    ];
-  }
-  let log = '';
-  let finalCode = 0;
-  for (const [cmd, args, options = {}] of commands) {
-    const result = await runCommand(cmd, args, dir, COMPILE_TIMEOUT_MS, options.optional);
-    log += `\n$ ${cmd} ${args.join(' ')}\n${result.output}\n`;
-    if (result.code !== 0 && !options.optional) {
-      finalCode = result.code;
-      break;
-    }
-  }
-  return { code: finalCode, log };
-}
-
-function runCommand(cmd, args, cwd, timeoutMs, optional = false) {
-  return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '';
-    const timer = setTimeout(() => {
-      output += `\n[timeout] Killed ${cmd} after ${timeoutMs}ms.\n`;
-      child.kill('SIGKILL');
-    }, timeoutMs);
-    child.stdout.on('data', (chunk) => { output += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { output += chunk.toString(); });
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      const message = optional && err.code === 'ENOENT' ? `[optional] ${cmd} not found.\n` : `[error] ${cmd}: ${err.message}\n`;
-      resolve({ code: optional ? 0 : 127, output: message });
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ code: code ?? 0, output });
-    });
-  });
-}
-
-app.use((err, _req, res, _next) => {
-  res.status(500).json({ ok: false, error: { message: err.message || String(err) } });
-});
+app.use((err, _req, res, _next) => sendError(res, err));
 
 app.listen(PORT, () => {
-  console.log(`Lumina LaTeX backend listening on http://localhost:${PORT}`);
+  console.log(`Lumina LaTeX backend ${STAGE} listening on http://localhost:${PORT}`);
+  console.log(`Compile runner=${POLICY.runner}; shellEscape=${POLICY.allowShellEscape}; timeoutMs=${POLICY.compileTimeoutMs}`);
 });

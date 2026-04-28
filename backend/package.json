@@ -1,19 +1,17 @@
 {
-  "name": "lumina-latex-backend-stage1b",
-  "version": "1.0.0",
-  "description": "Optional backend for Lumina LaTeX Editor: AI provider proxy plus TeX compile endpoint.",
+  "name": "lumina-latex-backend-stage1d",
+  "version": "1.0.0-stage1d",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node server.mjs",
-    "dev": "node --watch server.mjs"
+    "dev": "node --watch server.mjs",
+    "check": "node --check server.mjs && node --check providers/compile-texlive.mjs && node --check security/validate-project.mjs && node --check security/sandbox-policy.mjs"
   },
   "dependencies": {
+    "@express-rate-limit/core": "^8.1.0",
+    "express-rate-limit": "^8.1.0",
     "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "express-rate-limit": "^7.4.1"
-  },
-  "engines": {
-    "node": ">=20"
+    "express": "^4.18.3"
   }
 }
