@@ -1,0 +1,11 @@
+{
+  "stage": "latex-stage1e-copilot-workflows-20260428-1",
+  "checkedAt": "2026-04-28T05:42:44.961Z",
+  "missingFiles": [],
+  "missingIndexStrings": [],
+  "missingBackendContracts": [],
+  "missingFrontendContracts": [],
+  "missingCopilotContracts": [],
+  "missingPatchContracts": [],
+  "pass": true
+}

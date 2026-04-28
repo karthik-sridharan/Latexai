@@ -1,0 +1,10 @@
+{
+  "stage": "latex-stage1e-copilot-workflows-20260428-1",
+  "compileRunnerInheritedFromStage1D": true,
+  "newAiRoutes": [
+    "GET /api/lumina/ai/status",
+    "GET /api/lumina/ai/workflows",
+    "POST /api/lumina/ai"
+  ],
+  "note": "Run backend smoke tests after provider API keys are configured. Compile runner behavior is unchanged from Stage 1D."
+}

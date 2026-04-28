@@ -7,7 +7,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage1d-backend-compile-runner-20260428-1';
+  window.LUMINA_LATEX_STAGE='latex-stage1e-copilot-workflows-20260428-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -37,10 +37,10 @@
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=latex-stage1d-backend-compile-runner-20260428-1" />
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1e-copilot-workflows-20260428-1" />
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage1d-backend-compile-runner-20260428-1">
+<div class="app-shell" data-stage="latex-stage1e-copilot-workflows-20260428-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -72,7 +72,7 @@
         </div>
         <div class="project-meta">
           <span id="autosaveStatus">Autosaved locally</span>
-          <span id="stageBadge">latex-stage1d</span>
+          <span id="stageBadge">latex-stage1e</span>
         </div>
       </section>
 
@@ -187,22 +187,40 @@
         <label class="field">Proxy token, optional
           <input id="aiProxyToken" data-lumina-ai-proxy-token type="password" autocomplete="off" placeholder="Optional bearer token" />
         </label>
-        <label class="field">Task
+        <label class="field">Workflow
           <select id="copilotTask">
-            <option value="fix-error">Fix current compile error</option>
-            <option value="rewrite-selection">Rewrite selected LaTeX</option>
-            <option value="new-section">Draft a new section</option>
-            <option value="beamer-outline">Create Beamer outline</option>
+            <option value="fix-error-patch">Fix current compile error as patch</option>
             <option value="explain-log">Explain compile log</option>
+            <option value="rewrite-selection-patch">Rewrite selected LaTeX as patch</option>
+            <option value="insert-section-patch">Draft section and insert</option>
+            <option value="beamer-outline-patch">Create Beamer outline</option>
+            <option value="table-helper-patch">Create table / align environment</option>
+            <option value="raw-advice">General LaTeX advice</option>
           </select>
         </label>
+        <div id="copilotContextChips" class="context-chips" aria-live="polite"></div>
         <label class="field">Prompt
           <textarea id="copilotPrompt" rows="5" placeholder="Ask for a theorem rewrite, table, proof sketch, Beamer frame, bibliography fix, etc."></textarea>
         </label>
         <div class="micro-actions stretch">
           <button id="askCopilotBtn" class="btn primary" type="button">Ask Copilot</button>
-          <button id="insertCopilotBtn" class="btn mini" type="button">Insert result</button>
+          <button id="previewCopilotPatchBtn" class="btn mini" type="button">Preview patch</button>
+          <button id="insertCopilotBtn" class="btn mini" type="button">Insert text</button>
           <button id="replaceCopilotBtn" class="btn mini" type="button">Replace selection</button>
+        </div>
+        <div id="patchReview" class="patch-review hidden" aria-live="polite">
+          <div class="patch-review-head">
+            <div>
+              <div class="smallcaps">Patch preview</div>
+              <strong id="patchMeta">No patch proposed</strong>
+            </div>
+            <div class="micro-actions">
+              <button id="applyCopilotPatchBtn" class="btn mini primary" type="button">Apply patch</button>
+              <button id="discardCopilotPatchBtn" class="btn mini" type="button">Discard</button>
+            </div>
+          </div>
+          <p id="patchSummary" class="patch-summary"></p>
+          <pre id="patchDiff" class="patch-diff"></pre>
         </div>
         <pre id="copilotOutput" class="copilot-output">Copilot responses will appear here.</pre>
       </section>
@@ -264,7 +282,7 @@
           </select>
         </label>
         <div class="settings-note">
-          Static GitHub Pages can run the editor and draft preview. Stage 1D adds a real backend compile runner; use Test backend to confirm that your TeX Live backend is reachable before compiling. Default relative /api URLs still fall back to draft validation on static hosts.
+          Static GitHub Pages can run the editor and draft preview. Stage 1E adds a real backend compile runner; use Test backend to confirm that your TeX Live backend is reachable before compiling. Default relative /api URLs still fall back to draft validation on static hosts.
         </div>
         <div class="settings-note">
           Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
@@ -275,21 +293,22 @@
   </main>
 </div>
 
-<script src="js/app-kernel.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/project-model.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/project-store.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/sync-provider.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/editor-adapter.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/preview-adapter.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/compiler-provider.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/ai-provider.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/state.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/editor.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/file-tree.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/preview.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/import-export.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/copilot.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/diagnostics.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
-<script src="js/main.js?v=latex-stage1d-backend-compile-runner-20260428-1" defer></script>
+<script src="js/app-kernel.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/project-model.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/project-store.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/sync-provider.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/editor-adapter.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/preview-adapter.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/compiler-provider.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/ai-provider.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/state.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/editor.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/file-tree.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/preview.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/patch-manager.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/copilot.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/diagnostics.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
+<script src="js/main.js?v=latex-stage1e-copilot-workflows-20260428-1" defer></script>
 </body>
 </html>
