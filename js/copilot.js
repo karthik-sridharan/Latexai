@@ -204,7 +204,7 @@
         if (shouldAutoApplyTask(task, candidate)) {
           const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply' });
           output.textContent = applied
-            ? `Applied Copilot rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...}.`
+            ? `Applied Copilot rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4C).`
             : `${text}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
         }
       }
@@ -216,7 +216,7 @@
         if (shouldAutoApplyTask(task, candidate)) {
           const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply-fallback' });
           output.textContent = applied
-            ? `Applied local fallback rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...}.`
+            ? `Applied local fallback rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4C).`
             : `${fallback}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
         }
       }
@@ -382,5 +382,6 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.Copilot = { init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips };
+  NS.Copilot = {
+    STAGE: 'stage4c-force-lai-rewrite-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips };
 })();

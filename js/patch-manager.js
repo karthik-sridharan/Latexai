@@ -77,7 +77,8 @@
     patch.path = State().normalizePath(patch.path || file.path || State().state.project.activePath || 'main.tex');
     patch.operation = normalizeOperation(patch.operation || patch.op || taskToOperation(task, selection));
     patch.text = cleanCopilotText(patch.text ?? patch.replacementLatex ?? patch.replacement ?? patch.content ?? rawText);
-    if (shouldLaiWrapTask(task) || patch.laiWrap === true) patch.laiWrap = true;
+    if (shouldLaiWrapTask(task) || patch.laiWrap === true || parsed?.replacementLatex || /rewrite/i.test(String(task || ''))) patch.laiWrap = true;
+    if (patch.operation === 'replace-selection' && /rewrite/i.test(String(task || ''))) patch.laiWrap = true;
     if (patch.operation === 'find-replace') {
       patch.find = String(patch.find || selection.text || '');
       patch.replace = String(patch.replace ?? patch.text ?? '');
@@ -201,6 +202,12 @@
       return false;
     }
     const patch = candidate.patch || {};
+    // Stage 4C guard: any rewrite-selection patch must be visibly tracked.
+    // This catches AI responses that parse as generic replacement patches and
+    // button flows that otherwise apply the rewrite but omit \lai{...}.
+    if (candidate.task === 'rewrite-selection-patch' || /rewrite/i.test(String(candidate.task || ''))) {
+      patch.laiWrap = true;
+    }
     const current = String(file.text || '');
     if (State().state.project.activePath !== file.path) {
       State().setActivePath(file.path);
@@ -273,7 +280,8 @@
   function appliedPatchText(candidate, current, oldText, explicitReplacement = null) {
     const patch = candidate.patch || {};
     const replacement = explicitReplacement ?? patch.replace ?? patch.text ?? '';
-    if (!patch.laiWrap) return String(replacement || '');
+    const forceLai = patch.laiWrap === true || candidate.task === 'rewrite-selection-patch' || /rewrite/i.test(String(candidate.task || ''));
+    if (!forceLai) return String(replacement || '');
     return buildLaiReplacement(oldText, replacement, candidate);
   }
 
@@ -308,6 +316,7 @@
   }
 
   NS.PatchManager = {
+    STAGE: 'stage4c-force-lai-rewrite-1',
     init,
     isPatchWorkflow,
     proposeFromText,
