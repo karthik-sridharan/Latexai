@@ -1,37 +1,84 @@
 /*
- * Lumina LaTeX Stage 1H2 Cloud Run CompilerProvider preload shim.
- * Load this BEFORE the main app script.
- * Purpose: guarantee NS.CompilerProvider.compile exists even if the older
- * Stage 1G app did not load/register js/compiler-provider.js correctly.
+ * Latexai / Lumina LaTeX Stage 1I Step 1 CompilerProvider bootstrap.
+ *
+ * Load this BEFORE the main app scripts. It guarantees that all historical
+ * namespaces have a CompilerProvider with a compile(...) method, and it keeps
+ * re-attaching the provider if a later script overwrites window.NS or
+ * window.LuminaLatex.
+ *
+ * Backend target:
+ *   https://lumina-latex-backend-y4piylmfja-ue.a.run.app
  */
 (function () {
   'use strict';
 
+  var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'latex-stage1h2-compilerprovider-preload-cloudrun-20260518-1';
+  var STAGE = 'latex-stage1i-step1-compilerprovider-bootstrap-20260518-1';
+  var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
 
-  var root = window;
-  var NS = root.LuminaLatex || root.Lumina || root.NS || {};
-  root.LuminaLatex = NS;
-  root.Lumina = NS;
-  root.NS = NS;
-
-  function asObject(x) {
-    return x && typeof x === 'object' ? x : {};
+  function isObject(x) {
+    return x !== null && typeof x === 'object';
   }
 
-  function normalizeUrl(url, fallbackPath) {
+  function shallowClone(x) {
+    if (!isObject(x)) return {};
+    var out = {};
+    Object.keys(x).forEach(function (k) { out[k] = x[k]; });
+    return out;
+  }
+
+  function absoluteBackendUrl(url, fallbackPath) {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url;
     return BACKEND_BASE + fallbackPath;
   }
 
+  function findSettingsInLocalStorage() {
+    try {
+      if (!root.localStorage) return {};
+      for (var i = 0; i < root.localStorage.length; i++) {
+        var key = root.localStorage.key(i);
+        var raw = root.localStorage.getItem(key);
+        if (!raw) continue;
+        var obj;
+        try { obj = JSON.parse(raw); } catch (err) { continue; }
+        if (isObject(obj) && (
+          obj.schema === SETTINGS_SCHEMA ||
+          Object.prototype.hasOwnProperty.call(obj, 'compileUrl') ||
+          Object.prototype.hasOwnProperty.call(obj, 'compileStatusUrl') ||
+          Object.prototype.hasOwnProperty.call(obj, 'compilerMode')
+        )) {
+          return obj;
+        }
+      }
+    } catch (err2) {}
+    return {};
+  }
+
+  function getNamespaceCandidate() {
+    return root.LuminaLatex || root.Lumina || root.NS || root.luminaLatex || {};
+  }
+
+  function getGlobalSettings() {
+    var ns = getNamespaceCandidate();
+    try {
+      if (ns.Settings && typeof ns.Settings.get === 'function') return ns.Settings.get() || {};
+      if (ns.Settings && typeof ns.Settings.getSettings === 'function') return ns.Settings.getSettings() || {};
+      if (ns.State && typeof ns.State.getSettings === 'function') return ns.State.getSettings() || {};
+      if (ns.State && ns.State.settings) return ns.State.settings;
+      if (ns.settings) return ns.settings;
+      if (root.luminaLatexSettings) return root.luminaLatexSettings;
+    } catch (err) {}
+    return findSettingsInLocalStorage();
+  }
+
   function normalizeSettings(settings) {
-    settings = asObject(settings || getGlobalSettings());
-    var next = Object.assign({}, settings);
+    var next = shallowClone(settings || getGlobalSettings());
+    next.schema = next.schema || SETTINGS_SCHEMA;
     next.compilerMode = 'backend-texlive';
-    next.compileUrl = normalizeUrl(next.compileUrl, '/api/lumina/latex/compile');
-    next.compileStatusUrl = normalizeUrl(next.compileStatusUrl, '/api/lumina/latex/compile/jobs');
-    next.backendStatusUrl = normalizeUrl(next.backendStatusUrl, '/api/lumina/latex/status');
+    next.compileUrl = absoluteBackendUrl(next.compileUrl, '/api/lumina/latex/compile');
+    next.compileStatusUrl = absoluteBackendUrl(next.compileStatusUrl, '/api/lumina/latex/compile/jobs');
+    next.backendStatusUrl = absoluteBackendUrl(next.backendStatusUrl, '/api/lumina/latex/status');
     next.useCompileJobs = next.useCompileJobs !== false;
     next.engine = next.engine || 'pdflatex';
     next.bibliography = next.bibliography || 'bibtex';
@@ -40,76 +87,86 @@
     return next;
   }
 
-  function getGlobalSettings() {
-    try {
-      if (NS.State && typeof NS.State.getSettings === 'function') return NS.State.getSettings();
-      if (NS.State && NS.State.settings) return NS.State.settings;
-      if (NS.settings) return NS.settings;
-      if (root.luminaLatexSettings) return root.luminaLatexSettings;
-      for (var i = 0; i < localStorage.length; i++) {
-        var key = localStorage.key(i);
-        var raw = localStorage.getItem(key);
-        if (!raw) continue;
-        var obj = JSON.parse(raw);
-        if (obj && typeof obj === 'object' && (obj.schema === 'lumina-latex-settings-v1' || obj.compileUrl || obj.compilerMode)) return obj;
-      }
-    } catch (err) {}
-    return {};
-  }
-
   function persistSettingsBestEffort(settings) {
     try {
+      if (!root.localStorage) return;
       var wrote = false;
-      for (var i = 0; i < localStorage.length; i++) {
-        var key = localStorage.key(i);
-        var raw = localStorage.getItem(key);
+      for (var i = 0; i < root.localStorage.length; i++) {
+        var key = root.localStorage.key(i);
+        var raw = root.localStorage.getItem(key);
         if (!raw) continue;
         var obj;
         try { obj = JSON.parse(raw); } catch (err) { continue; }
-        if (obj && typeof obj === 'object' && (obj.schema === 'lumina-latex-settings-v1' || obj.compileUrl || obj.compilerMode)) {
-          localStorage.setItem(key, JSON.stringify(Object.assign({}, obj, settings, { schema: obj.schema || 'lumina-latex-settings-v1' })));
+        if (isObject(obj) && (
+          obj.schema === SETTINGS_SCHEMA ||
+          Object.prototype.hasOwnProperty.call(obj, 'compileUrl') ||
+          Object.prototype.hasOwnProperty.call(obj, 'compileStatusUrl') ||
+          Object.prototype.hasOwnProperty.call(obj, 'compilerMode')
+        )) {
+          root.localStorage.setItem(key, JSON.stringify(Object.assign({}, obj, settings)));
           wrote = true;
         }
       }
       if (!wrote) {
-        localStorage.setItem('lumina-latex-settings-v1', JSON.stringify(Object.assign({ schema: 'lumina-latex-settings-v1' }, settings)));
+        root.localStorage.setItem(SETTINGS_SCHEMA, JSON.stringify(settings));
       }
-    } catch (err) {}
+    } catch (err2) {}
   }
 
   function getGlobalProject() {
+    var ns = getNamespaceCandidate();
     try {
-      if (NS.State && typeof NS.State.getProject === 'function') return NS.State.getProject();
-      if (NS.State && NS.State.project) return NS.State.project;
-      if (NS.project) return NS.project;
+      if (ns.ProjectStore && typeof ns.ProjectStore.getProject === 'function') return ns.ProjectStore.getProject() || {};
+      if (ns.Project && typeof ns.Project.get === 'function') return ns.Project.get() || {};
+      if (ns.State && typeof ns.State.getProject === 'function') return ns.State.getProject() || {};
+      if (ns.State && ns.State.project) return ns.State.project;
+      if (ns.project) return ns.project;
       if (root.luminaLatexProject) return root.luminaLatexProject;
     } catch (err) {}
     return {};
   }
 
-  function getEditorText() {
+  function bestTextFromDom() {
+    if (typeof document === 'undefined') return '';
     var candidates = [];
     try {
-      if (NS.Editor && typeof NS.Editor.getValue === 'function') candidates.push(NS.Editor.getValue());
-      if (NS.EditorAdapter && typeof NS.EditorAdapter.getValue === 'function') candidates.push(NS.EditorAdapter.getValue());
-      if (root.editor && typeof root.editor.getValue === 'function') candidates.push(root.editor.getValue());
-      if (root.cmEditor && typeof root.cmEditor.getValue === 'function') candidates.push(root.cmEditor.getValue());
+      Array.prototype.slice.call(document.querySelectorAll('textarea')).forEach(function (ta) {
+        if (ta && typeof ta.value === 'string') candidates.push(ta.value);
+      });
     } catch (err) {}
-
     try {
-      var textareas = Array.prototype.slice.call(document.querySelectorAll('textarea'));
-      textareas.forEach(function (ta) { candidates.push(ta.value || ''); });
+      Array.prototype.slice.call(document.querySelectorAll('.cm-content, [contenteditable="true"]')).forEach(function (el) {
+        var text = el.innerText || el.textContent || '';
+        if (text) candidates.push(text);
+      });
     } catch (err2) {}
-
-    try {
-      var cm = document.querySelector('.cm-content');
-      if (cm) candidates.push(cm.innerText || cm.textContent || '');
-    } catch (err3) {}
-
-    candidates = candidates.filter(function (x) { return typeof x === 'string' && x.trim(); });
+    candidates = candidates.filter(function (s) { return typeof s === 'string' && s.trim(); });
     candidates.sort(function (a, b) {
       function score(s) {
-        return (/\\documentclass/.test(s) ? 1000 : 0) + (/\\begin\{document\}/.test(s) ? 500 : 0) + s.length;
+        return (/\\documentclass/.test(s) ? 1000000 : 0) +
+               (/\\begin\{document\}/.test(s) ? 500000 : 0) +
+               (/\\end\{document\}/.test(s) ? 250000 : 0) + s.length;
+      }
+      return score(b) - score(a);
+    });
+    return candidates[0] || '';
+  }
+
+  function getEditorText() {
+    var ns = getNamespaceCandidate();
+    var candidates = [];
+    function maybePush(x) { if (typeof x === 'string' && x.trim()) candidates.push(x); }
+    try { if (ns.Editor && typeof ns.Editor.getValue === 'function') maybePush(ns.Editor.getValue()); } catch (err) {}
+    try { if (ns.Editor && typeof ns.Editor.getText === 'function') maybePush(ns.Editor.getText()); } catch (err2) {}
+    try { if (ns.EditorAdapter && typeof ns.EditorAdapter.getValue === 'function') maybePush(ns.EditorAdapter.getValue()); } catch (err3) {}
+    try { if (root.editor && typeof root.editor.getValue === 'function') maybePush(root.editor.getValue()); } catch (err4) {}
+    try { if (root.cmEditor && typeof root.cmEditor.getValue === 'function') maybePush(root.cmEditor.getValue()); } catch (err5) {}
+    maybePush(bestTextFromDom());
+    candidates.sort(function (a, b) {
+      function score(s) {
+        return (/\\documentclass/.test(s) ? 1000000 : 0) +
+               (/\\begin\{document\}/.test(s) ? 500000 : 0) +
+               s.length;
       }
       return score(b) - score(a);
     });
@@ -118,72 +175,96 @@
 
   function valueToString(value) {
     if (typeof value === 'string') return value;
-    if (!value || typeof value !== 'object') return '';
-    var keys = ['content', 'text', 'source', 'value', 'data', 'body'];
+    if (!isObject(value)) return '';
+    var keys = ['content', 'text', 'source', 'value', 'data', 'body', 'tex'];
     for (var i = 0; i < keys.length; i++) {
       if (typeof value[keys[i]] === 'string') return value[keys[i]];
     }
     return '';
   }
 
+  function addFilesFromObject(files, obj) {
+    if (!isObject(obj) || Array.isArray(obj)) return;
+    Object.keys(obj).forEach(function (path) {
+      var text = valueToString(obj[path]);
+      if (typeof path === 'string' && path && text !== '') files[path] = text;
+    });
+  }
+
+  function addFilesFromArray(files, arr) {
+    if (!Array.isArray(arr)) return;
+    arr.forEach(function (file) {
+      if (!isObject(file)) return;
+      var path = file.path || file.name || file.filename || file.fullPath;
+      if (!path) return;
+      files[path] = valueToString(file);
+    });
+  }
+
   function collectFiles(project, settings) {
-    project = asObject(project);
-    var files = {};
+    project = isObject(project) ? project : {};
+    settings = settings || normalizeSettings();
     var rootFile = project.rootFile || project.mainFile || project.activePath || settings.rootFile || 'main.tex';
     var activePath = project.activePath || rootFile;
+    var files = {};
 
-    if (project.files && !Array.isArray(project.files) && typeof project.files === 'object') {
-      Object.keys(project.files).forEach(function (path) {
-        files[path] = valueToString(project.files[path]);
-      });
-    }
+    addFilesFromObject(files, project.files);
+    addFilesFromArray(files, project.files);
+    addFilesFromObject(files, project.fileMap);
+    addFilesFromObject(files, project.documents);
+    addFilesFromArray(files, project.documents);
+    addFilesFromObject(files, project.additionalFiles);
+    addFilesFromArray(files, project.additionalFiles);
 
-    if (Array.isArray(project.files)) {
-      project.files.forEach(function (file) {
-        if (!file || typeof file !== 'object') return;
-        var path = file.path || file.name || file.filename;
-        if (!path) return;
-        files[path] = valueToString(file);
-      });
-    }
-
-    if (project.fileMap && typeof project.fileMap === 'object') {
-      Object.keys(project.fileMap).forEach(function (path) {
-        files[path] = valueToString(project.fileMap[path]);
-      });
-    }
-
-    if (Array.isArray(project.additionalFiles)) {
-      project.additionalFiles.forEach(function (file) {
-        if (!file || typeof file !== 'object') return;
-        var path = file.path || file.name || file.filename;
-        if (!path) return;
-        files[path] = valueToString(file);
-      });
-    }
+    if (typeof project.source === 'string') files[rootFile] = project.source;
+    if (typeof project.tex === 'string') files[rootFile] = project.tex;
+    if (typeof project.content === 'string') files[rootFile] = project.content;
 
     var editorText = getEditorText();
-    if (editorText && (/\\documentclass/.test(editorText) || /\\begin\{document\}/.test(editorText) || !files[activePath])) {
+    if (editorText && (
+      /\\documentclass/.test(editorText) ||
+      /\\begin\{document\}/.test(editorText) ||
+      !String(files[activePath] || '').trim()
+    )) {
       files[activePath] = editorText;
-      if (!files[rootFile] || activePath === rootFile) files[rootFile] = editorText;
+      if (activePath === rootFile || !String(files[rootFile] || '').trim()) files[rootFile] = editorText;
     }
 
-    if (!files[rootFile] && files[activePath]) files[rootFile] = files[activePath];
-
-    // Last-resort valid document so backend diagnostics don't produce a confusing TeX emergency stop.
-    if (!String(files[rootFile] || '').trim()) {
-      files[rootFile] = '\\documentclass{article}\n\\begin{document}\nFrontend did not provide editor contents.\\end{document}\n';
+    if (!String(files[rootFile] || '').trim() && String(files[activePath] || '').trim()) {
+      files[rootFile] = files[activePath];
     }
 
     return { rootFile: rootFile, activePath: activePath, files: files };
   }
 
+  function summarizePayload(rootFile, files) {
+    files = files || {};
+    var rootText = String(files[rootFile] || '');
+    return {
+      rootFile: rootFile,
+      fileCount: Object.keys(files).length,
+      paths: Object.keys(files),
+      rootLength: rootText.length,
+      rootHead: rootText.slice(0, 500),
+      hasDocumentClass: /\\documentclass/.test(rootText),
+      hasBeginDocument: /\\begin\{document\}/.test(rootText),
+      hasEndDocument: /\\end\{document\}/.test(rootText)
+    };
+  }
+
   function buildCompileRequest(project, settings) {
-    settings = normalizeSettings(settings);
-    project = asObject(project || getGlobalProject());
+    settings = normalizeSettings(settings || getGlobalSettings());
+    project = isObject(project) && (project.project || project.settings) ? (project.project || project) : (project || getGlobalProject());
     var collected = collectFiles(project, settings);
+    var summary = summarizePayload(collected.rootFile, collected.files);
+
+    if (!summary.rootLength) {
+      throw new Error('Root file ' + collected.rootFile + ' is empty before compile. Frontend did not provide actual LaTeX source.');
+    }
+
     return {
       schema: 'lumina-latex-compile-request-v1',
+      stage: STAGE,
       rootFile: collected.rootFile,
       mainFile: collected.rootFile,
       activePath: collected.activePath,
@@ -192,119 +273,113 @@
       shellEscape: false,
       rerun: true,
       files: collected.files,
-      compileInputSummary: summarizePayload(collected.rootFile, collected.files)
+      compileInputSummary: summary
     };
   }
 
-  function summarizePayload(rootFile, files) {
-    files = files || {};
-    var root = String(files[rootFile] || '');
-    return {
-      rootFile: rootFile,
-      fileCount: Object.keys(files).length,
-      paths: Object.keys(files),
-      rootLength: root.length,
-      rootHead: root.slice(0, 500),
-      hasDocumentClass: /\\documentclass/.test(root),
-      hasBeginDocument: /\\begin\{document\}/.test(root),
-      hasEndDocument: /\\end\{document\}/.test(root)
-    };
-  }
-
-  function b64ToBlobUrl(b64) {
-    if (!b64) return null;
-    try {
-      var binary = atob(b64);
-      var len = binary.length;
-      var bytes = new Uint8Array(len);
-      for (var i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-      return URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-    } catch (err) {
-      return null;
+  function tryMakePdfUrls(result) {
+    var b64 = result.pdfBase64 || result.pdfBytesBase64 || null;
+    if (!b64 && typeof result.pdf === 'string' && result.pdf.indexOf('data:application/pdf;base64,') === 0) {
+      b64 = result.pdf.split(',', 2)[1];
     }
+    if (!b64) return result;
+    result.pdfBase64 = result.pdfBase64 || b64;
+    result.pdfBytesBase64 = result.pdfBytesBase64 || b64;
+    result.pdf = result.pdf || ('data:application/pdf;base64,' + b64);
+    result.pdfDataUrl = result.pdfDataUrl || result.pdf;
+    if (!result.pdfUrl && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof atob === 'function') {
+      try {
+        var binary = atob(b64);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        result.pdfUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        result.pdfBlobUrl = result.pdfUrl;
+      } catch (err) {}
+    }
+    return result;
   }
 
-  function normalizeResult(result) {
-    result = asObject(result);
-    var out = Object.assign({}, result.result || {}, result);
-    if (result.result && !out.pdfBase64) out.pdfBase64 = result.result.pdfBase64 || result.result.pdfBytesBase64;
-    out.success = Boolean(out.success || out.ok || out.status === 'success' || out.status === 'completed');
-    out.ok = out.success;
-    out.status = out.success ? 'success' : (out.status || 'failed');
-    out.pdfBase64 = out.pdfBase64 || out.pdfBytesBase64 || null;
-    out.pdfBytesBase64 = out.pdfBytesBase64 || out.pdfBase64 || null;
-    if (!out.pdf && out.pdfBase64) out.pdf = 'data:application/pdf;base64,' + out.pdfBase64;
-    if (!out.pdfUrl && out.pdfBase64) out.pdfUrl = b64ToBlobUrl(out.pdfBase64) || out.pdf;
-    if (!out.pdfBlobUrl && out.pdfUrl) out.pdfBlobUrl = out.pdfUrl;
-    out.provider = out.provider || 'cloudrun-texlive-latexmk';
-    out.stage = out.stage || STAGE;
-    out.message = out.message || (out.success ? 'Compile succeeded.' : 'Compile failed.');
-    return out;
+  function normalizeCompileResult(raw, payload) {
+    raw = isObject(raw) ? raw : {};
+    var result = Object.assign({}, isObject(raw.result) ? raw.result : {}, raw);
+    if (raw.result && isObject(raw.result)) {
+      result.jobId = result.jobId || raw.jobId;
+      result.progress = result.progress == null ? raw.progress : result.progress;
+    }
+    result.success = Boolean(result.success || result.ok || result.status === 'success' || result.status === 'completed');
+    result.ok = result.success;
+    result.status = result.success ? 'success' : (result.status || 'failed');
+    result.provider = result.provider || 'cloudrun-texlive-latexmk';
+    result.stage = result.stage || STAGE;
+    result.message = result.message || (result.success ? 'Compile succeeded.' : 'Compile failed.');
+    result.compileInputSummary = result.compileInputSummary || (payload && payload.compileInputSummary);
+    return tryMakePdfUrls(result);
   }
 
   async function fetchJson(url, init) {
-    var response = await fetch(url, init);
+    var response = await root.fetch(url, init || {});
     var text = await response.text();
-    var data = null;
+    var data = {};
     try { data = text ? JSON.parse(text) : {}; } catch (err) { data = { rawText: text }; }
     if (!response.ok) {
-      var msg = (data && (data.detail || data.message)) || ('HTTP ' + response.status);
-      throw new Error(msg);
+      throw new Error((data && (data.detail || data.message)) || ('HTTP ' + response.status));
     }
     return data;
   }
 
-  function pickProjectAndSettings(args) {
+  function pickProjectSettings(args) {
     args = Array.prototype.slice.call(args || []);
     var project = null;
     var settings = null;
-
     args.forEach(function (arg) {
-      if (!arg || typeof arg !== 'object') return;
+      if (!isObject(arg)) return;
       if (arg.project) project = arg.project;
       if (arg.settings) settings = arg.settings;
-      if (arg.rootFile || arg.files || arg.fileMap || arg.activePath) project = project || arg;
-      if (arg.compileUrl || arg.compileStatusUrl || arg.compilerMode || arg.engine) settings = settings || arg;
+      if (!project && (arg.rootFile || arg.mainFile || arg.activePath || arg.files || arg.fileMap || arg.documents)) project = arg;
+      if (!settings && (arg.compileUrl || arg.compileStatusUrl || arg.backendStatusUrl || arg.compilerMode || arg.engine)) settings = arg;
     });
-
-    return {
-      project: project || getGlobalProject(),
-      settings: normalizeSettings(settings || getGlobalSettings())
-    };
+    return { project: project || getGlobalProject(), settings: normalizeSettings(settings || getGlobalSettings()) };
   }
 
   async function compile() {
-    var picked = pickProjectAndSettings(arguments);
+    var picked = pickProjectSettings(arguments);
     var settings = picked.settings;
     var payload = buildCompileRequest(picked.project, settings);
+    if (root.console && console.log) console.log('[Latexai Stage1 Step1] compile payload', payload.compileInputSummary);
 
-    console.log('[Lumina Stage1H2] compile payload summary', payload.compileInputSummary);
-
+    var raw;
     if (settings.useCompileJobs) {
-      var created = await fetchJson(settings.compileStatusUrl, {
+      raw = await fetchJson(settings.compileStatusUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      var result = created.result ? created.result : created;
-      return normalizeResult(Object.assign({}, result, {
-        jobId: created.jobId || result.jobId,
-        progress: created.progress == null ? 100 : created.progress,
-        compileInputSummary: payload.compileInputSummary
-      }));
+      // The current Cloud Run backend returns the result directly in the create-job response.
+      if (raw && raw.result) return normalizeCompileResult(raw, payload);
+      // Fallback for a backend that returns only a job id.
+      if (raw && raw.jobId) {
+        var statusUrl = settings.compileStatusUrl.replace(/\/+$/, '') + '/' + encodeURIComponent(raw.jobId);
+        var deadline = Date.now() + 90000;
+        while (Date.now() < deadline) {
+          var job = await fetchJson(statusUrl, { method: 'GET' });
+          if (job && (job.result || job.status === 'completed' || job.status === 'failed')) return normalizeCompileResult(job, payload);
+          await new Promise(function (resolve) { setTimeout(resolve, Number(settings.compilePollMs || 1000)); });
+        }
+        throw new Error('Compile job timed out while polling backend.');
+      }
+      return normalizeCompileResult(raw, payload);
     }
 
-    var direct = await fetchJson(settings.compileUrl, {
+    raw = await fetchJson(settings.compileUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    direct.compileInputSummary = payload.compileInputSummary;
-    return normalizeResult(direct);
+    return normalizeCompileResult(raw, payload);
   }
 
   async function checkAvailability(settings) {
-    settings = normalizeSettings(settings);
+    settings = normalizeSettings(settings || getGlobalSettings());
     try {
       var raw = await fetchJson(settings.backendStatusUrl, { method: 'GET' });
       return {
@@ -313,15 +388,22 @@
         checkedAt: new Date().toISOString(),
         httpStatus: 200,
         stage: raw.stage || STAGE,
+        tex: raw.tex || {
+          ok: true,
+          provider: raw.provider || 'cloudrun-texlive-latexmk',
+          engines: raw.engines || ['pdflatex', 'xelatex', 'lualatex']
+        },
+        policy: raw.policy || { shellEscape: false },
         raw: raw,
         availability: {
           compileUrl: settings.compileUrl,
           jobsUrl: settings.compileStatusUrl,
           statusUrl: settings.backendStatusUrl,
-          staticHost: location.hostname.endsWith('github.io'),
+          staticHost: typeof location !== 'undefined' ? /github\.io$/i.test(location.hostname) : false,
           defaultRelativeCompileUrl: false,
           staticDraftFallbackActive: false,
-          note: 'Backend URL is treated as configured; compile attempts will be sent to Cloud Run.'
+          shellEscapeEffective: false,
+          note: 'Backend URL is configured; compile attempts are sent to Cloud Run TeX Live.'
         },
         message: 'Backend reachable.'
       };
@@ -345,25 +427,95 @@
     stage: STAGE,
     provider: 'backend-texlive-real-runner',
     compile: compile,
+    compileProject: compile,
+    runCompile: compile,
     buildCompileRequest: buildCompileRequest,
+    collectFiles: collectFiles,
+    summarizePayload: summarizePayload,
     normalizeSettings: normalizeSettings,
     checkAvailability: checkAvailability,
-    testBackend: checkAvailability,
     getBackendAvailability: checkAvailability,
-    summarizePayload: summarizePayload
+    testBackend: checkAvailability,
+    probe: checkAvailability,
+    status: checkAvailability
   };
 
-  NS.CompilerProvider = Provider;
-  root.CompilerProvider = Provider;
+  function attachToNamespace(ns, label) {
+    if (!isObject(ns)) return ns;
+    if (!ns.CompilerProvider || typeof ns.CompilerProvider.compile !== 'function') {
+      ns.CompilerProvider = Provider;
+    }
+    ns.modules = ns.modules || {};
+    ns.modules.CompilerProvider = Provider;
+    ns.Modules = ns.Modules || {};
+    ns.Modules.CompilerProvider = Provider;
+    ns.providers = ns.providers || {};
+    ns.providers.CompilerProvider = Provider;
+    ns.__compilerProviderStage = STAGE;
+    return ns;
+  }
 
-  // Some older diagnostics may look under a registry object.
-  NS.modules = NS.modules || {};
-  NS.modules.CompilerProvider = Provider;
+  function installWatchedGlobal(name) {
+    var current = root[name];
+    attachToNamespace(current, name);
+    try {
+      var desc = Object.getOwnPropertyDescriptor(root, name);
+      if (desc && desc.configurable === false) return;
+      Object.defineProperty(root, name, {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return current;
+        },
+        set: function (next) {
+          current = attachToNamespace(next || {}, name);
+        }
+      });
+      root[name] = current || {};
+    } catch (err) {
+      root[name] = attachToNamespace(root[name] || {}, name);
+    }
+  }
 
-  console.log('[Lumina Stage1H2] CompilerProvider preload registered', {
-    stage: STAGE,
-    hasCompile: !!(NS.CompilerProvider && NS.CompilerProvider.compile),
-    compileUrl: normalizeSettings().compileUrl,
-    jobsUrl: normalizeSettings().compileStatusUrl
-  });
+  function registerEverywhere() {
+    root.CompilerProvider = Provider;
+    root.__LatexaiCompilerProvider = Provider;
+    installWatchedGlobal('LuminaLatex');
+    installWatchedGlobal('Lumina');
+    installWatchedGlobal('NS');
+    // Also make all three names refer to an object that already has the provider
+    // unless the host app intentionally separates them later; the setters above
+    // will re-patch on separation.
+    root.LuminaLatex = attachToNamespace(root.LuminaLatex || root.Lumina || root.NS || {}, 'LuminaLatex');
+    root.Lumina = attachToNamespace(root.Lumina || root.LuminaLatex, 'Lumina');
+    root.NS = attachToNamespace(root.NS || root.LuminaLatex, 'NS');
+  }
+
+  registerEverywhere();
+  normalizeSettings(getGlobalSettings());
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function () {
+      registerEverywhere();
+      normalizeSettings(getGlobalSettings());
+    });
+  }
+
+  // Re-attach for a few seconds in case the Stage 1G app overwrites namespaces
+  // after this preload script runs.
+  var ticks = 0;
+  var interval = root.setInterval ? root.setInterval(function () {
+    ticks += 1;
+    registerEverywhere();
+    if (ticks >= 20 && root.clearInterval) root.clearInterval(interval);
+  }, 250) : null;
+
+  if (root.console && console.log) {
+    console.log('[Latexai Stage1 Step1] CompilerProvider bootstrap installed', {
+      stage: STAGE,
+      compileUrl: normalizeSettings().compileUrl,
+      jobsUrl: normalizeSettings().compileStatusUrl,
+      hasNSCompile: !!(root.NS && root.NS.CompilerProvider && root.NS.CompilerProvider.compile)
+    });
+  }
 })();
