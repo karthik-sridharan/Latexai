@@ -107,6 +107,10 @@
     const problems = State().state.lastProblems || [];
     const rootFile = State().state.project.rootFile;
     const root = State().getFile(rootFile);
+    const projectFiles = State().state.project.files
+      .filter((f) => State().textFile(f))
+      .map((f) => ({ path: f.path, kind: f.kind, text: String(f.text || '') }));
+    const fullProjectSource = projectFiles.map((f) => `%%%% BEGIN FILE ${f.path}\n${f.text}\n%%%% END FILE ${f.path}`).join('\n\n');
     return {
       schema: 'lumina-latex-copilot-context-v1',
       project: {
@@ -117,14 +121,16 @@
         fileCount: State().state.project.files.length,
         files: State().state.project.files.map((f) => ({ path: f.path, kind: f.kind, bytes: (f.text || f.base64 || '').length }))
       },
+      projectFiles,
+      fullProjectSource,
       activeFile: {
         path: file?.path || null,
         kind: file?.kind || null,
-        text: (file?.text || '').slice(0, 16000)
+        text: (file?.text || '')
       },
       rootFile: {
         path: root?.path || null,
-        text: (root?.text || '').slice(0, 12000)
+        text: (root?.text || '')
       },
       selection,
       diagnostics: {
@@ -206,7 +212,17 @@
 
   function buildUserPrompt(task, prompt, context) {
     const problemLines = context.diagnostics.problems.map((p, i) => `${i + 1}. ${p.level || 'info'} ${p.file || context.activeFile.path || ''}${p.line ? ':' + p.line : ''} — ${p.message}`).join('\n') || 'No diagnostics recorded.';
-    const outputMode = NS.PatchManager?.isPatchWorkflow?.(task)
+    const outputMode = task === 'rewrite-selection-patch'
+      ? `Return ONLY valid JSON using this shape:
+{
+  "summary": "short human-readable summary",
+  "targetPath": "${context.activeFile.path || context.project.rootFile || 'main.tex'}",
+  "start": ${Number(context.selection.start || 0)},
+  "end": ${Number(context.selection.end || 0)},
+  "replacementLatex": "replacement LaTeX only, without \\lai and without old text comments"
+}
+Do not include Markdown fences. Do not wrap the replacement in \\lai; Latexai will comment the old block and wrap the new text in \\lai{...}.`
+      : NS.PatchManager?.isPatchWorkflow?.(task)
       ? `Return ONLY valid JSON using this shape:
 {
   "summary": "short human-readable summary",
@@ -228,13 +244,15 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
       context.selection.text ? `Selected LaTeX from ${context.activeFile.path}, chars ${context.selection.start}-${context.selection.end}:\n${context.selection.text}` : 'Selected LaTeX: none',
       `Diagnostics:\n${problemLines}`,
       `Compile log tail:\n${context.diagnostics.logTail || '(none)'}`,
+      `Full project source. Use this for context, but only edit the selected block unless explicitly asked otherwise:\n${context.fullProjectSource || '(none)'}`,
       `Active file content:\n${context.activeFile.text || '(none)'}`
     ].join('\n\n---\n\n');
   }
 
   function summarizeContextForTransport(context) {
     return {
-      project: context.project,
+      project: Object.assign({}, context.project, { fullSourceIncluded: true }),
+      projectFiles: context.projectFiles.map((f) => ({ path: f.path, kind: f.kind, length: f.text.length })),
       activePath: context.activeFile.path,
       selectionRange: { start: context.selection.start, end: context.selection.end, length: context.selection.text.length },
       diagnostics: context.diagnostics.problems.slice(0, 8),
@@ -245,7 +263,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   function systemPromptFor(task) {
     const base = 'You are Lumina LaTeX Copilot inside a browser-based Overleaf-like editor. Be precise, preserve mathematical meaning, avoid unnecessary rewrites, and never invent packages unless needed.';
     if (task === 'fix-error-patch') return `${base} Fix the current LaTeX compile error. Return exactly one safe patch as valid JSON.`;
-    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation and return exactly one patch as valid JSON.`;
+    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Use the full project source for context. Return valid JSON with replacementLatex only. Do not include \lai or old-text comments; Latexai will insert those.`;
     if (task === 'insert-section-patch') return `${base} Draft a polished LaTeX section or subsection to insert. Return valid JSON patch.`;
     if (task === 'beamer-outline-patch') return `${base} Return a Beamer-compatible outline with frames as a JSON patch.`;
     if (task === 'table-helper-patch') return `${base} Create a clean LaTeX table, tabular, align, or array environment as a JSON patch.`;

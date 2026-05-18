@@ -58,6 +58,16 @@
     let summary = parsed?.summary || parsed?.explanation || '';
     let patch = parsed?.patch || (Array.isArray(parsed?.patches) ? parsed.patches[0] : null);
     if (patch && typeof patch === 'string') patch = { text: patch };
+    if (!patch && parsed?.replacementLatex) {
+      patch = {
+        path: parsed.targetPath || parsed.path,
+        operation: 'replace-selection',
+        text: parsed.replacementLatex,
+        start: parsed.start,
+        end: parsed.end,
+        laiWrap: true
+      };
+    }
     if (!patch && parsed?.path && parsed?.text) patch = parsed;
     if (!patch) {
       patch = fallbackPatch(rawText, { task, file, selection });
@@ -66,7 +76,8 @@
     patch = Object.assign({}, patch);
     patch.path = State().normalizePath(patch.path || file.path || State().state.project.activePath || 'main.tex');
     patch.operation = normalizeOperation(patch.operation || patch.op || taskToOperation(task, selection));
-    patch.text = cleanCopilotText(patch.text ?? patch.replacement ?? patch.content ?? rawText);
+    patch.text = cleanCopilotText(patch.text ?? patch.replacementLatex ?? patch.replacement ?? patch.content ?? rawText);
+    if (shouldLaiWrapTask(task) || patch.laiWrap === true) patch.laiWrap = true;
     if (patch.operation === 'find-replace') {
       patch.find = String(patch.find || selection.text || '');
       patch.replace = String(patch.replace ?? patch.text ?? '');
@@ -145,18 +156,18 @@
     let after = '';
     if (candidate.operation === 'replace-file') {
       before = current;
-      after = patch.text || '';
+      after = previewPatchText(candidate, current, before);
     } else if (candidate.operation === 'find-replace') {
       before = patch.find || '';
-      after = patch.replace ?? patch.text ?? '';
+      after = previewPatchText(candidate, current, before, patch.replace ?? patch.text ?? '');
     } else if (candidate.operation === 'replace-selection') {
       const start = clamp(Number(patch.start ?? 0), 0, current.length);
       const end = clamp(Number(patch.end ?? start), start, current.length);
       before = current.slice(start, end) || patch.selectionText || '(empty selection)';
-      after = patch.text || '';
+      after = previewPatchText(candidate, current, before);
     } else {
       before = '(insert at cursor)';
-      after = patch.text || '';
+      after = previewPatchText(candidate, current, '');
     }
     return simpleDiff(before, after);
   }
@@ -190,32 +201,98 @@
       return false;
     }
     const patch = candidate.patch || {};
+    const current = String(file.text || '');
     if (State().state.project.activePath !== file.path) {
       State().setActivePath(file.path);
       NS.Editor?.render?.();
     }
+
     if (candidate.operation === 'replace-file') {
       State().updateFile(file.path, patch.text || '');
+      ensureLaiMacroForProject(file.path);
       NS.Editor?.render?.();
     } else if (candidate.operation === 'find-replace') {
-      const current = String(file.text || '');
       const find = String(patch.find || '');
       if (!find || !current.includes(find)) {
         State().setLog('Copilot patch could not find the requested source text.', [{ level: 'error', message: 'Patch find text not found.', file: file.path, line: null }]);
         return false;
       }
-      State().updateFile(file.path, current.replace(find, String(patch.replace ?? patch.text ?? '')));
+      const replacement = appliedPatchText(candidate, current, find, patch.replace ?? patch.text ?? '');
+      State().updateFile(file.path, current.replace(find, replacement));
+      ensureLaiMacroForProject(file.path);
       NS.Editor?.render?.();
     } else if (candidate.operation === 'replace-selection') {
-      NS.Editor?.replaceRange?.(Number(patch.start || 0), Number(patch.end || 0), patch.text || '', true);
+      const start = clamp(Number(patch.start || 0), 0, current.length);
+      const end = clamp(Number(patch.end || start), start, current.length);
+      const oldText = current.slice(start, end) || patch.selectionText || '';
+      const replacement = appliedPatchText(candidate, current, oldText);
+      State().updateFile(file.path, current.slice(0, start) + replacement + current.slice(end));
+      ensureLaiMacroForProject(file.path);
+      NS.Editor?.render?.();
     } else {
-      NS.Editor?.insertText?.('\n' + (patch.text || '') + '\n');
+      const insertion = appliedPatchText(candidate, current, '');
+      NS.Editor?.insertText?.('\n' + insertion + '\n');
+      ensureLaiMacroForProject(file.path);
     }
     State().save();
     NS.Preview?.scheduleDraftPreview?.();
-    NS.Main?.toast?.('Copilot patch applied.');
+    NS.Main?.toast?.(patch.laiWrap ? 'AI rewrite applied in \\lai{...}.' : 'Copilot patch applied.');
     discardPatch();
     return true;
+  }
+
+
+  function shouldLaiWrapTask(task) {
+    return ['rewrite-selection-patch', 'insert-section-patch', 'beamer-outline-patch', 'table-helper-patch'].includes(String(task || ''));
+  }
+
+  function latexCommentBlock(text) {
+    return String(text || '').split('\n').map((line) => `% ${line}`).join('\n');
+  }
+
+  function laiBlock(replacement) {
+    const body = String(replacement || '').trim();
+    if (/^\\lai\s*\{/m.test(body)) return body;
+    return `\\lai{\n${body}\n}`;
+  }
+
+  function buildLaiReplacement(oldText, replacement, candidate) {
+    const id = `lai-${Date.now().toString(36)}`;
+    const target = candidate?.path || State().state.project.activePath || 'main.tex';
+    const old = String(oldText || '');
+    const replacementText = String(replacement || '').trim();
+    const oldBlock = old.trim()
+      ? [`% BEGIN LAI-OLD id=${id} path=${target}`, latexCommentBlock(old), `% END LAI-OLD id=${id}`, ''].join('\n')
+      : '';
+    return `${oldBlock}${laiBlock(replacementText)}\n`;
+  }
+
+  function appliedPatchText(candidate, current, oldText, explicitReplacement = null) {
+    const patch = candidate.patch || {};
+    const replacement = explicitReplacement ?? patch.replace ?? patch.text ?? '';
+    if (!patch.laiWrap) return String(replacement || '');
+    return buildLaiReplacement(oldText, replacement, candidate);
+  }
+
+  function previewPatchText(candidate, current, oldText, explicitReplacement = null) {
+    return appliedPatchText(candidate, current, oldText, explicitReplacement);
+  }
+
+  function ensureLaiMacroForProject(targetPath) {
+    const model = NS.ProjectModel;
+    if (!model?.ensureLaiMacro) return false;
+    const paths = new Set([State().state.project.rootFile, targetPath]);
+    let changed = false;
+    for (const path of paths) {
+      const file = State().getFile(path);
+      if (!file || file.kind !== 'tex') continue;
+      const next = model.ensureLaiMacro(file.text || '');
+      if (next !== file.text) {
+        State().updateFile(file.path, next);
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   function discardPatch() {

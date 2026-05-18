@@ -6,12 +6,68 @@
   const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1';
   const SCHEMA = 'lumina-latex-project-v1';
   const FILE_SCHEMA = 'lumina-latex-file-v1';
+  const LAI_MACRO_START = '% --- Latexai AI-change highlighting macro ---';
+  const LAI_MACRO_END = '% --- end Latexai AI-change highlighting macro ---';
+
+  function laiMacroBlock() {
+    return String.raw`% --- Latexai AI-change highlighting macro ---
+\usepackage{xcolor}
+
+% Set this to \laishowchangesfalse to hide red AI markup.
+\newif\iflaishowchanges
+\laishowchangestrue
+
+\long\def\lai#1{%
+  \iflaishowchanges
+    {\color{red}#1}%
+  \else
+    #1%
+  \fi
+}
+% --- end Latexai AI-change highlighting macro ---`;
+  }
+
+  function hasLaiMacro(tex) {
+    const text = String(tex || '');
+    return /\\(?:long\\)?def\\lai#?1|\\newcommand\s*\{\\lai\}|\\DeclareRobustCommand\s*\{\\lai\}|latexai ai-change highlighting macro/i.test(text);
+  }
+
+  function ensureLaiMacro(tex) {
+    const text = String(tex || '');
+    if (!text.trim() || hasLaiMacro(text)) return text;
+    const macro = laiMacroBlock();
+    const docClass = text.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/);
+    if (docClass && Number.isFinite(docClass.index)) {
+      const at = docClass.index + docClass[0].length;
+      return text.slice(0, at) + '\n' + macro + '\n' + text.slice(at).replace(/^\n/, '');
+    }
+    const beginDoc = text.indexOf('\\begin{document}');
+    if (beginDoc >= 0) return macro + '\n' + text;
+    return text;
+  }
+
 
   const DEFAULT_MAIN_TEX = String.raw`\documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{graphicx}
 \usepackage{hyperref}
+
+% --- Latexai AI-change highlighting macro ---
+\usepackage{xcolor}
+
+% Set this to \laishowchangesfalse to hide red AI markup.
+\newif\iflaishowchanges
+\laishowchangestrue
+
+\long\def\lai#1{%
+  \iflaishowchanges
+    {\color{red}#1}%
+  \else
+    #1%
+  \fi
+}
+% --- end Latexai AI-change highlighting macro ---
 
 \title{A Lumina LaTeX Project}
 \author{Karthik Sridharan}
@@ -214,7 +270,7 @@ The project is represented by stable file paths and ids. UI events update the pr
       id: uid('file'),
       path: normalized,
       kind: fileKind(normalized),
-      text: String(text ?? ''),
+      text: fileKind(normalized) === 'tex' ? ensureLaiMacro(String(text ?? '')) : String(text ?? ''),
       encoding: 'utf8',
       updatedAt,
       version: 1
@@ -259,12 +315,13 @@ The project is represented by stable file paths and ids. UI events update the pr
     const data = dataUrlBase64(rawContent);
     const base64 = String(file.base64 || (data ? data.base64 : ''));
     const encoding = file.encoding || (base64 ? 'base64' : 'utf8');
+    const normalizedText = encoding === 'base64' ? '' : (kind === 'tex' ? ensureLaiMacro(String(rawContent ?? '')) : String(rawContent ?? ''));
     return {
       schema: file.schema || FILE_SCHEMA,
       id: file.id || uid('file'),
       path,
       kind,
-      text: encoding === 'base64' ? '' : String(rawContent ?? ''),
+      text: normalizedText,
       base64: encoding === 'base64' ? base64 : '',
       encoding,
       mime: file.mime || (data ? data.mime : ''),
@@ -333,6 +390,11 @@ The project is represented by stable file paths and ids. UI events update the pr
     normalizePath,
     fileKind,
     textFile,
+    LAI_MACRO_START,
+    LAI_MACRO_END,
+    laiMacroBlock,
+    hasLaiMacro,
+    ensureLaiMacro,
     defaultSettings,
     defaultProject,
     makeFile,

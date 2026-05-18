@@ -297,7 +297,7 @@
   function createFile(path, text = '', options = {}) {
     const normalized = normalizePath(path || 'untitled.tex');
     if (!normalized || getFile(normalized)) return null;
-    const file = Model().makeFile(normalized, text);
+    const file = Model().makeFile(normalized, fileKind(normalized) === 'tex' ? Model().ensureLaiMacro(text) : text);
     if (options.base64) { file.text = ''; file.base64 = String(options.base64 || ''); file.encoding = 'base64'; }
     state.project.files.push(file);
     state.project.files.sort((a, b) => a.path.localeCompare(b.path));
@@ -317,7 +317,7 @@
       if (!options.overwrite) return null;
       existing.kind = fileKind(normalized);
       if (options.base64) { existing.text = ''; existing.base64 = String(options.base64 || ''); existing.encoding = 'base64'; }
-      else { existing.text = String(text ?? ''); existing.base64 = ''; existing.encoding = 'utf8'; }
+      else { existing.text = existing.kind === 'tex' ? Model().ensureLaiMacro(String(text ?? '')) : String(text ?? ''); existing.base64 = ''; existing.encoding = 'utf8'; }
       touch(existing);
       rememberFullProject(state.project, 'file-import-overwrite');
       emit('file-import-overwrite');
