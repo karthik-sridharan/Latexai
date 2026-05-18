@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'latex-stage1i-step1-compilerprovider-bootstrap-20260518-1';
+  var STAGE = 'latex-stage3j-compiler-full-project-guard-20260518-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
 
   function isObject(x) {
@@ -173,6 +173,29 @@
     return candidates[0] || '';
   }
 
+
+
+  function readFullProjectCache() {
+    try {
+      var parsed = JSON.parse(root.localStorage && root.localStorage.getItem('lumina-latex-editor.full-project-cache.v1') || 'null');
+      return parsed && parsed.project && parsed.project.files ? parsed.project : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function cacheShouldSupplement(project, files) {
+    var cache = readFullProjectCache();
+    if (!cache || !cache.files) return null;
+    var currentCount = Object.keys(files || {}).length;
+    var cacheCount = Array.isArray(cache.files) ? cache.files.length : Object.keys(cache.files || {}).length;
+    if (cacheCount <= currentCount || cacheCount <= 1) return null;
+    var projectGh = project && project.github;
+    var cacheGh = cache.github;
+    if (projectGh || cacheGh || currentCount <= 1) return cache;
+    return null;
+  }
+
   function valueToString(value) {
     if (typeof value === 'string') return value;
     if (!isObject(value)) return '';
@@ -215,6 +238,14 @@
     addFilesFromArray(files, project.documents);
     addFilesFromObject(files, project.additionalFiles);
     addFilesFromArray(files, project.additionalFiles);
+
+    var cachedProject = cacheShouldSupplement(project, files);
+    if (cachedProject) {
+      var cachedFiles = {};
+      addFilesFromObject(cachedFiles, cachedProject.files);
+      addFilesFromArray(cachedFiles, cachedProject.files);
+      Object.keys(cachedFiles).forEach(function (path) { if (!files[path]) files[path] = cachedFiles[path]; });
+    }
 
     if (typeof project.source === 'string') files[rootFile] = project.source;
     if (typeof project.tex === 'string') files[rootFile] = project.tex;

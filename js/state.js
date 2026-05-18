@@ -5,7 +5,9 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage3j-full-project-guard-20260518-1';
+
+  const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
 
   const state = {
     project: Model().defaultProject(),
@@ -39,6 +41,122 @@
   function defaultProject() { return Model().defaultProject(); }
 
 
+
+
+  function projectFilesByPath(project) {
+    const out = new Map();
+    const files = Array.isArray(project?.files) ? project.files : [];
+    for (const file of files) {
+      const path = normalizePath(file?.path || file?.name || file?.filename || '');
+      if (!path) continue;
+      out.set(path, file);
+    }
+    return out;
+  }
+
+  function githubKey(project) {
+    const gh = project?.github || project?.meta?.github || null;
+    if (!gh) return '';
+    return [gh.owner || '', gh.repo || '', gh.branch || 'main', gh.rootPath || ''].map((x) => String(x || '').trim()).join('/');
+  }
+
+  function getFullProjectCache() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(FULL_PROJECT_CACHE_KEY) || 'null');
+      const project = parsed?.project ? Model().normalizeProject(parsed.project) : null;
+      if (project && Array.isArray(project.files) && project.files.length) return project;
+    } catch (_err) {}
+    return null;
+  }
+
+  function rememberFullProject(project, label = 'manual') {
+    try {
+      const normalized = Model().normalizeProject(project || state.project);
+      const shouldCache = normalized.github || normalized.files.length > 1;
+      if (!shouldCache) return false;
+      localStorage.setItem(FULL_PROJECT_CACHE_KEY, JSON.stringify({
+        schema: 'lumina-latex-full-project-cache-v1',
+        stage: STAGE,
+        label,
+        savedAt: nowIso(),
+        githubKey: githubKey(normalized),
+        fileCount: normalized.files.length,
+        paths: normalized.files.map((f) => f.path),
+        project: normalized
+      }));
+      return true;
+    } catch (err) {
+      console.warn('Could not remember full project cache', err);
+      return false;
+    }
+  }
+
+  function shouldMergeFullProjectCache(project, cached) {
+    if (!cached || !Array.isArray(cached.files) || cached.files.length <= 1) return false;
+    if (!project || !Array.isArray(project.files)) return true;
+    if (project.files.length >= cached.files.length) return false;
+    const projectGithub = githubKey(project);
+    const cachedGithub = githubKey(cached);
+    if (projectGithub && cachedGithub && projectGithub === cachedGithub) return true;
+    if ((project.github || cached.github) && cached.files.some((f) => f.path === project.activePath || f.path === project.rootFile)) return true;
+    // The bug we are guarding against: a stale one-file project overwrites a previously loaded multi-file project.
+    if (project.files.length <= 1) {
+      const currentPath = project.files[0]?.path || project.activePath || project.rootFile;
+      if (cached.files.some((f) => f.path === currentPath)) return true;
+    }
+    return false;
+  }
+
+  function mergeWithFullProjectCache(project, cached) {
+    const normalized = Model().normalizeProject(project);
+    if (!shouldMergeFullProjectCache(normalized, cached)) return normalized;
+    const byPath = projectFilesByPath(cached);
+    for (const file of normalized.files || []) byPath.set(file.path, file);
+    const merged = Object.assign({}, cached, normalized, {
+      github: normalized.github || cached.github || null,
+      files: Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path))
+    });
+    merged.rootFile = normalizePath(normalized.rootFile || cached.rootFile || firstTexPath(merged.files) || merged.files[0]?.path || 'main.tex');
+    if (!merged.files.some((file) => file.path === merged.rootFile && file.kind === 'tex')) {
+      const firstTex = merged.files.find((file) => file.kind === 'tex');
+      merged.rootFile = firstTex?.path || merged.files[0]?.path || 'main.tex';
+    }
+    merged.mainFile = merged.rootFile;
+    merged.activePath = normalizePath(normalized.activePath || cached.activePath || merged.rootFile);
+    if (!merged.files.some((file) => file.path === merged.activePath)) merged.activePath = merged.rootFile;
+    merged.updatedAt = nowIso();
+    merged.meta = Object.assign({}, cached.meta || {}, normalized.meta || {}, { architectureStage: 'stage3j-full-project-guard' });
+    return Model().normalizeProject(merged);
+  }
+
+  function firstTexPath(files) {
+    return (files || []).find((file) => file.kind === 'tex')?.path || null;
+  }
+
+  function protectFullProject(project, reason = 'protect') {
+    let normalized = Model().normalizeProject(project || state.project || Model().defaultProject());
+    const cached = getFullProjectCache();
+    if (shouldMergeFullProjectCache(normalized, cached)) {
+      normalized = mergeWithFullProjectCache(normalized, cached);
+      console.info('Latexai full-project guard restored cached files', {
+        reason,
+        fileCount: normalized.files.length,
+        paths: normalized.files.map((f) => f.path)
+      });
+    }
+    if (normalized.github || normalized.files.length > 1) rememberFullProject(normalized, reason);
+    return normalized;
+  }
+
+  function mergeFullProjectCacheIntoCurrent(reason = 'manual') {
+    state.project = protectFullProject(state.project, reason);
+    state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {}, state.settings || {});
+    state.project.settings = Object.assign({}, state.settings);
+    ensureValidActiveFile();
+    emit('full-project-guard');
+    return state.project;
+  }
+
   function forceTeXlyreDirectMode() {
     const ua = String(W.navigator?.userAgent || '');
     const vendor = String(W.navigator?.vendor || '');
@@ -69,7 +187,7 @@
   }
 
   function normalizeState() {
-    state.project = Model().normalizeProject(state.project);
+    state.project = protectFullProject(state.project, 'normalize-state');
     state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {}, state.settings || {});
     enforceSafetySettings();
     state.project.settings = Object.assign({}, state.settings);
@@ -82,7 +200,7 @@
       const syncProvider = NS.SyncProvider?.providerForSettings?.(state.settings);
       // Local save remains the guaranteed path in Stage 1E. Other sync providers are explicit future implementations.
       const result = Store().saveLocal(state.project, state.settings);
-      state.project = result.project;
+      state.project = protectFullProject(result.project, 'load-local');
       state.settings = result.settings;
       state.dirty = false;
       state.lastSavedAt = result.savedAt;
@@ -100,7 +218,7 @@
   function load() {
     try {
       const result = Store().loadLocal();
-      state.project = result.project;
+      state.project = protectFullProject(result.project, 'load-local');
       state.settings = Object.assign(Model().defaultSettings(), result.settings || {});
       enforceSafetySettings();
       state.project.settings = Object.assign({}, state.settings);
@@ -111,7 +229,7 @@
       return result.loaded;
     } catch (err) {
       console.warn('Could not load saved project', err);
-      state.project = Model().defaultProject();
+      state.project = protectFullProject(Model().defaultProject(), 'load-error-default');
       state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {});
       enforceSafetySettings();
       state.project.settings = Object.assign({}, state.settings);
@@ -122,7 +240,7 @@
   }
 
   function resetProject(project) {
-    state.project = Model().normalizeProject(project || Model().defaultProject());
+    state.project = protectFullProject(project || Model().defaultProject(), 'reset-project');
     state.settings = Object.assign(Model().defaultSettings(), state.project.settings || {});
     enforceSafetySettings();
     state.project.settings = Object.assign({}, state.settings);
@@ -186,6 +304,7 @@
     state.project.activePath = normalized;
     if (!state.project.rootFile && file.kind === 'tex') state.project.rootFile = normalized;
     state.dirty = true;
+    rememberFullProject(state.project, 'file-create');
     emit('file-create');
     return file;
   }
@@ -200,6 +319,7 @@
       if (options.base64) { existing.text = ''; existing.base64 = String(options.base64 || ''); existing.encoding = 'base64'; }
       else { existing.text = String(text ?? ''); existing.base64 = ''; existing.encoding = 'utf8'; }
       touch(existing);
+      rememberFullProject(state.project, 'file-import-overwrite');
       emit('file-import-overwrite');
       return existing;
     }
@@ -219,6 +339,7 @@
       state.project.mainFile = state.project.rootFile;
     }
     state.dirty = true;
+    rememberFullProject(state.project, 'file-remove');
     emit('file-remove');
     return true;
   }
@@ -238,6 +359,7 @@
       state.project.mainFile = newNormalized;
     }
     state.project.files.sort((a, b) => a.path.localeCompare(b.path));
+    rememberFullProject(state.project, 'file-rename');
     emit('file-rename');
     return true;
   }
@@ -321,6 +443,10 @@
     setSetting,
     setLog,
     setCompileStatus,
+    FULL_PROJECT_CACHE_KEY,
+    getFullProjectCache,
+    rememberFullProject,
+    mergeFullProjectCacheIntoCurrent,
     snapshot
   };
 })();

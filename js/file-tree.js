@@ -6,6 +6,7 @@
   const State = () => NS.State;
 
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
+  const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
 
   const git = {
@@ -85,7 +86,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''}</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • Stage 3J</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -319,6 +320,7 @@
       git.status = `Loaded ${result.fileCount || Object.keys(result.project.files || {}).length} files from GitHub.`;
       saveGitSettings();
       State().resetProject(nextProject);
+      State().rememberFullProject?.(State().state.project, 'github-load');
       State().save();
       W.LuminaLatex.Preview?.renderDraftPreview?.();
       W.LuminaLatex.Main?.toast?.('GitHub project loaded.');
@@ -332,6 +334,7 @@
     try {
       pullGitSetup();
       if (!git.owner || !git.repo) throw new Error('Owner and repo are required.');
+      State().mergeFullProjectCacheIntoCurrent?.('pre-github-commit');
       State().save();
 
       const project = State().state.project;
