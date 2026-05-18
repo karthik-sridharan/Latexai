@@ -1,21 +1,20 @@
-/* Latexai Step 2A Storage Provider - iPad upload version
- * Stage: latex-stage2a-storage-foundation-20260518-2
+/* Latexai Step 3 Storage Provider - GitHub sync foundation
+ * Stage: latex-stage3-github-sync-foundation-20260518-1
  *
  * Drop this file at: js/lai-storage-provider-preload.js
- * Load it in index.html BEFORE the main Latexai scripts and before lai-storage-ui.js.
  *
- * It is intentionally conservative:
- * - localStorage autosave works everywhere, including iPad Safari.
- * - native folder sync is enabled only when showDirectoryPicker is available.
- * - GitHub sync is a placeholder for the next step.
+ * Features:
+ * - Browser localStorage autosave works on iPad Safari.
+ * - Native folder sync is enabled only when showDirectoryPicker is available.
+ * - Exposes applyProject/discoverProject for GitHub sync UI.
  */
 (function () {
   "use strict";
 
-  var STAGE = "latex-stage2a-storage-foundation-20260518-2";
-  var AUTOSAVE_KEY = "latexai.step2.autosave.project.v1";
-  var STATUS_KEY = "latexai.step2.storage.status.v1";
-  var SETTINGS_KEY = "latexai.step2.storage.settings.v1";
+  var STAGE = "latex-stage3-github-sync-foundation-20260518-1";
+  var AUTOSAVE_KEY = "latexai.step3.autosave.project.v1";
+  var STATUS_KEY = "latexai.step3.storage.status.v1";
+  var SETTINGS_KEY = "latexai.step3.storage.settings.v1";
 
   var root = typeof window !== "undefined" ? window : globalThis;
   root.LuminaLatex = root.LuminaLatex || {};
@@ -30,7 +29,7 @@
     lastError: null,
     folderHandle: null,
     nativeFolderSupported: !!root.showDirectoryPicker,
-    githubSupported: false,
+    githubSupported: true,
     dirty: false,
     timer: null,
     filesKnown: {},
@@ -38,16 +37,10 @@
     activePath: "main.tex"
   };
 
-  function nowIso() {
-    return new Date().toISOString();
-  }
+  function nowIso() { return new Date().toISOString(); }
 
   function safeJsonParse(raw, fallback) {
-    try {
-      return raw ? JSON.parse(raw) : fallback;
-    } catch (_) {
-      return fallback;
-    }
+    try { return raw ? JSON.parse(raw) : fallback; } catch (_) { return fallback; }
   }
 
   function saveStatus() {
@@ -93,6 +86,7 @@
     if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")) return active;
 
     var selectors = [
+      "#sourceEditor",
       "#editor textarea",
       "#latex-editor textarea",
       "#source-editor textarea",
@@ -252,14 +246,19 @@
     if (text) ok = setEditorText(text);
 
     try {
-      if (root.LuminaLatex) {
-        root.LuminaLatex.storageProject = project;
-      }
-      if (root.NS) {
-        root.NS.storageProject = project;
-      }
+      if (root.LuminaLatex) root.LuminaLatex.storageProject = project;
+      if (root.NS) root.NS.storageProject = project;
+      // Some app builds discover global project fields; set cautiously.
+      root.currentProject = Object.assign({}, root.currentProject || {}, {
+        name: project.name,
+        projectId: project.projectId,
+        rootFile: rootFile,
+        activePath: activePath,
+        files: files
+      });
     } catch (_) {}
 
+    emit("latexai:storage-project-applied", { project: project, applied: ok });
     return ok;
   }
 
@@ -276,9 +275,7 @@
 
   async function loadLocalStorage() {
     var project = safeJsonParse(localStorage.getItem(AUTOSAVE_KEY), null);
-    if (!project) {
-      return { ok: false, message: "No browser autosave found." };
-    }
+    if (!project) return { ok: false, message: "No browser autosave found." };
     var applied = applyProject(project);
     state.lastLoadedAt = nowIso();
     saveStatus();
@@ -290,9 +287,7 @@
     var file = await fileHandle.getFile();
     var lower = file.name.toLowerCase();
     var textLike = /\.(tex|bib|sty|cls|md|txt|tikz|cfg|def|bst)$/.test(lower);
-    if (textLike) {
-      return await file.text();
-    }
+    if (textLike) return await file.text();
     var buf = await file.arrayBuffer();
     var bytes = new Uint8Array(buf);
     var binary = "";
@@ -355,11 +350,7 @@
     var parts = relPath.split("/").filter(Boolean);
     var filename = parts.pop();
     var current = dirHandle;
-
-    for (var i = 0; i < parts.length; i++) {
-      current = await current.getDirectoryHandle(parts[i], { create: true });
-    }
-
+    for (var i = 0; i < parts.length; i++) current = await current.getDirectoryHandle(parts[i], { create: true });
     var fileHandle = await current.getFileHandle(filename, { create: true });
     var writable = await fileHandle.createWritable();
     await writable.write(content);
@@ -367,14 +358,12 @@
   }
 
   async function saveNativeFolder() {
-    if (!state.folderHandle) {
-      return { ok: false, message: "No native folder is open." };
-    }
+    if (!state.folderHandle) return { ok: false, message: "No native folder is open." };
     var project = discoverProject();
     var files = normalizeFilesObject(project.files);
     for (var path in files) {
       if (!Object.prototype.hasOwnProperty.call(files, path)) continue;
-      if (files[path].startsWith && files[path].startsWith("data:")) continue; // avoid rewriting binary assets in MVP
+      if (files[path].startsWith && files[path].startsWith("data:")) continue;
       await writeNativeFolderFile(state.folderHandle, path, files[path]);
     }
     await saveLocalStorage();
@@ -388,12 +377,7 @@
 
   async function saveNow() {
     try {
-      if (state.mode === "nativeFolder" && state.folderHandle) {
-        return await saveNativeFolder();
-      }
-      if (state.mode === "github") {
-        return { ok: false, message: "GitHub autosave is planned for Step 3." };
-      }
+      if (state.mode === "nativeFolder" && state.folderHandle) return await saveNativeFolder();
       return await saveLocalStorage();
     } catch (err) {
       state.lastError = err && err.message ? err.message : String(err);
@@ -416,9 +400,7 @@
         state.filesKnown[state.activePath] = txt;
         state.dirty = true;
       }
-      if (state.dirty) {
-        saveNow();
-      }
+      if (state.dirty) saveNow();
     }, state.autosaveMs);
     return true;
   }
@@ -485,9 +467,7 @@
   }
 
   function emit(name, detail) {
-    try {
-      document.dispatchEvent(new CustomEvent(name, { detail: detail }));
-    } catch (_) {}
+    try { document.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (_) {}
   }
 
   var api = {
@@ -502,6 +482,7 @@
     startAutosave: startAutosave,
     stopAutosave: stopAutosave,
     discoverProject: discoverProject,
+    applyProject: applyProject,
     markDirty: markDirty
   };
 
@@ -514,16 +495,11 @@
 
   document.addEventListener("input", function (ev) {
     var t = ev && ev.target;
-    if (t && (t.tagName === "TEXTAREA" || t.matches && t.matches("[contenteditable=true]"))) {
-      markDirty();
-    }
+    if (t && (t.tagName === "TEXTAREA" || (t.matches && t.matches("[contenteditable=true]")))) markDirty();
   }, true);
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startAutosave, { once: true });
-  } else {
-    startAutosave();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startAutosave, { once: true });
+  else startAutosave();
 
   console.log("[Latexai Storage]", STAGE, getStatus());
 })();

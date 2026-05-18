@@ -1,10 +1,8 @@
-/* Latexai Step 2A Storage UI - iPad upload version
+/* Latexai Step 3 Storage UI
  * Drop this file at: js/lai-storage-ui.js
- * Load after js/lai-storage-provider-preload.js.
  */
 (function () {
   "use strict";
-
   var root = typeof window !== "undefined" ? window : globalThis;
 
   function h(tag, attrs, children) {
@@ -27,51 +25,28 @@
 
   function init() {
     var storage = root.LAI_STORAGE;
-    if (!storage) {
-      console.warn("[Latexai Storage UI] LAI_STORAGE not found.");
-      return;
-    }
-
-    if (document.getElementById("lai-storage-panel")) return;
+    if (!storage || document.getElementById("lai-storage-panel")) return;
 
     var panel = h("div", {
       id: "lai-storage-panel",
       style: {
-        position: "fixed",
-        right: "12px",
-        bottom: "12px",
-        zIndex: "999999",
-        width: "280px",
-        background: "rgba(255,255,255,0.97)",
-        color: "#111",
-        border: "1px solid #bbb",
-        borderRadius: "10px",
+        position: "fixed", right: "12px", bottom: "12px", zIndex: "999999",
+        width: "280px", background: "rgba(255,255,255,0.97)", color: "#111",
+        border: "1px solid #bbb", borderRadius: "10px",
         boxShadow: "0 4px 18px rgba(0,0,0,0.18)",
-        font: "13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-        padding: "10px"
+        font: "13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif", padding: "10px"
       }
     });
 
-    var title = h("div", {
-      text: "Latexai Storage",
-      style: { fontWeight: "700", marginBottom: "6px" }
-    });
-
-    var status = h("div", {
-      id: "lai-storage-status",
-      style: { lineHeight: "1.35", marginBottom: "8px", whiteSpace: "pre-wrap" }
-    });
+    var title = h("div", { text: "Latexai Storage", style: { fontWeight: "700", marginBottom: "6px" } });
+    var status = h("div", { id: "lai-storage-status", style: { lineHeight: "1.35", marginBottom: "8px", whiteSpace: "pre-wrap" } });
 
     function btn(label) {
       return h("button", {
         type: "button",
         style: {
-          margin: "2px",
-          padding: "5px 7px",
-          borderRadius: "7px",
-          border: "1px solid #aaa",
-          background: "#f7f7f7",
-          color: "#111",
+          margin: "2px", padding: "5px 7px", borderRadius: "7px",
+          border: "1px solid #aaa", background: "#f7f7f7", color: "#111",
           font: "12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
         },
         text: label
@@ -83,10 +58,9 @@
     var folderBtn = btn("Open Local Folder");
     var hideBtn = btn("Hide");
 
-    var controls = h("div", {}, [saveBtn, loadBtn, folderBtn, hideBtn]);
     panel.appendChild(title);
     panel.appendChild(status);
-    panel.appendChild(controls);
+    panel.appendChild(h("div", {}, [saveBtn, loadBtn, folderBtn, hideBtn]));
     document.body.appendChild(panel);
 
     function refresh(extra) {
@@ -95,6 +69,7 @@
         "Mode: " + s.mode + "\n" +
         "Autosave: " + (s.autosave ? "on" : "off") + "\n" +
         "Native folder: " + (s.nativeFolderSupported ? "available" : "unavailable") + "\n" +
+        "GitHub sync: available after backend deploy\n" +
         "Last saved: " + fmtTime(s.lastSavedAt) + "\n" +
         (s.lastError ? "Error: " + s.lastError + "\n" : "") +
         (extra ? String(extra) : "");
@@ -123,41 +98,24 @@
     hideBtn.addEventListener("click", function () {
       panel.style.display = "none";
       var reopen = h("button", {
-        id: "lai-storage-reopen",
-        type: "button",
-        text: "Storage",
+        id: "lai-storage-reopen", type: "button", text: "Storage",
         style: {
-          position: "fixed",
-          right: "12px",
-          bottom: "12px",
-          zIndex: "999999",
-          borderRadius: "999px",
-          border: "1px solid #aaa",
-          background: "#fff",
-          color: "#111",
-          padding: "7px 10px",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
+          position: "fixed", right: "12px", bottom: "12px", zIndex: "999999",
+          borderRadius: "999px", border: "1px solid #aaa", background: "#fff", color: "#111",
+          padding: "7px 10px", boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
           font: "12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
         }
       });
-      reopen.addEventListener("click", function () {
-        panel.style.display = "";
-        reopen.remove();
-        refresh();
-      });
+      reopen.addEventListener("click", function () { panel.style.display = ""; reopen.remove(); refresh(); });
       document.body.appendChild(reopen);
     });
 
     document.addEventListener("latexai:storage-saved", function () { refresh(); });
     document.addEventListener("latexai:storage-loaded", function () { refresh(); });
     document.addEventListener("latexai:storage-dirty", function () { refresh(); });
-
     refresh();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init, { once: true });
-  } else {
-    init();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+  else init();
 })();
