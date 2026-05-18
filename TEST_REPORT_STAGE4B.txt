@@ -1,0 +1,7 @@
+Stage 4B checks
+===============
+
+PASS node --check js/copilot.js
+PASS node --check js/patch-manager.js
+
+Behavior: rewrite-selection-patch now auto-applies and wraps in \\lai{...}.
