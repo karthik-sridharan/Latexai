@@ -13,7 +13,7 @@
       const task = document.getElementById('copilotTask')?.value || 'raw-advice';
       proposeFromText(text, { task, source: 'manual-preview' });
     });
-    document.getElementById('applyCopilotPatchBtn')?.addEventListener('click', applyActivePatch);
+    document.getElementById('applyCopilotPatchBtn')?.addEventListener('click', () => applyActivePatch({ source: 'apply-button' }));
     document.getElementById('discardCopilotPatchBtn')?.addEventListener('click', discardPatch);
   }
 
@@ -103,8 +103,8 @@
     if (task === 'raw-advice' || task === 'explain-log') {
       return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: `% Copilot note:\n% ${text.split('\n').join('\n% ')}\n` };
     }
-    if (selection.text) return { path: file?.path || 'main.tex', operation: 'replace-selection', text, start: selection.start, end: selection.end };
-    return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: '\n' + text + '\n' };
+    if (selection.text) return { path: file?.path || 'main.tex', operation: 'replace-selection', text, start: selection.start, end: selection.end, laiWrap: shouldLaiWrapTask(task) };
+    return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: '\n' + text + '\n', laiWrap: shouldLaiWrapTask(task) };
   }
 
   function fallbackSummary(task, selection) {
@@ -192,7 +192,7 @@
     return out.join('\n');
   }
 
-  function applyActivePatch() {
+  function applyActivePatch(_options = {}) {
     if (!activePatch) return false;
     const candidate = activePatch;
     const file = State().getFile(candidate.path);
@@ -231,8 +231,11 @@
       NS.Editor?.render?.();
     } else {
       const insertion = appliedPatchText(candidate, current, '');
-      NS.Editor?.insertText?.('\n' + insertion + '\n');
+      const selection = NS.Editor?.getSelection?.() || { start: current.length, end: current.length };
+      const pos = clamp(Number(selection.start ?? current.length), 0, current.length);
+      State().updateFile(file.path, current.slice(0, pos) + '\n' + insertion + '\n' + current.slice(pos));
       ensureLaiMacroForProject(file.path);
+      NS.Editor?.render?.();
     }
     State().save();
     NS.Preview?.scheduleDraftPreview?.();

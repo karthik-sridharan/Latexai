@@ -199,15 +199,38 @@
       );
       const text = extractText(result) || 'No text returned by proxy.';
       output.textContent = text;
-      if (NS.PatchManager?.isPatchWorkflow?.(task)) NS.PatchManager.proposeFromText(text, { task, context });
+      if (NS.PatchManager?.isPatchWorkflow?.(task)) {
+        const candidate = NS.PatchManager.proposeFromText(text, { task, context });
+        if (shouldAutoApplyTask(task, candidate)) {
+          const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply' });
+          output.textContent = applied
+            ? `Applied Copilot rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...}.`
+            : `${text}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
+        }
+      }
     } catch (err) {
       const fallback = localFallback(task, prompt, context, err);
       output.textContent = fallback;
-      if (NS.PatchManager?.isPatchWorkflow?.(task)) NS.PatchManager.proposeFromText(fallback, { task, context, fallback: true });
+      if (NS.PatchManager?.isPatchWorkflow?.(task)) {
+        const candidate = NS.PatchManager.proposeFromText(fallback, { task, context, fallback: true });
+        if (shouldAutoApplyTask(task, candidate)) {
+          const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply-fallback' });
+          output.textContent = applied
+            ? `Applied local fallback rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...}.`
+            : `${fallback}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
+        }
+      }
     } finally {
       if (button) button.disabled = false;
       renderContextChips();
     }
+  }
+
+  function shouldAutoApplyTask(task, candidate) {
+    if (task !== 'rewrite-selection-patch') return false;
+    if (!candidate || candidate.operation !== 'replace-selection') return false;
+    const patch = candidate.patch || {};
+    return Number.isFinite(Number(patch.start)) && Number.isFinite(Number(patch.end)) && Number(patch.end) >= Number(patch.start);
   }
 
   function buildUserPrompt(task, prompt, context) {
@@ -291,9 +314,18 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
       }, null, 2);
     }
     const insertion = prompt || context.selection.text || '% Add your LaTeX here.';
+    if (task === 'rewrite-selection-patch' && context.selection.text) {
+      return JSON.stringify({
+        summary: `${message}. Local fallback rewrites the selected source using the available prompt/selection.`,
+        targetPath: context.activeFile.path || context.project.rootFile || 'main.tex',
+        start: Number(context.selection.start || 0),
+        end: Number(context.selection.end || 0),
+        replacementLatex: insertion
+      }, null, 2);
+    }
     return JSON.stringify({
       summary: `${message}. Local fallback will insert the available prompt/selection as a draft snippet.`,
-      patch: { path: context.activeFile.path || context.project.rootFile || 'main.tex', operation: context.selection.text ? 'replace-selection' : 'insert-at-cursor', text: insertion }
+      patch: { path: context.activeFile.path || context.project.rootFile || 'main.tex', operation: context.selection.text ? 'replace-selection' : 'insert-at-cursor', text: insertion, laiWrap: task === 'rewrite-selection-patch' }
     }, null, 2);
   }
 
@@ -319,12 +351,30 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   function insertCopilotResult() {
     const text = copilotText();
     if (!text.trim() || text.startsWith('Copilot responses')) return;
+    if (NS.PatchManager?.getActivePatch?.()) {
+      NS.PatchManager.applyActivePatch({ source: 'insert-button-active-patch' });
+      return;
+    }
+    const task = document.getElementById('copilotTask')?.value || 'raw-advice';
+    if (NS.PatchManager?.isPatchWorkflow?.(task)) {
+      NS.PatchManager.proposeFromText(text, { task, source: 'insert-button-parse' });
+      if (NS.PatchManager.applyActivePatch({ source: 'insert-button-apply' })) return;
+    }
     NS.Editor?.insertText?.('\n' + text + '\n');
   }
 
   function replaceWithCopilotResult() {
     const text = copilotText();
     if (!text.trim() || text.startsWith('Copilot responses')) return;
+    if (NS.PatchManager?.getActivePatch?.()) {
+      NS.PatchManager.applyActivePatch({ source: 'replace-button-active-patch' });
+      return;
+    }
+    const task = document.getElementById('copilotTask')?.value || 'raw-advice';
+    if (NS.PatchManager?.isPatchWorkflow?.(task)) {
+      NS.PatchManager.proposeFromText(text, { task, source: 'replace-button-parse' });
+      if (NS.PatchManager.applyActivePatch({ source: 'replace-button-apply' })) return;
+    }
     NS.Editor?.replaceSelection?.(text, true);
   }
 
