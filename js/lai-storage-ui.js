@@ -1,170 +1,163 @@
-/*
- * Latexai Step 2 storage UI.
- * Adds a small non-invasive storage panel for localStorage/native folder sync.
+/* Latexai Step 2A Storage UI - iPad upload version
+ * Drop this file at: js/lai-storage-ui.js
+ * Load after js/lai-storage-provider-preload.js.
  */
 (function () {
-  'use strict';
+  "use strict";
 
-  var ROOT = typeof window !== 'undefined' ? window : globalThis;
-  var STAGE = 'latex-stage2a-storage-ui-20260518-1';
+  var root = typeof window !== "undefined" ? window : globalThis;
 
-  function getProvider() {
-    return ROOT.LAI_STORAGE ||
-      (ROOT.NS && ROOT.NS.StorageProvider) ||
-      (ROOT.LuminaLatex && ROOT.LuminaLatex.StorageProvider) ||
-      ROOT.StorageProvider || null;
-  }
-
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+  function h(tag, attrs, children) {
+    var el = document.createElement(tag);
+    attrs = attrs || {};
+    Object.keys(attrs).forEach(function (k) {
+      if (k === "style") Object.assign(el.style, attrs[k]);
+      else if (k === "text") el.textContent = attrs[k];
+      else if (k === "html") el.innerHTML = attrs[k];
+      else el.setAttribute(k, attrs[k]);
     });
+    (children || []).forEach(function (c) { el.appendChild(c); });
+    return el;
   }
 
-  function ensureStyle() {
-    if (document.getElementById('lai-storage-style')) return;
-    var style = document.createElement('style');
-    style.id = 'lai-storage-style';
-    style.textContent = [
-      '#lai-storage-panel{position:fixed;right:16px;bottom:16px;z-index:99999;font:13px/1.35 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#111;border:1px solid #d0d0d0;border-radius:10px;box-shadow:0 6px 22px rgba(0,0,0,.16);width:320px;max-width:calc(100vw - 32px);overflow:hidden}',
-      '#lai-storage-panel.lai-collapsed .lai-storage-body{display:none}',
-      '#lai-storage-panel .lai-storage-head{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;background:#f5f5f5;border-bottom:1px solid #e0e0e0;font-weight:650}',
-      '#lai-storage-panel .lai-storage-body{padding:10px}',
-      '#lai-storage-panel button,#lai-storage-panel select{font:inherit}',
-      '#lai-storage-panel button{border:1px solid #bbb;border-radius:6px;background:#fafafa;padding:5px 8px;cursor:pointer}',
-      '#lai-storage-panel button:hover{background:#eee}',
-      '#lai-storage-panel .lai-row{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}',
-      '#lai-storage-panel .lai-row label{font-weight:600}',
-      '#lai-storage-panel .lai-status{font-size:12px;background:#f8f8f8;border:1px solid #eee;border-radius:6px;padding:6px;white-space:pre-wrap;max-height:96px;overflow:auto}',
-      '#lai-storage-panel .lai-muted{color:#666;font-size:12px}',
-      '#lai-storage-panel .lai-error{color:#9b1c1c}',
-      '#lai-storage-panel .lai-ok{color:#145a1f}'
-    ].join('\n');
-    document.head.appendChild(style);
+  function fmtTime(iso) {
+    if (!iso) return "never";
+    try { return new Date(iso).toLocaleTimeString(); } catch (_) { return iso; }
   }
 
-  function panelHtml(status) {
-    var cap = status.capabilities || {};
-    var nativeLabel = cap.nativeFolder ? 'Local folder available' : 'Local folder unavailable in this browser';
-    return [
-      '<div class="lai-storage-head"><span>Latexai Storage</span><button type="button" data-lai-storage-toggle>–</button></div>',
-      '<div class="lai-storage-body">',
-      '  <div class="lai-row"><label>Mode</label><select data-lai-storage-mode>',
-      '    <option value="localStorage">Browser local storage</option>',
-      '    <option value="nativeFolder">Local folder sync</option>',
-      '    <option value="github">GitHub autosave (Step 3)</option>',
-      '  </select></div>',
-      '  <div class="lai-row">',
-      '    <button type="button" data-lai-open-folder>Open Local Folder</button>',
-      '    <button type="button" data-lai-save-now>Save Now</button>',
-      '    <button type="button" data-lai-load-local>Load Autosave</button>',
-      '  </div>',
-      '  <div class="lai-row lai-muted">', esc(nativeLabel), '</div>',
-      '  <div class="lai-status" data-lai-storage-status></div>',
-      '</div>'
-    ].join('');
-  }
-
-  function formatStatus(status) {
-    var lines = [];
-    lines.push('stage: ' + (status.stage || STAGE));
-    lines.push('mode: ' + (status.mode || 'localStorage'));
-    lines.push('autosave: ' + (status.autosave ? 'on' : 'off'));
-    lines.push('native folder: ' + (status.nativeFolderOpen ? (status.nativeFolderName || 'open') : 'not open'));
-    if (status.lastSavedAt) lines.push('last saved: ' + status.lastSavedAt);
-    if (status.message) lines.push('message: ' + status.message);
-    if (status.lastError) lines.push('error: ' + status.lastError);
-    return lines.join('\n');
-  }
-
-  function refreshPanel() {
-    var p = getProvider();
-    var panel = document.getElementById('lai-storage-panel');
-    if (!p || !panel) return;
-    var status = p.getStatus ? p.getStatus() : {};
-    var mode = panel.querySelector('[data-lai-storage-mode]');
-    if (mode) mode.value = status.mode || 'localStorage';
-    var statusEl = panel.querySelector('[data-lai-storage-status]');
-    if (statusEl) {
-      statusEl.textContent = formatStatus(status);
-      statusEl.className = 'lai-status' + (status.lastError ? ' lai-error' : ' lai-ok');
-    }
-  }
-
-  function createPanel() {
-    if (!document.body || document.getElementById('lai-storage-panel')) return;
-    var p = getProvider();
-    if (!p) return;
-    ensureStyle();
-    var panel = document.createElement('div');
-    panel.id = 'lai-storage-panel';
-    panel.innerHTML = panelHtml(p.getStatus ? p.getStatus() : {});
-    document.body.appendChild(panel);
-
-    panel.addEventListener('click', async function (ev) {
-      var target = ev.target;
-      var provider = getProvider();
-      if (!provider) return;
-
-      if (target && target.matches('[data-lai-storage-toggle]')) {
-        panel.classList.toggle('lai-collapsed');
-        target.textContent = panel.classList.contains('lai-collapsed') ? '+' : '–';
-      }
-
-      if (target && target.matches('[data-lai-open-folder]')) {
-        try {
-          await provider.openNativeFolder();
-        } catch (err) {
-          alert(String(err && err.message || err));
-        }
-        refreshPanel();
-      }
-
-      if (target && target.matches('[data-lai-save-now]')) {
-        try {
-          await provider.autosaveNow('manual');
-        } catch (err2) {
-          alert(String(err2 && err2.message || err2));
-        }
-        refreshPanel();
-      }
-
-      if (target && target.matches('[data-lai-load-local]')) {
-        provider.loadProject();
-        refreshPanel();
-      }
-    });
-
-    panel.addEventListener('change', function (ev) {
-      var target = ev.target;
-      var provider = getProvider();
-      if (!provider) return;
-      if (target && target.matches('[data-lai-storage-mode]')) {
-        provider.saveSettings({ storageMode: target.value });
-        if (target.value === 'nativeFolder' && !(provider.capabilities && provider.capabilities().nativeFolder)) {
-          alert('Native folder sync is not available in this browser. Browser local storage will still be used as a fallback.');
-        }
-        refreshPanel();
-      }
-    });
-
-    refreshPanel();
-    setInterval(refreshPanel, 1500);
-  }
-
-  function installWhenReady() {
-    if (getProvider() && document.body) {
-      createPanel();
+  function init() {
+    var storage = root.LAI_STORAGE;
+    if (!storage) {
+      console.warn("[Latexai Storage UI] LAI_STORAGE not found.");
       return;
     }
-    setTimeout(installWhenReady, 250);
+
+    if (document.getElementById("lai-storage-panel")) return;
+
+    var panel = h("div", {
+      id: "lai-storage-panel",
+      style: {
+        position: "fixed",
+        right: "12px",
+        bottom: "12px",
+        zIndex: "999999",
+        width: "280px",
+        background: "rgba(255,255,255,0.97)",
+        color: "#111",
+        border: "1px solid #bbb",
+        borderRadius: "10px",
+        boxShadow: "0 4px 18px rgba(0,0,0,0.18)",
+        font: "13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        padding: "10px"
+      }
+    });
+
+    var title = h("div", {
+      text: "Latexai Storage",
+      style: { fontWeight: "700", marginBottom: "6px" }
+    });
+
+    var status = h("div", {
+      id: "lai-storage-status",
+      style: { lineHeight: "1.35", marginBottom: "8px", whiteSpace: "pre-wrap" }
+    });
+
+    function btn(label) {
+      return h("button", {
+        type: "button",
+        style: {
+          margin: "2px",
+          padding: "5px 7px",
+          borderRadius: "7px",
+          border: "1px solid #aaa",
+          background: "#f7f7f7",
+          color: "#111",
+          font: "12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+        },
+        text: label
+      });
+    }
+
+    var saveBtn = btn("Save Now");
+    var loadBtn = btn("Load Autosave");
+    var folderBtn = btn("Open Local Folder");
+    var hideBtn = btn("Hide");
+
+    var controls = h("div", {}, [saveBtn, loadBtn, folderBtn, hideBtn]);
+    panel.appendChild(title);
+    panel.appendChild(status);
+    panel.appendChild(controls);
+    document.body.appendChild(panel);
+
+    function refresh(extra) {
+      var s = storage.getStatus();
+      status.textContent =
+        "Mode: " + s.mode + "\n" +
+        "Autosave: " + (s.autosave ? "on" : "off") + "\n" +
+        "Native folder: " + (s.nativeFolderSupported ? "available" : "unavailable") + "\n" +
+        "Last saved: " + fmtTime(s.lastSavedAt) + "\n" +
+        (s.lastError ? "Error: " + s.lastError + "\n" : "") +
+        (extra ? String(extra) : "");
+      folderBtn.disabled = !s.nativeFolderSupported;
+      folderBtn.style.opacity = s.nativeFolderSupported ? "1" : "0.5";
+    }
+
+    saveBtn.addEventListener("click", async function () {
+      status.textContent = "Saving...";
+      var r = await storage.saveNow();
+      refresh(r.ok ? "Saved." : ("Save failed: " + r.message));
+    });
+
+    loadBtn.addEventListener("click", async function () {
+      status.textContent = "Loading autosave...";
+      var r = await storage.loadAutosave();
+      refresh(r.ok ? "Loaded autosave." : (r.message || "No autosave found."));
+    });
+
+    folderBtn.addEventListener("click", async function () {
+      status.textContent = "Opening local folder...";
+      var r = await storage.openNativeFolder();
+      refresh(r.ok ? "Folder loaded." : (r.message || "Folder unavailable."));
+    });
+
+    hideBtn.addEventListener("click", function () {
+      panel.style.display = "none";
+      var reopen = h("button", {
+        id: "lai-storage-reopen",
+        type: "button",
+        text: "Storage",
+        style: {
+          position: "fixed",
+          right: "12px",
+          bottom: "12px",
+          zIndex: "999999",
+          borderRadius: "999px",
+          border: "1px solid #aaa",
+          background: "#fff",
+          color: "#111",
+          padding: "7px 10px",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
+          font: "12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+        }
+      });
+      reopen.addEventListener("click", function () {
+        panel.style.display = "";
+        reopen.remove();
+        refresh();
+      });
+      document.body.appendChild(reopen);
+    });
+
+    document.addEventListener("latexai:storage-saved", function () { refresh(); });
+    document.addEventListener("latexai:storage-loaded", function () { refresh(); });
+    document.addEventListener("latexai:storage-dirty", function () { refresh(); });
+
+    refresh();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', installWhenReady);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init, { once: true });
   } else {
-    installWhenReady();
+    init();
   }
-
-  ROOT.LatexaiStorageUI = { stage: STAGE, refresh: refreshPanel, install: createPanel };
 })();
