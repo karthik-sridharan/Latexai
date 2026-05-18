@@ -1,0 +1,9 @@
+Stage 4A local checks
+=====================
+
+PASS node --check js/project-model.js
+PASS node --check js/state.js
+PASS node --check js/copilot.js
+PASS node --check js/patch-manager.js
+
+Package: \lai macro + manual source rewrite MVP
