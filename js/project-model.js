@@ -97,6 +97,55 @@ The project is represented by stable file paths and ids. UI events update the pr
     return !['asset', 'binary'].includes(kind);
   }
 
+  function dataUrlBase64(value) {
+    const text = String(value || '');
+    const match = text.match(/^data:([^;,]+)?;base64,(.*)$/s);
+    return match ? { mime: match[1] || 'application/octet-stream', base64: match[2] || '' } : null;
+  }
+
+  function normalizeFilesInput(filesInput) {
+    const out = [];
+    const pushFile = (path, value = {}) => {
+      const normalizedPath = normalizePath(path);
+      if (!normalizedPath) return;
+
+      if (typeof value === 'string') {
+        const data = dataUrlBase64(value);
+        if (data) out.push({ path: normalizedPath, base64: data.base64, encoding: 'base64', mime: data.mime });
+        else out.push({ path: normalizedPath, text: value, encoding: 'utf8' });
+        return;
+      }
+
+      if (value && typeof value === 'object') {
+        const candidatePath = normalizePath(value.path || value.name || value.filename || value.filePath || value.relativePath || normalizedPath);
+        const content = value.text ?? value.content ?? value.source ?? value.value ?? value.data ?? '';
+        const data = dataUrlBase64(content);
+        out.push(Object.assign({}, value, {
+          path: candidatePath || normalizedPath,
+          text: data ? '' : String(content ?? ''),
+          base64: value.base64 || (data ? data.base64 : ''),
+          encoding: value.encoding || (value.base64 || data ? 'base64' : 'utf8'),
+          mime: value.mime || (data ? data.mime : value.mime)
+        }));
+      }
+    };
+
+    if (Array.isArray(filesInput)) {
+      filesInput.forEach((file, index) => {
+        if (!file || typeof file !== 'object') return;
+        pushFile(file.path || file.name || file.filename || `file-${index}.tex`, file);
+      });
+      return out;
+    }
+
+    if (filesInput && typeof filesInput === 'object') {
+      Object.entries(filesInput).forEach(([path, value]) => pushFile(path, value));
+    }
+
+    return out;
+  }
+
+
   function defaultSettings() {
     return {
       schema: 'lumina-latex-settings-v1',
@@ -175,7 +224,7 @@ The project is represented by stable file paths and ids. UI events update the pr
   function normalizeProject(input) {
     const t = nowIso();
     const project = input && typeof input === 'object' ? clone(input) : {};
-    const files = Array.isArray(project.files) ? project.files : [];
+    const rawFiles = normalizeFilesInput(project.files || project.fileMap || project.documents || project.projectFiles || []);
     project.schema = project.schema || SCHEMA;
     project.id = project.id || project.projectId || uid('project');
     project.projectId = project.projectId || project.id;
@@ -185,34 +234,40 @@ The project is represented by stable file paths and ids. UI events update the pr
     project.createdAt = project.createdAt || t;
     project.updatedAt = project.updatedAt || t;
     project.settings = Object.assign(defaultSettings(), project.settings || {});
-    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage1g-texlyre-direct-mode-startup-hotfix' }, project.meta || {});
-    project.files = files.map((file) => normalizeFile(file)).filter(Boolean);
+    project.meta = Object.assign({ app: 'lumina-latex-editor', architectureStage: 'stage3i-clean-github-filetree' }, project.meta || {});
+    project.github = project.github || project.meta.github || null;
+    project.files = rawFiles.map((file) => normalizeFile(file)).filter(Boolean);
     if (!project.files.length) project.files = defaultProject().files;
     project.files.sort((a, b) => a.path.localeCompare(b.path));
     project.rootFile = normalizePath(project.rootFile || project.mainFile || firstTexPath(project.files) || project.files[0]?.path || 'main.tex');
+    if (!project.files.some((file) => file.path === project.rootFile && file.kind === 'tex')) {
+      project.rootFile = firstTexPath(project.files) || project.files[0]?.path || 'main.tex';
+    }
     project.mainFile = project.rootFile;
     project.activePath = normalizePath(project.activePath || project.rootFile || project.files[0]?.path);
-    if (!project.files.some((file) => file.path === project.activePath)) project.activePath = project.files[0]?.path || project.rootFile;
-    if (!project.files.some((file) => file.path === project.rootFile && file.kind === 'tex')) project.rootFile = firstTexPath(project.files) || project.files[0]?.path || 'main.tex';
-    project.mainFile = project.rootFile;
+    if (!project.files.some((file) => file.path === project.activePath)) project.activePath = project.rootFile || project.files[0]?.path || 'main.tex';
     return project;
   }
 
   function normalizeFile(file) {
     if (!file || typeof file !== 'object') return null;
-    const path = normalizePath(file.path || file.name || 'untitled.tex');
+    const path = normalizePath(file.path || file.name || file.filename || 'untitled.tex');
     if (!path) return null;
     const t = file.updatedAt || nowIso();
     const kind = file.kind || fileKind(path);
-    const encoding = file.encoding || (file.base64 ? 'base64' : 'utf8');
+    const rawContent = file.text ?? file.content ?? file.source ?? file.value ?? file.data ?? '';
+    const data = dataUrlBase64(rawContent);
+    const base64 = String(file.base64 || (data ? data.base64 : ''));
+    const encoding = file.encoding || (base64 ? 'base64' : 'utf8');
     return {
       schema: file.schema || FILE_SCHEMA,
       id: file.id || uid('file'),
       path,
       kind,
-      text: encoding === 'base64' ? '' : String(file.text ?? file.content ?? ''),
-      base64: encoding === 'base64' ? String(file.base64 ?? file.content ?? file.text ?? '') : '',
+      text: encoding === 'base64' ? '' : String(rawContent ?? ''),
+      base64: encoding === 'base64' ? base64 : '',
       encoding,
+      mime: file.mime || (data ? data.mime : ''),
       updatedAt: t,
       version: Number(file.version || 1)
     };
