@@ -1,0 +1,19 @@
+Latexai Step 2A storage foundation local test report
+
+Tests included:
+- Node VM bootstrap of js/lai-storage-provider-preload.js
+- Namespace attachment check: LAI_STORAGE, NS.StorageProvider, LuminaLatex.StorageProvider
+- Active project normalization check
+- Manual autosave to fake localStorage
+
+Expected result:
+PASS: Step 2 storage provider namespace + local autosave test
+
+Browser tests after deployment:
+1. Open Latexai with ?v=stage2a-storage-foundation-1
+2. Confirm lower-right Latexai Storage panel appears.
+3. Run LAI_STORAGE.diagnostics() in console.
+4. Confirm mode localStorage and autosave on.
+5. In Chrome/Edge desktop, click Open Local Folder and choose a small LaTeX project folder.
+6. Edit source, click Save Now, confirm changed files are written back.
+7. In Safari, Open Local Folder may be unavailable; this is expected and should fall back to localStorage.
