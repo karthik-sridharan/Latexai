@@ -1,0 +1,2 @@
+PASS node --check js/copilot.js
+PASS node --check js/patch-manager.js
