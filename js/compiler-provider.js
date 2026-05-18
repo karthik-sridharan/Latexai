@@ -1,649 +1,599 @@
 /*
- * Lumina / Latexai compiler-provider.js
- * Stage: latex-stage1h-frontend-cloudrun-texlive-hotfix-20260518-1
+ * Lumina / Latexai CompilerProvider hotfix
+ * Stage: latex-stage1h-compilerprovider-namespace-fix-20260518-1
  *
- * Drop-in frontend hotfix for GitHub Pages + Cloud Run TeX Live backend.
- * - Forces backend-texlive mode.
- * - Persists absolute Cloud Run compile/jobs/status URLs.
- * - Rewrites stale relative /api/lumina/latex/... fetches to Cloud Run.
- * - Builds compile payloads with actual file contents, not metadata-only summaries.
- * - Adds diagnostics: rootLength/rootHead/paths before compile.
+ * Purpose:
+ * - Restore the global namespace object expected by the existing Latexai frontend:
+ *     NS.CompilerProvider.compile(...)
+ * - Force the Cloud Run TeX Live backend URLs.
+ * - Send actual file contents to the backend.
+ * - Keep browser-WASM diagnostics irrelevant while compilerMode is backend-texlive.
  */
-(function () {
+(function installLuminaCompilerProvider(global) {
   "use strict";
 
-  const STAGE = "latex-stage1h-frontend-cloudrun-texlive-hotfix-20260518-1";
-  const BACKEND_BASE = "https://lumina-latex-backend-y4piylmfja-ue.a.run.app";
-  const COMPILE_URL = `${BACKEND_BASE}/api/lumina/latex/compile`;
-  const JOBS_URL = `${BACKEND_BASE}/api/lumina/latex/compile/jobs`;
-  const STATUS_URL = `${BACKEND_BASE}/api/lumina/latex/status`;
+  var STAGE = "latex-stage1h-compilerprovider-namespace-fix-20260518-1";
+  var BACKEND_BASE = "https://lumina-latex-backend-y4piylmfja-ue.a.run.app";
 
-  function isPlainObject(x) {
-    return !!x && typeof x === "object" && !Array.isArray(x);
+  function asObject(value) {
+    return value && typeof value === "object" ? value : {};
   }
 
-  function readJsonMaybe(raw) {
-    if (!raw || typeof raw !== "string") return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
+  function normalizeSettings(settings) {
+    var s = Object.assign({}, asObject(settings));
+
+    s.schema = s.schema || "lumina-latex-settings-v1";
+    s.compilerMode = "backend-texlive";
+    s.compileUrl = BACKEND_BASE + "/api/lumina/latex/compile";
+    s.compileStatusUrl = BACKEND_BASE + "/api/lumina/latex/compile/jobs";
+    s.backendStatusUrl = BACKEND_BASE + "/api/lumina/latex/status";
+    s.useCompileJobs = s.useCompileJobs !== false;
+    s.engine = s.engine || "pdflatex";
+    s.bibliography = s.bibliography || "bibtex";
+    s.shellEscape = false;
+
+    return s;
   }
 
-  function get(obj, path) {
-    let cur = obj;
-    for (const part of path) {
-      if (!cur || typeof cur !== "object") return undefined;
-      cur = cur[part];
-    }
-    return cur;
+  function isBinaryPath(path) {
+    return /\.(png|jpe?g|gif|webp|svg|pdf|eps|bmp|ico|zip|tar|gz|ttf|otf|woff2?)$/i.test(String(path || ""));
   }
 
-  function firstDefined(...values) {
-    for (const v of values) {
-      if (v !== undefined && v !== null) return v;
-    }
-    return undefined;
-  }
-
-  function normalizeLatexCompileSettings(settings) {
-    const next = isPlainObject(settings) ? { ...settings } : {};
-
-    next.schema = next.schema || "lumina-latex-settings-v1";
-    next.compilerMode = "backend-texlive";
-    next.compileUrl = COMPILE_URL;
-    next.compileStatusUrl = JOBS_URL;
-    next.backendStatusUrl = STATUS_URL;
-    next.useCompileJobs = true;
-    next.compilePollMs = next.compilePollMs || 1000;
-    next.compileTimeoutMs = Math.max(Number(next.compileTimeoutMs || 0), 90000);
-    next.engine = next.engine || "pdflatex";
-    next.bibliography = next.bibliography || "bibtex";
-    next.shellEscape = false;
-
-    return next;
-  }
-
-  function patchLocalStorageSettings() {
-    let changed = 0;
-    const candidates = [];
-
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-        const obj = readJsonMaybe(localStorage.getItem(key));
-        if (!isPlainObject(obj)) continue;
-
-        const looksLikeSettings =
-          obj.schema === "lumina-latex-settings-v1" ||
-          Object.prototype.hasOwnProperty.call(obj, "compileUrl") ||
-          Object.prototype.hasOwnProperty.call(obj, "compileStatusUrl") ||
-          Object.prototype.hasOwnProperty.call(obj, "compilerMode") ||
-          key.toLowerCase().includes("latex") ||
-          key.toLowerCase().includes("lumina");
-
-        if (looksLikeSettings) candidates.push([key, obj]);
-      }
-
-      for (const [key, obj] of candidates) {
-        const next = normalizeLatexCompileSettings(obj);
-        localStorage.setItem(key, JSON.stringify(next));
-        changed++;
-      }
-
-      if (changed === 0) {
-        localStorage.setItem(
-          "lumina-latex-settings-v1",
-          JSON.stringify(normalizeLatexCompileSettings({}))
-        );
-        changed++;
-      }
-    } catch (err) {
-      console.warn(`[${STAGE}] Could not patch localStorage settings:`, err);
-    }
-
-    return changed;
-  }
-
-  function findCurrentProject() {
-    const candidates = [
-      window.LuminaLatexProject,
-      window.luminaLatexProject,
-      window.currentProject,
-      window.project,
-      get(window, ["LuminaState", "project"]),
-      get(window, ["luminaState", "project"]),
-      get(window, ["AppState", "project"]),
-      get(window, ["appState", "project"]),
-      get(window, ["Lumina", "project"]),
-      get(window, ["Lumina", "state", "project"]),
-      get(window, ["LuminaLatex", "project"]),
-      get(window, ["LuminaLatex", "state", "project"]),
-      get(window, ["state", "project"]),
-    ];
-
-    for (const p of candidates) {
-      if (p && typeof p === "object") return p;
-    }
-
+  function dataUrlToBase64(value) {
+    if (typeof value !== "string") return null;
+    var marker = ";base64,";
+    var idx = value.indexOf(marker);
+    if (value.indexOf("data:") === 0 && idx >= 0) return value.slice(idx + marker.length);
     return null;
   }
 
-  function getEditorText() {
-    const functionCandidates = [
-      get(window, ["getEditorText"]),
-      get(window, ["getActiveEditorText"]),
-      get(window, ["LuminaEditor", "getText"]),
-      get(window, ["LuminaLatexEditor", "getText"]),
-      get(window, ["editor", "getValue"]),
-      get(window, ["cm", "getValue"]),
-      get(window, ["codeMirror", "getValue"]),
+  function getContentFromFileRecord(record) {
+    if (typeof record === "string") return record;
+    if (!record || typeof record !== "object") return "";
+
+    var textKeys = [
+      "content",
+      "text",
+      "source",
+      "value",
+      "data",
+      "body",
+      "raw",
+      "latex",
+      "tex"
     ];
 
-    for (const fn of functionCandidates) {
-      if (typeof fn !== "function") continue;
-      try {
-        const value = fn.call(window.editor || window.cm || window.codeMirror || window);
-        if (typeof value === "string") return value;
-      } catch {
-        // Try next source.
-      }
+    for (var i = 0; i < textKeys.length; i++) {
+      var k = textKeys[i];
+      if (typeof record[k] === "string") return record[k];
     }
 
-    const selectors = [
-      "textarea#editor",
-      "textarea#latex-editor",
-      "textarea#source-editor",
-      "textarea[data-role='latex-editor']",
-      "textarea",
-      "#editor textarea",
-      "#latex-editor textarea",
-      "[contenteditable='true']",
-      ".cm-content",
-      ".CodeMirror-code",
-    ];
-
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (!el) continue;
-
-      if (typeof el.value === "string") return el.value;
-      if (typeof el.innerText === "string") return el.innerText;
-      if (typeof el.textContent === "string") return el.textContent;
+    var base64Keys = ["contentBase64", "dataBase64", "base64"];
+    for (var j = 0; j < base64Keys.length; j++) {
+      var b = base64Keys[j];
+      if (typeof record[b] === "string") {
+        return {
+          contentBase64: dataUrlToBase64(record[b]) || record[b],
+          encoding: "base64"
+        };
+      }
     }
 
     return "";
   }
 
-  function getFileContent(value) {
-    if (value === undefined || value === null) return "";
-
-    if (typeof value === "string") return value;
-
-    if (value instanceof Uint8Array) {
-      try {
-        return new TextDecoder("utf-8").decode(value);
-      } catch {
-        return "";
+  function maybeGetActiveEditorText() {
+    try {
+      if (typeof global.getEditorText === "function") {
+        var v0 = global.getEditorText();
+        if (typeof v0 === "string") return v0;
       }
-    }
+    } catch (_) {}
 
-    if (isPlainObject(value)) {
-      const content = firstDefined(
-        value.content,
-        value.text,
-        value.source,
-        value.value,
-        value.data,
-        value.body,
-        value.tex
-      );
+    try {
+      if (global.LuminaEditor && typeof global.LuminaEditor.getText === "function") {
+        var v1 = global.LuminaEditor.getText();
+        if (typeof v1 === "string") return v1;
+      }
+    } catch (_) {}
 
-      if (typeof content === "string") return content;
+    try {
+      if (global.editor && typeof global.editor.getValue === "function") {
+        var v2 = global.editor.getValue();
+        if (typeof v2 === "string") return v2;
+      }
+    } catch (_) {}
 
-      // Metadata-only records often look like {path,type,length}; these are not source.
-      return "";
-    }
+    try {
+      if (global.cm && typeof global.cm.getValue === "function") {
+        var v3 = global.cm.getValue();
+        if (typeof v3 === "string") return v3;
+      }
+    } catch (_) {}
+
+    try {
+      var cm = document.querySelector(".cm-content");
+      if (cm && cm.innerText && cm.innerText.trim()) return cm.innerText;
+    } catch (_) {}
+
+    try {
+      var selectors = [
+        "textarea[data-role='latex-editor']",
+        "textarea[data-testid='latex-editor']",
+        "#latex-editor",
+        "#editor",
+        "textarea"
+      ];
+      for (var i = 0; i < selectors.length; i++) {
+        var el = document.querySelector(selectors[i]);
+        if (el && typeof el.value === "string" && el.value.trim()) return el.value;
+      }
+    } catch (_) {}
 
     return "";
   }
 
-  function addFilesFromObject(filesOut, rawFiles) {
-    if (!isPlainObject(rawFiles)) return;
+  function collectProjectFiles(project) {
+    project = asObject(project);
 
-    for (const [path, value] of Object.entries(rawFiles)) {
-      if (!path) continue;
-      const content = getFileContent(value);
-      if (content !== "") filesOut[path] = content;
-    }
-  }
+    var files = {};
+    var rawFiles = project.files;
 
-  function addFilesFromArray(filesOut, rawFiles) {
-    if (!Array.isArray(rawFiles)) return;
-
-    for (const file of rawFiles) {
-      if (!isPlainObject(file)) continue;
-      const path = file.path || file.name || file.filename || file.fileName;
-      if (!path) continue;
-      const content = getFileContent(file);
-      if (content !== "") filesOut[path] = content;
-    }
-  }
-
-  function inferRootFile(project, payload) {
-    return (
-      payload?.rootFile ||
-      payload?.mainFile ||
-      payload?.main ||
-      payload?.activePath ||
-      project?.rootFile ||
-      project?.mainFile ||
-      project?.main ||
-      project?.activePath ||
-      "main.tex"
-    );
-  }
-
-  function collectProjectFiles(project, payload) {
-    const files = {};
-
-    // Payload files first.
-    if (isPlainObject(payload?.files)) addFilesFromObject(files, payload.files);
-    if (Array.isArray(payload?.files)) addFilesFromArray(files, payload.files);
-
-    if (isPlainObject(payload?.additionalFiles)) addFilesFromObject(files, payload.additionalFiles);
-    if (Array.isArray(payload?.additionalFiles)) addFilesFromArray(files, payload.additionalFiles);
-
-    // Common single-source fields.
-    const rootFile = inferRootFile(project, payload);
-    const singleSource = firstDefined(
-      payload?.tex,
-      payload?.source,
-      payload?.input,
-      payload?.mainTex,
-      payload?.content
-    );
-    if (typeof singleSource === "string" && singleSource.trim()) {
-      files[rootFile] = singleSource;
+    if (rawFiles && !Array.isArray(rawFiles) && typeof rawFiles === "object") {
+      Object.keys(rawFiles).forEach(function (path) {
+        files[path] = getContentFromFileRecord(rawFiles[path]);
+      });
     }
 
-    // Project files next. These fill gaps and rescue metadata-only payloads.
-    if (isPlainObject(project?.files)) addFilesFromObject(files, project.files);
-    if (Array.isArray(project?.files)) addFilesFromArray(files, project.files);
-
-    if (isPlainObject(project?.additionalFiles)) addFilesFromObject(files, project.additionalFiles);
-    if (Array.isArray(project?.additionalFiles)) addFilesFromArray(files, project.additionalFiles);
-
-    // Try common nested stores.
-    const nestedStores = [
-      project?.project?.files,
-      project?.data?.files,
-      project?.state?.files,
-      get(window, ["LuminaState", "files"]),
-      get(window, ["luminaState", "files"]),
-      get(window, ["AppState", "files"]),
-      get(window, ["appState", "files"]),
-      get(window, ["state", "files"]),
-    ];
-
-    for (const store of nestedStores) {
-      if (isPlainObject(store)) addFilesFromObject(files, store);
-      if (Array.isArray(store)) addFilesFromArray(files, store);
+    if (Array.isArray(rawFiles)) {
+      rawFiles.forEach(function (item) {
+        if (!item || typeof item !== "object") return;
+        var path = item.path || item.name || item.filename || item.fileName;
+        if (!path) return;
+        files[path] = getContentFromFileRecord(item);
+      });
     }
 
-    // Active editor text is authoritative for the active file.
-    const editorText = getEditorText();
-    const activePath = payload?.activePath || project?.activePath || rootFile;
-    if (typeof editorText === "string" && editorText.trim()) {
-      files[activePath] = editorText;
-      if (!files[rootFile] && activePath === rootFile) files[rootFile] = editorText;
+    var additional = project.additionalFiles;
+    if (additional && !Array.isArray(additional) && typeof additional === "object") {
+      Object.keys(additional).forEach(function (path) {
+        if (files[path] === undefined) files[path] = getContentFromFileRecord(additional[path]);
+      });
+    }
+
+    if (Array.isArray(additional)) {
+      additional.forEach(function (item) {
+        if (!item || typeof item !== "object") return;
+        var path = item.path || item.name || item.filename || item.fileName;
+        if (!path || files[path] !== undefined) return;
+        files[path] = getContentFromFileRecord(item);
+      });
     }
 
     return files;
   }
 
-  function summarizeCompilePayload(payload) {
-    const rootFile = payload.rootFile || payload.mainFile || payload.main || "main.tex";
-    const files = payload.files || {};
-    const root = getFileContent(files[rootFile]);
-    const paths = isPlainObject(files) ? Object.keys(files) : [];
+  function looksLikeCompilePayload(value) {
+    return !!(
+      value &&
+      typeof value === "object" &&
+      (value.rootFile || value.mainFile || value.activePath) &&
+      value.files
+    );
+  }
+
+  function summarizePayload(payload) {
+    payload = asObject(payload);
+    var files = asObject(payload.files);
+    var rootFile = payload.rootFile || payload.mainFile || payload.activePath || "main.tex";
+    var root = files[rootFile];
+
+    var rootString = typeof root === "string" ? root : "";
+    if (!rootString && root && typeof root === "object") {
+      rootString = JSON.stringify(root).slice(0, 500);
+    }
 
     return {
-      stage: STAGE,
-      rootFile,
-      fileCount: paths.length,
-      paths,
-      rootLength: root.length,
-      rootHead: root.slice(0, 500),
-      hasDocumentClass: /\\documentclass/.test(root),
-      hasBeginDocument: /\\begin\{document\}/.test(root),
-      hasEndDocument: /\\end\{document\}/.test(root),
+      rootFile: rootFile,
+      fileCount: Object.keys(files).length,
+      paths: Object.keys(files),
+      rootLength: rootString.length,
+      rootHead: rootString.slice(0, 500),
+      hasDocumentClass: /\\documentclass/.test(rootString),
+      hasBeginDocument: /\\begin\{document\}/.test(rootString),
+      hasEndDocument: /\\end\{document\}/.test(rootString)
     };
   }
 
-  function buildLatexCompileRequest(projectArg, settingsArg, payloadArg) {
-    const project = projectArg || findCurrentProject() || {};
-    const settings = normalizeLatexCompileSettings(settingsArg || {});
-    const payload = isPlainObject(payloadArg) ? { ...payloadArg } : {};
-    const rootFile = inferRootFile(project, payload);
-    const files = collectProjectFiles(project, payload);
+  function buildCompileRequest(arg0, arg1, arg2) {
+    var settings;
+    var project;
+    var payload;
 
-    // If root is still empty but we have exactly one tex file, use it as root.
-    if (!getFileContent(files[rootFile]).trim()) {
-      const texPaths = Object.keys(files).filter((p) => /\.tex$/i.test(p));
-      if (texPaths.length === 1) {
-        files[rootFile] = files[texPaths[0]];
-      }
+    if (looksLikeCompilePayload(arg0)) {
+      payload = Object.assign({}, arg0);
+      settings = normalizeSettings(arg1 || payload.settings || {});
+    } else if (arg0 && typeof arg0 === "object" && arg0.project) {
+      project = asObject(arg0.project);
+      settings = normalizeSettings(arg0.settings || arg1 || {});
+    } else {
+      project = asObject(arg0);
+      settings = normalizeSettings(arg1 || {});
     }
 
-    const rootContent = getFileContent(files[rootFile]);
-    if (!rootContent.trim()) {
-      const paths = Object.keys(files);
+    if (!payload) {
+      var rootFile =
+        project.rootFile ||
+        project.mainFile ||
+        project.activePath ||
+        "main.tex";
+
+      var activePath = project.activePath || rootFile;
+      var files = collectProjectFiles(project);
+
+      var activeEditorText = maybeGetActiveEditorText();
+      if (activeEditorText && activeEditorText.trim()) {
+        files[activePath] = activeEditorText;
+        if (!files[rootFile] || !String(files[rootFile]).trim()) {
+          files[rootFile] = activeEditorText;
+        }
+      }
+
+      if (!files[rootFile] && typeof project.source === "string") files[rootFile] = project.source;
+      if (!files[rootFile] && typeof project.content === "string") files[rootFile] = project.content;
+      if (!files[rootFile] && typeof project.tex === "string") files[rootFile] = project.tex;
+      if (!files[rootFile] && typeof project.mainTex === "string") files[rootFile] = project.mainTex;
+
+      payload = {
+        schema: "lumina-latex-compile-request-v1",
+        rootFile: rootFile,
+        mainFile: rootFile,
+        activePath: activePath,
+        engine: settings.engine || "pdflatex",
+        bibliography: settings.bibliography || "bibtex",
+        shellEscape: false,
+        rerun: true,
+        files: files
+      };
+    } else {
+      settings = normalizeSettings(settings || {});
+      payload.rootFile = payload.rootFile || payload.mainFile || payload.activePath || "main.tex";
+      payload.mainFile = payload.mainFile || payload.rootFile;
+      payload.activePath = payload.activePath || payload.rootFile;
+      payload.engine = payload.engine || settings.engine || "pdflatex";
+      payload.bibliography = payload.bibliography || settings.bibliography || "bibtex";
+      payload.shellEscape = false;
+
+      var existingFiles = collectProjectFiles(payload);
+      if (Object.keys(existingFiles).length > 0) payload.files = existingFiles;
+    }
+
+    payload.compileInputSummary = summarizePayload(payload);
+
+    var rootContent = payload.files && payload.files[payload.rootFile];
+    var rootText = typeof rootContent === "string" ? rootContent : "";
+    if (!rootText.trim()) {
       throw new Error(
-        `Root file ${rootFile} is empty before compile. ` +
-          `Frontend must send actual LaTeX source, not only metadata. ` +
-          `Collected paths: ${paths.join(", ") || "none"}`
+        "Root file " + payload.rootFile + " is empty before compile. " +
+        "The frontend did not find actual LaTeX source content. " +
+        "Payload summary: " + JSON.stringify(payload.compileInputSummary)
       );
     }
 
-    const request = {
-      schema: "lumina-latex-compile-request-v1",
-      rootFile,
-      mainFile: rootFile,
-      activePath: payload.activePath || project.activePath || rootFile,
-      engine: payload.engine || settings.engine || "pdflatex",
-      bibliography: payload.bibliography || settings.bibliography || "bibtex",
-      shellEscape: false,
-      rerun: payload.rerun !== false,
-      files,
-    };
-
-    request.compileInputSummary = summarizeCompilePayload(request);
-    return request;
+    return { settings: settings, payload: payload };
   }
 
-  function normalizeCompileResult(result) {
-    const next = isPlainObject(result) ? { ...result } : { success: false, ok: false, message: "Invalid compile result" };
+  function getAuthHeaders(settings) {
+    var headers = { "Content-Type": "application/json" };
+    settings = asObject(settings);
 
-    next.ok = Boolean(next.ok || next.success);
-    next.success = Boolean(next.success || next.ok);
+    var token =
+      settings.luminaProxyToken ||
+      settings.proxyToken ||
+      settings.compileToken ||
+      "";
 
-    const pdfBase64 = next.pdfBase64 || next.pdfBytesBase64 || null;
-    if (pdfBase64 && !next.pdf) {
-      next.pdf = `data:application/pdf;base64,${pdfBase64}`;
+    if (!token) {
+      try {
+        token =
+          localStorage.getItem("LUMINA_PROXY_TOKEN") ||
+          localStorage.getItem("luminaProxyToken") ||
+          localStorage.getItem("lumina-latex-proxy-token") ||
+          "";
+      } catch (_) {}
     }
 
-    if (next.pdf && typeof next.pdf === "string" && next.pdf.startsWith("data:application/pdf;base64,")) {
-      next.pdfExtracted = true;
-      next.pdfBase64 = next.pdfBase64 || next.pdf.split(",", 2)[1];
+    if (token) {
+      headers.Authorization = "Bearer " + token;
+      headers["X-Lumina-Token"] = token;
     }
 
-    return next;
+    return headers;
   }
 
-  async function fetchJson(url, init) {
-    const response = await fetch(url, init);
-    const text = await response.text();
-    let data;
+  function flattenCompileResult(result) {
+    result = asObject(result);
+    var inner = asObject(result.result);
+    var merged = Object.assign({}, result, inner);
+
+    if (inner && Object.keys(inner).length) {
+      merged.result = inner;
+      if (result.jobId && !merged.jobId) merged.jobId = result.jobId;
+      if (result.progress !== undefined && merged.progress === undefined) merged.progress = result.progress;
+    }
+
+    merged.ok = !!(merged.ok || merged.success);
+    merged.success = !!(merged.success || merged.ok);
+    merged.stage = merged.stage || STAGE;
+    merged.provider = merged.provider || "frontend-compilerprovider-cloudrun-texlive";
+    return merged;
+  }
+
+  async function fetchJson(url, options) {
+    var response = await fetch(url, options || {});
+    var text = await response.text();
+    var data;
     try {
       data = text ? JSON.parse(text) : {};
     } catch (err) {
-      throw new Error(`Non-JSON response from ${url}: ${text.slice(0, 1000)}`);
+      data = { ok: false, success: false, status: "error", message: text || String(err), rawText: text };
     }
 
     if (!response.ok) {
-      const msg = data?.detail || data?.message || response.statusText || `HTTP ${response.status}`;
-      const e = new Error(msg);
-      e.response = response;
-      e.data = data;
-      throw e;
+      data.ok = false;
+      data.success = false;
+      data.status = data.status || "error";
+      data.httpStatus = response.status;
+      data.message = data.message || data.detail || ("HTTP " + response.status);
     }
 
     return data;
   }
 
-  async function checkCompileBackendAvailability(settingsArg) {
-    const settings = normalizeLatexCompileSettings(settingsArg || {});
+  async function checkAvailability(settings) {
+    settings = normalizeSettings(settings || readSettingsFromLocalStorage());
+    var raw = null;
+    var httpStatus = null;
+    var ok = false;
+
     try {
-      const raw = await fetchJson(settings.backendStatusUrl || STATUS_URL, { method: "GET" });
-      return {
-        ok: Boolean(raw.ok),
-        status: raw.ok ? "online" : "unavailable",
-        checkedAt: new Date().toISOString(),
-        httpStatus: 200,
-        availability: {
-          compileUrl: settings.compileUrl,
-          jobsUrl: settings.compileStatusUrl,
-          statusUrl: settings.backendStatusUrl,
-          defaultRelativeCompileUrl: false,
-          staticDraftFallbackActive: false,
-        },
-        ...raw,
-        raw,
-      };
+      var response = await fetch(settings.backendStatusUrl, { method: "GET", cache: "no-store" });
+      httpStatus = response.status;
+      raw = await response.json();
+      ok = !!(response.ok && raw && raw.ok);
     } catch (err) {
-      return {
-        ok: false,
-        status: "offline",
-        checkedAt: new Date().toISOString(),
-        message: err.message || String(err),
-        availability: {
-          compileUrl: settings.compileUrl,
-          jobsUrl: settings.compileStatusUrl,
-          statusUrl: settings.backendStatusUrl,
-        },
-      };
+      raw = { ok: false, message: String(err) };
     }
+
+    return {
+      ok: ok,
+      status: ok ? "online" : "offline",
+      checkedAt: new Date().toISOString(),
+      httpStatus: httpStatus,
+      compileUrl: settings.compileUrl,
+      jobsUrl: settings.compileStatusUrl,
+      statusUrl: settings.backendStatusUrl,
+      provider: "cloudrun-texlive-latexmk",
+      stage: raw && raw.stage ? raw.stage : STAGE,
+      raw: raw,
+      message: ok ? "Backend reachable." : ((raw && raw.message) || "Backend not reachable.")
+    };
   }
 
-  async function runBackendLatexCompile(projectArg, settingsArg, payloadArg) {
-    const settings = normalizeLatexCompileSettings(settingsArg || {});
-    const body = buildLatexCompileRequest(projectArg, settings, payloadArg);
+  async function compile(arg0, arg1, arg2) {
+    var options = asObject(arg2);
+    var built = buildCompileRequest(arg0, arg1, arg2);
+    var settings = built.settings;
+    var payload = built.payload;
 
-    console.info(`[${STAGE}] compile request`, body.compileInputSummary);
+    if (options.onProgress) {
+      try {
+        options.onProgress({
+          status: "running",
+          progress: 5,
+          message: "Sending compile request to Cloud Run TeX Live backend.",
+          compileInputSummary: payload.compileInputSummary
+        });
+      } catch (_) {}
+    }
 
-    const result = await fetchJson(settings.compileUrl || COMPILE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    console.log("[CompilerProvider] compile request", payload.compileInputSummary);
+
+    var result;
+
+    if (settings.useCompileJobs) {
+      var created = await fetchJson(settings.compileStatusUrl, {
+        method: "POST",
+        headers: getAuthHeaders(settings),
+        body: JSON.stringify(payload)
+      });
+
+      if (options.onProgress) {
+        try {
+          options.onProgress({
+            status: created.status || "running",
+            progress: created.progress || 100,
+            jobId: created.jobId || null,
+            message: created.message || "Compile job finished."
+          });
+        } catch (_) {}
+      }
+
+      result = flattenCompileResult(created);
+
+      // The current Cloud Run backend completes synchronously inside the job create response.
+      // If a future async backend returns only a jobId, poll once as compatibility.
+      if (!result.pdfExtracted && !result.log && created.jobId && !created.result) {
+        var pollUrl = settings.compileStatusUrl.replace(/\/+$/, "") + "/" + encodeURIComponent(created.jobId);
+        var job = await fetchJson(pollUrl, { method: "GET", headers: getAuthHeaders(settings) });
+        result = flattenCompileResult(job);
+      }
+    } else {
+      result = await fetchJson(settings.compileUrl, {
+        method: "POST",
+        headers: getAuthHeaders(settings),
+        body: JSON.stringify(payload)
+      });
+      result = flattenCompileResult(result);
+    }
+
+    result.compileInputSummary = result.compileInputSummary || payload.compileInputSummary;
+    result.settingsSummary = {
+      compilerMode: settings.compilerMode,
+      compileUrl: settings.compileUrl,
+      compileStatusUrl: settings.compileStatusUrl,
+      backendStatusUrl: settings.backendStatusUrl,
+      useCompileJobs: settings.useCompileJobs,
+      engine: settings.engine
+    };
+
+    console.log("[CompilerProvider] compile result", {
+      success: result.success,
+      status: result.status,
+      exitCode: result.exitCode,
+      jobId: result.jobId,
+      pdfExtracted: result.pdfExtracted,
+      pdfBytesLength: result.pdfBytesLength,
+      message: result.message
     });
 
-    const normalized = normalizeCompileResult(result);
-    console.info(`[${STAGE}] compile result`, {
-      success: normalized.success,
-      status: normalized.status,
-      exitCode: normalized.exitCode,
-      pdfExtracted: normalized.pdfExtracted,
-      pdfBytesLength: normalized.pdfBytesLength,
-      message: normalized.message,
-    });
-    return normalized;
-  }
-
-  async function runBackendLatexCompileJob(projectArg, settingsArg, payloadArg) {
-    const settings = normalizeLatexCompileSettings(settingsArg || {});
-    const body = buildLatexCompileRequest(projectArg, settings, payloadArg);
-
-    console.info(`[${STAGE}] compile job request`, body.compileInputSummary);
-
-    const created = await fetchJson(settings.compileStatusUrl || JOBS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    const result = normalizeCompileResult(created.result || created);
     return result;
   }
 
-  async function compileLatexProject(projectArg, settingsArg, payloadArg) {
-    const settings = normalizeLatexCompileSettings(settingsArg || {});
-    if (settings.useCompileJobs) {
-      return runBackendLatexCompileJob(projectArg, settings, payloadArg);
-    }
-    return runBackendLatexCompile(projectArg, settings, payloadArg);
+  function readSettingsFromLocalStorage() {
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        var raw = localStorage.getItem(key);
+        if (!raw) continue;
+        var obj;
+        try { obj = JSON.parse(raw); } catch (_) { continue; }
+        if (
+          obj &&
+          typeof obj === "object" &&
+          (
+            obj.schema === "lumina-latex-settings-v1" ||
+            "compileUrl" in obj ||
+            "compileStatusUrl" in obj ||
+            "compilerMode" in obj
+          )
+        ) {
+          return obj;
+        }
+      }
+    } catch (_) {}
+    return {};
   }
 
-  function rewriteLatexBackendUrl(url) {
-    if (typeof url !== "string") return url;
-
-    // Relative or stale GitHub Pages API paths.
-    if (url === "/api/lumina/latex/compile" || /\/api\/lumina\/latex\/compile$/.test(url)) {
-      return COMPILE_URL;
-    }
-    if (url === "/api/lumina/latex/compile/jobs" || /\/api\/lumina\/latex\/compile\/jobs$/.test(url)) {
-      return JOBS_URL;
-    }
-    if (url === "/api/lumina/latex/status" || /\/api\/lumina\/latex\/status$/.test(url)) {
-      return STATUS_URL;
-    }
-
-    return url;
-  }
-
-  function maybePatchCompileRequestBody(url, init) {
-    const rewrittenUrl = rewriteLatexBackendUrl(url);
-    const isCompilePost =
-      init &&
-      String(init.method || "GET").toUpperCase() === "POST" &&
-      (rewrittenUrl === COMPILE_URL || rewrittenUrl === JOBS_URL);
-
-    if (!isCompilePost || !init.body || typeof init.body !== "string") {
-      return init;
-    }
-
-    const parsed = readJsonMaybe(init.body);
-    if (!isPlainObject(parsed)) return init;
+  function writeSettingsToLocalStorage(settings) {
+    settings = normalizeSettings(settings || readSettingsFromLocalStorage());
+    var wrote = false;
 
     try {
-      const project = findCurrentProject() || {};
-      const settings = normalizeLatexCompileSettings({});
-      const patched = buildLatexCompileRequest(project, settings, parsed);
-      return {
-        ...init,
-        headers: { ...(init.headers || {}), "Content-Type": "application/json" },
-        body: JSON.stringify(patched),
-      };
-    } catch (err) {
-      console.warn(`[${STAGE}] Could not patch compile request body:`, err);
-      return init;
-    }
-  }
-
-  function installFetchRewrite() {
-    if (window.__luminaLatexCloudrunFetchRewriteInstalled) return;
-    if (typeof window.fetch !== "function") return;
-
-    const originalFetch = window.fetch.bind(window);
-
-    window.fetch = function patchedLuminaFetch(input, init) {
-      let url = input;
-      let nextInput = input;
-      let nextInit = init ? { ...init } : init;
-
-      if (typeof input === "string") {
-        url = input;
-        const rewritten = rewriteLatexBackendUrl(input);
-        if (rewritten !== input) {
-          nextInput = rewritten;
-          nextInit = maybePatchCompileRequestBody(rewritten, nextInit || {});
-        }
-      } else if (input && typeof input.url === "string") {
-        url = input.url;
-        const rewritten = rewriteLatexBackendUrl(input.url);
-        if (rewritten !== input.url) {
-          nextInput = rewritten;
-          nextInit = maybePatchCompileRequestBody(rewritten, nextInit || {});
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        var raw = localStorage.getItem(key);
+        if (!raw) continue;
+        var obj;
+        try { obj = JSON.parse(raw); } catch (_) { continue; }
+        if (
+          obj &&
+          typeof obj === "object" &&
+          (
+            obj.schema === "lumina-latex-settings-v1" ||
+            "compileUrl" in obj ||
+            "compileStatusUrl" in obj ||
+            "compilerMode" in obj
+          )
+        ) {
+          localStorage.setItem(key, JSON.stringify(Object.assign({}, obj, settings)));
+          wrote = true;
         }
       }
 
-      return originalFetch(nextInput, nextInit);
-    };
+      if (!wrote) {
+        localStorage.setItem("lumina-latex-settings-v1", JSON.stringify(settings));
+      }
+    } catch (err) {
+      console.warn("[CompilerProvider] Could not persist settings", err);
+    }
 
-    window.__luminaLatexCloudrunFetchRewriteInstalled = true;
+    return settings;
   }
 
-  class CompilerProvider {
-    constructor(settings) {
-      this.settings = normalizeLatexCompileSettings(settings || {});
-      this.stage = STAGE;
-      this.provider = "backend-texlive";
-    }
-
-    normalizeSettings(settings) {
-      this.settings = normalizeLatexCompileSettings(settings || this.settings || {});
-      return this.settings;
-    }
-
-    async checkAvailability(settings) {
-      return checkCompileBackendAvailability(settings || this.settings);
-    }
-
-    async compile(project, options) {
-      return compileLatexProject(project || findCurrentProject(), this.settings, options || {});
-    }
-
-    async compileJob(project, options) {
-      return runBackendLatexCompileJob(project || findCurrentProject(), this.settings, options || {});
-    }
-
-    buildRequest(project, options) {
-      return buildLatexCompileRequest(project || findCurrentProject(), this.settings, options || {});
-    }
-  }
-
-  function createCompilerProvider(settings) {
-    return new CompilerProvider(settings);
-  }
-
-  function install() {
-    const patchedSettingsCount = patchLocalStorageSettings();
-    installFetchRewrite();
-
-    console.info(`[${STAGE}] installed`, {
-      backendBase: BACKEND_BASE,
-      compileUrl: COMPILE_URL,
-      jobsUrl: JOBS_URL,
-      statusUrl: STATUS_URL,
-      patchedSettingsCount,
-    });
-  }
-
-  const api = {
-    STAGE,
-    BACKEND_BASE,
-    COMPILE_URL,
-    JOBS_URL,
-    STATUS_URL,
-    CompilerProvider,
-    createCompilerProvider,
-    normalizeLatexCompileSettings,
-    patchLocalStorageSettings,
-    buildLatexCompileRequest,
-    summarizeCompilePayload,
-    checkCompileBackendAvailability,
-    runBackendLatexCompile,
-    runBackendLatexCompileJob,
-    compileLatexProject,
-    installFetchRewrite,
-    install,
+  var Provider = {
+    stage: STAGE,
+    provider: "frontend-compilerprovider-cloudrun-texlive",
+    BACKEND_BASE: BACKEND_BASE,
+    normalizeSettings: normalizeSettings,
+    buildCompileRequest: buildCompileRequest,
+    summarizePayload: summarizePayload,
+    checkAvailability: checkAvailability,
+    getAvailability: checkAvailability,
+    availability: checkAvailability,
+    diagnose: checkAvailability,
+    status: checkAvailability,
+    compile: compile,
+    compileJob: compile,
+    runCompile: compile,
+    compileProject: compile,
+    saveSettings: writeSettingsToLocalStorage
   };
 
-  // Global compatibility names used across earlier Latexai stages.
-  window.LuminaLatexCompilerProvider = api;
-  window.LuminaCompilerProvider = api;
-  window.luminaCompilerProvider = api;
-  window.CompilerProvider = window.CompilerProvider || CompilerProvider;
-  window.createCompilerProvider = window.createCompilerProvider || createCompilerProvider;
-  window.normalizeLatexCompileSettings = normalizeLatexCompileSettings;
-  window.buildLatexCompileRequest = buildLatexCompileRequest;
-  window.summarizeCompilePayload = summarizeCompilePayload;
-  window.checkCompileBackendAvailability = checkCompileBackendAvailability;
-  window.runBackendLatexCompile = runBackendLatexCompile;
-  window.runBackendLatexCompileJob = runBackendLatexCompileJob;
-  window.compileLatexProject = compileLatexProject;
+  function namespaceObjects() {
+    var names = [
+      "LuminaLatex",
+      "LuminaLaTeX",
+      "Lumina",
+      "LatexAI",
+      "Latexai",
+      "LatexaiApp",
+      "LuminaLatexApp",
+      "NS"
+    ];
 
-  install();
-})();
+    var objects = [];
+
+    names.forEach(function (name) {
+      if (!global[name] || typeof global[name] !== "object") global[name] = {};
+      objects.push(global[name]);
+    });
+
+    // Some builds put everything under window.Lumina.Namespace or window.Lumina.NS.
+    try {
+      if (global.Lumina) {
+        global.Lumina.NS = global.Lumina.NS || global.Lumina;
+        objects.push(global.Lumina.NS);
+      }
+    } catch (_) {}
+
+    return objects;
+  }
+
+  namespaceObjects().forEach(function (ns) {
+    ns.CompilerProvider = Provider;
+    ns.compilerProvider = Provider;
+    ns.BackendCompilerProvider = Provider;
+
+    ns.__modules = ns.__modules || {};
+    ns.__modules.CompilerProvider = true;
+
+    ns.modules = ns.modules || {};
+    ns.modules.CompilerProvider = true;
+
+    if (typeof ns.registerModule === "function") {
+      try { ns.registerModule("CompilerProvider", Provider); } catch (_) {}
+    }
+  });
+
+  writeSettingsToLocalStorage(readSettingsFromLocalStorage());
+
+  global.CompilerProvider = Provider;
+
+  console.info("[CompilerProvider] installed", {
+    stage: STAGE,
+    compileUrl: normalizeSettings({}).compileUrl,
+    compileStatusUrl: normalizeSettings({}).compileStatusUrl,
+    backendStatusUrl: normalizeSettings({}).backendStatusUrl
+  });
+})(typeof window !== "undefined" ? window : globalThis);
