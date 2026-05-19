@@ -1,0 +1,79 @@
+/* Stage 7A: unobtrusive selection action bubble */
+.lai-selection-action-bubble {
+  position: fixed;
+  z-index: 2147483000;
+  display: none;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .94);
+  color: #fff;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, .32);
+  border: 1px solid rgba(255,255,255,.16);
+  backdrop-filter: blur(10px);
+  max-width: min(92vw, 560px);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lai-selection-action-bubble.active {
+  display: flex;
+}
+
+.lai-selection-action-bubble .lai-bubble-label {
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .02em;
+  opacity: .76;
+  white-space: nowrap;
+  padding: 0 .25rem 0 .35rem;
+}
+
+.lai-selection-action-bubble .lai-bubble-btn {
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.10);
+  color: #fff;
+  border-radius: 999px;
+  padding: .32rem .55rem;
+  font-size: .76rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.lai-selection-action-bubble .lai-bubble-btn.primary {
+  background: #2563eb;
+  border-color: rgba(147,197,253,.45);
+}
+
+.lai-selection-action-bubble .lai-bubble-btn:hover,
+.lai-selection-action-bubble .lai-bubble-btn:focus {
+  background: rgba(255,255,255,.20);
+  outline: none;
+}
+
+.lai-selection-action-bubble .lai-bubble-btn.primary:hover,
+.lai-selection-action-bubble .lai-bubble-btn.primary:focus {
+  background: #1d4ed8;
+}
+
+.lai-selection-action-bubble .lai-bubble-close {
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.80);
+  font-weight: 900;
+  font-size: 1rem;
+  line-height: 1;
+  padding: .2rem .35rem;
+}
+
+@media (max-width: 720px) {
+  .lai-selection-action-bubble {
+    left: .5rem !important;
+    right: .5rem !important;
+    top: auto !important;
+    bottom: .75rem !important;
+    transform: none !important;
+    border-radius: 18px;
+  }
+}
