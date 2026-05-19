@@ -1,0 +1,7 @@
+Stage 4N checks
+===============
+
+PASS node --check js/lai-stage4l-lai-guard.js
+PASS node --check js/lai-stage4m-compile-safe-lai.js
+PASS index.html loads Stage 4N cache-busted guard scripts
+PASS badge functions disabled while preserving guard behavior
