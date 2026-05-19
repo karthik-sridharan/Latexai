@@ -1,0 +1,8 @@
+Stage 10D checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage10d-image-ai-backend-diagnostics.test.cjs
+
+Image-to-TikZ now has a visible backend diagnostic report and documents the backend image forwarding contract.
