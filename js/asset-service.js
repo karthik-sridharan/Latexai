@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage8g-figure-insert-caret-capture-fix-1
+ * Stage: stage9a-ai-tikz-maker-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage8g-figure-insert-caret-capture-fix-1';
+  const STAGE = 'stage9a-ai-tikz-maker-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -223,6 +223,103 @@
     if (label) lines.push(`  \\label{${label}}`);
     lines.push('\\end{figure}');
     return lines.join('\n') + '\n';
+  }
+
+  function addTextAsset(path, text, options = {}) {
+    path = uniquePath(normalizePath(path || 'figures/generated.tex'));
+    const oldActive = State()?.state?.project?.activePath || '';
+    const file = State()?.createFile?.(path, String(text || ''), {});
+    if (!file) return { ok: false, message: `Could not create text asset: ${path}` };
+
+    file.kind = options.kind || 'tex';
+    file.mime = options.mime || 'text/x-tex';
+    file.meta = Object.assign({}, file.meta || {}, {
+      assetServiceStage: STAGE,
+      assetType: options.assetType || 'text',
+      createdBy: options.createdBy || 'Latexai AssetService'
+    });
+
+    if (oldActive && State()?.getFile?.(oldActive)) {
+      try { State().setActivePath(oldActive); } catch (_err) {}
+    }
+
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    return { ok: true, file, path };
+  }
+
+  function ensurePackage(packageName, options = {}) {
+    packageName = String(packageName || '').trim();
+    if (!packageName) return false;
+    const project = State()?.state?.project;
+    const rootPath = normalizePath(options.rootPath || project?.rootFile || project?.activePath || 'main.tex');
+    const file = State()?.getFile?.(rootPath);
+    if (!file || !State()?.textFile?.(file)) return false;
+    let tex = fileText(file);
+    const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('\\\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\b' + escaped + '\\b[^}]*\\}');
+    if (re.test(tex)) return false;
+
+    const line = options.line || `\\usepackage{${packageName}}\n`;
+    const dc = tex.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}\s*/);
+    if (dc) tex = tex.slice(0, dc.index + dc[0].length) + line + tex.slice(dc.index + dc[0].length);
+    else tex = line + tex;
+
+    State().updateFile(rootPath, tex);
+    return true;
+  }
+
+  function ensureTikzPackage() {
+    return ensurePackage('tikz');
+  }
+
+  function inputFigureSnippet(options = {}) {
+    const path = normalizePath(options.path || '');
+    if (!path) return '';
+    const caption = String(options.caption || '').trim();
+    const label = String(options.label || '').trim() || `fig:${slug(path.split('/').pop().replace(/\.[^.]+$/, ''))}`;
+
+    const lines = [
+      '\\begin{figure}[t]',
+      '  \\centering',
+      `  \\input{${path}}`
+    ];
+    if (caption) lines.push(`  \\caption{${caption}}`);
+    if (label) lines.push(`  \\label{${label}}`);
+    lines.push('\\end{figure}');
+    return lines.join('\n') + '\n';
+  }
+
+  function insertInputFigureSnippet(options = {}) {
+    const snippet = options.snippet || inputFigureSnippet(options);
+    if (!snippet.trim()) return { ok: false, message: 'No input figure snippet to insert.' };
+
+    const target = insertionTarget(options);
+    if (!target) return { ok: false, message: 'No editable LaTeX target file found.' };
+
+    const insertText = `\n${snippet}\n`;
+    const next = target.text.slice(0, target.start) + insertText + target.text.slice(target.end);
+    State().updateFile(target.path, next);
+    ensureTikzPackage();
+
+    State().setActivePath?.(target.path);
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+
+    setTimeout(() => {
+      const file = State()?.getFile?.(target.path);
+      const current = fileText(file);
+      const idx = current.indexOf(insertText);
+      const markStart = idx >= 0 ? idx : target.start;
+      NS.SelectionService?.setSourceSelection?.(target.path, markStart, markStart + insertText.length, {
+        freeze: true,
+        source: 'asset-service-insert-input-figure',
+        method: 'input-figure-snippet'
+      });
+    }, 80);
+
+    return { ok: true, path: target.path, start: target.start, end: target.start + insertText.length, snippet: insertText };
   }
 
   function ensureGraphicsPackage() {
@@ -608,6 +705,11 @@
     rememberInsertionPoint,
     insertionTarget,
     insertFigureSnippet,
+    addTextAsset,
+    ensurePackage,
+    ensureTikzPackage,
+    inputFigureSnippet,
+    insertInputFigureSnippet,
     setSelectedAsset,
     renderAssetPanel
   };
