@@ -122,15 +122,84 @@
     return { text: el.value.slice(el.selectionStart, el.selectionEnd), start: el.selectionStart, end: el.selectionEnd };
   }
 
+  function activeCopilotTask() {
+    return document.getElementById('copilotTask')?.value || '';
+  }
+
+  function shouldForceLaiRewrite(start, end, text) {
+    if (activeCopilotTask() !== 'rewrite-selection-patch') return false;
+    if (!(Number(end) > Number(start))) return false;
+    const s = String(text ?? '');
+    if (!s.trim()) return false;
+    if (s === '  ') return false;
+    if (/\\lai\s*\{/.test(s) || /%\s*BEGIN\s+LAI-OLD/i.test(s)) return false;
+    return true;
+  }
+
+  function stripFence(text) {
+    let s = String(text ?? '').trim();
+    const fence = s.match(/^```(?:json|latex|tex)?\s*([\s\S]*?)\s*```$/i);
+    if (fence) s = fence[1].trim();
+    return s;
+  }
+
+  function extractRewriteText(text) {
+    let s = stripFence(text);
+    if (/^\s*\{[\s\S]*\}\s*$/.test(s)) {
+      try {
+        const obj = JSON.parse(s);
+        const patch = obj.patch || (Array.isArray(obj.patches) ? obj.patches[0] : null) || {};
+        s = obj.replacementLatex ?? obj.replacement ?? obj.text ?? patch.replacementLatex ?? patch.replacement ?? patch.text ?? patch.content ?? s;
+      } catch (_err) {}
+    }
+    s = stripFence(s);
+    // If the model included the wrapper despite instructions, unwrap once.
+    const lai = s.match(/^\\lai\s*\{([\s\S]*)\}\s*$/);
+    if (lai) s = lai[1].trim();
+    return s;
+  }
+
+  function commentOldSource(text) {
+    return String(text ?? '').split('\n').map((line) => `% ${line}`).join('\n');
+  }
+
+  function laiRewriteBlock(oldText, replacement, path) {
+    const id = `lai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const newText = extractRewriteText(replacement);
+    return `\n% BEGIN LAI-OLD id=${id} path=${path || 'main.tex'}\n${commentOldSource(oldText)}\n% END LAI-OLD id=${id}\n\n\\lai{\n${newText}\n}\n`;
+  }
+
+  function ensureLaiMacroForRoot() {
+    try {
+      const project = State().state.project;
+      const rootPath = project.rootFile || project.activePath;
+      const file = State().getFile(rootPath);
+      if (!file || !State().textFile(file.path)) return;
+      const ensure = W.LuminaLatex.ProjectModel?.ensureLaiMacro;
+      if (typeof ensure !== 'function') return;
+      const next = ensure(file.text || '');
+      if (next !== file.text) State().updateFile(file.path, next);
+    } catch (_err) {}
+  }
+
+  function forceLaiTextIfNeeded(text, start, end, current) {
+    if (!shouldForceLaiRewrite(start, end, text)) return String(text ?? '');
+    const path = State().state.project.activePath || 'main.tex';
+    const oldText = String(current ?? '').slice(start, end);
+    ensureLaiMacroForRoot();
+    return laiRewriteBlock(oldText, text, path);
+  }
+
   function replaceSelection(text, selectInserted = true) {
     const el = editorApi.editor;
     if (!el || el.readOnly) return;
     const start = el.selectionStart;
     const end = el.selectionEnd;
+    const insert = forceLaiTextIfNeeded(text, start, end, el.value);
     const before = el.value.slice(0, start);
     const after = el.value.slice(end);
-    el.value = before + text + after;
-    const newEnd = start + String(text).length;
+    el.value = before + insert + after;
+    const newEnd = start + String(insert).length;
     el.focus();
     el.setSelectionRange(selectInserted ? start : newEnd, newEnd);
     State().updateActiveText(el.value);
@@ -145,10 +214,11 @@
     if (!el || el.readOnly) return;
     const safeStart = Math.max(0, Math.min(Number(start) || 0, el.value.length));
     const safeEnd = Math.max(safeStart, Math.min(Number(end) || safeStart, el.value.length));
+    const insert = forceLaiTextIfNeeded(text, safeStart, safeEnd, el.value);
     const before = el.value.slice(0, safeStart);
     const after = el.value.slice(safeEnd);
-    el.value = before + String(text ?? '') + after;
-    const newEnd = safeStart + String(text ?? '').length;
+    el.value = before + insert + after;
+    const newEnd = safeStart + String(insert).length;
     el.focus();
     el.setSelectionRange(selectInserted ? safeStart : newEnd, newEnd);
     State().updateActiveText(el.value);

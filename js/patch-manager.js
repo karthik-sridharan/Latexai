@@ -418,7 +418,7 @@
   }
 
   NS.PatchManager = {
-    STAGE: 'stage4d-direct-lai-rewrite-1',
+    STAGE: 'stage4e-editor-forced-lai-guard-1',
     init,
     isPatchWorkflow,
     proposeFromText,

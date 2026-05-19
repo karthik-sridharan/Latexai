@@ -397,5 +397,5 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   }
 
   NS.Copilot = {
-    STAGE: 'stage4c-force-lai-rewrite-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips };
+    STAGE: 'stage4e-editor-forced-lai-guard-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips };
 })();
