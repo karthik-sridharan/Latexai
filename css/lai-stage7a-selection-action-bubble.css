@@ -1,4 +1,4 @@
-/* Stage 7B: dock selection action bubble in the topbar blank space */
+/* Stage 7C: dock selection action bubble in topbar, shifted left by 3/4 inch */
 .topbar {
   position: relative;
 }
@@ -24,8 +24,8 @@
 .lai-selection-action-bubble.docked {
   position: absolute;
   top: 50%;
-  left: clamp(245px, 27vw, 360px);
-  right: clamp(360px, 42vw, 620px);
+  left: calc(clamp(245px, 27vw, 360px) - 72px);
+  right: calc(clamp(360px, 42vw, 620px) + 72px);
   transform: translateY(-50%);
   max-width: none;
   min-width: 240px;
@@ -85,8 +85,8 @@
 /* On medium screens the topbar still has a center lane, but it is narrower. */
 @media (max-width: 1120px) {
   .lai-selection-action-bubble.docked {
-    left: 230px;
-    right: 390px;
+    left: 158px;
+    right: 462px;
   }
   .lai-selection-action-bubble .lai-bubble-label {
     display: none;
