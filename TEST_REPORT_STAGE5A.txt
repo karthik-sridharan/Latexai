@@ -1,0 +1,5 @@
+Stage 5A checks
+===============
+
+PASS node --check js/lai-stage5a-preview-source-marker.js
+PASS index.html includes stage5a script
