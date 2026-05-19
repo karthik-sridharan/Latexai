@@ -1,0 +1,7 @@
+Stage 9B checks
+===============
+
+PASS node --check js/tikz-maker-service.js
+PASS node tests/stage9b-tikz-json-sanitizer.test.cjs
+
+TikZ maker now parses/converts JSON-ish AI output and never wraps raw JSON in tikzpicture.
