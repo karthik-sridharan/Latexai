@@ -1,5 +1,5 @@
-/* Latexai Stage 9A TikzMakerService
- * Stage: stage9a-ai-tikz-maker-1
+/* Latexai Stage 9B TikzMakerService
+ * Stage: stage9b-tikz-json-sanitizer-fix-1
  *
  * AI prompt -> TikZ source -> saved .tex asset -> \input{...} figure snippet.
  * Uses:
@@ -11,7 +11,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage9a-ai-tikz-maker-1';
+  const STAGE = 'stage9b-tikz-json-sanitizer-fix-1';
 
   let installed = false;
   let latestTikz = '';
@@ -101,35 +101,191 @@
 
   function stripFence(text) {
     let s = String(text || '').trim();
-    const fence = s.match(/^```(?:tex|latex|tikz)?\s*([\s\S]*?)\s*```$/i);
-    if (fence) s = fence[1].trim();
+
+    // Accept common model fences, including the bad case that caused JSON to be
+    // wrapped inside a tikzpicture.
+    const fullFence = s.match(/^```(?:tex|latex|tikz|json|javascript|js)?\s*([\s\S]*?)\s*```$/i);
+    if (fullFence) return fullFence[1].trim();
+
+    // If the response has prose plus one fenced block, prefer the first block.
+    const anyFence = s.match(/```(?:tex|latex|tikz|json|javascript|js)?\s*([\s\S]*?)```/i);
+    if (anyFence) return anyFence[1].trim();
+
     return s.trim();
+  }
+
+  function removeLeadingJsonLanguageTag(text) {
+    return String(text || '').trim().replace(/^(json|javascript|js)\s*(?=[{\[])/i, '').trim();
+  }
+
+  function tryParseJsonish(text) {
+    let s = removeLeadingJsonLanguageTag(stripFence(text));
+    const candidates = [s];
+
+    const firstBrace = s.indexOf('{');
+    const lastBrace = s.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) candidates.push(s.slice(firstBrace, lastBrace + 1));
+
+    const firstBracket = s.indexOf('[');
+    const lastBracket = s.lastIndexOf(']');
+    if (firstBracket >= 0 && lastBracket > firstBracket) candidates.push(s.slice(firstBracket, lastBracket + 1));
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch (_err) {}
+    }
+    return null;
+  }
+
+  function texEscapeLabel(text) {
+    return String(text || '')
+      .replace(/[\\{}]/g, ' ')
+      .replace(/_/g, '\\_')
+      .replace(/\^/g, '')
+      .replace(/#/g, '\\#')
+      .replace(/&/g, '\\&')
+      .replace(/%/g, '\\%')
+      .replace(/\$/g, '\\$')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 90);
+  }
+
+  function collectJsonElements(obj) {
+    if (!obj) return [];
+    if (Array.isArray(obj)) return obj.flatMap(collectJsonElements);
+
+    const out = [];
+    if (obj.type === 'blockDiagram' || obj.blocks || obj.connections) out.push(obj);
+
+    if (Array.isArray(obj.elements)) out.push(...obj.elements.flatMap(collectJsonElements));
+    if (Array.isArray(obj.slides)) out.push(...obj.slides.flatMap(collectJsonElements));
+    if (Array.isArray(obj.children)) out.push(...obj.children.flatMap(collectJsonElements));
+    return out;
+  }
+
+  function convertBlockDiagramJsonToTikz(diagram) {
+    const blocks = Array.isArray(diagram?.blocks) ? diagram.blocks : [];
+    const connections = Array.isArray(diagram?.connections) ? diagram.connections : [];
+    if (!blocks.length) return '';
+
+    const nodePositions = new Map();
+    const nodeLabels = new Map();
+    const lines = [
+      '\\begin{tikzpicture}[>=stealth, node distance=1.2cm, every node/.style={font=\\small}]',
+      '  \\tikzstyle{unit}=[circle, draw, thick, minimum size=8mm, align=center]',
+      '  \\tikzstyle{layerlabel}=[font=\\bfseries\\small]'
+    ];
+
+    blocks.forEach((block, bi) => {
+      const nodes = Array.isArray(block.nodes) ? block.nodes : [];
+      const x = bi * 3.2;
+      const count = Math.max(nodes.length, 1);
+      const top = (count - 1) * 0.55;
+
+      const blockLabel = texEscapeLabel(block.label || block.title || block.id || `Layer ${bi + 1}`);
+      lines.push(`  \\node[layerlabel] at (${x}, ${top + 0.85}) {${blockLabel}};`);
+
+      nodes.forEach((node, ni) => {
+        const y = top - ni * 1.1;
+        const id = String(node.id || `${block.id || 'block'}_${ni}`).replace(/[^A-Za-z0-9_-]/g, '_');
+        const label = texEscapeLabel(node.label || node.id || `n${ni + 1}`);
+        const tikzName = `n_${id}`;
+        nodePositions.set(node.id || id, tikzName);
+        nodeLabels.set(node.id || id, label);
+        lines.push(`  \\node[unit] (${tikzName}) at (${x}, ${y}) {${label}};`);
+      });
+    });
+
+    if (connections.length) {
+      connections.forEach((edge) => {
+        const from = nodePositions.get(edge.from);
+        const to = nodePositions.get(edge.to);
+        if (!from || !to) return;
+        const label = texEscapeLabel(edge.label || '');
+        if (label) lines.push(`  \\draw[->, thick] (${from}) -- node[above, sloped, font=\\scriptsize] {${label}} (${to});`);
+        else lines.push(`  \\draw[->, thick] (${from}) -- (${to});`);
+      });
+    } else {
+      // Default dense feed-forward style between adjacent blocks.
+      for (let bi = 0; bi + 1 < blocks.length; bi++) {
+        const left = Array.isArray(blocks[bi].nodes) ? blocks[bi].nodes : [];
+        const right = Array.isArray(blocks[bi + 1].nodes) ? blocks[bi + 1].nodes : [];
+        left.forEach((a) => right.forEach((b) => {
+          const from = nodePositions.get(a.id);
+          const to = nodePositions.get(b.id);
+          if (from && to) lines.push(`  \\draw[->, thick] (${from}) -- (${to});`);
+        }));
+      }
+    }
+
+    lines.push('\\end{tikzpicture}', '');
+    return lines.join('\n');
+  }
+
+  function convertJsonToTikz(obj) {
+    if (!obj) return '';
+    if (typeof obj.tikz === 'string') return extractTikz(obj.tikz);
+    if (typeof obj.tikzSource === 'string') return extractTikz(obj.tikzSource);
+    if (typeof obj.source === 'string' && /\\begin\{tikzpicture\}/.test(obj.source)) return extractTikz(obj.source);
+
+    const diagrams = collectJsonElements(obj);
+    for (const diagram of diagrams) {
+      const tikz = convertBlockDiagramJsonToTikz(diagram);
+      if (tikz) return tikz;
+    }
+
+    return '';
+  }
+
+  function looksLikeJsonNotTikz(text) {
+    const s = removeLeadingJsonLanguageTag(stripFence(text));
+    return /^[{\[]/.test(s) || /"slides"\s*:|"elements"\s*:|"blocks"\s*:|"connections"\s*:/.test(s);
   }
 
   function extractTikz(raw) {
     let s = stripFence(raw);
-    if (/^\s*\{[\s\S]*\}\s*$/.test(s)) {
-      try {
-        const obj = JSON.parse(s);
-        s = obj.tikz || obj.tikzSource || obj.source || obj.text || obj.content || s;
-      } catch (_err) {}
+
+    const parsed = tryParseJsonish(s);
+    if (parsed) {
+      const converted = convertJsonToTikz(parsed);
+      if (converted) return converted;
+      return fallbackTikz('AI returned JSON instead of TikZ');
     }
-    s = stripFence(s);
+
+    s = removeLeadingJsonLanguageTag(s);
 
     const begin = s.indexOf('\\begin{tikzpicture}');
     const endToken = '\\end{tikzpicture}';
     const end = s.lastIndexOf(endToken);
     if (begin >= 0 && end >= begin) {
       s = s.slice(begin, end + endToken.length).trim();
+
+      // Guard against the exact bad output: \begin{tikzpicture} json {...} \end{tikzpicture}
+      const inside = s.slice('\\begin{tikzpicture}'.length, s.length - endToken.length);
+      if (looksLikeJsonNotTikz(inside)) {
+        const insideParsed = tryParseJsonish(inside);
+        const converted = convertJsonToTikz(insideParsed);
+        return converted || fallbackTikz('AI returned JSON inside a tikzpicture');
+      }
+
+      return s + '\n';
     }
 
-    if (!/\\begin\{tikzpicture\}/.test(s)) {
-      s = `\\begin{tikzpicture}[scale=1]\n${s}\n\\end{tikzpicture}`;
+    // Never wrap raw JSON/schema text inside tikzpicture. That creates invalid
+    // .tex files and was the bug reported in Stage 9A.
+    if (looksLikeJsonNotTikz(s)) {
+      const converted = convertJsonToTikz(tryParseJsonish(s));
+      return converted || fallbackTikz('AI returned a diagram schema instead of TikZ');
     }
 
-    // Avoid accidental document-level wrappers.
-    s = s.replace(/\\documentclass[\s\S]*?\\begin\{document\}/g, '').replace(/\\end\{document\}/g, '').trim();
-    return s + '\n';
+    // Only wrap plain TikZ draw/node commands, not arbitrary prose.
+    if (/\\(draw|node|path|coordinate|foreach|fill|shade|matrix|graph)\b/.test(s)) {
+      return `\\begin{tikzpicture}[scale=1]\n${s}\n\\end{tikzpicture}\n`;
+    }
+
+    return fallbackTikz(s || 'Generated TikZ figure');
   }
 
   function fallbackTikz(prompt) {
@@ -156,6 +312,7 @@
       instruction: [
         'Generate valid LaTeX TikZ code for the requested figure.',
         'Return only one tikzpicture environment.',
+        'Do not return JSON, slide JSON, Mermaid, SVG, HTML, or a diagram schema.',
         'Do not include documentclass, begin{document}, markdown explanation, or prose.',
         'Prefer simple robust TikZ primitives that compile with \\usepackage{tikz}.',
         'Avoid external image files.'
