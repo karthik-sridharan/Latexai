@@ -1,0 +1,221 @@
+/* Latexai Stage 5E: fixed-height panels + independent scrolling */
+html, body {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+.topbar {
+  flex: 0 0 auto;
+}
+
+.workspace {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  height: auto;
+  overflow: hidden;
+}
+
+.panel,
+.left-panel,
+.editor-panel,
+.right-panel {
+  min-height: 0 !important;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.left-panel {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1rem;
+}
+
+.left-panel .outline-card,
+.left-panel .panel-section {
+  min-height: 0;
+}
+
+.file-tree,
+.outline-list {
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-toolbar {
+  flex: 0 0 auto;
+}
+
+.source-shell {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  height: auto;
+  overflow: hidden;
+}
+
+#sourceEditor {
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.line-gutter {
+  height: 100%;
+  overflow: hidden;
+}
+
+.right-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.right-tabs {
+  flex: 0 0 auto;
+}
+
+.right-tab-panel {
+  min-height: 0 !important;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.right-tab-panel.active {
+  min-height: 0 !important;
+  flex: 1 1 auto;
+}
+
+#previewTab.right-tab-panel.active {
+  overflow: hidden;
+}
+
+.preview-head {
+  flex: 0 0 auto;
+}
+
+.draft-preview,
+.pdf-preview,
+#laiPdfViewer {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none;
+}
+
+.draft-preview {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-preview {
+  width: 100%;
+  border: 0;
+}
+
+#pdfPreview.lai-native-hidden {
+  display: none !important;
+}
+
+#laiPdfViewer {
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+#laiPdfViewer.hidden {
+  display: none !important;
+}
+
+.lai-pdf-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .45rem .55rem;
+  background: rgba(255,255,255,.92);
+  border-bottom: 1px solid rgba(15,23,42,.10);
+}
+
+.lai-pdf-toolbar-title {
+  font-size: .8rem;
+  font-weight: 800;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lai-pdf-toolbar-actions {
+  display: inline-flex;
+  gap: .35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.lai-pdf-btn {
+  border: 1px solid rgba(15,23,42,.14);
+  background: #fff;
+  color: #1e293b;
+  border-radius: 999px;
+  padding: .28rem .55rem;
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+.lai-pdf-pages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem;
+  background: #e5e7eb;
+}
+
+.lai-pdf-page {
+  display: block;
+  margin: 0 auto 1rem auto;
+  background: white;
+  box-shadow: 0 6px 22px rgba(15,23,42,.22);
+  border-radius: 2px;
+}
+
+.lai-pdf-status {
+  padding: 1rem;
+  color: #475569;
+  font-size: .9rem;
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    padding: .65rem;
+    gap: .65rem;
+  }
+
+  .workspace {
+    gap: .65rem;
+  }
+}
