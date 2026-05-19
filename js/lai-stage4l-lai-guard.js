@@ -1,5 +1,5 @@
 /* Latexai Stage 4L always-visible LAI rewrite guard
- * Stage: stage4l-pages-safe-lai-guard-1
+ * Stage: stage4n-remove-debug-badges-1
  *
  * Purpose:
  * - Make it visually obvious that the guard loaded: fixed badge at top-right.
@@ -19,7 +19,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage4l-pages-safe-lai-guard-1';
+  const STAGE = 'stage4n-remove-debug-badges-1';
 
   let pending = null;
   let lastNonEmptySelection = null;
@@ -51,41 +51,8 @@
     return NS.State?.state?.project?.rootFile || 'main.tex';
   }
 
-  function setBadge(text, color) {
-    let badge = document.getElementById('laiStage4lBadge');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.id = 'laiStage4lBadge';
-      badge.style.cssText = [
-        'position:fixed',
-        'right:12px',
-        'top:12px',
-        'z-index:2147483647',
-        'padding:7px 10px',
-        'border-radius:999px',
-        'background:#fee',
-        'color:#900',
-        'border:2px solid #e66',
-        'font:700 12px system-ui,-apple-system,BlinkMacSystemFont,sans-serif',
-        'box-shadow:0 3px 14px rgba(0,0,0,0.2)',
-        'pointer-events:none'
-      ].join(';');
-      document.body.appendChild(badge);
-    }
-    badge.textContent = text || 'LAI Guard Stage 4L active';
-    if (color === 'green') {
-      badge.style.background = '#e8ffe8';
-      badge.style.color = '#064';
-      badge.style.borderColor = '#5b5';
-    } else if (color === 'blue') {
-      badge.style.background = '#eaf2ff';
-      badge.style.color = '#024';
-      badge.style.borderColor = '#69f';
-    } else {
-      badge.style.background = '#fee';
-      badge.style.color = '#900';
-      badge.style.borderColor = '#e66';
-    }
+  function setBadge(_text, _color) {
+    // Stage 4N: debug badge removed; rewrite guard still runs.
   }
 
   function captureSelection(source) {

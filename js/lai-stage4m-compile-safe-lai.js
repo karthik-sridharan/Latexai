@@ -1,5 +1,5 @@
 /* Latexai Stage 4M compile-safe LAI macro guard
- * Stage: stage4m-compile-safe-lai-macro-1
+ * Stage: stage4n-remove-debug-badges-1
  *
  * Ensures \lai is defined before compile/preview whenever any project file
  * contains \lai{...}. This fixes the "rewrite inserted \lai but PDF fails"
@@ -10,30 +10,10 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage4m-compile-safe-lai-macro-1';
+  const STAGE = 'stage4n-remove-debug-badges-1';
 
-  function badge(text, color = '#064', bg = '#e8ffe8', border = '#5b5') {
-    let b = document.getElementById('laiStage4mBadge');
-    if (!b) {
-      b = document.createElement('div');
-      b.id = 'laiStage4mBadge';
-      b.style.cssText = [
-        'position:fixed',
-        'right:12px',
-        'top:44px',
-        'z-index:2147483647',
-        'padding:7px 10px',
-        'border-radius:999px',
-        `background:${bg}`,
-        `color:${color}`,
-        `border:2px solid ${border}`,
-        'font:700 12px system-ui,-apple-system,BlinkMacSystemFont,sans-serif',
-        'box-shadow:0 3px 14px rgba(0,0,0,0.2)',
-        'pointer-events:none'
-      ].join(';');
-      document.body.appendChild(b);
-    }
-    b.textContent = text;
+  function badge(_text, _color = '#064', _bg = '#e8ffe8', _border = '#5b5') {
+    // Stage 4N: debug badge removed; macro guard still runs.
   }
 
   function editor() {
