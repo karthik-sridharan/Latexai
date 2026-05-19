@@ -1,0 +1,7 @@
+Stage 4D checks
+===============
+
+PASS node --check js/copilot.js
+PASS node --check js/patch-manager.js
+
+Direct rewrite path exported as PatchManager.applyRewriteSelectionDirect.
