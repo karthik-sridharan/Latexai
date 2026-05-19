@@ -1,5 +1,5 @@
-/* Latexai Stage 8F FigureEditorService
- * Stage: stage8f-figure-editor-shapes-cursor-fix-1
+/* Latexai Stage 8G FigureEditorService
+ * Stage: stage8g-figure-insert-caret-capture-fix-1
  *
  * Native lightweight figure editor integrated with AssetService.
  * - Draw freehand, lines, rectangles, circles, arrows, and text on a canvas
@@ -14,7 +14,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage8f-figure-editor-shapes-cursor-fix-1';
+  const STAGE = 'stage8g-figure-insert-caret-capture-fix-1';
 
   const state = {
     tool: 'pen',
@@ -299,6 +299,11 @@
     const caption = el('figureEditorCaptionInput')?.value || '';
     const label = el('figureEditorLabelInput')?.value || '';
 
+    // Stage 8G: capture the source insertion point before saving the PNG asset.
+    // addImageDataUrl/createFile can temporarily change the active project file,
+    // so capturing after save can lose the user's source cursor.
+    const capturedTarget = insert && asset.insertionTarget ? asset.insertionTarget() : null;
+
     const dataUrl = canvas.toDataURL('image/png');
     const result = asset.addImageDataUrl(dataUrl, {
       path,
@@ -320,7 +325,10 @@
         path: result.path,
         caption,
         label,
-        width: el('figureEditorWidthInput')?.value || '.8\\linewidth'
+        width: el('figureEditorWidthInput')?.value || '.8\\linewidth',
+        insertPath: capturedTarget?.path,
+        insertAt: capturedTarget?.start,
+        end: capturedTarget?.end
       });
       setStatus(inserted?.ok ? `Saved ${result.path} and inserted figure snippet.` : (inserted?.message || `Saved ${result.path}; insert failed.`));
     } else {

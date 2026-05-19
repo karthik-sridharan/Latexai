@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage8f-figure-editor-shapes-cursor-fix-1
+ * Stage: stage8g-figure-insert-caret-capture-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,10 +16,11 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage8f-figure-editor-shapes-cursor-fix-1';
+  const STAGE = 'stage8g-figure-insert-caret-capture-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
+  let lastInsertTarget = null;
 
   function el(id) { return document.getElementById(id); }
 
@@ -240,7 +241,51 @@
     return true;
   }
 
-  function insertionTarget() {
+  function rememberInsertionPoint(reason = 'manual') {
+    const project = State()?.state?.project || {};
+    const editor = el('sourceEditor');
+    if (!editor) return lastInsertTarget;
+
+    const path = normalizePath(project.activePath || project.rootFile || 'main.tex');
+    const file = State()?.getFile?.(path);
+    if (!file || !State()?.textFile?.(file) || !String(path).toLowerCase().endsWith('.tex')) {
+      return lastInsertTarget;
+    }
+
+    const value = String(editor.value || fileText(file));
+    let start = Number(editor.selectionStart || 0);
+    let end = Number(editor.selectionEnd || start);
+    start = Math.max(0, Math.min(start, value.length));
+    end = Math.max(start, Math.min(end, value.length));
+
+    lastInsertTarget = {
+      path,
+      start,
+      end,
+      text: value,
+      reason,
+      capturedAt: new Date().toISOString()
+    };
+    return lastInsertTarget;
+  }
+
+  function explicitInsertionTarget(options = {}) {
+    const explicitPath = normalizePath(options.insertPath || options.targetPath || '');
+    const explicitPos = options.insertAt ?? options.start;
+    if (!explicitPath || !Number.isFinite(Number(explicitPos))) return null;
+
+    const file = State()?.getFile?.(explicitPath);
+    if (!file || !State()?.textFile?.(file)) return null;
+    const text = fileText(file);
+    const start = Math.max(0, Math.min(Number(explicitPos), text.length));
+    const end = Math.max(start, Math.min(Number(options.end ?? start), text.length));
+    return { path: explicitPath, file, text, start, end, explicit: true };
+  }
+
+  function insertionTarget(options = {}) {
+    const explicit = explicitInsertionTarget(options);
+    if (explicit) return explicit;
+
     const project = State()?.state?.project || {};
     let path = normalizePath(project.activePath || project.rootFile || 'main.tex');
     let file = State()?.getFile?.(path);
@@ -272,6 +317,9 @@
       if (serviceSel && normalizePath(serviceSel.path || path) === path && Number.isFinite(Number(serviceSel.end))) {
         start = Number(serviceSel.end);
         end = start;
+      } else if (lastInsertTarget && normalizePath(lastInsertTarget.path) === path && lastInsertTarget.text === text && Number.isFinite(Number(lastInsertTarget.end))) {
+        start = Number(lastInsertTarget.end);
+        end = start;
       } else {
         const docEnd = text.lastIndexOf('\\end{document}');
         if (docEnd >= 0) start = end = docEnd;
@@ -287,7 +335,7 @@
     const snippet = options.snippet || figureSnippet(options);
     if (!snippet.trim()) return { ok: false, message: 'No figure snippet to insert.' };
 
-    const target = insertionTarget();
+    const target = insertionTarget(options);
     if (!target) return { ok: false, message: 'No editable LaTeX target file found.' };
 
     // Stage 8F: insert at the captured cursor first. The earlier version added
@@ -516,10 +564,22 @@
     });
   }
 
+  function bindInsertionPointTracking() {
+    const editor = el('sourceEditor');
+    if (!editor || editor.__stage8gAssetCursorBound) return;
+    ['click', 'keyup', 'select', 'mouseup', 'touchend', 'input', 'blur'].forEach((name) => {
+      editor.addEventListener(name, () => rememberInsertionPoint(`source-${name}`), true);
+    });
+    document.querySelector('.right-panel')?.addEventListener('pointerdown', () => rememberInsertionPoint('right-panel-pointerdown'), true);
+    editor.__stage8gAssetCursorBound = true;
+  }
+
   function init() {
     if (installed) return;
     installed = true;
     createAssetTab();
+    bindInsertionPointTracking();
+    rememberInsertionPoint('asset-service-init');
 
     try {
       State()?.subscribe?.((_snapshot, reason) => {
@@ -545,6 +605,7 @@
     addImageFile,
     figureSnippet,
     ensureGraphicsPackage,
+    rememberInsertionPoint,
     insertionTarget,
     insertFigureSnippet,
     setSelectedAsset,
@@ -557,6 +618,7 @@
   let tries = 0;
   const interval = setInterval(() => {
     createAssetTab();
+    bindInsertionPointTracking();
     tries += 1;
     if (tries > 20 || el('assetsTab')) clearInterval(interval);
   }, 500);
