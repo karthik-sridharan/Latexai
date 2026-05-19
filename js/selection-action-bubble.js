@@ -1,5 +1,5 @@
-/* Latexai Stage 7B SelectionActionBubble
- * Stage: stage7b-dock-selection-bubble-topbar-1
+/* Latexai Stage 7C SelectionActionBubble
+ * Stage: stage7c-move-selection-bubble-left-1
  *
  * A small contextual action bubble docked in the topbar blank space.
  * It does not mutate source directly. It delegates to:
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage7b-dock-selection-bubble-topbar-1';
+  const STAGE = 'stage7c-move-selection-bubble-left-1';
 
   let bubble = null;
   let activeSelection = null;
