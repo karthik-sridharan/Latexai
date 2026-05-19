@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage8a-asset-service-image-figures-1
+ * Stage: stage8c-figure-asset-compile-cursor-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage8a-asset-service-image-figures-1';
+  const STAGE = 'stage8c-figure-asset-compile-cursor-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -160,7 +160,11 @@
 
     file.mime = options.mime || parts.mime || mimeForPath(targetPath);
     file.encoding = 'base64';
-    file.text = '';
+    file.base64 = parts.base64;
+    // Keep a data URL in text/content as a compatibility fallback for older
+    // compile/commit code paths that only read textual file values.
+    file.text = `data:${file.mime};base64,${parts.base64}`;
+    file.content = file.text;
     file.kind = 'asset';
     file.meta = Object.assign({}, file.meta || {}, {
       assetServiceStage: STAGE,
@@ -239,17 +243,33 @@
       file = State()?.getFile?.(path);
     }
     if (!file) return null;
+
+    // Save current textarea text before computing insertion point.
+    const editor = el('sourceEditor');
+    if (editor && project.activePath === path) {
+      try { State()?.updateActiveText?.(editor.value); } catch (_err) {}
+      file = State()?.getFile?.(path) || file;
+    }
+
     const text = fileText(file);
     let start = text.length;
     let end = text.length;
 
-    const editor = el('sourceEditor');
-    if (editor && project.activePath === path && document.activeElement === editor) {
-      start = Number(editor.selectionEnd || editor.selectionStart || text.length);
+    // Stage 8C: use the current/remembered editor cursor even after focus has
+    // moved to the right panel. Do not require document.activeElement === editor.
+    const editorSel = NS.Editor?.getSelection?.();
+    if (editorSel && normalizePath(editorSel.path || path) === path && Number.isFinite(Number(editorSel.start))) {
+      start = Number(editorSel.end ?? editorSel.start);
       end = start;
     } else {
-      const docEnd = text.lastIndexOf('\\end{document}');
-      if (docEnd >= 0) start = end = docEnd;
+      const serviceSel = NS.SelectionService?.getSourceSelection?.({ allowStale: true });
+      if (serviceSel && normalizePath(serviceSel.path || path) === path && Number.isFinite(Number(serviceSel.end))) {
+        start = Number(serviceSel.end);
+        end = start;
+      } else {
+        const docEnd = text.lastIndexOf('\\end{document}');
+        if (docEnd >= 0) start = end = docEnd;
+      }
     }
 
     start = Math.max(0, Math.min(start, text.length));

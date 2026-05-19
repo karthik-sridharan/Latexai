@@ -196,9 +196,30 @@
     return null;
   }
 
+  function guessMime(path) {
+    var lower = String(path || '').toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.svg')) return 'image/svg+xml';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    return 'application/octet-stream';
+  }
+
   function valueToString(value) {
     if (typeof value === 'string') return value;
     if (!isObject(value)) return '';
+
+    // Stage 8C: binary project assets must be sent to the compile backend.
+    // The backend already accepts data URLs or base64-bearing objects, but this
+    // frontend payload is a path -> string map, so send binary assets as data URLs.
+    var b64 = value.base64 || value.contentBase64 || value.dataBase64 || value.bytesBase64 || '';
+    if (typeof b64 === 'string' && b64) {
+      if (b64.indexOf('data:') === 0) return b64;
+      var mime = value.mime || value.contentType || value.type || guessMime(value.path || value.name || value.filename || '');
+      return 'data:' + mime + ';base64,' + b64;
+    }
+
     var keys = ['content', 'text', 'source', 'value', 'data', 'body', 'tex'];
     for (var i = 0; i < keys.length; i++) {
       if (typeof value[keys[i]] === 'string') return value[keys[i]];
