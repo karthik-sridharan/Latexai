@@ -1,5 +1,5 @@
-/* Latexai Stage 8E FigureEditorService
- * Stage: stage8e-native-figure-editor-1
+/* Latexai Stage 8F FigureEditorService
+ * Stage: stage8f-figure-editor-shapes-cursor-fix-1
  *
  * Native lightweight figure editor integrated with AssetService.
  * - Draw freehand, lines, rectangles, circles, arrows, and text on a canvas
@@ -14,7 +14,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage8e-native-figure-editor-1';
+  const STAGE = 'stage8f-figure-editor-shapes-cursor-fix-1';
 
   const state = {
     tool: 'pen',
@@ -65,6 +65,26 @@
     ctx.fillStyle = state.color;
     ctx.lineWidth = state.width;
     ctx.font = '24px sans-serif';
+  }
+
+  function captureSnapshot() {
+    if (!ctx || !canvas) return null;
+    try {
+      return ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function restoreSnapshot(snapshot) {
+    if (!ctx || !canvas || !snapshot) return false;
+    try {
+      ctx.putImageData(snapshot, 0, 0);
+      setupContext();
+      return true;
+    } catch (_err) {
+      return false;
+    }
   }
 
   function blankCanvas() {
@@ -153,16 +173,12 @@
 
   function drawPreviewShape(current) {
     if (!state.snapshot) return;
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0);
-      setupContext();
-      if (state.tool === 'line') drawLine(state.start, current);
-      else if (state.tool === 'rect') drawRect(state.start, current);
-      else if (state.tool === 'circle') drawCircle(state.start, current);
-      else if (state.tool === 'arrow') drawArrow(state.start, current);
-    };
-    img.src = state.snapshot;
+    restoreSnapshot(state.snapshot);
+    setupContext();
+    if (state.tool === 'line') drawLine(state.start, current);
+    else if (state.tool === 'rect') drawRect(state.start, current);
+    else if (state.tool === 'circle') drawCircle(state.start, current);
+    else if (state.tool === 'arrow') drawArrow(state.start, current);
   }
 
   function beginDraw(event) {
@@ -174,7 +190,7 @@
     state.drawing = true;
     state.start = pointFromEvent(event);
     state.last = state.start;
-    state.snapshot = canvas.toDataURL('image/png');
+    state.snapshot = captureSnapshot();
     setupContext();
 
     if (state.tool === 'text') {
@@ -223,18 +239,29 @@
     const p = pointFromEvent(event);
     setupContext();
 
+    // Stage 8F: commit shapes synchronously. The old code restored a PNG
+    // snapshot asynchronously, which could repaint over the final line/box/circle
+    // after pointerup and make it disappear.
     if (state.tool === 'line') {
-      restoreDataUrl(state.snapshot);
-      setTimeout(() => { setupContext(); drawLine(state.start, p); pushHistory(); }, 20);
+      restoreSnapshot(state.snapshot);
+      setupContext();
+      drawLine(state.start, p);
+      pushHistory();
     } else if (state.tool === 'rect') {
-      restoreDataUrl(state.snapshot);
-      setTimeout(() => { setupContext(); drawRect(state.start, p); pushHistory(); }, 20);
+      restoreSnapshot(state.snapshot);
+      setupContext();
+      drawRect(state.start, p);
+      pushHistory();
     } else if (state.tool === 'circle') {
-      restoreDataUrl(state.snapshot);
-      setTimeout(() => { setupContext(); drawCircle(state.start, p); pushHistory(); }, 20);
+      restoreSnapshot(state.snapshot);
+      setupContext();
+      drawCircle(state.start, p);
+      pushHistory();
     } else if (state.tool === 'arrow') {
-      restoreDataUrl(state.snapshot);
-      setTimeout(() => { setupContext(); drawArrow(state.start, p); pushHistory(); }, 20);
+      restoreSnapshot(state.snapshot);
+      setupContext();
+      drawArrow(state.start, p);
+      pushHistory();
     } else {
       pushHistory();
     }

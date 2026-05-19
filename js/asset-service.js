@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage8d-figure-placeholder-tabs-fix-1
+ * Stage: stage8f-figure-editor-shapes-cursor-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage8d-figure-placeholder-tabs-fix-1';
+  const STAGE = 'stage8f-figure-editor-shapes-cursor-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -290,28 +290,31 @@
     const target = insertionTarget();
     if (!target) return { ok: false, message: 'No editable LaTeX target file found.' };
 
-    ensureGraphicsPackage();
-
-    // Re-read file after possible package insertion.
-    const file = State()?.getFile?.(target.path);
-    const text = fileText(file);
+    // Stage 8F: insert at the captured cursor first. The earlier version added
+    // \usepackage{graphicx} before insertion; that changed the file text and
+    // triggered a fallback near \end{document}, so snippets appeared at the end.
+    const insertText = `\n${snippet}\n`;
+    let text = target.text;
     let start = target.start;
     let end = target.end;
-    if (target.text !== text) {
-      const docEnd = text.lastIndexOf('\\end{document}');
-      start = end = docEnd >= 0 ? docEnd : text.length;
-    }
-
-    const insertText = `\n${snippet}\n`;
     const next = text.slice(0, start) + insertText + text.slice(end);
     State().updateFile(target.path, next);
+
+    // Add graphicx after the snippet is placed. This may shift the highlighted
+    // range if it inserts above, but it does not change the insertion location.
+    ensureGraphicsPackage();
+
     State().setActivePath?.(target.path);
     try { NS.Editor?.render?.(); } catch (_err) {}
     try { State()?.save?.(); } catch (_err) {}
     try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
 
     setTimeout(() => {
-      NS.SelectionService?.setSourceSelection?.(target.path, start, start + insertText.length, {
+      const file = State()?.getFile?.(target.path);
+      const current = fileText(file);
+      const idx = current.indexOf(insertText);
+      const markStart = idx >= 0 ? idx : start;
+      NS.SelectionService?.setSourceSelection?.(target.path, markStart, markStart + insertText.length, {
         freeze: true,
         source: 'asset-service-insert-figure',
         method: 'asset-snippet'
