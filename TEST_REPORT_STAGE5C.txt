@@ -1,0 +1,6 @@
+Stage 5C checks
+===============
+
+PASS node --check js/lai-stage5c-preview-selection-bridge.js
+PASS no Stage 5A panel script included
+PASS Stage 4N guards retained
