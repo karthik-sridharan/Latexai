@@ -1,10 +1,10 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage9h-tikz-cursor-regex-fix-1
+ * Stage: stage10b-image-vs-tikz-ui-and-car-fallback-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
  * - Avoids filename collisions
- * - Inserts LaTeX figure snippets
+ * - Inserts LaTeX image figure snippets
  * - Ensures \usepackage{graphicx} exists in the root preamble
  *
  * This is intentionally independent from AI. Later figure editor / TikZ / image-to-TikZ
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage9h-tikz-cursor-regex-fix-1';
+  const STAGE = 'stage10b-image-vs-tikz-ui-and-car-fallback-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -376,7 +376,7 @@
 
   function insertDirectTikzFigure(options = {}) {
     const snippet = options.snippet || directTikzFigureSnippet(options);
-    if (!snippet.trim()) return { ok: false, message: 'No TikZ figure snippet to insert.' };
+    if (!snippet.trim()) return { ok: false, message: 'No TikZ image figure snippet to insert.' };
 
     const target = documentInsertionTarget(options);
     if (!target) return { ok: false, message: 'No editable LaTeX document target found.' };
@@ -425,7 +425,7 @@
 
   function insertInputFigureSnippet(options = {}) {
     const snippet = options.snippet || inputFigureSnippet(options);
-    if (!snippet.trim()) return { ok: false, message: 'No input figure snippet to insert.' };
+    if (!snippet.trim()) return { ok: false, message: 'No input image figure snippet to insert.' };
 
     const target = documentInsertionTarget(options);
     if (!target) return { ok: false, message: 'No editable LaTeX document target found.' };
@@ -571,7 +571,7 @@
 
   function insertFigureSnippet(options = {}) {
     const snippet = options.snippet || figureSnippet(options);
-    if (!snippet.trim()) return { ok: false, message: 'No figure snippet to insert.' };
+    if (!snippet.trim()) return { ok: false, message: 'No image figure snippet to insert.' };
 
     const target = insertionTarget(options);
     if (!target) return { ok: false, message: 'No editable LaTeX target file found.' };
@@ -623,6 +623,7 @@
     selectedAssetPath = normalizePath(path || '');
     const input = el('assetSelectedPath');
     if (input) input.value = selectedAssetPath;
+    try { NS.ImageToTikzService?.setSelectedPath?.(selectedAssetPath); } catch (_err) {}
     renderSnippetPreview();
     renderAssetList();
   }
@@ -631,7 +632,7 @@
     const box = el('assetSnippetPreview');
     if (!box) return;
     const opts = selectedOptions();
-    box.textContent = opts.path ? figureSnippet(opts) : 'Select or add an image asset to preview the LaTeX figure snippet.';
+    box.textContent = opts.path ? figureSnippet(opts) : 'Select or add an image asset to preview the LaTeX image figure snippet.';
   }
 
   function renderAssetList() {
@@ -673,14 +674,45 @@
       const insert = document.createElement('button');
       insert.type = 'button';
       insert.className = 'asset-mini-btn';
-      insert.textContent = 'Insert snippet';
+      insert.textContent = 'Insert as image';
+      insert.title = 'Insert the original PNG/JPG as an \\includegraphics figure.';
       insert.addEventListener('click', () => {
         setSelectedAsset(file.path);
         const result = insertFigureSnippet(selectedOptions());
-        setStatus(result.ok ? `Inserted figure snippet for ${file.path}.` : result.message);
+        setStatus(result.ok ? `Inserted original image figure snippet for ${file.path}.` : result.message);
       });
 
-      actions.append(select, insert);
+      const remakeTikz = document.createElement('button');
+      remakeTikz.type = 'button';
+      remakeTikz.className = 'asset-mini-btn';
+      remakeTikz.textContent = 'Remake TikZ';
+      remakeTikz.title = 'Convert/remake this image as editable TikZ source.';
+      remakeTikz.addEventListener('click', () => {
+        setSelectedAsset(file.path);
+        if (!NS.ImageToTikzService?.remakeSelectedImage) {
+          setStatus('Image-to-TikZ remaker is not loaded yet.');
+          return;
+        }
+        NS.ImageToTikzService.openFiguresTab?.();
+        NS.ImageToTikzService.remakeSelectedImage();
+      });
+
+      const remakeInsertTikz = document.createElement('button');
+      remakeInsertTikz.type = 'button';
+      remakeInsertTikz.className = 'asset-mini-btn';
+      remakeInsertTikz.textContent = 'Remake+insert TikZ';
+      remakeInsertTikz.title = 'Convert/remake this image as TikZ and insert TikZ source directly.';
+      remakeInsertTikz.addEventListener('click', () => {
+        setSelectedAsset(file.path);
+        if (!NS.ImageToTikzService?.remakeAndInsert) {
+          setStatus('Image-to-TikZ remaker is not loaded yet.');
+          return;
+        }
+        NS.ImageToTikzService.openFiguresTab?.();
+        NS.ImageToTikzService.remakeAndInsert();
+      });
+
+      actions.append(select, insert, remakeTikz, remakeInsertTikz);
       main.append(path, actions);
       row.append(img, main);
       list.appendChild(row);
@@ -721,8 +753,8 @@
       '      <input id="assetSelectedPath" type="hidden" />',
       '      <div class="asset-actions">',
       '        <button type="button" class="btn mini primary" id="assetAddBtn">Add image</button>',
-      '        <button type="button" class="btn mini" id="assetAddInsertBtn">Add + insert</button>',
-      '        <button type="button" class="btn mini" id="assetInsertBtn">Insert selected</button>',
+      '        <button type="button" class="btn mini" id="assetAddInsertBtn">Add + insert image</button>',
+      '        <button type="button" class="btn mini" id="assetInsertBtn">Insert selected image</button>',
       '        <button type="button" class="btn mini" id="assetRefreshBtn">Refresh</button>',
       '      </div>',
       '      <div class="asset-status" id="assetServiceStatus">Asset service ready.</div>',
@@ -730,7 +762,7 @@
       '  </div>',
       '  <div class="asset-card">',
       '    <h3>Snippet preview</h3>',
-      '    <pre class="asset-preview-code" id="assetSnippetPreview">Select or add an image asset to preview the LaTeX figure snippet.</pre>',
+      '    <pre class="asset-preview-code" id="assetSnippetPreview">Select or add an image asset to preview the LaTeX image figure snippet.</pre>',
       '  </div>',
       '  <div class="asset-card">',
       '    <h3>Project images</h3>',
@@ -784,12 +816,12 @@
         return;
       }
       const inserted = insertFigureSnippet(Object.assign(selectedOptions(), { path: added.path }));
-      setStatus(inserted.ok ? `Added ${added.path} and inserted a figure snippet.` : inserted.message);
+      setStatus(inserted.ok ? `Added ${added.path} and inserted a image figure snippet.` : inserted.message);
     });
 
     el('assetInsertBtn')?.addEventListener('click', () => {
       const result = insertFigureSnippet(selectedOptions());
-      setStatus(result.ok ? `Inserted figure snippet for ${selectedOptions().path}.` : result.message);
+      setStatus(result.ok ? `Inserted image figure snippet for ${selectedOptions().path}.` : result.message);
     });
 
     el('assetRefreshBtn')?.addEventListener('click', () => {

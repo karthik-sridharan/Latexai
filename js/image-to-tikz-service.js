@@ -1,5 +1,5 @@
-/* Latexai Stage 10A ImageToTikzService
- * Stage: stage10a-image-to-tikz-remaker-1
+/* Latexai Stage 10B ImageToTikzService
+ * Stage: stage10b-image-vs-tikz-ui-and-car-fallback-fix-1
  *
  * Remakes an existing project image asset as editable TikZ.
  * - Lists image assets from AssetService
@@ -13,7 +13,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage10a-image-to-tikz-remaker-1';
+  const STAGE = 'stage10b-image-vs-tikz-ui-and-car-fallback-fix-1';
 
   let installed = false;
   let selectedPath = '';
@@ -145,6 +145,27 @@
     const label = String(prompt || file?.path || 'Remade image').replace(/[{}\\]/g, ' ').slice(0, 90);
     const lower = `${file?.path || ''} ${prompt || ''}`.toLowerCase();
 
+    // Stage 10B: useful local fallback for the common hand-drawn simple-car case.
+    // If the AI backend cannot do image input, do not insert the original PNG;
+    // create editable TikZ approximating the image category.
+    if (/(car|vehicle|auto|automobile|wheel|hand.?drawn)/.test(lower)) {
+      return [
+        '\\begin{tikzpicture}[scale=1, line cap=round, line join=round]',
+        '  % Editable simple car remake',
+        '  \\draw[thick, rounded corners=4pt] (0,0.6) -- (0.7,1.35) -- (2.6,1.35) -- (3.35,0.6) -- (4.2,0.6) -- (4.55,0.25) -- (4.35,0) -- (-0.15,0) -- (-0.35,0.25) -- (0,0.6);',
+        '  \\draw[thick] (0.95,1.2) -- (1.35,0.65) -- (2.55,0.65) -- (2.25,1.2) -- cycle;',
+        '  \\draw[thick] (1.45,0.65) -- (1.55,1.2);',
+        '  \\draw[fill=white, thick] (0.85,0) circle (0.38);',
+        '  \\draw[fill=white, thick] (3.45,0) circle (0.38);',
+        '  \\fill (0.85,0) circle (0.08);',
+        '  \\fill (3.45,0) circle (0.08);',
+        '  \\draw[thick] (0.15,0.48) -- (0.55,0.48);',
+        '  \\draw[thick] (3.8,0.45) -- (4.18,0.45);',
+        '\\end{tikzpicture}',
+        ''
+      ].join('\n');
+    }
+
     if (/(network|neural|mlp|layer|node)/.test(lower)) {
       return tikzMaker()?.fallbackTikz?.('one hidden layer neural network') || [
         '\\begin{tikzpicture}[>=stealth]',
@@ -160,8 +181,8 @@
 
     return [
       '\\begin{tikzpicture}[>=stealth, every node/.style={font=\\small}]',
-      '  \\node[draw, rounded corners, thick, minimum width=2.4cm, minimum height=1cm] (a) at (0,0) {Image};',
-      '  \\node[draw, rounded corners, thick, minimum width=2.4cm, minimum height=1cm] (b) at (3.4,0) {TikZ remake};',
+      '  \\node[draw, rounded corners, thick, minimum width=2.4cm, minimum height=1cm] (a) at (0,0) {Original image};',
+      '  \\node[draw, rounded corners, thick, minimum width=2.4cm, minimum height=1cm] (b) at (3.4,0) {Editable TikZ};',
       '  \\draw[->, thick] (a) -- (b);',
       `  \\node[align=center, font=\\scriptsize] at (1.7,-1.0) {${label}};`,
       '\\end{tikzpicture}',
@@ -199,7 +220,7 @@
       const raw = NS.AIProvider.extractText(response);
       const tikz = tikzMaker()?.extractTikz?.(raw, prompt || `Remake ${file.path} as TikZ`) || raw;
       pushToTikzMaker(tikz);
-      setStatus('Image remade as TikZ. Review/edit the TikZ source, then insert directly or save.');
+      setStatus('Image remade as editable TikZ. Review/edit the TikZ source, then use Insert TikZ directly. This does not insert the original PNG.');
       return tikz;
     } catch (err) {
       const fallback = localFallbackTikz(file, prompt);
@@ -243,7 +264,7 @@
     // Use TikzMakerService direct insert path so cursor/package/root behavior stays centralized.
     const result = tikzMaker()?.saveTikz?.({ direct: true });
     if (result?.ok) {
-      setStatus('Remade image as TikZ and inserted directly into source.');
+      setStatus('Remade image as editable TikZ and inserted directly into source. No PNG includegraphics snippet was inserted.');
       toast('Image remade and inserted as TikZ.');
     }
     return result;
@@ -265,13 +286,13 @@
       '    <img id="imageTikzPreviewImg" alt="Selected project image preview" />',
       '    <div>',
       '      <div class="image-tikz-path" id="imageTikzPreviewPath">No image selected.</div>',
-      '      <div class="image-tikz-help">Choose an uploaded/drawn project image and ask AI to remake it as editable TikZ.</div>',
+      '      <div class="image-tikz-help">Choose a PNG/JPG/WebP/SVG image and remake it as editable TikZ source — not as an image include.</div>',
       '    </div>',
       '  </div>',
-      '  <label>Instructions <textarea id="imageTikzPromptInput" placeholder="Example: remake this as a clean neural-network diagram with labeled layers and arrows"></textarea></label>',
+      '  <label>Instructions <textarea id="imageTikzPromptInput" placeholder="Example: remake this hand-drawn car as clean editable TikZ with wheels and a body"></textarea></label>',
       '  <div class="image-tikz-actions">',
       '    <button type="button" class="btn mini primary" id="imageTikzRemakeBtn">Remake as TikZ</button>',
-      '    <button type="button" class="btn mini primary" id="imageTikzRemakeInsertBtn">Remake + insert</button>',
+      '    <button type="button" class="btn mini primary" id="imageTikzRemakeInsertBtn">Remake + insert TikZ</button>',
       '    <button type="button" class="btn mini" id="imageTikzRefreshBtn">Refresh images</button>',
       '  </div>',
       '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready.</div>',
@@ -323,6 +344,10 @@
     buildImageToTikzPayload,
     localFallbackTikz,
     pushToTikzMaker,
+    openFiguresTab: () => {
+      const button = document.querySelector('[data-right-tab="assets"]');
+      if (button) button.click();
+    },
     getSelectedPath: () => selectedPath,
     setSelectedPath: (path) => {
       selectedPath = normalizePath(path);
