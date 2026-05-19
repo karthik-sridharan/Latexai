@@ -1,6 +1,14 @@
-/* Stage 6A-C: persistent source selection overlay */
+/* Stage 8B: source display/edit sync fix.
+ * The persistent source selection overlay must match #sourceEditor exactly.
+ * Do not use pre-wrap here: the textarea uses white-space: pre, so wrapping the
+ * overlay makes the displayed source line positions diverge from edit positions.
+ */
 .source-shell.lai-source-selection-active {
   position: relative;
+}
+
+.source-shell.lai-source-selection-active .line-gutter {
+  font: 14px/1.55 var(--mono) !important;
 }
 
 .lai-source-selection-overlay {
@@ -13,21 +21,27 @@
   overflow: hidden;
   pointer-events: none;
   background: #0f172a;
-  color: #dbeafe;
-  font: 13px/1.55 var(--mono);
-  white-space: pre-wrap;
+  color: #e5e7eb;
+  font: 14px/1.55 var(--mono);
+  letter-spacing: normal;
+  white-space: pre;
   word-break: normal;
   overflow-wrap: normal;
   tab-size: 2;
+  box-sizing: border-box;
 }
 
 .lai-source-selection-overlay-inner {
   margin: 0;
-  padding: 1rem;
+  padding: 1rem 1.1rem;
   min-height: 100%;
-  white-space: pre-wrap;
+  min-width: max-content;
+  white-space: pre;
   word-break: normal;
   overflow-wrap: normal;
+  font: inherit;
+  tab-size: inherit;
+  box-sizing: border-box;
 }
 
 .lai-source-selection-overlay .lai-source-selection-mark {
