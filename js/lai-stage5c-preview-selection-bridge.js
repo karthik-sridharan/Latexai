@@ -1,5 +1,5 @@
 /* Latexai Stage 5C unobtrusive preview-text selection bridge
- * Stage: stage5d-fix-lai-old-new-order-1
+ * Stage: stage5g-selectable-pdf-text-layer-1
  *
  * Restores the pre-5A preview layout: no panel is inserted above the PDF/preview.
  *
@@ -18,7 +18,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage5d-fix-lai-old-new-order-1';
+  const STAGE = 'stage5g-selectable-pdf-text-layer-1';
 
   let lastPreviewSelection = '';
   let lastMatch = null;
@@ -101,8 +101,9 @@
   function currentPreviewSelection() {
     const draft = el('draftPreview');
     const pdf = el('pdfPreview');
+    const pdfJsViewer = el('laiPdfViewer') || el('laiPdfPages');
 
-    let text = selectionInside(draft) || selectionInside(pdf);
+    let text = selectionInside(draft) || selectionInside(pdfJsViewer) || selectionInside(pdf);
     if (!text && pdf && /^(IFRAME|FRAME)$/i.test(pdf.tagName)) text = iframeSelection(pdf);
     return String(text || '').trim();
   }
@@ -283,7 +284,8 @@
 
     const draft = el('draftPreview');
     const pdf = el('pdfPreview');
-    [draft, pdf].forEach(node => {
+    const pdfJsViewer = el('laiPdfViewer') || el('laiPdfPages');
+    [draft, pdf, pdfJsViewer].forEach(node => {
       if (!node || node.__laiStage5cSelectable) return;
       node.addEventListener('mouseup', () => setTimeout(() => handlePreviewSelection('mouseup'), 80), true);
       node.addEventListener('touchend', () => setTimeout(() => handlePreviewSelection('touchend'), 250), true);

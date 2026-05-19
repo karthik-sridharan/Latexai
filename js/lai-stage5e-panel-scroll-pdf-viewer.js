@@ -1,8 +1,9 @@
 /* Latexai Stage 5F: multi-page PDF viewer with independent zoom
- * Stage: stage5f-pdf-independent-zoom-1
+ * Stage: stage5g-selectable-pdf-text-layer-1
  *
  * Adds right-panel PDF zoom that is independent of browser/page zoom:
  * - toolbar buttons: −, zoom %, +, Fit width, Open PDF
+ * - selectable text layer over the rendered PDF pages
  * - pinch inside the PDF pages area adjusts only the PDF preview
  * - Ctrl/trackpad wheel zoom inside PDF pages also adjusts only the PDF preview
  */
@@ -11,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage5f-pdf-independent-zoom-1';
+  const STAGE = 'stage5g-selectable-pdf-text-layer-1';
 
   const PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
   const PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -174,6 +175,46 @@
     return loadingPdfJs;
   }
 
+  async function renderSelectableTextLayer(pdfjs, page, viewport, pageWrap) {
+    try {
+      const textLayer = document.createElement('div');
+      textLayer.className = 'lai-pdf-text-layer textLayer';
+      textLayer.style.width = `${Math.floor(viewport.width)}px`;
+      textLayer.style.height = `${Math.floor(viewport.height)}px`;
+      pageWrap.appendChild(textLayer);
+
+      const textContent = await page.getTextContent();
+
+      if (typeof pdfjs.renderTextLayer === 'function') {
+        const task = pdfjs.renderTextLayer({
+          textContentSource: textContent,
+          container: textLayer,
+          viewport,
+          textDivs: []
+        });
+        if (task?.promise) await task.promise;
+        return textLayer;
+      }
+
+      // Fallback if pdfjs.renderTextLayer is not exposed by this build.
+      for (const item of textContent.items || []) {
+        const span = document.createElement('span');
+        span.textContent = item.str || '';
+        const tx = pdfjs.Util.transform(viewport.transform, item.transform);
+        const fontHeight = Math.hypot(tx[2], tx[3]) || Math.abs(tx[3]) || 10;
+        span.style.left = `${tx[4]}px`;
+        span.style.top = `${tx[5] - fontHeight}px`;
+        span.style.fontSize = `${fontHeight}px`;
+        span.style.transform = `scaleX(${Math.max(0.2, (item.width || 1) * viewport.scale / Math.max(1, span.textContent.length * fontHeight * 0.45))})`;
+        textLayer.appendChild(span);
+      }
+      return textLayer;
+    } catch (err) {
+      console.warn('[Latexai Stage 5G] Could not render selectable PDF text layer.', err);
+      return null;
+    }
+  }
+
   async function renderPdfBytes(bytes, options = {}) {
     const serial = ++renderSerial;
     lastBytes = bytes;
@@ -211,6 +252,12 @@
         const scale = Math.max(0.25, Math.min(6.0, fitScale * zoom));
         const viewport = page.getViewport({ scale });
 
+        const pageWrap = document.createElement('div');
+        pageWrap.className = 'lai-pdf-page-wrap';
+        pageWrap.dataset.page = String(pageNo);
+        pageWrap.style.width = `${Math.floor(viewport.width)}px`;
+        pageWrap.style.height = `${Math.floor(viewport.height)}px`;
+
         const canvas = document.createElement('canvas');
         canvas.className = 'lai-pdf-page';
         canvas.dataset.page = String(pageNo);
@@ -221,11 +268,13 @@
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-        pagesHost.appendChild(canvas);
+        pageWrap.appendChild(canvas);
+        pagesHost.appendChild(pageWrap);
 
         const ctx = canvas.getContext('2d', { alpha: false });
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         await page.render({ canvasContext: ctx, viewport }).promise;
+        await renderSelectableTextLayer(pdfjs, page, viewport, pageWrap);
       }
 
       restoreScrollAnchor(pagesHost, options.keep);
