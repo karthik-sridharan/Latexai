@@ -1,0 +1,7 @@
+Stage 8E checks
+===============
+
+PASS node --check js/figure-editor-service.js
+PASS node tests/stage8e-native-figure-editor.test.cjs
+
+Native figure editor saves PNGs through AssetService and inserts snippets through AssetService.
