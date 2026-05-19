@@ -1,0 +1,7 @@
+Stage 6D checks
+===============
+
+PASS node --check js/file-tree.js
+PASS node tests/stage6d-commit-message.test.cjs
+
+Commit message box is optional; empty box keeps default Latexai save timestamp message.
