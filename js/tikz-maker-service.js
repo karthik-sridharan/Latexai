@@ -1,5 +1,5 @@
 /* Latexai Stage 9F TikzMakerService
- * Stage: stage9g-compile-normalizepath-cursor-fix-1
+ * Stage: stage9h-tikz-cursor-regex-fix-1
  *
  * AI prompt -> TikZ source -> saved .tex asset -> \input{...} figure snippet.
  * Uses:
@@ -11,7 +11,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage9g-compile-normalizepath-cursor-fix-1';
+  const STAGE = 'stage9h-tikz-cursor-regex-fix-1';
 
   let installed = false;
   let latestTikz = '';

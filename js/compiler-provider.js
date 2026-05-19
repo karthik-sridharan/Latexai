@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage9g-compile-normalizepath-cursor-fix-1';
+  var STAGE = 'stage9h-tikz-cursor-regex-fix-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
 
   function isObject(x) {

@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage9g-compile-normalizepath-cursor-fix-1
+ * Stage: stage9h-tikz-cursor-regex-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage9g-compile-normalizepath-cursor-fix-1';
+  const STAGE = 'stage9h-tikz-cursor-regex-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -83,12 +83,19 @@
 
   function isDocumentRootText(text) {
     const s = String(text || '');
-    return /\documentclass(?:\[[^\]]*\])?\{[^}]+\}/.test(s) || /\begin\{document\}/.test(s);
+    // Stage 9H: match literal LaTeX backslashes. The old regex accidentally
+    // failed to reliably detect real root documents.
+    return /\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/.test(s) || /\\begin\{document\}/.test(s);
   }
 
   function isTikzOnlyText(text) {
     const s = String(text || '').trim();
     return /\\begin\{tikzpicture\}/.test(s) && !isDocumentRootText(s);
+  }
+
+  function isLatexInsertionText(text) {
+    const s = String(text || '');
+    return !!s && !isTikzOnlyText(s);
   }
 
   function findRootDocumentPath() {
@@ -112,16 +119,16 @@
 
   function documentInsertionTarget(options = {}) {
     const explicit = explicitInsertionTarget(options);
-    if (explicit && isDocumentRootText(explicit.text) && !isTikzOnlyText(explicit.text)) return explicit;
+    if (explicit && isLatexInsertionText(explicit.text)) return explicit;
 
-    // Stage 9G: prefer the remembered source cursor in the real document. This
-    // avoids falling back to \end{document} when the active file has temporarily
-    // become a generated TikZ include.
+    // Stage 9H: prefer the remembered source cursor in the file the user was
+    // editing. This is the intended insertion point; only fall back to the root
+    // document end if no usable cursor was ever captured.
     if (lastInsertTarget && Number.isFinite(Number(lastInsertTarget.end))) {
       const path = normalizePath(lastInsertTarget.path);
       const file = State()?.getFile?.(path);
       const text = fileText(file);
-      if (file && State()?.textFile?.(file) && isDocumentRootText(text) && !isTikzOnlyText(text)) {
+      if (file && State()?.textFile?.(file) && isLatexInsertionText(text)) {
         const pos = Math.max(0, Math.min(Number(lastInsertTarget.end), text.length));
         return { path, file, text, start: pos, end: pos, remembered: true };
       }
@@ -132,14 +139,14 @@
     const activePath = normalizePath(project.activePath || project.rootFile || 'main.tex');
     const activeFile = State()?.getFile?.(activePath);
     const editorText = String(editor?.value || fileText(activeFile));
-    if (editor && activeFile && State()?.textFile?.(activeFile) && isDocumentRootText(editorText) && !isTikzOnlyText(editorText)) {
+    if (editor && activeFile && State()?.textFile?.(activeFile) && isLatexInsertionText(editorText)) {
       try { State()?.updateActiveText?.(editorText); } catch (_err) {}
       const start = Math.max(0, Math.min(Number(editor.selectionEnd ?? editor.selectionStart ?? 0), editorText.length));
       return { path: activePath, file: State()?.getFile?.(activePath) || activeFile, text: editorText, start, end: start, liveEditor: true };
     }
 
     const raw = insertionTarget({});
-    if (raw && isDocumentRootText(raw.text) && !isTikzOnlyText(raw.text)) return raw;
+    if (raw && isLatexInsertionText(raw.text)) return raw;
 
     const path = findRootDocumentPath();
     const file = State()?.getFile?.(path);
@@ -477,9 +484,10 @@
 
     const value = String(editor.value || fileText(file));
 
-    // Stage 9G: do not let generated TikZ include files overwrite the remembered
-    // source cursor from the real paper.
-    if (isTikzOnlyText(value) || !isDocumentRootText(value)) {
+    // Stage 9H: remember the cursor for the actual source file the user is
+    // editing, not only root documents. This lets users insert into main.tex or
+    // included section files. Still ignore generated TikZ-only include files.
+    if (!isLatexInsertionText(value)) {
       return lastInsertTarget;
     }
 
@@ -796,12 +804,31 @@
 
   function bindInsertionPointTracking() {
     const editor = el('sourceEditor');
-    if (!editor || editor.__stage8gAssetCursorBound) return;
-    ['click', 'keyup', 'select', 'mouseup', 'touchend', 'input', 'blur'].forEach((name) => {
-      editor.addEventListener(name, () => rememberInsertionPoint(`source-${name}`), true);
+    if (!editor || editor.__stage9hAssetCursorBound) return;
+
+    const rememberNow = (reason) => rememberInsertionPoint(reason);
+    const rememberSoon = (reason) => {
+      // Pointer/click/touch events often update textarea selection after event
+      // dispatch, especially on iPad. Capture after the browser has moved the caret.
+      setTimeout(() => rememberNow(`${reason}|after-0ms`), 0);
+      setTimeout(() => rememberNow(`${reason}|after-60ms`), 60);
+      setTimeout(() => rememberNow(`${reason}|after-180ms`), 180);
+    };
+
+    ['pointerup', 'click', 'keyup', 'select', 'mouseup', 'touchend', 'input', 'blur'].forEach((name) => {
+      editor.addEventListener(name, () => rememberSoon(`source-${name}`), false);
     });
-    document.querySelector('.right-panel')?.addEventListener('pointerdown', () => rememberInsertionPoint('right-panel-pointerdown'), true);
-    editor.__stage8gAssetCursorBound = true;
+
+    document.addEventListener('selectionchange', () => {
+      if (document.activeElement === editor) rememberSoon('document-selectionchange');
+    }, false);
+
+    document.querySelector('.right-panel')?.addEventListener('pointerdown', () => {
+      rememberNow('right-panel-pointerdown-now');
+      rememberSoon('right-panel-pointerdown');
+    }, true);
+
+    editor.__stage9hAssetCursorBound = true;
   }
 
   function init() {
