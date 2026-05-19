@@ -1,0 +1,8 @@
+Stage 8C checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node --check js/compiler-provider.js
+PASS node tests/stage8c-figure-asset-compile-cursor.test.cjs
+
+Figure assets are included in compile payloads and snippets use the remembered editor cursor.
