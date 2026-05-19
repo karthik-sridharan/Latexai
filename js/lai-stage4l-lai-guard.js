@@ -1,5 +1,5 @@
 /* Latexai Stage 4L always-visible LAI rewrite guard
- * Stage: stage4n-remove-debug-badges-1
+ * Stage: stage5d-fix-lai-old-new-order-1
  *
  * Purpose:
  * - Make it visually obvious that the guard loaded: fixed badge at top-right.
@@ -19,7 +19,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage4n-remove-debug-badges-1';
+  const STAGE = 'stage5d-fix-lai-old-new-order-1';
 
   let pending = null;
   let lastNonEmptySelection = null;
@@ -242,12 +242,17 @@
       }
 
       // If the source has already changed without LAI, convert the changed diff.
+      // IMPORTANT: the comment block must contain the pre-Copilot source (d.oldChunk)
+      // and the \lai body must contain the newly inserted Copilot source (d.newChunk).
+      // Earlier stages could accidentally use stale Copilot panel text here, reversing
+      // old/new in some preview-selection flows.
       if (cap.beforeValue && current !== cap.beforeValue) {
         const d = commonDiff(cap.beforeValue, current);
         if (d.newChunk && !/\\lai\s*\{/.test(d.newChunk)) {
           start = d.newStart;
           end = d.newEnd;
           oldText = d.oldChunk || oldText;
+          newText = d.newChunk || newText;
         }
       } else {
         const selectedNow = current.slice(start, end);
@@ -296,6 +301,12 @@
     if (!isRewriteTask()) return false;
     const cap = pending || lastNonEmptySelection;
     if (!cap) return false;
+
+    // If the old Copilot/editor path already changed the source, prefer the
+    // editor diff. It unambiguously tells us old = cap.beforeValue diff oldChunk
+    // and new = current editor diff newChunk.
+    if (enforceFromEditorMutation(reason + ' via editor-diff')) return true;
+
     const out = outputText();
     if (!out.trim() || /^Calling AI proxy/i.test(out) || /^Copilot responses/i.test(out)) return false;
     return applyBlock(cap, out, reason);

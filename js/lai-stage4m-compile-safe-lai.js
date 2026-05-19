@@ -1,5 +1,5 @@
 /* Latexai Stage 4M compile-safe LAI macro guard
- * Stage: stage4n-remove-debug-badges-1
+ * Stage: stage5d-fix-lai-old-new-order-1
  *
  * Ensures \lai is defined before compile/preview whenever any project file
  * contains \lai{...}. This fixes the "rewrite inserted \lai but PDF fails"
@@ -10,7 +10,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage4n-remove-debug-badges-1';
+  const STAGE = 'stage5d-fix-lai-old-new-order-1';
 
   function badge(_text, _color = '#064', _bg = '#e8ffe8', _border = '#5b5') {
     // Stage 4N: debug badge removed; macro guard still runs.

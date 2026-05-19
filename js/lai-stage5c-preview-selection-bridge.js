@@ -1,5 +1,5 @@
 /* Latexai Stage 5C unobtrusive preview-text selection bridge
- * Stage: stage5c-restore-ui-preview-selection-1
+ * Stage: stage5d-fix-lai-old-new-order-1
  *
  * Restores the pre-5A preview layout: no panel is inserted above the PDF/preview.
  *
@@ -18,7 +18,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage5c-restore-ui-preview-selection-1';
+  const STAGE = 'stage5d-fix-lai-old-new-order-1';
 
   let lastPreviewSelection = '';
   let lastMatch = null;
