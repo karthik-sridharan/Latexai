@@ -17,6 +17,7 @@
     branch: 'main',
     rootPath: '',
     headSha: null,
+    commitMessage: '',
     status: 'GitHub sync ready.'
   };
 
@@ -39,6 +40,7 @@
             branch: parsed.branch || git.branch || 'main',
             rootPath: normalizeRepoPath(parsed.rootPath || git.rootPath || ''),
             headSha: parsed.headSha || parsed.lastCommitSha || git.headSha || null,
+            commitMessage: String(parsed.commitMessage || git.commitMessage || ''),
             setupOpen: !!parsed.setupOpen
           });
           break;
@@ -55,6 +57,7 @@
       branch: git.branch || 'main',
       rootPath: normalizeRepoPath(git.rootPath || ''),
       headSha: git.headSha || null,
+      commitMessage: String(git.commitMessage || ''),
       setupOpen: !!git.setupOpen,
       savedAt: new Date().toISOString()
     }));
@@ -86,7 +89,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • Stage 3J</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • Stage 6D</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -98,6 +101,8 @@
     header.appendChild(title);
 
     if (git.setupOpen) header.appendChild(renderGitSetup());
+
+    header.appendChild(renderCommitMessageBox());
 
     const actions = document.createElement('div');
     actions.className = 'git-actions';
@@ -174,6 +179,46 @@
     }
 
     renderRootSelect();
+  }
+
+  function defaultCommitMessage(date = new Date()) {
+    return `Latexai save: ${date.toISOString()}`;
+  }
+
+  function commitMessageForGithub(date = new Date()) {
+    const custom = String(git.commitMessage || '').trim();
+    return custom || defaultCommitMessage(date);
+  }
+
+  function renderCommitMessageBox() {
+    const wrap = document.createElement('label');
+    wrap.className = 'git-commit-message-wrap';
+    wrap.style.cssText = 'display:block;font-size:11px;font-weight:700;margin-top:7px;';
+    const caption = document.createElement('div');
+    caption.textContent = 'Commit message (optional)';
+    const input = document.createElement('input');
+    input.id = 'gitCommitMessageInput';
+    input.type = 'text';
+    input.value = git.commitMessage || '';
+    input.placeholder = 'Default: Latexai save: current timestamp';
+    input.autocomplete = 'off';
+    input.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid rgba(0,0,0,.18);border-radius:9px;padding:6px;margin-top:3px;font-size:12px;background:rgba(255,255,255,.86);';
+    wrap.append(caption, input);
+    setTimeout(bindGitCommitMessageInput, 0);
+    return wrap;
+  }
+
+  function bindGitCommitMessageInput() {
+    const input = document.getElementById('gitCommitMessageInput');
+    if (!input || input.__gitCommitMessageBound) return;
+    const update = () => {
+      git.commitMessage = String(input.value || '');
+      saveGitSettings();
+    };
+    input.addEventListener('input', update);
+    input.addEventListener('change', update);
+    input.addEventListener('blur', update);
+    input.__gitCommitMessageBound = true;
   }
 
   function renderGitSetup() {
@@ -344,7 +389,8 @@
       const paths = Object.keys(files).sort();
       if (!paths.length) throw new Error('No files to commit.');
 
-      git.status = `Committing ${paths.length} files...`;
+      const message = commitMessageForGithub();
+      git.status = `Committing ${paths.length} files...\nMessage: ${message}`;
       render();
 
       const result = await gitFetch('/autosave-commit', {
@@ -353,13 +399,13 @@
         branch: git.branch || 'main',
         rootPath: normalizeRepoPath(git.rootPath || ''),
         expectedHeadSha: git.headSha || project.github?.headSha || null,
-        message: `Latexai save: ${new Date().toISOString()}`,
+        message,
         project,
         files
       });
 
       git.headSha = result.commitSha || git.headSha;
-      git.status = `Committed ${result.fileCount || paths.length} files.\nCommit: ${result.commitSha || 'unknown'}`;
+      git.status = `Committed ${result.fileCount || paths.length} files.\nMessage: ${message}\nCommit: ${result.commitSha || 'unknown'}`;
       saveGitSettings();
       State().state.project.github = Object.assign({}, project.github || {}, {
         owner: git.owner,
@@ -382,11 +428,13 @@
     const repo = document.getElementById('gitRepoInput');
     const branch = document.getElementById('gitBranchInput');
     const rootPath = document.getElementById('gitRootPathInput');
+    const commitMessage = document.getElementById('gitCommitMessageInput');
     if (backend) git.backendBase = String(backend.value || '').trim() || DEFAULT_GITHUB_BACKEND;
     if (owner) git.owner = String(owner.value || '').trim();
     if (repo) git.repo = String(repo.value || '').trim();
     if (branch) git.branch = String(branch.value || '').trim() || 'main';
     if (rootPath) git.rootPath = normalizeRepoPath(rootPath.value);
+    if (commitMessage) git.commitMessage = String(commitMessage.value || '');
     saveGitSettings();
   }
 
@@ -511,5 +559,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, commitAllToGithub, checkGithubBackend };
+  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, commitAllToGithub, checkGithubBackend, defaultCommitMessage, commitMessageForGithub };
 })();
