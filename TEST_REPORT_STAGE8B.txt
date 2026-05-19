@@ -1,0 +1,7 @@
+Stage 8B checks
+===============
+
+PASS node --check js/source-display-sync.js
+PASS node tests/stage8b-source-display-sync.test.cjs
+
+Source overlay and line gutter now use the same metrics as #sourceEditor.
