@@ -1,0 +1,7 @@
+Stage 10A checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node tests/stage10a-image-to-tikz-remaker.test.cjs
+
+Image-to-TikZ remaker uses AssetService, AIProvider, and TikzMakerService without direct file mutation.
