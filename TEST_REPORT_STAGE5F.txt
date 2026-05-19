@@ -1,0 +1,8 @@
+Stage 5F checks
+===============
+
+PASS node --check js/lai-stage5e-panel-scroll-pdf-viewer.js
+PASS node --check js/lai-stage5c-preview-selection-bridge.js
+PASS node --check js/lai-stage4l-lai-guard.js
+PASS node --check js/lai-stage4m-compile-safe-lai.js
+PASS PDF toolbar includes independent zoom controls
