@@ -13,7 +13,7 @@
       const task = document.getElementById('copilotTask')?.value || 'raw-advice';
       proposeFromText(text, { task, source: 'manual-preview' });
     });
-    document.getElementById('applyCopilotPatchBtn')?.addEventListener('click', () => applyActivePatch({ source: 'apply-button' }));
+    document.getElementById('applyCopilotPatchBtn')?.addEventListener('click', applyActivePatch);
     document.getElementById('discardCopilotPatchBtn')?.addEventListener('click', discardPatch);
   }
 
@@ -58,16 +58,6 @@
     let summary = parsed?.summary || parsed?.explanation || '';
     let patch = parsed?.patch || (Array.isArray(parsed?.patches) ? parsed.patches[0] : null);
     if (patch && typeof patch === 'string') patch = { text: patch };
-    if (!patch && parsed?.replacementLatex) {
-      patch = {
-        path: parsed.targetPath || parsed.path,
-        operation: 'replace-selection',
-        text: parsed.replacementLatex,
-        start: parsed.start,
-        end: parsed.end,
-        laiWrap: true
-      };
-    }
     if (!patch && parsed?.path && parsed?.text) patch = parsed;
     if (!patch) {
       patch = fallbackPatch(rawText, { task, file, selection });
@@ -76,9 +66,7 @@
     patch = Object.assign({}, patch);
     patch.path = State().normalizePath(patch.path || file.path || State().state.project.activePath || 'main.tex');
     patch.operation = normalizeOperation(patch.operation || patch.op || taskToOperation(task, selection));
-    patch.text = cleanCopilotText(patch.text ?? patch.replacementLatex ?? patch.replacement ?? patch.content ?? rawText);
-    if (shouldLaiWrapTask(task) || patch.laiWrap === true || parsed?.replacementLatex || /rewrite/i.test(String(task || ''))) patch.laiWrap = true;
-    if (patch.operation === 'replace-selection' && /rewrite/i.test(String(task || ''))) patch.laiWrap = true;
+    patch.text = cleanCopilotText(patch.text ?? patch.replacement ?? patch.content ?? rawText);
     if (patch.operation === 'find-replace') {
       patch.find = String(patch.find || selection.text || '');
       patch.replace = String(patch.replace ?? patch.text ?? '');
@@ -104,8 +92,8 @@
     if (task === 'raw-advice' || task === 'explain-log') {
       return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: `% Copilot note:\n% ${text.split('\n').join('\n% ')}\n` };
     }
-    if (selection.text) return { path: file?.path || 'main.tex', operation: 'replace-selection', text, start: selection.start, end: selection.end, laiWrap: shouldLaiWrapTask(task) };
-    return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: '\n' + text + '\n', laiWrap: shouldLaiWrapTask(task) };
+    if (selection.text) return { path: file?.path || 'main.tex', operation: 'replace-selection', text, start: selection.start, end: selection.end };
+    return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: '\n' + text + '\n' };
   }
 
   function fallbackSummary(task, selection) {
@@ -157,18 +145,18 @@
     let after = '';
     if (candidate.operation === 'replace-file') {
       before = current;
-      after = previewPatchText(candidate, current, before);
+      after = patch.text || '';
     } else if (candidate.operation === 'find-replace') {
       before = patch.find || '';
-      after = previewPatchText(candidate, current, before, patch.replace ?? patch.text ?? '');
+      after = patch.replace ?? patch.text ?? '';
     } else if (candidate.operation === 'replace-selection') {
       const start = clamp(Number(patch.start ?? 0), 0, current.length);
       const end = clamp(Number(patch.end ?? start), start, current.length);
       before = current.slice(start, end) || patch.selectionText || '(empty selection)';
-      after = previewPatchText(candidate, current, before);
+      after = patch.text || '';
     } else {
       before = '(insert at cursor)';
-      after = previewPatchText(candidate, current, '');
+      after = patch.text || '';
     }
     return simpleDiff(before, after);
   }
@@ -193,7 +181,47 @@
     return out.join('\n');
   }
 
-  function applyActivePatch(_options = {}) {
+
+  function shouldLaiWrap(candidate) {
+    return candidate?.task === 'rewrite-selection-patch' || /rewrite/i.test(String(candidate?.task || '')) || candidate?.patch?.laiWrap === true;
+  }
+
+  function latexCommentBlock(text) {
+    return String(text || '').split('\n').map((line) => `% ${line}`).join('\n');
+  }
+
+  function extractReplacementForLai(text) {
+    let s = cleanCopilotText(text);
+    if (/^\s*\{[\s\S]*\}\s*$/.test(s)) {
+      try {
+        const obj = JSON.parse(s);
+        const patch = obj.patch || (Array.isArray(obj.patches) ? obj.patches[0] : null) || {};
+        s = obj.replacementLatex ?? obj.replacement ?? obj.text ?? obj.content ?? patch.replacementLatex ?? patch.replacement ?? patch.text ?? patch.content ?? s;
+      } catch (_err) {}
+    }
+    const lai = String(s).trim().match(/^\\lai\s*\{([\s\S]*)\}\s*$/);
+    return lai ? lai[1].trim() : String(s || '').trim();
+  }
+
+  function laiReplacement(oldText, newText, path) {
+    const id = `lai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const replacement = extractReplacementForLai(newText);
+    return `\n% BEGIN LAI-OLD id=${id} path=${path || 'main.tex'}\n${latexCommentBlock(oldText)}\n% END LAI-OLD id=${id}\n\n\\lai{\n${replacement}\n}\n`;
+  }
+
+  function ensureLaiMacroForRoot() {
+    try {
+      const project = State().state.project;
+      const rootPath = project.rootFile || project.activePath;
+      const file = State().getFile(rootPath);
+      const ensure = NS.ProjectModel?.ensureLaiMacro;
+      if (!file || !State().textFile(file.path) || typeof ensure !== 'function') return;
+      const next = ensure(String(file.text || ''));
+      if (next !== file.text) State().updateFile(rootPath, next);
+    } catch (_err) {}
+  }
+
+  function applyActivePatch() {
     if (!activePatch) return false;
     const candidate = activePatch;
     const file = State().getFile(candidate.path);
@@ -202,21 +230,15 @@
       return false;
     }
     const patch = candidate.patch || {};
-    // Stage 4C guard: any rewrite-selection patch must be visibly tracked.
-    // This catches AI responses that parse as generic replacement patches and
-    // button flows that otherwise apply the rewrite but omit \lai{...}.
-    if (candidate.task === 'rewrite-selection-patch' || /rewrite/i.test(String(candidate.task || ''))) {
-      patch.laiWrap = true;
-    }
     const current = String(file.text || '');
+    const forceLai = shouldLaiWrap(candidate);
     if (State().state.project.activePath !== file.path) {
       State().setActivePath(file.path);
       NS.Editor?.render?.();
     }
-
     if (candidate.operation === 'replace-file') {
-      State().updateFile(file.path, patch.text || '');
-      ensureLaiMacroForProject(file.path);
+      State().updateFile(file.path, forceLai ? laiReplacement(current, patch.text || '', file.path) : (patch.text || ''));
+      if (forceLai) ensureLaiMacroForRoot();
       NS.Editor?.render?.();
     } else if (candidate.operation === 'find-replace') {
       const find = String(patch.find || '');
@@ -224,186 +246,29 @@
         State().setLog('Copilot patch could not find the requested source text.', [{ level: 'error', message: 'Patch find text not found.', file: file.path, line: null }]);
         return false;
       }
-      const replacement = appliedPatchText(candidate, current, find, patch.replace ?? patch.text ?? '');
+      const replacement = forceLai ? laiReplacement(find, patch.replace ?? patch.text ?? '', file.path) : String(patch.replace ?? patch.text ?? '');
       State().updateFile(file.path, current.replace(find, replacement));
-      ensureLaiMacroForProject(file.path);
+      if (forceLai) ensureLaiMacroForRoot();
       NS.Editor?.render?.();
     } else if (candidate.operation === 'replace-selection') {
       const start = clamp(Number(patch.start || 0), 0, current.length);
       const end = clamp(Number(patch.end || start), start, current.length);
       const oldText = current.slice(start, end) || patch.selectionText || '';
-      const replacement = appliedPatchText(candidate, current, oldText);
+      const replacement = forceLai ? laiReplacement(oldText, patch.text || '', file.path) : (patch.text || '');
       State().updateFile(file.path, current.slice(0, start) + replacement + current.slice(end));
-      ensureLaiMacroForProject(file.path);
+      if (forceLai) ensureLaiMacroForRoot();
       NS.Editor?.render?.();
     } else {
-      const insertion = appliedPatchText(candidate, current, '');
       const selection = NS.Editor?.getSelection?.() || { start: current.length, end: current.length };
       const pos = clamp(Number(selection.start ?? current.length), 0, current.length);
-      State().updateFile(file.path, current.slice(0, pos) + '\n' + insertion + '\n' + current.slice(pos));
-      ensureLaiMacroForProject(file.path);
+      const insertion = forceLai ? laiReplacement('', patch.text || '', file.path) : ('\n' + (patch.text || '') + '\n');
+      State().updateFile(file.path, current.slice(0, pos) + insertion + current.slice(pos));
+      if (forceLai) ensureLaiMacroForRoot();
       NS.Editor?.render?.();
     }
     State().save();
     NS.Preview?.scheduleDraftPreview?.();
-    NS.Main?.toast?.(patch.laiWrap ? 'AI rewrite applied in \\lai{...}.' : 'Copilot patch applied.');
-    discardPatch();
-    return true;
-  }
-
-
-  function shouldLaiWrapTask(task) {
-    return ['rewrite-selection-patch', 'insert-section-patch', 'beamer-outline-patch', 'table-helper-patch'].includes(String(task || ''));
-  }
-
-  function latexCommentBlock(text) {
-    return String(text || '').split('\n').map((line) => `% ${line}`).join('\n');
-  }
-
-  function laiBlock(replacement) {
-    const body = String(replacement || '').trim();
-    if (/^\\lai\s*\{/m.test(body)) return body;
-    return `\\lai{\n${body}\n}`;
-  }
-
-  function buildLaiReplacement(oldText, replacement, candidate) {
-    const id = `lai-${Date.now().toString(36)}`;
-    const target = candidate?.path || State().state.project.activePath || 'main.tex';
-    const old = String(oldText || '');
-    const replacementText = String(replacement || '').trim();
-    const oldBlock = old.trim()
-      ? [`% BEGIN LAI-OLD id=${id} path=${target}`, latexCommentBlock(old), `% END LAI-OLD id=${id}`, ''].join('\n')
-      : '';
-    return `${oldBlock}${laiBlock(replacementText)}\n`;
-  }
-
-  function appliedPatchText(candidate, current, oldText, explicitReplacement = null) {
-    const patch = candidate.patch || {};
-    const replacement = explicitReplacement ?? patch.replace ?? patch.text ?? '';
-    const forceLai = patch.laiWrap === true || candidate.task === 'rewrite-selection-patch' || /rewrite/i.test(String(candidate.task || ''));
-    if (!forceLai) return String(replacement || '');
-    return buildLaiReplacement(oldText, replacement, candidate);
-  }
-
-  function previewPatchText(candidate, current, oldText, explicitReplacement = null) {
-    return appliedPatchText(candidate, current, oldText, explicitReplacement);
-  }
-
-  function ensureLaiMacroForProject(targetPath) {
-    const model = NS.ProjectModel;
-    if (!model?.ensureLaiMacro) return false;
-    const paths = new Set([State().state.project.rootFile, targetPath]);
-    let changed = false;
-    for (const path of paths) {
-      const file = State().getFile(path);
-      if (!file || file.kind !== 'tex') continue;
-      const next = model.ensureLaiMacro(file.text || '');
-      if (next !== file.text) {
-        State().updateFile(file.path, next);
-        changed = true;
-      }
-    }
-    return changed;
-  }
-
-
-  function extractRewriteReplacement(rawText) {
-    const parsed = parseAiPatch(rawText);
-    let patch = parsed?.patch || (Array.isArray(parsed?.patches) ? parsed.patches[0] : null);
-    if (patch && typeof patch === 'string') patch = { text: patch };
-    let replacement = parsed?.replacementLatex
-      ?? parsed?.replacement
-      ?? parsed?.text
-      ?? patch?.replacementLatex
-      ?? patch?.replacement
-      ?? patch?.replace
-      ?? patch?.text
-      ?? patch?.content
-      ?? rawText;
-    replacement = cleanCopilotText(replacement);
-    // If the model returned JSON that cleanCopilotText preserved, try once more.
-    if (/^\s*\{[\s\S]*\}\s*$/.test(replacement)) {
-      try {
-        const again = JSON.parse(replacement);
-        replacement = again.replacementLatex ?? again.replacement ?? again.text ?? again.patch?.text ?? replacement;
-      } catch (_err) {}
-    }
-    return cleanCopilotText(replacement);
-  }
-
-  function applyRewriteSelectionDirect(context = {}, rawText = '', _options = {}) {
-    const contextSelection = context.selection || {};
-    const liveSelection = NS.Editor?.getSelection?.() || {};
-    const selection = contextSelection.text ? contextSelection : liveSelection;
-    const path = State().normalizePath(
-      context.activeFile?.path ||
-      State().state.project.activePath ||
-      context.project?.rootFile ||
-      'main.tex'
-    );
-    const file = State().getFile(path);
-    if (!file) {
-      State().setLog(`Rewrite target not found: ${path}`, [{ level: 'error', message: `Rewrite target not found: ${path}`, line: null }]);
-      return false;
-    }
-
-    const current = String(file.text || '');
-    let start = Number(selection.start);
-    let end = Number(selection.end);
-    let oldText = String(selection.text || '');
-
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-      const live = NS.Editor?.getSelection?.() || {};
-      start = Number(live.start);
-      end = Number(live.end);
-      oldText = String(live.text || oldText || '');
-    }
-
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-      State().setLog('No active source selection to rewrite.', [{ level: 'error', message: 'Select source text before using Rewrite selected LaTeX as patch.', file: path, line: null }]);
-      return false;
-    }
-
-    start = clamp(start, 0, current.length);
-    end = clamp(end, start, current.length);
-    const selectedCurrent = current.slice(start, end);
-
-    // If the stored selection offsets are stale, find the selected text in the current file.
-    if (oldText && selectedCurrent !== oldText) {
-      const idx = current.indexOf(oldText);
-      if (idx >= 0) {
-        start = idx;
-        end = idx + oldText.length;
-      }
-    }
-
-    oldText = current.slice(start, end) || oldText;
-    if (!oldText.trim()) {
-      State().setLog('Selected source block is empty.', [{ level: 'error', message: 'Selected source block is empty.', file: path, line: null }]);
-      return false;
-    }
-
-    const replacement = extractRewriteReplacement(rawText);
-    if (!replacement.trim()) {
-      State().setLog('Copilot returned an empty rewrite.', [{ level: 'error', message: 'Copilot returned an empty rewrite.', file: path, line: null }]);
-      return false;
-    }
-
-    const directCandidate = {
-      task: 'rewrite-selection-patch',
-      path,
-      patch: { laiWrap: true }
-    };
-    const replacementBlock = buildLaiReplacement(oldText, replacement, directCandidate);
-    const next = current.slice(0, start) + replacementBlock + current.slice(end);
-
-    State().updateFile(path, next);
-    ensureLaiMacroForProject(path);
-    if (State().state.project.activePath !== path) State().setActivePath(path);
-    NS.Editor?.render?.();
-    State().save();
-    NS.Preview?.scheduleDraftPreview?.();
-    NS.Main?.toast?.('AI rewrite applied directly in \\lai{...} (Stage 4D).');
+    NS.Main?.toast?.(forceLai ? 'Stage 4G patch applied in \\lai{...}.' : 'Copilot patch applied.');
     discardPatch();
     return true;
   }
@@ -418,14 +283,12 @@
   }
 
   NS.PatchManager = {
-    STAGE: 'stage4d-direct-lai-rewrite-1',
     init,
     isPatchWorkflow,
     proposeFromText,
     parseAiPatch,
     normalizeCandidate,
     applyActivePatch,
-    applyRewriteSelectionDirect,
     discardPatch,
     getActivePatch: () => activePatch
   };
