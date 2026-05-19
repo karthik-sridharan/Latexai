@@ -306,6 +306,108 @@
     return changed;
   }
 
+
+  function extractRewriteReplacement(rawText) {
+    const parsed = parseAiPatch(rawText);
+    let patch = parsed?.patch || (Array.isArray(parsed?.patches) ? parsed.patches[0] : null);
+    if (patch && typeof patch === 'string') patch = { text: patch };
+    let replacement = parsed?.replacementLatex
+      ?? parsed?.replacement
+      ?? parsed?.text
+      ?? patch?.replacementLatex
+      ?? patch?.replacement
+      ?? patch?.replace
+      ?? patch?.text
+      ?? patch?.content
+      ?? rawText;
+    replacement = cleanCopilotText(replacement);
+    // If the model returned JSON that cleanCopilotText preserved, try once more.
+    if (/^\s*\{[\s\S]*\}\s*$/.test(replacement)) {
+      try {
+        const again = JSON.parse(replacement);
+        replacement = again.replacementLatex ?? again.replacement ?? again.text ?? again.patch?.text ?? replacement;
+      } catch (_err) {}
+    }
+    return cleanCopilotText(replacement);
+  }
+
+  function applyRewriteSelectionDirect(context = {}, rawText = '', _options = {}) {
+    const contextSelection = context.selection || {};
+    const liveSelection = NS.Editor?.getSelection?.() || {};
+    const selection = contextSelection.text ? contextSelection : liveSelection;
+    const path = State().normalizePath(
+      context.activeFile?.path ||
+      State().state.project.activePath ||
+      context.project?.rootFile ||
+      'main.tex'
+    );
+    const file = State().getFile(path);
+    if (!file) {
+      State().setLog(`Rewrite target not found: ${path}`, [{ level: 'error', message: `Rewrite target not found: ${path}`, line: null }]);
+      return false;
+    }
+
+    const current = String(file.text || '');
+    let start = Number(selection.start);
+    let end = Number(selection.end);
+    let oldText = String(selection.text || '');
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      const live = NS.Editor?.getSelection?.() || {};
+      start = Number(live.start);
+      end = Number(live.end);
+      oldText = String(live.text || oldText || '');
+    }
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      State().setLog('No active source selection to rewrite.', [{ level: 'error', message: 'Select source text before using Rewrite selected LaTeX as patch.', file: path, line: null }]);
+      return false;
+    }
+
+    start = clamp(start, 0, current.length);
+    end = clamp(end, start, current.length);
+    const selectedCurrent = current.slice(start, end);
+
+    // If the stored selection offsets are stale, find the selected text in the current file.
+    if (oldText && selectedCurrent !== oldText) {
+      const idx = current.indexOf(oldText);
+      if (idx >= 0) {
+        start = idx;
+        end = idx + oldText.length;
+      }
+    }
+
+    oldText = current.slice(start, end) || oldText;
+    if (!oldText.trim()) {
+      State().setLog('Selected source block is empty.', [{ level: 'error', message: 'Selected source block is empty.', file: path, line: null }]);
+      return false;
+    }
+
+    const replacement = extractRewriteReplacement(rawText);
+    if (!replacement.trim()) {
+      State().setLog('Copilot returned an empty rewrite.', [{ level: 'error', message: 'Copilot returned an empty rewrite.', file: path, line: null }]);
+      return false;
+    }
+
+    const directCandidate = {
+      task: 'rewrite-selection-patch',
+      path,
+      patch: { laiWrap: true }
+    };
+    const replacementBlock = buildLaiReplacement(oldText, replacement, directCandidate);
+    const next = current.slice(0, start) + replacementBlock + current.slice(end);
+
+    State().updateFile(path, next);
+    ensureLaiMacroForProject(path);
+    if (State().state.project.activePath !== path) State().setActivePath(path);
+    NS.Editor?.render?.();
+    State().save();
+    NS.Preview?.scheduleDraftPreview?.();
+    NS.Main?.toast?.('AI rewrite applied directly in \\lai{...} (Stage 4D).');
+    discardPatch();
+    return true;
+  }
+
   function discardPatch() {
     activePatch = null;
     document.getElementById('patchReview')?.classList.add('hidden');
@@ -316,13 +418,14 @@
   }
 
   NS.PatchManager = {
-    STAGE: 'stage4c-force-lai-rewrite-1',
+    STAGE: 'stage4d-direct-lai-rewrite-1',
     init,
     isPatchWorkflow,
     proposeFromText,
     parseAiPatch,
     normalizeCandidate,
     applyActivePatch,
+    applyRewriteSelectionDirect,
     discardPatch,
     getActivePatch: () => activePatch
   };

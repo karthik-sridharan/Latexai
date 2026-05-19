@@ -199,24 +199,38 @@
       );
       const text = extractText(result) || 'No text returned by proxy.';
       output.textContent = text;
+      if (task === 'rewrite-selection-patch') {
+        const appliedDirect = NS.PatchManager?.applyRewriteSelectionDirect?.(context, text, { source: 'copilot-direct-stage4d' });
+        if (appliedDirect) {
+          output.textContent = `Applied Copilot rewrite directly to ${context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D).`;
+          return;
+        }
+      }
       if (NS.PatchManager?.isPatchWorkflow?.(task)) {
         const candidate = NS.PatchManager.proposeFromText(text, { task, context });
         if (shouldAutoApplyTask(task, candidate)) {
           const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply' });
           output.textContent = applied
-            ? `Applied Copilot rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4C).`
+            ? `Applied Copilot rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D fallback path).`
             : `${text}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
         }
       }
     } catch (err) {
       const fallback = localFallback(task, prompt, context, err);
       output.textContent = fallback;
+      if (task === 'rewrite-selection-patch') {
+        const appliedDirect = NS.PatchManager?.applyRewriteSelectionDirect?.(context, fallback, { source: 'copilot-direct-stage4d-fallback' });
+        if (appliedDirect) {
+          output.textContent = `Applied fallback rewrite directly to ${context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D).`;
+          return;
+        }
+      }
       if (NS.PatchManager?.isPatchWorkflow?.(task)) {
         const candidate = NS.PatchManager.proposeFromText(fallback, { task, context, fallback: true });
         if (shouldAutoApplyTask(task, candidate)) {
           const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply-fallback' });
           output.textContent = applied
-            ? `Applied local fallback rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4C).`
+            ? `Applied local fallback rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D fallback path).`
             : `${fallback}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
         }
       }
