@@ -1,5 +1,5 @@
 /* Latexai Stage 9F TikzMakerService
- * Stage: stage9f-tikz-source-root-compile-fix-1
+ * Stage: stage9g-compile-normalizepath-cursor-fix-1
  *
  * AI prompt -> TikZ source -> saved .tex asset -> \input{...} figure snippet.
  * Uses:
@@ -11,7 +11,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage9f-tikz-source-root-compile-fix-1';
+  const STAGE = 'stage9g-compile-normalizepath-cursor-fix-1';
 
   let installed = false;
   let latestTikz = '';
@@ -466,7 +466,7 @@
     }
 
     const opts = selectedOptions();
-    const capturedTarget = (insert || direct) && asset?.insertionTarget ? asset.insertionTarget() : null;
+    const capturedTarget = (insert || direct) && asset?.documentInsertionTarget ? asset.documentInsertionTarget() : ((insert || direct) && asset?.insertionTarget ? asset.insertionTarget() : null);
 
     // Stage 9E default behavior for "Insert TikZ directly":
     // TikZ code is LaTeX source, so put the tikzpicture directly into the paper.

@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage9f-tikz-source-root-compile-fix-1
+ * Stage: stage9g-compile-normalizepath-cursor-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage9f-tikz-source-root-compile-fix-1';
+  const STAGE = 'stage9g-compile-normalizepath-cursor-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -112,7 +112,31 @@
 
   function documentInsertionTarget(options = {}) {
     const explicit = explicitInsertionTarget(options);
-    if (explicit && isDocumentRootText(explicit.text)) return explicit;
+    if (explicit && isDocumentRootText(explicit.text) && !isTikzOnlyText(explicit.text)) return explicit;
+
+    // Stage 9G: prefer the remembered source cursor in the real document. This
+    // avoids falling back to \end{document} when the active file has temporarily
+    // become a generated TikZ include.
+    if (lastInsertTarget && Number.isFinite(Number(lastInsertTarget.end))) {
+      const path = normalizePath(lastInsertTarget.path);
+      const file = State()?.getFile?.(path);
+      const text = fileText(file);
+      if (file && State()?.textFile?.(file) && isDocumentRootText(text) && !isTikzOnlyText(text)) {
+        const pos = Math.max(0, Math.min(Number(lastInsertTarget.end), text.length));
+        return { path, file, text, start: pos, end: pos, remembered: true };
+      }
+    }
+
+    const project = State()?.state?.project || {};
+    const editor = el('sourceEditor');
+    const activePath = normalizePath(project.activePath || project.rootFile || 'main.tex');
+    const activeFile = State()?.getFile?.(activePath);
+    const editorText = String(editor?.value || fileText(activeFile));
+    if (editor && activeFile && State()?.textFile?.(activeFile) && isDocumentRootText(editorText) && !isTikzOnlyText(editorText)) {
+      try { State()?.updateActiveText?.(editorText); } catch (_err) {}
+      const start = Math.max(0, Math.min(Number(editor.selectionEnd ?? editor.selectionStart ?? 0), editorText.length));
+      return { path: activePath, file: State()?.getFile?.(activePath) || activeFile, text: editorText, start, end: start, liveEditor: true };
+    }
 
     const raw = insertionTarget({});
     if (raw && isDocumentRootText(raw.text) && !isTikzOnlyText(raw.text)) return raw;
@@ -452,6 +476,13 @@
     }
 
     const value = String(editor.value || fileText(file));
+
+    // Stage 9G: do not let generated TikZ include files overwrite the remembered
+    // source cursor from the real paper.
+    if (isTikzOnlyText(value) || !isDocumentRootText(value)) {
+      return lastInsertTarget;
+    }
+
     let start = Number(editor.selectionStart || 0);
     let end = Number(editor.selectionEnd || start);
     start = Math.max(0, Math.min(start, value.length));
@@ -807,6 +838,7 @@
     rememberInsertionPoint,
     findRootDocumentPath,
     documentInsertionTarget,
+    getLastInsertTarget: () => lastInsertTarget,
     insertionTarget,
     insertFigureSnippet,
     addTextAsset,
