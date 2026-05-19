@@ -1,0 +1,8 @@
+Stage 9F checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node --check js/tikz-maker-service.js
+PASS node --check js/project-model.js
+PASS node --check js/compiler-provider.js
+PASS node tests/stage9f-tikz-source-root-compile-fix.test.cjs
