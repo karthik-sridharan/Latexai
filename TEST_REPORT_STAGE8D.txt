@@ -1,0 +1,9 @@
+Stage 8D checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node --check js/compiler-provider.js
+PASS node --check js/main.js
+PASS node tests/stage8d-figure-placeholder-tabs.test.cjs
+
+Figure snippets now produce a visible missing-file placeholder and right tabs are exclusive dynamically.
