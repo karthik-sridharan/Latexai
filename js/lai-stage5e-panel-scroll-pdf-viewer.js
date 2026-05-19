@@ -1,17 +1,17 @@
-/* Latexai Stage 5E: multi-page PDF viewer + panel layout helper
- * Stage: stage5e-panel-scroll-pdf-viewer-1
+/* Latexai Stage 5F: multi-page PDF viewer with independent zoom
+ * Stage: stage5f-pdf-independent-zoom-1
  *
- * Keeps the pre-5A UI shape, but:
- * - each panel is constrained to the visible viewport and scrolls internally
- * - compiled PDFs render as a scrollable multi-page PDF.js viewer instead of
- *   iPad/Safari's first-page-only iframe behavior
+ * Adds right-panel PDF zoom that is independent of browser/page zoom:
+ * - toolbar buttons: −, zoom %, +, Fit width, Open PDF
+ * - pinch inside the PDF pages area adjusts only the PDF preview
+ * - Ctrl/trackpad wheel zoom inside PDF pages also adjusts only the PDF preview
  */
 (function () {
   'use strict';
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage5e-panel-scroll-pdf-viewer-1';
+  const STAGE = 'stage5f-pdf-independent-zoom-1';
 
   const PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
   const PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -21,7 +21,68 @@
   let renderSerial = 0;
   let loadingPdfJs = null;
 
+  let zoom = 1;
+  const MIN_ZOOM = 0.45;
+  const MAX_ZOOM = 4.0;
+  const ZOOM_STEP = 1.18;
+
+  let pinchStartDistance = null;
+  let pinchStartZoom = 1;
+
   function el(id) { return document.getElementById(id); }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, Number(value) || 1));
+  }
+
+  function zoomPercent() {
+    return `${Math.round(zoom * 100)}%`;
+  }
+
+  function updateZoomUi() {
+    const label = el('laiPdfZoomLabel');
+    if (label) label.textContent = zoomPercent();
+    const title = el('laiPdfTitle');
+    if (title && title.dataset.pageCount) {
+      const n = Number(title.dataset.pageCount || 0);
+      title.textContent = `PDF preview · ${n} page${n === 1 ? '' : 's'} · ${zoomPercent()}`;
+    }
+  }
+
+  function setZoom(nextZoom, options = {}) {
+    const pages = el('laiPdfPages');
+    const oldZoom = zoom;
+    zoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
+    updateZoomUi();
+
+    if (!lastBytes || Math.abs(oldZoom - zoom) < 0.005) return;
+
+    const keep = captureScrollAnchor(pages, options.anchorClientX, options.anchorClientY);
+    renderPdfBytes(lastBytes, { reason: options.reason || 'zoom', keep });
+  }
+
+  function fitWidth() {
+    zoom = 1;
+    updateZoomUi();
+    if (lastBytes) renderPdfBytes(lastBytes, { reason: 'fit-width' });
+  }
+
+  function captureScrollAnchor(container, clientX, clientY) {
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    const x = Number.isFinite(clientX) ? clientX - rect.left : rect.width / 2;
+    const y = Number.isFinite(clientY) ? clientY - rect.top : rect.height / 2;
+    return {
+      ratioX: (container.scrollLeft + x) / Math.max(container.scrollWidth, 1),
+      ratioY: (container.scrollTop + y) / Math.max(container.scrollHeight, 1)
+    };
+  }
+
+  function restoreScrollAnchor(container, keep) {
+    if (!container || !keep) return;
+    container.scrollLeft = Math.max(0, keep.ratioX * container.scrollWidth - container.clientWidth / 2);
+    container.scrollTop = Math.max(0, keep.ratioY * container.scrollHeight - container.clientHeight / 2);
+  }
 
   function ensureViewer() {
     const iframe = el('pdfPreview');
@@ -37,6 +98,9 @@
       '<div class="lai-pdf-toolbar">',
       '  <div class="lai-pdf-toolbar-title" id="laiPdfTitle">PDF preview</div>',
       '  <div class="lai-pdf-toolbar-actions">',
+      '    <button type="button" class="lai-pdf-btn" id="laiPdfZoomOutBtn" title="Zoom out PDF only">−</button>',
+      '    <span class="lai-pdf-zoom-label" id="laiPdfZoomLabel">100%</span>',
+      '    <button type="button" class="lai-pdf-btn" id="laiPdfZoomInBtn" title="Zoom in PDF only">+</button>',
       '    <button type="button" class="lai-pdf-btn" id="laiPdfFitBtn">Fit width</button>',
       '    <button type="button" class="lai-pdf-btn" id="laiPdfOpenBtn">Open PDF</button>',
       '  </div>',
@@ -51,9 +115,12 @@
       if (lastBlobUrl) W.open(lastBlobUrl, '_blank', 'noopener,noreferrer');
     });
 
-    el('laiPdfFitBtn')?.addEventListener('click', () => {
-      if (lastBytes) renderPdfBytes(lastBytes, { reason: 'fit-button' });
-    });
+    el('laiPdfFitBtn')?.addEventListener('click', fitWidth);
+    el('laiPdfZoomOutBtn')?.addEventListener('click', () => setZoom(zoom / ZOOM_STEP, { reason: 'zoom-out-button' }));
+    el('laiPdfZoomInBtn')?.addEventListener('click', () => setZoom(zoom * ZOOM_STEP, { reason: 'zoom-in-button' }));
+
+    installIndependentZoomGestures(viewer);
+    updateZoomUi();
 
     return viewer;
   }
@@ -107,7 +174,7 @@
     return loadingPdfJs;
   }
 
-  async function renderPdfBytes(bytes, _options = {}) {
+  async function renderPdfBytes(bytes, options = {}) {
     const serial = ++renderSerial;
     lastBytes = bytes;
 
@@ -127,7 +194,10 @@
       if (serial !== renderSerial) return lastBlobUrl;
 
       const title = el('laiPdfTitle');
-      if (title) title.textContent = `PDF preview · ${pdf.numPages} page${pdf.numPages === 1 ? '' : 's'}`;
+      if (title) {
+        title.dataset.pageCount = String(pdf.numPages);
+        title.textContent = `PDF preview · ${pdf.numPages} page${pdf.numPages === 1 ? '' : 's'} · ${zoomPercent()}`;
+      }
 
       pagesHost.innerHTML = '';
 
@@ -137,7 +207,8 @@
         const page = await pdf.getPage(pageNo);
         const hostWidth = Math.max(320, pagesHost.clientWidth - 32);
         const viewport1 = page.getViewport({ scale: 1 });
-        const scale = Math.max(0.5, Math.min(2.2, hostWidth / viewport1.width));
+        const fitScale = Math.max(0.35, hostWidth / viewport1.width);
+        const scale = Math.max(0.25, Math.min(6.0, fitScale * zoom));
         const viewport = page.getViewport({ scale });
 
         const canvas = document.createElement('canvas');
@@ -157,16 +228,18 @@
         await page.render({ canvasContext: ctx, viewport }).promise;
       }
 
+      restoreScrollAnchor(pagesHost, options.keep);
+      updateZoomUi();
       return lastBlobUrl;
     } catch (err) {
-      // Fallback: native browser PDF iframe with an explicit object URL.
+      // Fallback: native browser PDF iframe with explicit object URL.
       const iframe = el('pdfPreview');
       if (iframe && lastBlobUrl) {
         iframe.classList.remove('lai-native-hidden');
         iframe.src = lastBlobUrl + '#view=FitH&toolbar=1&navpanes=0';
         viewer.classList.add('hidden');
       }
-      console.warn('[Latexai Stage 5E] PDF.js render failed; using native iframe fallback.', err);
+      console.warn('[Latexai Stage 5F] PDF.js render failed; using native iframe fallback.', err);
       return lastBlobUrl;
     }
   }
@@ -180,7 +253,6 @@
     const bytes = bytesFromBase64(base64);
     const url = ensureBlobUrl(bytes);
 
-    // Keep the native iframe source too, for Open PDF / fallback behavior.
     iframe.src = url + '#view=FitH&toolbar=1&navpanes=0';
     iframe.classList.add('lai-native-hidden');
 
@@ -234,23 +306,103 @@
     el('showPdfPreviewBtn')?.addEventListener('click', () => setMode('pdf'), true);
   }
 
+  function touchDistance(touches) {
+    if (!touches || touches.length < 2) return null;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function touchCenter(touches) {
+    if (!touches || touches.length < 2) return { x: null, y: null };
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2
+    };
+  }
+
+  function installIndependentZoomGestures(viewer) {
+    const pages = viewer.querySelector('#laiPdfPages');
+    if (!pages || pages.__stage5fZoomInstalled) return;
+
+    // Ctrl/trackpad pinch wheel on desktop browsers.
+    pages.addEventListener('wheel', (event) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      setZoom(zoom * factor, {
+        reason: 'wheel-zoom',
+        anchorClientX: event.clientX,
+        anchorClientY: event.clientY
+      });
+    }, { passive: false });
+
+    // iOS/Safari two-finger pinch inside the PDF panel.
+    pages.addEventListener('touchstart', (event) => {
+      if (event.touches.length !== 2) return;
+      pinchStartDistance = touchDistance(event.touches);
+      pinchStartZoom = zoom;
+    }, { passive: false });
+
+    pages.addEventListener('touchmove', (event) => {
+      if (event.touches.length !== 2 || !pinchStartDistance) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const dist = touchDistance(event.touches);
+      if (!dist) return;
+      const center = touchCenter(event.touches);
+      const nextZoom = pinchStartZoom * (dist / pinchStartDistance);
+      // Throttle by only re-rendering when zoom changes noticeably.
+      if (Math.abs(nextZoom - zoom) / zoom > 0.08) {
+        setZoom(nextZoom, {
+          reason: 'touch-pinch',
+          anchorClientX: center.x,
+          anchorClientY: center.y
+        });
+      }
+    }, { passive: false });
+
+    pages.addEventListener('touchend', () => {
+      pinchStartDistance = null;
+      pinchStartZoom = zoom;
+    }, { passive: true });
+
+    // Older Safari gesture events.
+    pages.addEventListener('gesturestart', (event) => {
+      event.preventDefault();
+      pinchStartZoom = zoom;
+    }, { passive: false });
+
+    pages.addEventListener('gesturechange', (event) => {
+      event.preventDefault();
+      const nextZoom = pinchStartZoom * Number(event.scale || 1);
+      if (Math.abs(nextZoom - zoom) / zoom > 0.08) {
+        setZoom(nextZoom, { reason: 'safari-gesture', anchorClientX: event.clientX, anchorClientY: event.clientY });
+      }
+    }, { passive: false });
+
+    pages.__stage5fZoomInstalled = true;
+  }
+
   function installResizeRerender() {
+    if (W.__stage5fResizeInstalled) return;
     let timer = null;
     W.addEventListener('resize', () => {
       if (!lastBytes || el('laiPdfViewer')?.classList.contains('hidden')) return;
       clearTimeout(timer);
       timer = setTimeout(() => renderPdfBytes(lastBytes, { reason: 'resize' }), 300);
     });
+    W.__stage5fResizeInstalled = true;
   }
 
   function boot() {
-    W.__LATEXAI_STAGE5E_PANEL_SCROLL_PDF_VIEWER_ACTIVE = true;
+    W.__LATEXAI_STAGE5F_PDF_INDEPENDENT_ZOOM_ACTIVE = true;
     ensureViewer();
     patchPreviewAdapter();
     patchPreviewModeButtons();
     installResizeRerender();
 
-    // Respect current mode on reload.
     const isPdf = !el('pdfPreview')?.classList.contains('hidden') || !el('laiPdfViewer')?.classList.contains('hidden');
     if (isPdf) setMode('pdf');
   }
@@ -265,11 +417,14 @@
     if (tries > 20) clearInterval(id);
   }, 500);
 
-  W.LAI_STAGE5E_PDF_VIEWER = {
+  W.LAI_STAGE5F_PDF_VIEWER = {
     STAGE,
     showPdf,
     setMode,
     renderPdfBytes,
+    setZoom,
+    fitWidth,
+    getZoom: () => zoom,
     getLastPdfUrl: () => lastBlobUrl
   };
 
