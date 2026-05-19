@@ -1,0 +1,144 @@
+/* Stage 8E: native figure editor */
+.figure-editor-card {
+  border: 1px solid rgba(15,23,42,.12);
+  background: rgba(255,255,255,.86);
+  border-radius: 16px;
+  padding: .75rem;
+  box-shadow: 0 6px 18px rgba(15,23,42,.06);
+}
+
+.figure-editor-card h3 {
+  font-size: .95rem;
+  margin-bottom: .35rem;
+}
+
+.figure-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  align-items: center;
+  margin-bottom: .5rem;
+}
+
+.figure-editor-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: .72rem;
+  font-weight: 850;
+  color: #334155;
+}
+
+.figure-editor-toolbar input[type="color"] {
+  width: 2rem;
+  height: 1.8rem;
+  padding: 0;
+  border: 1px solid rgba(15,23,42,.14);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.figure-editor-toolbar input[type="range"] {
+  width: 72px;
+}
+
+.figure-editor-toolbar .figure-tool-btn,
+.figure-editor-toolbar .figure-action-btn {
+  border: 1px solid rgba(15,23,42,.14);
+  background: #fff;
+  color: #1e293b;
+  border-radius: 999px;
+  padding: .32rem .55rem;
+  font-size: .74rem;
+  font-weight: 850;
+}
+
+.figure-editor-toolbar .figure-tool-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: rgba(37,99,235,.55);
+}
+
+.figure-editor-toolbar .figure-action-btn.primary {
+  background: #16a34a;
+  color: #fff;
+  border-color: rgba(22,163,74,.60);
+}
+
+.figure-editor-canvas-wrap {
+  width: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 14px;
+  background:
+    linear-gradient(45deg, rgba(148,163,184,.16) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(148,163,184,.16) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(148,163,184,.16) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(148,163,184,.16) 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  padding: .55rem;
+}
+
+#figureEditorCanvas {
+  display: block;
+  width: 100%;
+  max-width: 680px;
+  height: auto;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid rgba(15,23,42,.18);
+  border-radius: 6px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.figure-editor-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .45rem;
+  margin-top: .55rem;
+}
+
+.figure-editor-fields label {
+  display: grid;
+  gap: .2rem;
+  font-size: .75rem;
+  font-weight: 850;
+  color: #334155;
+}
+
+.figure-editor-fields input {
+  border: 1px solid rgba(15,23,42,.14);
+  border-radius: 12px;
+  padding: .45rem .55rem;
+  font: inherit;
+  background: #fff;
+  min-width: 0;
+}
+
+.figure-editor-status {
+  margin-top: .45rem;
+  font-size: .78rem;
+  line-height: 1.3;
+  color: #475569;
+  white-space: pre-wrap;
+}
+
+.figure-editor-help {
+  margin-top: .35rem;
+  font-size: .72rem;
+  line-height: 1.25;
+  color: #64748b;
+}
+
+@media (max-width: 760px) {
+  .figure-editor-toolbar {
+    gap: .28rem;
+  }
+  .figure-editor-toolbar .figure-tool-btn,
+  .figure-editor-toolbar .figure-action-btn {
+    padding: .3rem .48rem;
+  }
+}
