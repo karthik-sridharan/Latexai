@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage10b-image-vs-tikz-ui-and-car-fallback-fix-1
+ * Stage: stage10c-no-generic-image-to-tikz-placeholder-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage10b-image-vs-tikz-ui-and-car-fallback-fix-1';
+  const STAGE = 'stage10c-no-generic-image-to-tikz-placeholder-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -701,7 +701,7 @@
       remakeInsertTikz.type = 'button';
       remakeInsertTikz.className = 'asset-mini-btn';
       remakeInsertTikz.textContent = 'Remake+insert TikZ';
-      remakeInsertTikz.title = 'Convert/remake this image as TikZ and insert TikZ source directly.';
+      remakeInsertTikz.title = 'Convert/remake this image as TikZ and insert TikZ source directly. If needed, type a short description in Image → TikZ first.';
       remakeInsertTikz.addEventListener('click', () => {
         setSelectedAsset(file.path);
         if (!NS.ImageToTikzService?.remakeAndInsert) {

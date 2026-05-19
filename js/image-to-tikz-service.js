@@ -1,5 +1,5 @@
-/* Latexai Stage 10B ImageToTikzService
- * Stage: stage10b-image-vs-tikz-ui-and-car-fallback-fix-1
+/* Latexai Stage 10C ImageToTikzService
+ * Stage: stage10c-no-generic-image-to-tikz-placeholder-1
  *
  * Remakes an existing project image asset as editable TikZ.
  * - Lists image assets from AssetService
@@ -13,7 +13,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage10b-image-vs-tikz-ui-and-car-fallback-fix-1';
+  const STAGE = 'stage10c-no-generic-image-to-tikz-placeholder-1';
 
   let installed = false;
   let selectedPath = '';
@@ -112,25 +112,23 @@
   }
 
   function buildImageToTikzPayload(file, dataUrl, prompt) {
+    const mm = buildMultimodalInput(file, dataUrl, prompt);
     return {
       instructions: [
         'You are a LaTeX TikZ reconstruction engine.',
         'The user selected an image from a LaTeX project and wants an editable TikZ remake.',
+        'Inspect the image itself if the backend supports image input.',
         'Return ONLY one valid tikzpicture environment.',
         'Do NOT return JSON, Markdown, SVG, HTML, Mermaid, explanatory prose, or code fences.',
         'Do NOT include documentclass or begin{document}.',
         'Use robust TikZ primitives that compile with \\usepackage{tikz}.',
         'Approximate visual structure is better than copying pixel-perfect details.',
-        'Use simple nodes, arrows, lines, boxes, circles, curves, and labels.'
+        'Use simple nodes, arrows, lines, boxes, circles, curves, and labels.',
+        'If you cannot inspect the image, do not return a generic placeholder; use the user instructions.'
       ].join('\n'),
-      input: [
-        'Remake this project image as TikZ.',
-        '',
-        `Image path: ${file.path}`,
-        `User instructions: ${prompt || 'Infer the diagram structure and produce clean editable TikZ.'}`,
-        '',
-        'Return only the tikzpicture environment.'
-      ].join('\n'),
+      input: mm.responsesInput,
+      textInput: mm.text,
+      messages: mm.chatMessages,
       image: {
         path: file.path,
         mime: file.mime || 'image/png',
@@ -138,6 +136,99 @@
       },
       temperature: 0.05,
       maxOutputTokens: 5000
+    };
+  }
+
+  function isMeaningfulPrompt(prompt) {
+    const p = String(prompt || '').trim().toLowerCase();
+    if (!p) return false;
+    if (/^remake\s+figures\/.+\s+as\s+tikz$/.test(p)) return false;
+    if (/^remake\s+.+\s+as\s+tikz$/.test(p) && !/(car|network|graph|tree|flow|box|circle|arrow|diagram|automaton|plot|chart|table|curve|wheel|node|layer)/.test(p)) return false;
+    return p.length >= 4;
+  }
+
+  function isGenericTikzPlaceholder(tikz, file, prompt) {
+    const s = String(tikz || '');
+    const path = String(file?.path || selectedPath || '');
+    const p = String(prompt || '').trim();
+
+    const genericRectangle =
+      /\\draw\[rounded corners,\s*thick\]\s*\(0,0\)\s*rectangle\s*\(5,2\.2\)/.test(s) &&
+      /\\node\[align=center\]\s*at\s*\(2\.5,1\.1\)/.test(s);
+
+    const saysRemakePath = path && s.includes(`Remake ${path} as TikZ`);
+    const saysPrompt = p && s.includes(p);
+    const saysError = /AI returned|Generated TikZ figure|Remake selected image as TikZ/i.test(s);
+
+    return genericRectangle && (saysRemakePath || saysPrompt || saysError || s.length < 280);
+  }
+
+  function promptForImageDescription(file) {
+    const existing = getPrompt();
+    if (isMeaningfulPrompt(existing)) return existing;
+
+    const message = [
+      'The current AI backend may not be able to inspect image pixels.',
+      'Briefly describe the image so Latexai can create editable TikZ.',
+      '',
+      'Examples: simple car, neural network, flow chart, two boxes with arrow.'
+    ].join('\n');
+
+    try {
+      const answer = window.prompt(message, '');
+      const cleaned = String(answer || '').trim();
+      if (cleaned) {
+        const input = el('imageTikzPromptInput');
+        if (input) {
+          input.value = cleaned;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return cleaned;
+      }
+    } catch (_err) {}
+
+    return existing;
+  }
+
+  function imageBackendUnsupportedMessage(file) {
+    return [
+      'The AI backend did not return real image-based TikZ.',
+      'Latexai refused to insert the generic rectangle placeholder.',
+      '',
+      `Selected image: ${file?.path || selectedPath || '(unknown)'}`,
+      'Add a short instruction such as “simple car” and click Remake+insert TikZ again.'
+    ].join('\n');
+  }
+
+  function buildMultimodalInput(file, dataUrl, prompt) {
+    const text = [
+      'Remake this project image as editable LaTeX TikZ.',
+      `Image path: ${file.path}`,
+      `User instructions: ${prompt || 'Infer the diagram structure from the image.'}`,
+      '',
+      'Return only one tikzpicture environment. No JSON. No Markdown.'
+    ].join('\n');
+
+    return {
+      text,
+      responsesInput: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text },
+            { type: 'input_image', image_url: dataUrl }
+          ]
+        }
+      ],
+      chatMessages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text },
+            { type: 'image_url', image_url: { url: dataUrl } }
+          ]
+        }
+      ]
     };
   }
 
@@ -190,7 +281,7 @@
     ].join('\n');
   }
 
-  async function remakeSelectedImage() {
+  async function remakeSelectedImage(options = {}) {
     const file = assetByPath(selectedPath || el('imageTikzAssetSelect')?.value || '');
     if (!file) {
       setStatus('Choose an image asset first.');
@@ -203,7 +294,10 @@
       return null;
     }
 
-    const prompt = getPrompt();
+    let prompt = getPrompt();
+    if (options.requireDescription && !isMeaningfulPrompt(prompt)) {
+      prompt = promptForImageDescription(file);
+    }
     setStatus('Asking AI to remake the selected image as TikZ...');
 
     try {
@@ -218,14 +312,30 @@
       });
 
       const raw = NS.AIProvider.extractText(response);
-      const tikz = tikzMaker()?.extractTikz?.(raw, prompt || `Remake ${file.path} as TikZ`) || raw;
+      let tikz = tikzMaker()?.extractTikz?.(raw, prompt || `Remake ${file.path} as TikZ`) || raw;
+
+      if (isGenericTikzPlaceholder(tikz, file, prompt)) {
+        if (isMeaningfulPrompt(prompt)) {
+          tikz = localFallbackTikz(file, prompt);
+          pushToTikzMaker(tikz);
+          setStatus('AI returned a generic placeholder, so Latexai used your description to create editable TikZ instead.');
+          return tikz;
+        }
+        setStatus(imageBackendUnsupportedMessage(file));
+        return null;
+      }
+
       pushToTikzMaker(tikz);
       setStatus('Image remade as editable TikZ. Review/edit the TikZ source, then use Insert TikZ directly. This does not insert the original PNG.');
       return tikz;
     } catch (err) {
+      if (!isMeaningfulPrompt(prompt)) {
+        setStatus(`${imageBackendUnsupportedMessage(file)}\n\nBackend error: ${err?.message || err}`);
+        return null;
+      }
       const fallback = localFallbackTikz(file, prompt);
       pushToTikzMaker(fallback);
-      setStatus(`AI image-to-TikZ failed; created an editable local placeholder.\n${err?.message || err}`);
+      setStatus(`AI image-to-TikZ failed; created editable TikZ from your description.\n${err?.message || err}`);
       return fallback;
     }
   }
@@ -258,7 +368,7 @@
   }
 
   async function remakeAndInsert() {
-    const tikz = await remakeSelectedImage();
+    const tikz = await remakeSelectedImage({ requireDescription: true });
     if (!tikz) return null;
 
     // Use TikzMakerService direct insert path so cursor/package/root behavior stays centralized.
@@ -295,7 +405,7 @@
       '    <button type="button" class="btn mini primary" id="imageTikzRemakeInsertBtn">Remake + insert TikZ</button>',
       '    <button type="button" class="btn mini" id="imageTikzRefreshBtn">Refresh images</button>',
       '  </div>',
-      '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready.</div>',
+      '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready. If the backend lacks image input, type a short description like “simple car”.</div>',
       '</div>'
     ].join('');
 
@@ -342,6 +452,8 @@
     remakeSelectedImage,
     remakeAndInsert,
     buildImageToTikzPayload,
+    isGenericTikzPlaceholder,
+    isMeaningfulPrompt,
     localFallbackTikz,
     pushToTikzMaker,
     openFiguresTab: () => {
