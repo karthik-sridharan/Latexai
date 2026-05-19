@@ -1,0 +1,7 @@
+Stage 9C checks
+===============
+
+PASS node --check js/tikz-maker-service.js
+PASS node tests/stage9c-tikz-prompt-local-generator.test.cjs
+
+TikZ maker uses Copilot-shaped AI prompt and falls back to useful local TikZ, not error text.
