@@ -1,0 +1,7 @@
+Stage 7D checks
+===============
+
+PASS node --check js/pdf-region-selection-service.js
+PASS node tests/stage7d-pdf-region-selection.test.cjs
+
+PDF region selection is modular and does not directly mutate source files.
