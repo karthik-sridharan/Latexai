@@ -1,0 +1,8 @@
+Stage 10C checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage10c-no-generic-image-to-tikz-placeholder.test.cjs
+
+Image-to-TikZ now refuses generic rectangle placeholders and asks for description when backend does not inspect images.
