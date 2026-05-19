@@ -1,0 +1,7 @@
+Stage 7C checks
+===============
+
+PASS node --check js/selection-action-bubble.js
+PASS node tests/stage7c-move-selection-bubble-left.test.cjs
+
+Selection bubble remains docked in topbar and is shifted left by 72 CSS pixels.
