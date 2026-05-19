@@ -5,7 +5,7 @@ import { compileWithTexLive, detectTeXLive } from './providers/compile-texlive.m
 import { sandboxPolicyFromEnv } from './security/sandbox-policy.mjs';
 import { validateCompilePayload, normalizeProjectPayload, safeProjectId, httpError } from './security/validate-project.mjs';
 
-const STAGE = 'latex-stage1e-cloudrun-buildfix-20260428-1';
+const STAGE = 'latex-stage10e-backend-vision-forwarding-fix-20260519-1';
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const PROVIDERS = new Set(['openai', 'anthropic', 'gemini']);
@@ -135,7 +135,8 @@ app.get('/api/lumina/ai/status', requireProxyToken, (_req, res) => {
     },
     workflows: COPILOT_WORKFLOWS,
     patchSchema: 'lumina-latex-ai-patch-v1',
-    note: 'API keys remain backend-only. Browser requests must go through this proxy.'
+    imageInputsForwarded: true,
+    note: 'API keys remain backend-only. Browser requests must go through this proxy. Stage 10E preserves image inputs for vision-capable models.'
   });
 });
 
@@ -352,23 +353,89 @@ function pickProviderAndModel(body) {
   return { provider, model };
 }
 
+function hasImageContent(value) {
+  if (!value) return false;
+  if (typeof value === 'string') return value.startsWith('data:image/');
+  if (Array.isArray(value)) return value.some(hasImageContent);
+  if (typeof value === 'object') {
+    if (value.type === 'input_image' || value.type === 'image_url') return true;
+    if (typeof value.image_url === 'string' && value.image_url.startsWith('data:image/')) return true;
+    if (typeof value.image_url?.url === 'string' && value.image_url.url.startsWith('data:image/')) return true;
+    if (typeof value.dataUrl === 'string' && value.dataUrl.startsWith('data:image/')) return true;
+    return Object.values(value).some(hasImageContent);
+  }
+  return false;
+}
+
+function aiInputToText(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(aiInputToText).filter(Boolean).join('\n');
+  if (typeof value === 'object') {
+    if (typeof value.text === 'string') return value.text;
+    if (typeof value.input_text === 'string') return value.input_text;
+    if (Array.isArray(value.content)) return aiInputToText(value.content);
+    if (Array.isArray(value.parts)) return aiInputToText(value.parts);
+  }
+  return '';
+}
+
+function chatMessagesToResponsesInput(messages) {
+  if (!Array.isArray(messages)) return null;
+  return messages.map((message) => {
+    const role = message.role || 'user';
+    const rawContent = Array.isArray(message.content) ? message.content : [{ type: 'text', text: String(message.content || '') }];
+    const content = rawContent.map((part) => {
+      if (part.type === 'image_url') {
+        const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
+        return { type: 'input_image', image_url: url };
+      }
+      if (part.type === 'text') return { type: 'input_text', text: String(part.text || '') };
+      if (part.type === 'input_text' || part.type === 'input_image') return part;
+      return typeof part.text === 'string' ? { type: 'input_text', text: part.text } : part;
+    }).filter((part) => part && (part.type !== 'input_image' || part.image_url));
+    return { role, content };
+  });
+}
+
 function normalizeAiPayload(body) {
   const payload = body.payload || {};
   const system = String(payload.instructions || payload.system || 'You are Lumina LaTeX Copilot. Return directly usable LaTeX or concise advice.');
-  const input = String(payload.input || payload.prompt || payload.userPrompt || '');
-  if (!input.trim()) throw httpError(400, 'Missing AI input prompt.');
+
+  // Stage 10E: preserve multimodal input arrays. The old code did
+  // String(payload.input), turning image payloads into "[object Object]" and
+  // causing the model to report that no image was provided.
+  let input = payload.input;
+  if (input === undefined || input === null || input === '') {
+    input = chatMessagesToResponsesInput(payload.messages) || payload.textInput || payload.prompt || payload.userPrompt || '';
+  }
+  if (!Array.isArray(input) && payload.messages && hasImageContent(payload.messages)) {
+    input = chatMessagesToResponsesInput(payload.messages) || input;
+  }
+
+  const textInput = aiInputToText(input) || String(payload.textInput || payload.prompt || payload.userPrompt || '');
+  const hasImages = hasImageContent(input) || hasImageContent(payload.messages) || hasImageContent(payload.image);
+  if (!textInput.trim() && !hasImages) throw httpError(400, 'Missing AI input prompt.');
+
   const maxOutputTokens = Math.max(256, Math.min(Number(payload.maxOutputTokens || payload.max_output_tokens || 3500), 64000));
   const temperature = typeof payload.temperature === 'number' && Number.isFinite(payload.temperature) ? Math.max(0, Math.min(payload.temperature, 2)) : 0.25;
-  return { system, input, maxOutputTokens, temperature };
+  return { system, input, textInput, hasImages, maxOutputTokens, temperature };
 }
 
 async function callOpenAi(model, payload) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw httpError(500, 'OPENAI_API_KEY is not set on backend.');
+  const requestBody = {
+    model,
+    instructions: payload.system,
+    input: payload.input,
+    temperature: payload.temperature,
+    max_output_tokens: payload.maxOutputTokens
+  };
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, instructions: payload.system, input: payload.input, temperature: payload.temperature, max_output_tokens: payload.maxOutputTokens })
+    body: JSON.stringify(requestBody)
   });
   const data = await response.json();
   if (!response.ok) throw httpError(response.status, data?.error?.message || 'OpenAI request failed.');
@@ -381,7 +448,7 @@ async function callAnthropic(model, payload) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model, system: payload.system, messages: [{ role: 'user', content: payload.input }], temperature: payload.temperature, max_tokens: payload.maxOutputTokens })
+    body: JSON.stringify({ model, system: payload.system, messages: [{ role: 'user', content: payload.textInput || aiInputToText(payload.input) }], temperature: payload.temperature, max_tokens: payload.maxOutputTokens })
   });
   const data = await response.json();
   if (!response.ok) throw httpError(response.status, data?.error?.message || 'Anthropic request failed.');
@@ -395,7 +462,7 @@ async function callGemini(model, payload) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ system_instruction: { parts: [{ text: payload.system }] }, contents: [{ role: 'user', parts: [{ text: payload.input }] }], generationConfig: { temperature: payload.temperature, maxOutputTokens: payload.maxOutputTokens } })
+    body: JSON.stringify({ system_instruction: { parts: [{ text: payload.system }] }, contents: [{ role: 'user', parts: [{ text: payload.textInput || aiInputToText(payload.input) }] }], generationConfig: { temperature: payload.temperature, maxOutputTokens: payload.maxOutputTokens } })
   });
   const data = await response.json();
   if (!response.ok) throw httpError(response.status, data?.error?.message || 'Gemini request failed.');
