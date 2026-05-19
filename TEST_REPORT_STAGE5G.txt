@@ -1,0 +1,7 @@
+Stage 5G checks
+===============
+
+PASS node --check js/lai-stage5e-panel-scroll-pdf-viewer.js
+PASS node --check js/lai-stage5c-preview-selection-bridge.js
+PASS text layer rendering hook installed after each PDF page render
+PASS preview-selection bridge includes #laiPdfViewer/#laiPdfPages
