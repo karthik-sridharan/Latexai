@@ -1,0 +1,8 @@
+Stage 10B checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage10b-image-vs-tikz-ui-car-fallback.test.cjs
+
+Image insertion is clearly labeled as image insertion, image rows now provide Remake TikZ actions, and car fallback generates editable TikZ.
