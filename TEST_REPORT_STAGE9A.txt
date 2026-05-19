@@ -1,0 +1,8 @@
+Stage 9A checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node --check js/tikz-maker-service.js
+PASS node tests/stage9a-ai-tikz-maker.test.cjs
+
+AI TikZ maker uses AIProvider and AssetService, and does not directly mutate project files.
