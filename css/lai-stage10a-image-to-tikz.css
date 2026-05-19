@@ -1,0 +1,96 @@
+/* Stage 10A: image to TikZ remaker */
+.image-tikz-card {
+  border: 1px solid rgba(15,23,42,.12);
+  background: rgba(255,255,255,.88);
+  border-radius: 16px;
+  padding: .75rem;
+  box-shadow: 0 6px 18px rgba(15,23,42,.06);
+}
+
+.image-tikz-card h3 {
+  font-size: .95rem;
+  margin-bottom: .35rem;
+}
+
+.image-tikz-form {
+  display: grid;
+  gap: .5rem;
+}
+
+.image-tikz-form label {
+  display: grid;
+  gap: .2rem;
+  font-size: .75rem;
+  font-weight: 850;
+  color: #334155;
+}
+
+.image-tikz-form select,
+.image-tikz-form input,
+.image-tikz-form textarea {
+  border: 1px solid rgba(15,23,42,.14);
+  border-radius: 12px;
+  padding: .5rem .6rem;
+  font: inherit;
+  background: #fff;
+  min-width: 0;
+}
+
+.image-tikz-form textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.image-tikz-preview {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: .55rem;
+  align-items: center;
+  padding: .45rem;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.image-tikz-preview img {
+  width: 84px;
+  height: 64px;
+  object-fit: contain;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.image-tikz-path {
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #334155;
+}
+
+.image-tikz-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.image-tikz-actions .btn {
+  min-height: 2rem;
+  padding: .38rem .65rem;
+  border-radius: 12px;
+  font-size: .78rem;
+}
+
+.image-tikz-status {
+  font-size: .78rem;
+  line-height: 1.3;
+  color: #475569;
+  white-space: pre-wrap;
+}
+
+.image-tikz-help {
+  font-size: .72rem;
+  line-height: 1.25;
+  color: #64748b;
+}
