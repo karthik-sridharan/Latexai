@@ -1,5 +1,5 @@
-/* Latexai Stage 9C TikzMakerService
- * Stage: stage9c-tikz-prompt-and-local-generator-fix-1
+/* Latexai Stage 9E TikzMakerService
+ * Stage: stage9e-direct-tikz-insert-no-png-1
  *
  * AI prompt -> TikZ source -> saved .tex asset -> \input{...} figure snippet.
  * Uses:
@@ -11,7 +11,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage9c-tikz-prompt-and-local-generator-fix-1';
+  const STAGE = 'stage9e-direct-tikz-insert-no-png-1';
 
   let installed = false;
   let latestTikz = '';
@@ -55,19 +55,39 @@
     return `figures/${slug(prompt)}-${stamp}.tex`;
   }
 
+  function normalizeTikzAssetPath(path) {
+    let p = normalizePath(path || defaultPath());
+    if (!p) p = defaultPath();
+    if (!p.includes('/')) p = `figures/${p}`;
+    // TikZ is LaTeX source, never an image. If the user types mlp.png,
+    // save it as mlp.tex rather than putting TikZ code inside a PNG file.
+    p = p.replace(/\.(png|jpe?g|webp|svg)$/i, '.tex');
+    if (!/\.(tex|tikz)$/i.test(p)) p += '.tex';
+    return p;
+  }
+
   function getPrompt() {
     return String(el('tikzPromptInput')?.value || '').trim();
   }
 
+  function normalizeTikzNewlines(text) {
+    let s = String(text || '');
+    // Stage 9D: if code contains literal backslash-n sequences from a buggy
+    // generator or pasted content, convert them to real newlines.
+    if (s.includes('\\n')) s = s.replace(/\\n/g, '\n');
+    if (s.includes('\\t')) s = s.replace(/\\t/g, '  ');
+    return s;
+  }
+
   function setCode(text) {
-    latestTikz = String(text || '');
+    latestTikz = normalizeTikzNewlines(String(text || ''));
     const code = el('tikzCodeOutput');
     if (code) code.value = latestTikz;
   }
 
   function getCode() {
     const code = el('tikzCodeOutput');
-    return String(code?.value || latestTikz || '').trim();
+    return normalizeTikzNewlines(String(code?.value || latestTikz || '')).trim();
   }
 
   function projectContext() {
@@ -245,7 +265,7 @@
   }
 
   function extractTikz(raw, originalPrompt = '') {
-    let s = stripFence(raw);
+    let s = normalizeTikzNewlines(stripFence(raw));
 
     const parsed = tryParseJsonish(s);
     if (parsed) {
@@ -315,7 +335,7 @@
         '  \\node at (3,-2.05) {$h_j=\\sigma(w_j^\\top x+b_j)$};',
         '\\end{tikzpicture}',
         ''
-      ].join('\\n');
+      ].join('\n');
     }
 
     if (/(flow|pipeline|block|diagram|process|architecture)/.test(p)) {
@@ -331,7 +351,7 @@
         `  \\node[align=center, font=\\scriptsize] at (3,-1.0) {${label}};`,
         '\\end{tikzpicture}',
         ''
-      ].join('\\n');
+      ].join('\n');
     }
 
     const label = texEscapeLabel(prompt || 'Generated TikZ figure');
@@ -341,7 +361,7 @@
       `  \\node[align=center] at (2.5,1.1) {${label}};`,
       '\\end{tikzpicture}',
       ''
-    ].join('\\n');
+    ].join('\n');
   }
 
   function buildTikzSystemPrompt() {
@@ -354,7 +374,7 @@
       'Do NOT include \\\\documentclass or \\\\begin{document}.',
       'Use robust TikZ primitives: \\\\node, \\\\draw, \\\\path, \\\\foreach.',
       'Assume only \\\\usepackage{tikz} is available unless you explicitly avoid extra libraries.'
-    ].join('\\n');
+    ].join('\n');
   }
 
   function buildTikzUserPrompt(prompt) {
@@ -371,7 +391,7 @@
         activePath: ctx.project.activePath,
         files: ctx.project.files.slice(0, 20)
       }, null, 2)
-    ].join('\\n');
+    ].join('\n');
   }
 
   async function generateTikz() {
@@ -411,7 +431,7 @@
       if (/AI returned|Generated TikZ figure/.test(tikz) && !/\\draw|\\node|\\foreach/.test(text)) {
         setStatus('AI did not return usable TikZ, so Latexai produced a local editable TikZ figure from your prompt.');
       } else {
-        setStatus('Generated TikZ. Review/edit it, then Save or Save + insert.');
+        setStatus('Generated TikZ. Review/edit it, then Save or Insert TikZ directly.');
       }
       return tikz;
     } catch (err) {
@@ -426,27 +446,46 @@
     const pathInput = String(el('tikzPathInput')?.value || '').trim();
     const prompt = getPrompt();
     return {
-      path: normalizePath(pathInput || defaultPath()),
+      path: normalizeTikzAssetPath(pathInput || defaultPath()),
       caption: el('tikzCaptionInput')?.value || '',
       label: el('tikzLabelInput')?.value || `fig:${slug(prompt || pathInput || 'tikz-figure')}`
     };
   }
 
-  function saveTikz({ insert = false } = {}) {
+  function saveTikz({ insert = false, direct = false } = {}) {
     const asset = NS.AssetService;
-    if (!asset?.addTextAsset) {
+    if (!asset?.addTextAsset && !direct) {
       setStatus('AssetService.addTextAsset is not available.');
       return null;
     }
 
     const tikz = extractTikz(getCode(), getPrompt());
     if (!tikz.trim()) {
-      setStatus('No TikZ source to save. Generate or paste TikZ first.');
+      setStatus('No TikZ source to save or insert. Generate or paste TikZ first.');
       return null;
     }
 
     const opts = selectedOptions();
-    const capturedTarget = insert && asset.insertionTarget ? asset.insertionTarget() : null;
+    const capturedTarget = (insert || direct) && asset?.insertionTarget ? asset.insertionTarget() : null;
+
+    // Stage 9E default behavior for "Insert TikZ directly":
+    // TikZ code is LaTeX source, so put the tikzpicture directly into the paper.
+    // Do not save it as .png and do not \input{figures/mlp.png}.
+    if (direct) {
+      const inserted = asset.insertDirectTikzFigure?.({
+        tikz,
+        caption: opts.caption,
+        label: opts.label,
+        insertPath: capturedTarget?.path,
+        insertAt: capturedTarget?.start,
+        end: capturedTarget?.end
+      });
+      setStatus(inserted?.ok ? 'Inserted TikZ directly into the LaTeX source.' : (inserted?.message || 'Direct TikZ insert failed.'));
+      toast(inserted?.ok ? 'TikZ inserted directly.' : 'TikZ insert failed.');
+      return inserted;
+    }
+
+    // Optional advanced mode: save as a .tex file, never as image.
     const saved = asset.addTextAsset(opts.path, tikz, {
       assetType: 'tikz',
       kind: 'tex',
@@ -474,7 +513,7 @@
       setStatus(`Saved ${saved.path}.`);
     }
 
-    toast(insert ? 'TikZ saved and inserted.' : 'TikZ saved.');
+    toast(insert ? 'TikZ .tex saved and inserted.' : 'TikZ .tex saved.');
     return saved;
   }
 
@@ -490,13 +529,14 @@
       '<h3>AI TikZ maker</h3>',
       '<div class="tikz-maker-form">',
       '  <label>Prompt <textarea id="tikzPromptInput" placeholder="Example: draw a three-layer neural network with input, hidden, output nodes and arrows"></textarea></label>',
-      '  <label>Save path <input id="tikzPathInput" type="text" placeholder="figures/generated-figure.tex" /></label>',
+      '  <label>Save path <input id="tikzPathInput" type="text" placeholder="figures/generated-figure.tex (TikZ source, not PNG)" /></label>',
       '  <label>Caption <input id="tikzCaptionInput" type="text" placeholder="Optional caption" /></label>',
       '  <label>Label <input id="tikzLabelInput" type="text" placeholder="fig:generated-tikz" /></label>',
       '  <div class="tikz-maker-actions">',
       '    <button type="button" class="btn mini primary" id="tikzGenerateBtn">Generate TikZ</button>',
-      '    <button type="button" class="btn mini" id="tikzSaveBtn">Save TikZ</button>',
-      '    <button type="button" class="btn mini primary" id="tikzSaveInsertBtn">Save + insert</button>',
+      '    <button type="button" class="btn mini" id="tikzSaveBtn">Save .tex file</button>',
+      '    <button type="button" class="btn mini primary" id="tikzDirectInsertBtn">Insert TikZ directly</button>',
+      '    <button type="button" class="btn mini" id="tikzSaveInsertBtn">Save .tex + \\input</button>',
       '  </div>',
       '  <label>TikZ source <textarea id="tikzCodeOutput" class="tikz-maker-code" spellcheck="false" placeholder="Generated TikZ source appears here. You can edit before saving."></textarea></label>',
       '  <div class="tikz-maker-status" id="tikzMakerStatus">AI TikZ maker ready.</div>',
@@ -515,6 +555,7 @@
   function bindControls() {
     el('tikzGenerateBtn')?.addEventListener('click', generateTikz, true);
     el('tikzSaveBtn')?.addEventListener('click', () => saveTikz({ insert: false }), true);
+    el('tikzDirectInsertBtn')?.addEventListener('click', () => saveTikz({ direct: true }), true);
     el('tikzSaveInsertBtn')?.addEventListener('click', () => saveTikz({ insert: true }), true);
     el('tikzCodeOutput')?.addEventListener('input', () => { latestTikz = getCode(); });
   }

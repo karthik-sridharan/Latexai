@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage9a-ai-tikz-maker-1
+ * Stage: stage9e-direct-tikz-insert-no-png-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage9a-ai-tikz-maker-1';
+  const STAGE = 'stage9e-direct-tikz-insert-no-png-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -271,6 +271,55 @@
 
   function ensureTikzPackage() {
     return ensurePackage('tikz');
+  }
+
+  function directTikzFigureSnippet(options = {}) {
+    const tikz = String(options.tikz || options.tikzSource || '').trim();
+    if (!tikz) return '';
+    const caption = String(options.caption || '').trim();
+    const label = String(options.label || '').trim() || `fig:${slug(caption || 'tikz-figure')}`;
+
+    const lines = [
+      '\\begin{figure}[t]',
+      '  \\centering',
+      tikz.split('\n').map((line) => `  ${line}`).join('\n')
+    ];
+    if (caption) lines.push(`  \\caption{${caption}}`);
+    if (label) lines.push(`  \\label{${label}}`);
+    lines.push('\\end{figure}');
+    return lines.join('\n') + '\n';
+  }
+
+  function insertDirectTikzFigure(options = {}) {
+    const snippet = options.snippet || directTikzFigureSnippet(options);
+    if (!snippet.trim()) return { ok: false, message: 'No TikZ figure snippet to insert.' };
+
+    const target = insertionTarget(options);
+    if (!target) return { ok: false, message: 'No editable LaTeX target file found.' };
+
+    const insertText = `\n${snippet}\n`;
+    const next = target.text.slice(0, target.start) + insertText + target.text.slice(target.end);
+    State().updateFile(target.path, next);
+    ensureTikzPackage();
+
+    State().setActivePath?.(target.path);
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+
+    setTimeout(() => {
+      const file = State()?.getFile?.(target.path);
+      const current = fileText(file);
+      const idx = current.indexOf(insertText);
+      const markStart = idx >= 0 ? idx : target.start;
+      NS.SelectionService?.setSourceSelection?.(target.path, markStart, markStart + insertText.length, {
+        freeze: true,
+        source: 'asset-service-insert-direct-tikz',
+        method: 'direct-tikz-figure'
+      });
+    }, 80);
+
+    return { ok: true, path: target.path, start: target.start, end: target.start + insertText.length, snippet: insertText };
   }
 
   function inputFigureSnippet(options = {}) {
@@ -708,6 +757,8 @@
     addTextAsset,
     ensurePackage,
     ensureTikzPackage,
+    directTikzFigureSnippet,
+    insertDirectTikzFigure,
     inputFigureSnippet,
     insertInputFigureSnippet,
     setSelectedAsset,
