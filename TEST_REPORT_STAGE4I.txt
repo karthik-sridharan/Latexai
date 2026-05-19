@@ -1,0 +1,5 @@
+Stage 4I checks
+===============
+
+PASS node --check js/lai-stage4i-lai-guard.js
+PASS index.html includes js/lai-stage4i-lai-guard.js?v=stage4i-hard-lai-guard-1
