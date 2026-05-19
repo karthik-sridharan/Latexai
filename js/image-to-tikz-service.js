@@ -1,5 +1,5 @@
-/* Latexai Stage 10C ImageToTikzService
- * Stage: stage10c-no-generic-image-to-tikz-placeholder-1
+/* Latexai Stage 10D ImageToTikzService
+ * Stage: stage10d-image-ai-backend-diagnostics-1
  *
  * Remakes an existing project image asset as editable TikZ.
  * - Lists image assets from AssetService
@@ -13,7 +13,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage10c-no-generic-image-to-tikz-placeholder-1';
+  const STAGE = 'stage10d-image-ai-backend-diagnostics-1';
 
   let installed = false;
   let selectedPath = '';
@@ -232,6 +232,175 @@
     };
   }
 
+  function safeSnippet(value, limit = 1400) {
+    const s = String(value ?? '');
+    return s.length > limit ? `${s.slice(0, limit)}... [truncated ${s.length - limit} chars]` : s;
+  }
+
+  function backendConfigSummary() {
+    const cfg = NS.AIProvider?.getConfig?.() || {};
+    return {
+      proxyUrl: cfg.proxyUrl || '(not configured)',
+      provider: cfg.provider || '(default)',
+      model: cfg.model || '(default)',
+      hasProxyToken: !!cfg.proxyToken
+    };
+  }
+
+  function classifyDiagnostic(raw, file, prompt) {
+    const text = String(raw || '');
+    const lower = text.toLowerCase();
+    const likely = [];
+    const path = String(file?.path || '');
+
+    if (!text.trim()) likely.push('AI proxy returned an empty response.');
+    if (/cannot (view|see|access|inspect)|unable to (view|see|access|inspect)|i can(?:not|'t) see|no image/i.test(text)) {
+      likely.push('Model says it cannot see the image: backend is probably text-only or strips image payloads.');
+    }
+    if (/\\begin\{tikzpicture\}/.test(text) && isGenericTikzPlaceholder(text, file, prompt)) {
+      likely.push('Model/backend returned the generic TikZ placeholder, not an image-based reconstruction.');
+    }
+    if (path && text.includes(path) && !/(car|wheel|body|vehicle|network|node|arrow|box|circle|layer)/i.test(text)) {
+      likely.push('Response appears to use the filename/path rather than image pixels.');
+    }
+    if (/json|slides|elements|blockdiagram/i.test(text) && !/\\begin\{tikzpicture\}/.test(text)) {
+      likely.push('Response looks like a presentation/JSON workflow, not TikZ generation.');
+    }
+    if (/\\begin\{tikzpicture\}/.test(text) && !likely.length) {
+      likely.push('Backend returned TikZ-like output. If it still looks wrong, the model may not have received/understood the image.');
+    }
+    if (!likely.length) likely.push('Could not classify response; inspect raw response below.');
+
+    return likely;
+  }
+
+  function renderDiagnosticReport(report) {
+    const node = el('imageTikzDiagnosticReport');
+    if (!node) return;
+    node.classList.add('active');
+    node.textContent = [
+      'Image-to-TikZ backend diagnostic',
+      '================================',
+      '',
+      `Time: ${report.time}`,
+      `Selected image: ${report.imagePath}`,
+      `Image MIME: ${report.mime}`,
+      `Image data URL chars: ${report.dataUrlLength}`,
+      '',
+      'AI config:',
+      JSON.stringify(report.config, null, 2),
+      '',
+      'Request shape:',
+      JSON.stringify(report.requestShape, null, 2),
+      '',
+      'Diagnosis:',
+      ...report.diagnosis.map((x) => `- ${x}`),
+      '',
+      'Raw AI text:',
+      report.rawText || '(empty)',
+      '',
+      'Error:',
+      report.error || '(none)'
+    ].join('\n');
+  }
+
+  async function diagnoseSelectedImageBackend() {
+    const file = assetByPath(selectedPath || el('imageTikzAssetSelect')?.value || '');
+    if (!file) {
+      setStatus('Choose an image asset first.');
+      return null;
+    }
+
+    const dataUrl = assetDataUrl(file);
+    if (!dataUrl) {
+      setStatus('Selected image has no readable data URL.');
+      return null;
+    }
+
+    const prompt = getPrompt() || 'Diagnostic: identify the image content and remake as TikZ.';
+    const mm = buildMultimodalInput(file, dataUrl, prompt);
+    const diagnosticPayload = {
+      instructions: [
+        'This is a backend diagnostic for image understanding.',
+        'Inspect the attached image if available.',
+        'Return ONLY plain text with two short lines:',
+        'SAW_IMAGE: yes/no/unsure',
+        'DESCRIPTION: what the image visibly contains',
+        'Do not infer solely from the filename.'
+      ].join('\n'),
+      input: mm.responsesInput,
+      textInput: mm.text,
+      messages: mm.chatMessages,
+      image: {
+        path: file.path,
+        mime: file.mime || 'image/png',
+        dataUrl
+      },
+      temperature: 0,
+      maxOutputTokens: 900
+    };
+
+    const report = {
+      time: new Date().toISOString(),
+      imagePath: file.path,
+      mime: file.mime || 'image/png',
+      dataUrlLength: dataUrl.length,
+      config: backendConfigSummary(),
+      requestShape: {
+        task: 'latex-copilot',
+        workflow: 'image-to-tikz-diagnostic',
+        hasResponsesInputImage: !!diagnosticPayload.input?.[0]?.content?.some?.((c) => c.type === 'input_image'),
+        hasChatImageUrl: !!diagnosticPayload.messages?.[0]?.content?.some?.((c) => c.type === 'image_url'),
+        hasLegacyImageDataUrl: !!diagnosticPayload.image?.dataUrl,
+        textInputChars: diagnosticPayload.textInput.length
+      },
+      diagnosis: [],
+      rawText: '',
+      error: ''
+    };
+
+    setStatus('Running image AI backend diagnostic...');
+    try {
+      const response = await NS.AIProvider.ask(diagnosticPayload, {
+        task: 'latex-copilot',
+        context: {
+          workflow: 'image-to-tikz-diagnostic',
+          imagePath: file.path,
+          prompt
+        }
+      });
+      const raw = NS.AIProvider.extractText(response);
+      report.rawText = safeSnippet(raw, 2200);
+      report.diagnosis = classifyDiagnostic(raw, file, prompt);
+      renderDiagnosticReport(report);
+      setStatus('Diagnostic complete. See the backend diagnostic report below.');
+      return report;
+    } catch (err) {
+      report.error = String(err?.message || err);
+      report.diagnosis = [
+        'AI proxy request failed. This is a connection/auth/CORS/backend-route problem, not a TikZ generation problem.',
+        'Check AI Proxy URL, token, Cloud Run logs, and whether the /api/lumina/ai endpoint is deployed.'
+      ];
+      renderDiagnosticReport(report);
+      setStatus('Diagnostic failed before model response. See report below.');
+      return report;
+    }
+  }
+
+  async function copyDiagnosticReport() {
+    const text = el('imageTikzDiagnosticReport')?.textContent || '';
+    if (!text.trim()) {
+      setStatus('No diagnostic report to copy yet.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus('Diagnostic report copied.');
+    } catch (_err) {
+      setStatus('Could not copy automatically. Select the diagnostic report text manually.');
+    }
+  }
+
   function localFallbackTikz(file, prompt) {
     const label = String(prompt || file?.path || 'Remade image').replace(/[{}\\]/g, ' ').slice(0, 90);
     const lower = `${file?.path || ''} ${prompt || ''}`.toLowerCase();
@@ -403,9 +572,12 @@
       '  <div class="image-tikz-actions">',
       '    <button type="button" class="btn mini primary" id="imageTikzRemakeBtn">Remake as TikZ</button>',
       '    <button type="button" class="btn mini primary" id="imageTikzRemakeInsertBtn">Remake + insert TikZ</button>',
+      '    <button type="button" class="btn mini" id="imageTikzDiagnoseBtn">Diagnose backend</button>',
+      '    <button type="button" class="btn mini" id="imageTikzCopyDiagBtn">Copy report</button>',
       '    <button type="button" class="btn mini" id="imageTikzRefreshBtn">Refresh images</button>',
       '  </div>',
       '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready. If the backend lacks image input, type a short description like “simple car”.</div>',
+      '  <pre class="image-tikz-diagnostic" id="imageTikzDiagnosticReport"></pre>',
       '</div>'
     ].join('');
 
@@ -426,6 +598,8 @@
 
     el('imageTikzRemakeBtn')?.addEventListener('click', remakeSelectedImage, true);
     el('imageTikzRemakeInsertBtn')?.addEventListener('click', remakeAndInsert, true);
+    el('imageTikzDiagnoseBtn')?.addEventListener('click', diagnoseSelectedImageBackend, true);
+    el('imageTikzCopyDiagBtn')?.addEventListener('click', copyDiagnosticReport, true);
     el('imageTikzRefreshBtn')?.addEventListener('click', () => {
       refreshImageList();
       setStatus('Image list refreshed.');
@@ -451,7 +625,10 @@
     refreshImageList,
     remakeSelectedImage,
     remakeAndInsert,
+    diagnoseSelectedImageBackend,
+    copyDiagnosticReport,
     buildImageToTikzPayload,
+    classifyDiagnostic,
     isGenericTikzPlaceholder,
     isMeaningfulPrompt,
     localFallbackTikz,
