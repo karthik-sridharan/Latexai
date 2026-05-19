@@ -1,0 +1,7 @@
+Stage 7A checks
+===============
+
+PASS node --check js/selection-action-bubble.js
+PASS node tests/stage7a-selection-action-bubble.test.cjs
+
+The action bubble delegates to SelectionService/Copilot and does not directly mutate source.
