@@ -45,10 +45,16 @@
   function ensureLaiMacro(tex) {
     let s = String(tex || '');
     if (hasLaiMacro(s)) return s;
+
+    // Stage 9F: do not turn include-only files (for example generated TikZ
+    // source files under figures/) into pseudo root documents by prepending
+    // xcolor and the LAI macro. Only full LaTeX documents get this macro.
+    if (!/\documentclass(?:\[[^\]]*\])?\{[^}]+\}/.test(s) && !/\begin\{document\}/.test(s)) return s;
+
     s = ensureXcolor(s);
     const begin = s.indexOf('\\begin{document}');
     if (begin >= 0) return s.slice(0, begin) + LAI_MACRO_TEXT + '\n\n' + s.slice(begin);
-    return LAI_MACRO_TEXT + '\n\n' + s;
+    return s;
   }
 
 

@@ -1,5 +1,5 @@
-/* Latexai Stage 9E TikzMakerService
- * Stage: stage9e-direct-tikz-insert-no-png-1
+/* Latexai Stage 9F TikzMakerService
+ * Stage: stage9f-tikz-source-root-compile-fix-1
  *
  * AI prompt -> TikZ source -> saved .tex asset -> \input{...} figure snippet.
  * Uses:
@@ -11,7 +11,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage9e-direct-tikz-insert-no-png-1';
+  const STAGE = 'stage9f-tikz-source-root-compile-fix-1';
 
   let installed = false;
   let latestTikz = '';
@@ -480,7 +480,7 @@
         insertAt: capturedTarget?.start,
         end: capturedTarget?.end
       });
-      setStatus(inserted?.ok ? 'Inserted TikZ directly into the LaTeX source.' : (inserted?.message || 'Direct TikZ insert failed.'));
+      setStatus(inserted?.ok ? 'Inserted TikZ directly into the main LaTeX document source.' : (inserted?.message || 'Direct TikZ insert failed.'));
       toast(inserted?.ok ? 'TikZ inserted directly.' : 'TikZ insert failed.');
       return inserted;
     }

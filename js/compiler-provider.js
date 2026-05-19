@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'latex-stage3j-compiler-full-project-guard-20260518-1';
+  var STAGE = 'stage9f-tikz-source-root-compile-fix-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
 
   function isObject(x) {
@@ -245,11 +245,34 @@
     });
   }
 
+  function isRootDocumentText(text) {
+    var s = String(text || '');
+    return /\documentclass(?:\[[^\]]*\])?\{[^}]+\}/.test(s) || /\begin\{document\}/.test(s);
+  }
+
+  function isTikzIncludeText(text) {
+    var s = String(text || '').trim();
+    return /\\begin\{tikzpicture\}/.test(s) && !isRootDocumentText(s);
+  }
+
+  function chooseRootFile(files, preferred, settings) {
+    files = files || {};
+    var prefs = [preferred, settings && settings.rootFile, 'main.tex'].filter(Boolean).map(normalizePath);
+    for (var i = 0; i < prefs.length; i++) {
+      if (files[prefs[i]] && isRootDocumentText(files[prefs[i]])) return prefs[i];
+    }
+    var paths = Object.keys(files).sort();
+    for (var j = 0; j < paths.length; j++) {
+      if (/\.tex$/i.test(paths[j]) && isRootDocumentText(files[paths[j]])) return paths[j];
+    }
+    return normalizePath(preferred || (settings && settings.rootFile) || 'main.tex');
+  }
+
   function collectFiles(project, settings) {
     project = isObject(project) ? project : {};
     settings = settings || normalizeSettings();
-    var rootFile = project.rootFile || project.mainFile || project.activePath || settings.rootFile || 'main.tex';
-    var activePath = project.activePath || rootFile;
+    var preferredRoot = project.rootFile || project.mainFile || settings.rootFile || 'main.tex';
+    var activePath = project.activePath || preferredRoot;
     var files = {};
 
     addFilesFromObject(files, project.files);
@@ -268,22 +291,32 @@
       Object.keys(cachedFiles).forEach(function (path) { if (!files[path]) files[path] = cachedFiles[path]; });
     }
 
+    var rootFile = chooseRootFile(files, preferredRoot, settings);
+
     if (typeof project.source === 'string') files[rootFile] = project.source;
     if (typeof project.tex === 'string') files[rootFile] = project.tex;
     if (typeof project.content === 'string') files[rootFile] = project.content;
 
     var editorText = getEditorText();
-    if (editorText && (
-      /\\documentclass/.test(editorText) ||
-      /\\begin\{document\}/.test(editorText) ||
-      !String(files[activePath] || '').trim()
-    )) {
+    if (editorText) {
       files[activePath] = editorText;
-      if (activePath === rootFile || !String(files[rootFile] || '').trim()) files[rootFile] = editorText;
+      if ((activePath === rootFile || !String(files[rootFile] || '').trim()) && isRootDocumentText(editorText)) {
+        files[rootFile] = editorText;
+      }
     }
 
-    if (!String(files[rootFile] || '').trim() && String(files[activePath] || '').trim()) {
+    // Stage 9F: never compile a generated TikZ include file as the root. If the
+    // active file is figures/foo.tex containing only a tikzpicture, keep it as an
+    // input file and compile the real document root instead.
+    rootFile = chooseRootFile(files, rootFile, settings);
+
+    if (!String(files[rootFile] || '').trim() && String(files[activePath] || '').trim() && isRootDocumentText(files[activePath])) {
       files[rootFile] = files[activePath];
+    }
+
+    if (isTikzIncludeText(files[rootFile])) {
+      var fallbackRoot = chooseRootFile(files, 'main.tex', settings);
+      if (fallbackRoot && !isTikzIncludeText(files[fallbackRoot])) rootFile = fallbackRoot;
     }
 
     return { rootFile: rootFile, activePath: activePath, files: files };

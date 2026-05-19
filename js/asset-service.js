@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage9e-direct-tikz-insert-no-png-1
+ * Stage: stage9f-tikz-source-root-compile-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage9e-direct-tikz-insert-no-png-1';
+  const STAGE = 'stage9f-tikz-source-root-compile-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -79,6 +79,51 @@
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.pdf')) return 'application/pdf';
     return 'application/octet-stream';
+  }
+
+  function isDocumentRootText(text) {
+    const s = String(text || '');
+    return /\documentclass(?:\[[^\]]*\])?\{[^}]+\}/.test(s) || /\begin\{document\}/.test(s);
+  }
+
+  function isTikzOnlyText(text) {
+    const s = String(text || '').trim();
+    return /\\begin\{tikzpicture\}/.test(s) && !isDocumentRootText(s);
+  }
+
+  function findRootDocumentPath() {
+    const project = State()?.state?.project || {};
+    const files = project.files || [];
+    const candidates = [project.rootFile, project.mainFile, 'main.tex', project.activePath]
+      .filter(Boolean)
+      .map(normalizePath);
+
+    for (const path of candidates) {
+      const file = State()?.getFile?.(path);
+      if (file && State()?.textFile?.(file) && isDocumentRootText(fileText(file))) return path;
+    }
+    for (const file of files) {
+      if (file && State()?.textFile?.(file) && String(file.path || '').toLowerCase().endsWith('.tex') && isDocumentRootText(fileText(file))) {
+        return normalizePath(file.path);
+      }
+    }
+    return normalizePath(project.rootFile || project.mainFile || 'main.tex');
+  }
+
+  function documentInsertionTarget(options = {}) {
+    const explicit = explicitInsertionTarget(options);
+    if (explicit && isDocumentRootText(explicit.text)) return explicit;
+
+    const raw = insertionTarget({});
+    if (raw && isDocumentRootText(raw.text) && !isTikzOnlyText(raw.text)) return raw;
+
+    const path = findRootDocumentPath();
+    const file = State()?.getFile?.(path);
+    if (!file || !State()?.textFile?.(file)) return raw;
+    const text = fileText(file);
+    let pos = text.lastIndexOf('\\end{document}');
+    if (pos < 0) pos = text.length;
+    return { path, file, text, start: pos, end: pos, forcedRoot: true };
   }
 
   function dataUrlParts(dataUrl) {
@@ -251,19 +296,27 @@
   function ensurePackage(packageName, options = {}) {
     packageName = String(packageName || '').trim();
     if (!packageName) return false;
-    const project = State()?.state?.project;
-    const rootPath = normalizePath(options.rootPath || project?.rootFile || project?.activePath || 'main.tex');
+    const rootPath = normalizePath(options.rootPath || findRootDocumentPath());
     const file = State()?.getFile?.(rootPath);
     if (!file || !State()?.textFile?.(file)) return false;
     let tex = fileText(file);
+
+    // Stage 9F: package lines belong in the main document preamble, never in
+    // include-only TikZ files such as figures/mlp.tex.
+    if (!isDocumentRootText(tex)) return false;
+
     const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp('\\\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\b' + escaped + '\\b[^}]*\\}');
     if (re.test(tex)) return false;
 
     const line = options.line || `\\usepackage{${packageName}}\n`;
-    const dc = tex.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}\s*/);
+    const dc = tex.match(/\\documentclass(?:\\[[^\\]]*\\])?\\{[^}]+\\}\s*/);
     if (dc) tex = tex.slice(0, dc.index + dc[0].length) + line + tex.slice(dc.index + dc[0].length);
-    else tex = line + tex;
+    else {
+      const begin = tex.indexOf('\\begin{document}');
+      if (begin >= 0) tex = tex.slice(0, begin) + line + tex.slice(begin);
+      else return false;
+    }
 
     State().updateFile(rootPath, tex);
     return true;
@@ -294,8 +347,8 @@
     const snippet = options.snippet || directTikzFigureSnippet(options);
     if (!snippet.trim()) return { ok: false, message: 'No TikZ figure snippet to insert.' };
 
-    const target = insertionTarget(options);
-    if (!target) return { ok: false, message: 'No editable LaTeX target file found.' };
+    const target = documentInsertionTarget(options);
+    if (!target) return { ok: false, message: 'No editable LaTeX document target found.' };
 
     const insertText = `\n${snippet}\n`;
     const next = target.text.slice(0, target.start) + insertText + target.text.slice(target.end);
@@ -343,8 +396,8 @@
     const snippet = options.snippet || inputFigureSnippet(options);
     if (!snippet.trim()) return { ok: false, message: 'No input figure snippet to insert.' };
 
-    const target = insertionTarget(options);
-    if (!target) return { ok: false, message: 'No editable LaTeX target file found.' };
+    const target = documentInsertionTarget(options);
+    if (!target) return { ok: false, message: 'No editable LaTeX document target found.' };
 
     const insertText = `\n${snippet}\n`;
     const next = target.text.slice(0, target.start) + insertText + target.text.slice(target.end);
@@ -752,6 +805,8 @@
     figureSnippet,
     ensureGraphicsPackage,
     rememberInsertionPoint,
+    findRootDocumentPath,
+    documentInsertionTarget,
     insertionTarget,
     insertFigureSnippet,
     addTextAsset,
