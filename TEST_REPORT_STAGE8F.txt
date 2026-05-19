@@ -1,0 +1,8 @@
+Stage 8F checks
+===============
+
+PASS node --check js/figure-editor-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage8f-figure-editor-shapes-cursor.test.cjs
+
+Canvas shapes commit synchronously and figure snippets insert at the captured cursor before graphicx insertion.
