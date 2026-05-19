@@ -1,7 +1,7 @@
-/* Latexai Stage 7A SelectionActionBubble
- * Stage: stage7a-selection-action-bubble-1
+/* Latexai Stage 7B SelectionActionBubble
+ * Stage: stage7b-dock-selection-bubble-topbar-1
  *
- * A small contextual action bubble for source/draft/PDF selections.
+ * A small contextual action bubble docked in the topbar blank space.
  * It does not mutate source directly. It delegates to:
  * - SelectionService for selection capture/freeze/source mapping
  * - Copilot for AI requests
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage7a-selection-action-bubble-1';
+  const STAGE = 'stage7b-dock-selection-bubble-topbar-1';
 
   let bubble = null;
   let activeSelection = null;
@@ -169,7 +169,7 @@
     if (bubble) return bubble;
     bubble = document.createElement('div');
     bubble.id = 'laiSelectionActionBubble';
-    bubble.className = 'lai-selection-action-bubble';
+    bubble.className = 'lai-selection-action-bubble docked';
     bubble.setAttribute('role', 'toolbar');
     bubble.setAttribute('aria-label', 'Selection actions');
 
@@ -200,7 +200,14 @@
       })()
     );
 
-    document.body.appendChild(bubble);
+    const topbar = document.querySelector('.topbar');
+    const topActions = document.querySelector('.top-actions');
+    if (topbar) {
+      if (topActions && topActions.parentElement === topbar) topbar.insertBefore(bubble, topActions);
+      else topbar.appendChild(bubble);
+    } else {
+      document.body.appendChild(bubble);
+    }
     return bubble;
   }
 
@@ -233,6 +240,18 @@
 
   function positionBubble() {
     if (!bubble || !bubble.classList.contains('active')) return;
+
+    // Stage 7B: on tablet/desktop the bubble is docked into the topbar blank
+    // space with CSS. Do not move it over the editor/preview. On narrow
+    // screens CSS switches it to a bottom dock.
+    if (bubble.classList.contains('docked')) {
+      bubble.style.left = '';
+      bubble.style.top = '';
+      bubble.style.right = '';
+      bubble.style.bottom = '';
+      return;
+    }
+
     const rect = selectionRect();
 
     bubble.style.left = '0px';
