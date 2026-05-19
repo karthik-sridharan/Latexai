@@ -1,0 +1,5 @@
+Stage 4J checks
+===============
+
+PASS node --check js/lai-stage4j-lai-guard.js
+PASS index.html includes js/lai-stage4j-lai-guard.js?v=stage4j-always-visible-lai-guard-1
