@@ -1,0 +1,2 @@
+PASS node --check project-model/editor/copilot/patch-manager
+PASS static checks
