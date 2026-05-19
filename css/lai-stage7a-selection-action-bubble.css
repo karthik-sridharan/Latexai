@@ -1,7 +1,11 @@
-/* Stage 7A: unobtrusive selection action bubble */
+/* Stage 7B: dock selection action bubble in the topbar blank space */
+.topbar {
+  position: relative;
+}
+
+/* Default hidden bubble. It is inserted into the topbar, not over editor/preview. */
 .lai-selection-action-bubble {
-  position: fixed;
-  z-index: 2147483000;
+  z-index: 12;
   display: none;
   align-items: center;
   gap: .35rem;
@@ -9,12 +13,23 @@
   border-radius: 999px;
   background: rgba(15, 23, 42, .94);
   color: #fff;
-  box-shadow: 0 12px 36px rgba(15, 23, 42, .32);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .24);
   border: 1px solid rgba(255,255,255,.16);
   backdrop-filter: blur(10px);
-  max-width: min(92vw, 560px);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Docked location: the unused topbar space between brand and top-right buttons. */
+.lai-selection-action-bubble.docked {
+  position: absolute;
+  top: 50%;
+  left: clamp(245px, 27vw, 360px);
+  right: clamp(360px, 42vw, 620px);
+  transform: translateY(-50%);
+  max-width: none;
+  min-width: 240px;
+  max-height: 44px;
 }
 
 .lai-selection-action-bubble.active {
@@ -67,13 +82,27 @@
   padding: .2rem .35rem;
 }
 
-@media (max-width: 720px) {
-  .lai-selection-action-bubble {
+/* On medium screens the topbar still has a center lane, but it is narrower. */
+@media (max-width: 1120px) {
+  .lai-selection-action-bubble.docked {
+    left: 230px;
+    right: 390px;
+  }
+  .lai-selection-action-bubble .lai-bubble-label {
+    display: none;
+  }
+}
+
+/* On very narrow/mobile layouts, use a bottom dock so it does not cover topbar buttons. */
+@media (max-width: 760px) {
+  .lai-selection-action-bubble.docked {
+    position: fixed;
     left: .5rem !important;
     right: .5rem !important;
     top: auto !important;
     bottom: .75rem !important;
     transform: none !important;
     border-radius: 18px;
+    max-height: none;
   }
 }
