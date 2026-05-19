@@ -1,5 +1,5 @@
-/* Latexai Stage 9B TikzMakerService
- * Stage: stage9b-tikz-json-sanitizer-fix-1
+/* Latexai Stage 9C TikzMakerService
+ * Stage: stage9c-tikz-prompt-and-local-generator-fix-1
  *
  * AI prompt -> TikZ source -> saved .tex asset -> \input{...} figure snippet.
  * Uses:
@@ -11,7 +11,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage9b-tikz-json-sanitizer-fix-1';
+  const STAGE = 'stage9c-tikz-prompt-and-local-generator-fix-1';
 
   let installed = false;
   let latestTikz = '';
@@ -244,14 +244,14 @@
     return /^[{\[]/.test(s) || /"slides"\s*:|"elements"\s*:|"blocks"\s*:|"connections"\s*:/.test(s);
   }
 
-  function extractTikz(raw) {
+  function extractTikz(raw, originalPrompt = '') {
     let s = stripFence(raw);
 
     const parsed = tryParseJsonish(s);
     if (parsed) {
       const converted = convertJsonToTikz(parsed);
       if (converted) return converted;
-      return fallbackTikz('AI returned JSON instead of TikZ');
+      return fallbackTikz(originalPrompt || 'AI returned JSON instead of TikZ');
     }
 
     s = removeLeadingJsonLanguageTag(s);
@@ -267,7 +267,7 @@
       if (looksLikeJsonNotTikz(inside)) {
         const insideParsed = tryParseJsonish(inside);
         const converted = convertJsonToTikz(insideParsed);
-        return converted || fallbackTikz('AI returned JSON inside a tikzpicture');
+        return converted || fallbackTikz(originalPrompt || 'AI returned JSON inside a tikzpicture');
       }
 
       return s + '\n';
@@ -277,7 +277,7 @@
     // .tex files and was the bug reported in Stage 9A.
     if (looksLikeJsonNotTikz(s)) {
       const converted = convertJsonToTikz(tryParseJsonish(s));
-      return converted || fallbackTikz('AI returned a diagram schema instead of TikZ');
+      return converted || fallbackTikz(originalPrompt || 'AI returned a diagram schema instead of TikZ');
     }
 
     // Only wrap plain TikZ draw/node commands, not arbitrary prose.
@@ -285,18 +285,93 @@
       return `\\begin{tikzpicture}[scale=1]\n${s}\n\\end{tikzpicture}\n`;
     }
 
-    return fallbackTikz(s || 'Generated TikZ figure');
+    return fallbackTikz(originalPrompt || s || 'Generated TikZ figure');
   }
 
   function fallbackTikz(prompt) {
-    const label = String(prompt || 'Generated TikZ figure').replace(/[{}\\]/g, '').slice(0, 80);
+    const p = String(prompt || 'Generated TikZ figure').toLowerCase();
+
+    if (/(neural|network|feed.?forward|hidden layer|input layer|output layer)/.test(p)) {
+      return [
+        '\\begin{tikzpicture}[>=stealth, every node/.style={font=\\small}]',
+        '  \\tikzstyle{unit}=[circle, draw, thick, minimum size=8mm, align=center]',
+        '  \\node[font=\\bfseries] at (0, 2.1) {Input};',
+        '  \\node[font=\\bfseries] at (3, 2.1) {Hidden};',
+        '  \\node[font=\\bfseries] at (6, 2.1) {Output};',
+        '  \\node[unit] (x1) at (0, 1.0) {$x_1$};',
+        '  \\node[unit] (x2) at (0,-1.0) {$x_2$};',
+        '  \\node[unit] (h1) at (3, 1.2) {$h_1$};',
+        '  \\node[unit] (h2) at (3, 0.0) {$h_2$};',
+        '  \\node[unit] (hm) at (3,-1.2) {$h_m$};',
+        '  \\node[unit] (y)  at (6, 0.0) {$y$};',
+        '  \\foreach \\i in {x1,x2}{',
+        '    \\foreach \\j in {h1,h2,hm}{',
+        '      \\draw[->, thick] (\\i) -- (\\j);',
+        '    }',
+        '  }',
+        '  \\foreach \\j in {h1,h2,hm}{',
+        '    \\draw[->, thick] (\\j) -- (y);',
+        '  }',
+        '  \\node at (3,-2.05) {$h_j=\\sigma(w_j^\\top x+b_j)$};',
+        '\\end{tikzpicture}',
+        ''
+      ].join('\\n');
+    }
+
+    if (/(flow|pipeline|block|diagram|process|architecture)/.test(p)) {
+      const label = texEscapeLabel(prompt || 'Process');
+      return [
+        '\\begin{tikzpicture}[>=stealth, node distance=1.5cm, every node/.style={font=\\small}]',
+        '  \\tikzstyle{block}=[draw, rounded corners, thick, minimum width=2.2cm, minimum height=9mm, align=center]',
+        '  \\node[block] (a) at (0,0) {Input};',
+        '  \\node[block] (b) at (3,0) {Model};',
+        '  \\node[block] (c) at (6,0) {Output};',
+        '  \\draw[->, thick] (a) -- (b);',
+        '  \\draw[->, thick] (b) -- (c);',
+        `  \\node[align=center, font=\\scriptsize] at (3,-1.0) {${label}};`,
+        '\\end{tikzpicture}',
+        ''
+      ].join('\\n');
+    }
+
+    const label = texEscapeLabel(prompt || 'Generated TikZ figure');
     return [
       '\\begin{tikzpicture}[scale=1]',
       '  \\draw[rounded corners, thick] (0,0) rectangle (5,2.2);',
-      '  \\node[align=center] at (2.5,1.1) {' + label + '};',
+      `  \\node[align=center] at (2.5,1.1) {${label}};`,
       '\\end{tikzpicture}',
       ''
-    ].join('\n');
+    ].join('\\n');
+  }
+
+  function buildTikzSystemPrompt() {
+    return [
+      'You are a LaTeX TikZ generator.',
+      'Return ONLY valid LaTeX TikZ code.',
+      'The output must contain exactly one \\\\begin{tikzpicture} ... \\\\end{tikzpicture} environment.',
+      'Do NOT return JSON.',
+      'Do NOT return slide JSON, Mermaid, SVG, HTML, XML, Markdown, prose, explanations, or code fences.',
+      'Do NOT include \\\\documentclass or \\\\begin{document}.',
+      'Use robust TikZ primitives: \\\\node, \\\\draw, \\\\path, \\\\foreach.',
+      'Assume only \\\\usepackage{tikz} is available unless you explicitly avoid extra libraries.'
+    ].join('\\n');
+  }
+
+  function buildTikzUserPrompt(prompt) {
+    const ctx = projectContext();
+    return [
+      'Create a TikZ figure for this request:',
+      prompt,
+      '',
+      'Again: return ONLY the tikzpicture environment. No JSON. No Markdown.',
+      '',
+      'Project context:',
+      JSON.stringify({
+        rootFile: ctx.project.rootFile,
+        activePath: ctx.project.activePath,
+        files: ctx.project.files.slice(0, 20)
+      }, null, 2)
+    ].join('\\n');
   }
 
   async function generateTikz() {
@@ -307,31 +382,42 @@
     }
 
     setStatus('Generating TikZ with AI...');
-    const payload = {
-      schema: 'latexai-tikz-maker-request-v1',
-      instruction: [
-        'Generate valid LaTeX TikZ code for the requested figure.',
-        'Return only one tikzpicture environment.',
-        'Do not return JSON, slide JSON, Mermaid, SVG, HTML, or a diagram schema.',
-        'Do not include documentclass, begin{document}, markdown explanation, or prose.',
-        'Prefer simple robust TikZ primitives that compile with \\usepackage{tikz}.',
-        'Avoid external image files.'
-      ].join('\n'),
-      prompt,
-      context: projectContext()
-    };
+    const system = buildTikzSystemPrompt();
+    const user = buildTikzUserPrompt(prompt);
 
     try {
-      const response = await NS.AIProvider.ask(payload, { task: 'tikz-figure-maker', context: payload.context });
+      // Stage 9C: mirror the working Copilot payload shape. Some AI backends
+      // ignored the Stage 9A custom schema and returned presentation/slide JSON.
+      const response = await NS.AIProvider.ask(
+        {
+          instructions: system,
+          input: user,
+          temperature: 0.05,
+          maxOutputTokens: 4200
+        },
+        {
+          task: 'latex-copilot',
+          context: {
+            workflow: 'tikz-figure-maker',
+            prompt,
+            project: projectContext().project
+          }
+        }
+      );
       const text = NS.AIProvider.extractText(response);
-      const tikz = extractTikz(text);
+      const tikz = extractTikz(text, prompt);
       setCode(tikz);
-      setStatus('Generated TikZ. Review/edit it, then Save or Save + insert.');
+
+      if (/AI returned|Generated TikZ figure/.test(tikz) && !/\\draw|\\node|\\foreach/.test(text)) {
+        setStatus('AI did not return usable TikZ, so Latexai produced a local editable TikZ figure from your prompt.');
+      } else {
+        setStatus('Generated TikZ. Review/edit it, then Save or Save + insert.');
+      }
       return tikz;
     } catch (err) {
       const tikz = fallbackTikz(prompt);
       setCode(tikz);
-      setStatus(`AI generation failed; inserted a simple editable placeholder TikZ instead.\n${err?.message || err}`);
+      setStatus(`AI generation failed; Latexai produced a local editable TikZ figure from your prompt.\n${err?.message || err}`);
       return tikz;
     }
   }
@@ -353,7 +439,7 @@
       return null;
     }
 
-    const tikz = extractTikz(getCode());
+    const tikz = extractTikz(getCode(), getPrompt());
     if (!tikz.trim()) {
       setStatus('No TikZ source to save. Generate or paste TikZ first.');
       return null;
