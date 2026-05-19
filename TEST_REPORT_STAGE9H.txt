@@ -1,0 +1,9 @@
+Stage 9H checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node --check js/tikz-maker-service.js
+PASS node --check js/compiler-provider.js
+PASS node tests/stage9h-tikz-cursor-regex-fix.test.cjs
+
+AssetService now correctly detects LaTeX documents and captures cursor after pointer/click updates.
