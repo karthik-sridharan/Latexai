@@ -1,0 +1,7 @@
+Stage 5D checks
+===============
+
+PASS node --check js/lai-stage4l-lai-guard.js
+PASS node --check js/lai-stage4m-compile-safe-lai.js
+PASS node --check js/lai-stage5c-preview-selection-bridge.js
+PASS editor diff now forces old/new order correctly
