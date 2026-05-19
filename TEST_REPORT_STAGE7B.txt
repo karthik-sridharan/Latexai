@@ -1,0 +1,7 @@
+Stage 7B checks
+===============
+
+PASS node --check js/selection-action-bubble.js
+PASS node tests/stage7b-dock-selection-bubble.test.cjs
+
+Selection bubble now docks in the topbar blank space instead of floating over content.
