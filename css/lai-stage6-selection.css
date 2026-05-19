@@ -1,0 +1,64 @@
+/* Stage 6A-C: persistent source selection overlay */
+.source-shell.lai-source-selection-active {
+  position: relative;
+}
+
+.lai-source-selection-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 3.45rem;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #0f172a;
+  color: #dbeafe;
+  font: 13px/1.55 var(--mono);
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  tab-size: 2;
+}
+
+.lai-source-selection-overlay-inner {
+  margin: 0;
+  padding: 1rem;
+  min-height: 100%;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.lai-source-selection-overlay .lai-source-selection-mark {
+  background: rgba(250, 204, 21, .34);
+  color: #ffffff;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, .30);
+}
+
+#sourceEditor.lai-source-selection-hidden-text {
+  position: relative;
+  z-index: 2;
+  color: transparent !important;
+  background: transparent !important;
+  caret-color: #e5e7eb;
+}
+
+#sourceEditor.lai-source-selection-hidden-text::selection {
+  background: rgba(96,165,250,.35);
+  color: transparent;
+}
+
+.lai-selection-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .18rem .45rem;
+  border-radius: 999px;
+  background: rgba(250,204,21,.18);
+  border: 1px solid rgba(250,204,21,.35);
+  color: #92400e;
+  font-size: .75rem;
+  font-weight: 800;
+}
