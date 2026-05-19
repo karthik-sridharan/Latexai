@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage8c-figure-asset-compile-cursor-fix-1
+ * Stage: stage8d-figure-placeholder-tabs-fix-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage8c-figure-asset-compile-cursor-fix-1';
+  const STAGE = 'stage8d-figure-placeholder-tabs-fix-1';
 
   let installed = false;
   let selectedAssetPath = '';
@@ -207,10 +207,16 @@
     const caption = String(options.caption || '').trim();
     const label = String(options.label || '').trim() || `fig:${slug(path.split('/').pop().replace(/\.[^.]+$/, ''))}`;
 
+    // Stage 8D: use \IfFileExists so a visible placeholder appears in the PDF
+    // if the image asset was not included in the compile payload.
     const lines = [
       '\\begin{figure}[t]',
       '  \\centering',
-      `  \\includegraphics[width=${width}]{${path}}`
+      `  \\IfFileExists{${path}}{%`,
+      `    \\includegraphics[width=${width}]{${path}}%`,
+      '  }{%',
+      `    \\fbox{\\parbox{${width}}{\\centering Missing figure file: \\texttt{\\detokenize{${path}}}}}%`,
+      '  }'
     ];
     if (caption) lines.push(`  \\caption{${caption}}`);
     if (label) lines.push(`  \\label{${label}}`);
@@ -422,7 +428,7 @@
       '      <label>Target path <input id="assetPathInput" type="text" placeholder="figures/my-figure.png" /></label>',
       '      <label>Caption <input id="assetCaptionInput" type="text" placeholder="Optional figure caption" /></label>',
       '      <label>Label <input id="assetLabelInput" type="text" placeholder="fig:my-figure" /></label>',
-      '      <label>Width <input id="assetWidthInput" type="text" value=".8\\\\linewidth" /></label>',
+      '      <label>Width <input id="assetWidthInput" type="text" value=".8\\linewidth" /></label>',
       '      <input id="assetSelectedPath" type="hidden" />',
       '      <div class="asset-actions">',
       '        <button type="button" class="btn mini primary" id="assetAddBtn">Add image</button>',

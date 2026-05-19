@@ -31,20 +31,16 @@
   }
 
   function bindRightTabs() {
-    const buttons = Array.from(document.querySelectorAll('[data-right-tab]'));
-    const panels = {
-      preview: document.getElementById('previewTab'),
-      logs: document.getElementById('logsTab'),
-      copilot: document.getElementById('copilotTab'),
-      settings: document.getElementById('settingsTab')
-    };
-    buttons.forEach((button) => {
-      button.addEventListener('click', () => {
-        const id = button.dataset.rightTab;
-        buttons.forEach((b) => b.classList.toggle('active', b === button));
-        Object.entries(panels).forEach(([key, panel]) => panel?.classList.toggle('active', key === id));
-      });
-    });
+    // Stage 8D: dynamic tab handling. Later modules can add tabs such as
+    // Figures/assets after startup; clicking any right tab must close all
+    // other right-tab panels, not only the original four.
+    document.addEventListener('click', (event) => {
+      const button = event.target?.closest?.('[data-right-tab]');
+      if (!button) return;
+      const id = button.dataset.rightTab;
+      document.querySelectorAll('[data-right-tab]').forEach((b) => b.classList.toggle('active', b === button));
+      document.querySelectorAll('.right-tab-panel').forEach((panel) => panel.classList.toggle('active', panel.id === `${id}Tab`));
+    }, true);
   }
 
   function bindTopActions() {

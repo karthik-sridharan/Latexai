@@ -296,6 +296,7 @@
       rootFile: rootFile,
       fileCount: Object.keys(files).length,
       paths: Object.keys(files),
+      assetPaths: Object.keys(files).filter(function (path) { return /\.(png|jpe?g|webp|svg|pdf|eps)$/i.test(path); }),
       rootLength: rootText.length,
       rootHead: rootText.slice(0, 500),
       hasDocumentClass: /\\documentclass/.test(rootText),
