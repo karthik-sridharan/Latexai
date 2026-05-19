@@ -1,0 +1,8 @@
+Stage 8G checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node --check js/figure-editor-service.js
+PASS node tests/stage8g-figure-insert-caret-capture.test.cjs
+
+Save+insert captures source cursor before creating the image asset and passes it explicitly to AssetService.
