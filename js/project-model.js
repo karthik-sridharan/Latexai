@@ -6,17 +6,13 @@
   const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1';
   const SCHEMA = 'lumina-latex-project-v1';
   const FILE_SCHEMA = 'lumina-latex-file-v1';
+
   const LAI_MACRO_START = '% --- Latexai AI-change highlighting macro ---';
   const LAI_MACRO_END = '% --- end Latexai AI-change highlighting macro ---';
-
-  function laiMacroBlock() {
-    return String.raw`% --- Latexai AI-change highlighting macro ---
-\usepackage{xcolor}
-
+  const LAI_MACRO_TEXT = String.raw`% --- Latexai AI-change highlighting macro ---
 % Set this to \laishowchangesfalse to hide red AI markup.
 \newif\iflaishowchanges
 \laishowchangestrue
-
 \long\def\lai#1{%
   \iflaishowchanges
     {\color{red}#1}%
@@ -25,25 +21,34 @@
   \fi
 }
 % --- end Latexai AI-change highlighting macro ---`;
-  }
 
   function hasLaiMacro(tex) {
-    const text = String(tex || '');
-    return /\\(?:long\\)?def\\lai#?1|\\newcommand\s*\{\\lai\}|\\DeclareRobustCommand\s*\{\\lai\}|latexai ai-change highlighting macro/i.test(text);
+    const s = String(tex || '');
+    return /\\newif\\iflaishowchanges/.test(s) && /\\(?:long\\def|def|newcommand)\\lai/.test(s);
+  }
+
+  function hasXcolor(tex) {
+    return /\\usepackage(?:\[[^\]]*\])?\{[^}]*\bxcolor\b[^}]*\}/.test(String(tex || ''));
+  }
+
+  function ensureXcolor(tex) {
+    let s = String(tex || '');
+    if (hasXcolor(s)) return s;
+    const docclass = s.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}\s*/);
+    if (docclass) {
+      const i = docclass.index + docclass[0].length;
+      return s.slice(0, i) + '\\usepackage{xcolor}\n' + s.slice(i);
+    }
+    return '\\usepackage{xcolor}\n' + s;
   }
 
   function ensureLaiMacro(tex) {
-    const text = String(tex || '');
-    if (!text.trim() || hasLaiMacro(text)) return text;
-    const macro = laiMacroBlock();
-    const docClass = text.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/);
-    if (docClass && Number.isFinite(docClass.index)) {
-      const at = docClass.index + docClass[0].length;
-      return text.slice(0, at) + '\n' + macro + '\n' + text.slice(at).replace(/^\n/, '');
-    }
-    const beginDoc = text.indexOf('\\begin{document}');
-    if (beginDoc >= 0) return macro + '\n' + text;
-    return text;
+    let s = String(tex || '');
+    if (hasLaiMacro(s)) return s;
+    s = ensureXcolor(s);
+    const begin = s.indexOf('\\begin{document}');
+    if (begin >= 0) return s.slice(0, begin) + LAI_MACRO_TEXT + '\n\n' + s.slice(begin);
+    return LAI_MACRO_TEXT + '\n\n' + s;
   }
 
 
@@ -52,22 +57,6 @@
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{graphicx}
 \usepackage{hyperref}
-
-% --- Latexai AI-change highlighting macro ---
-\usepackage{xcolor}
-
-% Set this to \laishowchangesfalse to hide red AI markup.
-\newif\iflaishowchanges
-\laishowchangestrue
-
-\long\def\lai#1{%
-  \iflaishowchanges
-    {\color{red}#1}%
-  \else
-    #1%
-  \fi
-}
-% --- end Latexai AI-change highlighting macro ---
 
 \title{A Lumina LaTeX Project}
 \author{Karthik Sridharan}
@@ -270,7 +259,7 @@ The project is represented by stable file paths and ids. UI events update the pr
       id: uid('file'),
       path: normalized,
       kind: fileKind(normalized),
-      text: fileKind(normalized) === 'tex' ? ensureLaiMacro(String(text ?? '')) : String(text ?? ''),
+      text: String(text ?? ''),
       encoding: 'utf8',
       updatedAt,
       version: 1
@@ -315,13 +304,12 @@ The project is represented by stable file paths and ids. UI events update the pr
     const data = dataUrlBase64(rawContent);
     const base64 = String(file.base64 || (data ? data.base64 : ''));
     const encoding = file.encoding || (base64 ? 'base64' : 'utf8');
-    const normalizedText = encoding === 'base64' ? '' : (kind === 'tex' ? ensureLaiMacro(String(rawContent ?? '')) : String(rawContent ?? ''));
     return {
       schema: file.schema || FILE_SCHEMA,
       id: file.id || uid('file'),
       path,
       kind,
-      text: normalizedText,
+      text: encoding === 'base64' ? '' : String(rawContent ?? ''),
       base64: encoding === 'base64' ? base64 : '',
       encoding,
       mime: file.mime || (data ? data.mime : ''),
@@ -384,17 +372,16 @@ The project is represented by stable file paths and ids. UI events update the pr
     FILE_SCHEMA,
     DEFAULT_MAIN_TEX,
     DEFAULT_BIB,
+    LAI_MACRO_START,
+    LAI_MACRO_END,
+    LAI_MACRO_TEXT,
+    ensureLaiMacro,
     uid,
     nowIso,
     clone,
     normalizePath,
     fileKind,
     textFile,
-    LAI_MACRO_START,
-    LAI_MACRO_END,
-    laiMacroBlock,
-    hasLaiMacro,
-    ensureLaiMacro,
     defaultSettings,
     defaultProject,
     makeFile,

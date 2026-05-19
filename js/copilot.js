@@ -107,10 +107,6 @@
     const problems = State().state.lastProblems || [];
     const rootFile = State().state.project.rootFile;
     const root = State().getFile(rootFile);
-    const projectFiles = State().state.project.files
-      .filter((f) => State().textFile(f))
-      .map((f) => ({ path: f.path, kind: f.kind, text: String(f.text || '') }));
-    const fullProjectSource = projectFiles.map((f) => `%%%% BEGIN FILE ${f.path}\n${f.text}\n%%%% END FILE ${f.path}`).join('\n\n');
     return {
       schema: 'lumina-latex-copilot-context-v1',
       project: {
@@ -121,18 +117,17 @@
         fileCount: State().state.project.files.length,
         files: State().state.project.files.map((f) => ({ path: f.path, kind: f.kind, bytes: (f.text || f.base64 || '').length }))
       },
-      projectFiles,
-      fullProjectSource,
       activeFile: {
         path: file?.path || null,
         kind: file?.kind || null,
-        text: (file?.text || '')
+        text: (file?.text || '').slice(0, 16000)
       },
       rootFile: {
         path: root?.path || null,
-        text: (root?.text || '')
+        text: (root?.text || '').slice(0, 12000)
       },
       selection,
+      fullProjectSource: fullProjectSource(90000),
       diagnostics: {
         problems: problems.slice(0, 12),
         compileStatus: State().state.compile,
@@ -144,6 +139,24 @@
         shellEscape: !!State().state.settings.shellEscape
       }
     };
+  }
+
+
+  function fullProjectSource(maxChars = 90000) {
+    try {
+      const files = State().state.project.files || [];
+      let out = '';
+      for (const file of files) {
+        if (!State().textFile(file.path)) continue;
+        const chunk = `\n% ===== FILE: ${file.path} =====\n${file.text || ''}\n`;
+        if ((out.length + chunk.length) > maxChars) {
+          out += `\n% ===== TRUNCATED: full project source exceeded ${maxChars} chars =====\n`;
+          break;
+        }
+        out += chunk;
+      }
+      return out;
+    } catch (_err) { return ''; }
   }
 
   function renderContextChips() {
@@ -176,6 +189,62 @@
     })[task] || task;
   }
 
+
+  function stripFence(text) {
+    let s = String(text ?? '').trim();
+    const fence = s.match(/^```(?:json|latex|tex)?\s*([\s\S]*?)\s*```$/i);
+    if (fence) s = fence[1].trim();
+    return s;
+  }
+
+  function replacementFromAi(rawText) {
+    let s = stripFence(rawText);
+    if (/^\s*\{[\s\S]*\}\s*$/.test(s)) {
+      try {
+        const obj = JSON.parse(s);
+        const patch = obj.patch || (Array.isArray(obj.patches) ? obj.patches[0] : null) || {};
+        s = obj.replacementLatex ?? obj.replacement ?? obj.text ?? obj.content ?? patch.replacementLatex ?? patch.replacement ?? patch.text ?? patch.content ?? s;
+      } catch (_err) {}
+    }
+    s = stripFence(s);
+    const lai = s.match(/^\\lai\s*\{([\s\S]*)\}\s*$/);
+    if (lai) s = lai[1].trim();
+    return String(s ?? '').trim();
+  }
+
+  function commentOldSource(text) {
+    return String(text ?? '').split('\n').map((line) => `% ${line}`).join('\n');
+  }
+
+  function ensureLaiMacroForRoot() {
+    try {
+      const rootPath = State().state.project.rootFile || State().state.project.activePath || 'main.tex';
+      const file = State().getFile(rootPath);
+      const ensure = NS.ProjectModel?.ensureLaiMacro;
+      if (!file || !State().textFile(file.path) || typeof ensure !== 'function') return;
+      const next = ensure(String(file.text || ''));
+      if (next !== file.text) State().updateFile(rootPath, next);
+    } catch (_err) {}
+  }
+
+  function buildLaiRewriteBlock(oldText, replacement, path) {
+    const id = `lai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const newText = replacementFromAi(replacement);
+    return `\n% BEGIN LAI-OLD id=${id} path=${path || 'main.tex'}\n${commentOldSource(oldText)}\n% END LAI-OLD id=${id}\n\n\\lai{\n${newText}\n}\n`;
+  }
+
+  function applyRewriteSelectionWithLai(context, rawText) {
+    const replacement = replacementFromAi(rawText);
+    if (!replacement.trim()) return { ok: false, message: 'Copilot returned an empty replacement.' };
+    W.__LUMINA_FORCE_LAI_REWRITE = true;
+    const applied = NS.Editor?.applyLaiRewriteFromSelection?.(replacement, { context, source: 'copilot-stage4h' });
+    W.__LUMINA_FORCE_LAI_REWRITE = false;
+    if (!applied?.ok) return applied || { ok: false, message: 'Editor did not apply the LAI rewrite.' };
+    try { ensureLaiMacroForRoot(); State().save(); } catch (_err) {}
+    NS.Main?.toast?.('Stage 4H applied rewrite with \\lai{...}.');
+    return { ...applied, ok: true };
+  }
+
   async function askCopilot() {
     const button = document.getElementById('askCopilotBtn');
     const output = document.getElementById('copilotOutput');
@@ -198,53 +267,35 @@
         { task, context: summarizeContextForTransport(context) }
       );
       const text = extractText(result) || 'No text returned by proxy.';
-      output.textContent = text;
       if (task === 'rewrite-selection-patch') {
-        const appliedDirect = NS.PatchManager?.applyRewriteSelectionDirect?.(context, text, { source: 'copilot-direct-stage4d' });
-        if (appliedDirect) {
-          output.textContent = `Applied Copilot rewrite directly to ${context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D).`;
-          return;
-        }
+        const applied = applyRewriteSelectionWithLai(context, text);
+        output.textContent = applied.ok
+          ? `Stage 4H applied rewrite to ${applied.path}. The old source was commented and the replacement was wrapped in \lai{...}.`
+          : `Stage 4H could not apply rewrite: ${applied.message}
+
+AI response:
+${text}`;
+        return;
       }
-      if (NS.PatchManager?.isPatchWorkflow?.(task)) {
-        const candidate = NS.PatchManager.proposeFromText(text, { task, context });
-        if (shouldAutoApplyTask(task, candidate)) {
-          const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply' });
-          output.textContent = applied
-            ? `Applied Copilot rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D fallback path).`
-            : `${text}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
-        }
-      }
+      output.textContent = text;
+      if (NS.PatchManager?.isPatchWorkflow?.(task)) NS.PatchManager.proposeFromText(text, { task, context });
     } catch (err) {
       const fallback = localFallback(task, prompt, context, err);
-      output.textContent = fallback;
       if (task === 'rewrite-selection-patch') {
-        const appliedDirect = NS.PatchManager?.applyRewriteSelectionDirect?.(context, fallback, { source: 'copilot-direct-stage4d-fallback' });
-        if (appliedDirect) {
-          output.textContent = `Applied fallback rewrite directly to ${context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D).`;
-          return;
-        }
+        const applied = applyRewriteSelectionWithLai(context, fallback);
+        output.textContent = applied.ok
+          ? `Stage 4H fallback applied to ${applied.path} with \lai{...}. AI call failed: ${err?.message || err}`
+          : `Stage 4H fallback could not apply rewrite: ${applied.message}
+
+${fallback}`;
+        return;
       }
-      if (NS.PatchManager?.isPatchWorkflow?.(task)) {
-        const candidate = NS.PatchManager.proposeFromText(fallback, { task, context, fallback: true });
-        if (shouldAutoApplyTask(task, candidate)) {
-          const applied = NS.PatchManager.applyActivePatch({ source: 'copilot-auto-apply-fallback' });
-          output.textContent = applied
-            ? `Applied local fallback rewrite to ${candidate.path || context.activeFile.path || context.project.rootFile}. The old text was commented and the replacement was wrapped in \\lai{...} (Stage 4D fallback path).`
-            : `${fallback}\n\nPatch was generated but could not be applied automatically. Use Apply patch.`;
-        }
-      }
+      output.textContent = fallback;
+      if (NS.PatchManager?.isPatchWorkflow?.(task)) NS.PatchManager.proposeFromText(fallback, { task, context, fallback: true });
     } finally {
       if (button) button.disabled = false;
       renderContextChips();
     }
-  }
-
-  function shouldAutoApplyTask(task, candidate) {
-    if (task !== 'rewrite-selection-patch') return false;
-    if (!candidate || candidate.operation !== 'replace-selection') return false;
-    const patch = candidate.patch || {};
-    return Number.isFinite(Number(patch.start)) && Number.isFinite(Number(patch.end)) && Number(patch.end) >= Number(patch.start);
   }
 
   function buildUserPrompt(task, prompt, context) {
@@ -253,14 +304,11 @@
       ? `Return ONLY valid JSON using this shape:
 {
   "summary": "short human-readable summary",
-  "targetPath": "${context.activeFile.path || context.project.rootFile || 'main.tex'}",
-  "start": ${Number(context.selection.start || 0)},
-  "end": ${Number(context.selection.end || 0)},
-  "replacementLatex": "replacement LaTeX only, without \\lai and without old text comments"
+  "replacementLatex": "replacement LaTeX only"
 }
-Do not include Markdown fences. Do not wrap the replacement in \\lai; Latexai will comment the old block and wrap the new text in \\lai{...}.`
-      : NS.PatchManager?.isPatchWorkflow?.(task)
-      ? `Return ONLY valid JSON using this shape:
+Do not include Markdown fences. Do not include the old selected text. Do not wrap in \lai; Latexai will add the comments and \lai{...}.`
+      : (NS.PatchManager?.isPatchWorkflow?.(task)
+        ? `Return ONLY valid JSON using this shape:
 {
   "summary": "short human-readable summary",
   "patch": {
@@ -272,7 +320,7 @@ Do not include Markdown fences. Do not wrap the replacement in \\lai; Latexai wi
   }
 }
 Prefer replace-selection when selected LaTeX is provided. Prefer find-replace when fixing a specific source span. Do not include Markdown fences.`
-      : 'Return concise advice. Include exact LaTeX snippets only when useful.';
+        : 'Return concise advice. Include exact LaTeX snippets only when useful.');
     return [
       `Workflow: ${task}`,
       outputMode,
@@ -281,15 +329,13 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
       context.selection.text ? `Selected LaTeX from ${context.activeFile.path}, chars ${context.selection.start}-${context.selection.end}:\n${context.selection.text}` : 'Selected LaTeX: none',
       `Diagnostics:\n${problemLines}`,
       `Compile log tail:\n${context.diagnostics.logTail || '(none)'}`,
-      `Full project source. Use this for context, but only edit the selected block unless explicitly asked otherwise:\n${context.fullProjectSource || '(none)'}`,
       `Active file content:\n${context.activeFile.text || '(none)'}`
     ].join('\n\n---\n\n');
   }
 
   function summarizeContextForTransport(context) {
     return {
-      project: Object.assign({}, context.project, { fullSourceIncluded: true }),
-      projectFiles: context.projectFiles.map((f) => ({ path: f.path, kind: f.kind, length: f.text.length })),
+      project: context.project,
       activePath: context.activeFile.path,
       selectionRange: { start: context.selection.start, end: context.selection.end, length: context.selection.text.length },
       diagnostics: context.diagnostics.problems.slice(0, 8),
@@ -300,7 +346,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   function systemPromptFor(task) {
     const base = 'You are Lumina LaTeX Copilot inside a browser-based Overleaf-like editor. Be precise, preserve mathematical meaning, avoid unnecessary rewrites, and never invent packages unless needed.';
     if (task === 'fix-error-patch') return `${base} Fix the current LaTeX compile error. Return exactly one safe patch as valid JSON.`;
-    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Use the full project source for context. Return valid JSON with replacementLatex only. Do not include \lai or old-text comments; Latexai will insert those.`;
+    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Return ONLY JSON with replacementLatex. Latexai will wrap it in \lai{...}.`;
     if (task === 'insert-section-patch') return `${base} Draft a polished LaTeX section or subsection to insert. Return valid JSON patch.`;
     if (task === 'beamer-outline-patch') return `${base} Return a Beamer-compatible outline with frames as a JSON patch.`;
     if (task === 'table-helper-patch') return `${base} Create a clean LaTeX table, tabular, align, or array environment as a JSON patch.`;
@@ -328,18 +374,10 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
       }, null, 2);
     }
     const insertion = prompt || context.selection.text || '% Add your LaTeX here.';
-    if (task === 'rewrite-selection-patch' && context.selection.text) {
-      return JSON.stringify({
-        summary: `${message}. Local fallback rewrites the selected source using the available prompt/selection.`,
-        targetPath: context.activeFile.path || context.project.rootFile || 'main.tex',
-        start: Number(context.selection.start || 0),
-        end: Number(context.selection.end || 0),
-        replacementLatex: insertion
-      }, null, 2);
-    }
+    if (task === 'rewrite-selection-patch') return JSON.stringify({ summary: `${message}. Local fallback replacement.`, replacementLatex: insertion }, null, 2);
     return JSON.stringify({
       summary: `${message}. Local fallback will insert the available prompt/selection as a draft snippet.`,
-      patch: { path: context.activeFile.path || context.project.rootFile || 'main.tex', operation: context.selection.text ? 'replace-selection' : 'insert-at-cursor', text: insertion, laiWrap: task === 'rewrite-selection-patch' }
+      patch: { path: context.activeFile.path || context.project.rootFile || 'main.tex', operation: context.selection.text ? 'replace-selection' : 'insert-at-cursor', text: insertion }
     }, null, 2);
   }
 
@@ -365,14 +403,13 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   function insertCopilotResult() {
     const text = copilotText();
     if (!text.trim() || text.startsWith('Copilot responses')) return;
-    if (NS.PatchManager?.getActivePatch?.()) {
-      NS.PatchManager.applyActivePatch({ source: 'insert-button-active-patch' });
-      return;
-    }
     const task = document.getElementById('copilotTask')?.value || 'raw-advice';
-    if (NS.PatchManager?.isPatchWorkflow?.(task)) {
-      NS.PatchManager.proposeFromText(text, { task, source: 'insert-button-parse' });
-      if (NS.PatchManager.applyActivePatch({ source: 'insert-button-apply' })) return;
+    if (task === 'rewrite-selection-patch') {
+      const applied = applyRewriteSelectionWithLai(captureContext(), text);
+      document.getElementById('copilotOutput').textContent = applied.ok
+        ? `Stage 4H applied existing Copilot output to ${applied.path} with \lai{...}.`
+        : `Stage 4H could not apply existing output: ${applied.message}`;
+      return;
     }
     NS.Editor?.insertText?.('\n' + text + '\n');
   }
@@ -380,22 +417,15 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   function replaceWithCopilotResult() {
     const text = copilotText();
     if (!text.trim() || text.startsWith('Copilot responses')) return;
-    if (NS.PatchManager?.getActivePatch?.()) {
-      NS.PatchManager.applyActivePatch({ source: 'replace-button-active-patch' });
-      return;
-    }
-    const task = document.getElementById('copilotTask')?.value || 'raw-advice';
-    if (NS.PatchManager?.isPatchWorkflow?.(task)) {
-      NS.PatchManager.proposeFromText(text, { task, source: 'replace-button-parse' });
-      if (NS.PatchManager.applyActivePatch({ source: 'replace-button-apply' })) return;
-    }
-    NS.Editor?.replaceSelection?.(text, true);
+    const applied = applyRewriteSelectionWithLai(captureContext(), text);
+    document.getElementById('copilotOutput').textContent = applied.ok
+      ? `Stage 4H applied existing Copilot output to ${applied.path} with \lai{...}.`
+      : `Stage 4H could not apply with \lai{...}: ${applied.message}`;
   }
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.Copilot = {
-    STAGE: 'stage4e-editor-forced-lai-guard-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips };
+  NS.Copilot = { STAGE: 'stage4h-simple-hard-lai-rewrite-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips, applyRewriteSelectionWithLai };
 })();
