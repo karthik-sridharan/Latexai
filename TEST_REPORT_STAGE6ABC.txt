@@ -1,0 +1,12 @@
+Stage 6A-C checks
+=================
+
+PASS node --check js/selection-service.js
+PASS node --check js/patch-service.js
+PASS node --check js/patch-manager.js
+PASS node --check js/copilot.js
+PASS node --check js/lai-stage5e-panel-scroll-pdf-viewer.js
+PASS node tests/stage6-patch-service.test.cjs
+
+SelectionService and PatchService are now first-class modules.
+PatchService inserts the LAI macro after applying rewrites, so root rewrites cannot overwrite the macro.
