@@ -255,3 +255,51 @@ body {
     padding: .26rem .48rem;
   }
 }
+
+
+/* Stage 5G: selectable PDF text layer over rendered pages */
+.lai-pdf-page-wrap {
+  position: relative;
+  display: block;
+  margin: 0 auto 1rem auto;
+  background: white;
+  box-shadow: 0 6px 22px rgba(15,23,42,.22);
+  border-radius: 2px;
+}
+
+.lai-pdf-page-wrap .lai-pdf-page {
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+.lai-pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  pointer-events: auto;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+.lai-pdf-text-layer span,
+.lai-pdf-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+.lai-pdf-text-layer ::selection {
+  background: rgba(47,111,237,.32);
+}
+
+.lai-pdf-text-layer .markedContent {
+  top: 0;
+  height: 0;
+}
