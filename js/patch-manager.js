@@ -1,9 +1,13 @@
+/* Latexai Stage 6C PatchManager
+ * Thin UI wrapper around PatchService. PatchService owns all source mutation.
+ */
 (function () {
   'use strict';
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
+  const STAGE = 'stage6abc-modular-selection-patchservice-1';
 
   let activePatch = null;
 
@@ -13,23 +17,12 @@
       const task = document.getElementById('copilotTask')?.value || 'raw-advice';
       proposeFromText(text, { task, source: 'manual-preview' });
     });
-    document.getElementById('applyCopilotPatchBtn')?.addEventListener('click', applyActivePatch);
+    document.getElementById('applyCopilotPatchBtn')?.addEventListener('click', () => applyActivePatch({ source: 'apply-button' }));
     document.getElementById('discardCopilotPatchBtn')?.addEventListener('click', discardPatch);
   }
 
   function isPatchWorkflow(task) {
     return /patch$/.test(String(task || '')) || ['fix-error-patch','rewrite-selection-patch','insert-section-patch','beamer-outline-patch','table-helper-patch'].includes(task);
-  }
-
-  function proposeFromText(rawText, meta = {}) {
-    const task = meta.task || document.getElementById('copilotTask')?.value || 'raw-advice';
-    const file = State().getActiveFile();
-    const selection = NS.Editor?.getSelection?.() || { text: '', start: 0, end: 0 };
-    const parsed = parseAiPatch(rawText);
-    const candidate = normalizeCandidate(parsed, rawText, { task, file, selection, meta });
-    activePatch = candidate;
-    renderPatch(candidate);
-    return candidate;
   }
 
   function parseAiPatch(rawText) {
@@ -51,31 +44,45 @@
     return null;
   }
 
-  function normalizeCandidate(parsed, rawText, context) {
-    const file = context.file || {};
-    const selection = context.selection || { text: '', start: 0, end: 0 };
-    const task = context.task || 'raw-advice';
+  function cleanCopilotText(text) {
+    return NS.PatchService?.extractReplacement?.(text) || String(text || '').trim();
+  }
+
+  function normalizeCandidate(parsed, rawText, context = {}) {
+    const task = context.task || document.getElementById('copilotTask')?.value || 'raw-advice';
+    const file = context.file || State().getActiveFile() || {};
+    const selection = context.selection || NS.SelectionService?.getSourceSelection?.({ allowStale: true }) || NS.Editor?.getSelection?.() || {};
     let summary = parsed?.summary || parsed?.explanation || '';
+
     let patch = parsed?.patch || (Array.isArray(parsed?.patches) ? parsed.patches[0] : null);
     if (patch && typeof patch === 'string') patch = { text: patch };
-    if (!patch && parsed?.path && parsed?.text) patch = parsed;
+    if (!patch && (parsed?.replacementLatex || parsed?.replacement || parsed?.text || parsed?.content)) {
+      patch = {
+        path: parsed?.targetPath || parsed?.path || selection.path || file.path || State().state.project.activePath || 'main.tex',
+        operation: 'replace-selection',
+        text: parsed.replacementLatex ?? parsed.replacement ?? parsed.text ?? parsed.content,
+        start: parsed.start ?? selection.start,
+        end: parsed.end ?? selection.end,
+        selectionText: selection.text || ''
+      };
+    }
     if (!patch) {
       patch = fallbackPatch(rawText, { task, file, selection });
       summary = summary || fallbackSummary(task, selection);
     }
+
     patch = Object.assign({}, patch);
-    patch.path = State().normalizePath(patch.path || file.path || State().state.project.activePath || 'main.tex');
+    patch.path = State().normalizePath(patch.path || selection.path || file.path || State().state.project.activePath || 'main.tex');
     patch.operation = normalizeOperation(patch.operation || patch.op || taskToOperation(task, selection));
-    patch.text = cleanCopilotText(patch.text ?? patch.replacement ?? patch.content ?? rawText);
-    if (patch.operation === 'find-replace') {
-      patch.find = String(patch.find || selection.text || '');
-      patch.replace = String(patch.replace ?? patch.text ?? '');
-    }
+    patch.text = cleanCopilotText(patch.text ?? patch.replacementLatex ?? patch.replacement ?? patch.content ?? rawText);
+
     if (patch.operation === 'replace-selection') {
-      patch.start = Number.isFinite(patch.start) ? patch.start : selection.start;
-      patch.end = Number.isFinite(patch.end) ? patch.end : selection.end;
-      patch.selectionText = selection.text || '';
+      patch.start = Number.isFinite(Number(patch.start)) ? Number(patch.start) : Number(selection.start || 0);
+      patch.end = Number.isFinite(Number(patch.end)) ? Number(patch.end) : Number(selection.end || 0);
+      patch.selectionText = patch.selectionText || selection.text || '';
+      patch.laiWrap = true;
     }
+
     return {
       schema: 'lumina-latex-ai-patch-v1',
       summary: summary || 'Copilot proposed a source edit.',
@@ -90,39 +97,79 @@
   function fallbackPatch(rawText, { task, file, selection }) {
     const text = cleanCopilotText(rawText);
     if (task === 'raw-advice' || task === 'explain-log') {
-      return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: `% Copilot note:\n% ${text.split('\n').join('\n% ')}\n` };
+      return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: `% Copilot note:\n% ${String(text).split('\n').join('\n% ')}\n` };
     }
-    if (selection.text) return { path: file?.path || 'main.tex', operation: 'replace-selection', text, start: selection.start, end: selection.end };
+    if (selection?.text) {
+      return { path: selection.path || file?.path || 'main.tex', operation: 'replace-selection', text, start: selection.start, end: selection.end, selectionText: selection.text, laiWrap: true };
+    }
     return { path: file?.path || 'main.tex', operation: 'insert-at-cursor', text: '\n' + text + '\n' };
   }
 
   function fallbackSummary(task, selection) {
     if (task === 'fix-error-patch') return 'Patch inferred from Copilot response for the current compile diagnostic.';
-    if (task === 'rewrite-selection-patch') return selection.text ? 'Patch will replace the current selection.' : 'No selection was active; patch will insert at cursor.';
-    if (task === 'insert-section-patch') return 'Patch will insert a drafted section at the cursor.';
-    if (task === 'beamer-outline-patch') return 'Patch will insert Beamer frame source.';
-    if (task === 'table-helper-patch') return 'Patch will insert table or alignment LaTeX.';
-    return 'Patch inferred from Copilot text.';
+    if (task === 'rewrite-selection-patch') return selection?.text ? 'Patch will replace the current selected source.' : 'No source selection was active; patch will insert at cursor.';
+    return 'Patch inferred from Copilot response.';
   }
 
-  function normalizeOperation(value) {
-    const op = String(value || '').toLowerCase().replace(/_/g, '-');
-    if (['replace-selection','replace-file','insert-at-cursor','find-replace'].includes(op)) return op;
-    if (op === 'insert') return 'insert-at-cursor';
-    if (op === 'replace') return 'replace-selection';
+  function normalizeOperation(op) {
+    const value = String(op || '').toLowerCase().replace(/_/g, '-');
+    if (['replace-file','find-replace','replace-selection','insert-at-cursor'].includes(value)) return value;
+    if (value === 'replace') return 'replace-selection';
+    if (value === 'insert') return 'insert-at-cursor';
     return 'insert-at-cursor';
   }
 
   function taskToOperation(task, selection) {
-    if (task === 'rewrite-selection-patch') return selection.text ? 'replace-selection' : 'insert-at-cursor';
-    if (task === 'fix-error-patch') return selection.text ? 'replace-selection' : 'insert-at-cursor';
+    if (task === 'fix-error-patch') return 'find-replace';
+    if (selection?.text) return 'replace-selection';
     return 'insert-at-cursor';
   }
 
-  function cleanCopilotText(text) {
-    let out = String(text || '').trim();
-    out = out.replace(/^```(?:latex|tex)?\s*/i, '').replace(/```$/i, '').trim();
-    return out;
+  function proposeFromText(rawText, meta = {}) {
+    const task = meta.task || document.getElementById('copilotTask')?.value || 'raw-advice';
+    const file = State().getActiveFile();
+    const selection = NS.SelectionService?.getSourceSelection?.({ allowStale: true }) || NS.Editor?.getSelection?.() || { text: '', start: 0, end: 0 };
+    const parsed = parseAiPatch(rawText);
+    const candidate = normalizeCandidate(parsed, rawText, { task, file, selection, meta });
+    activePatch = candidate;
+    renderPatch(candidate);
+    return candidate;
+  }
+
+  function applyActivePatch(_options = {}) {
+    if (!activePatch) return false;
+    const candidate = activePatch;
+    const patch = candidate.patch || {};
+
+    let result;
+    if (candidate.task === 'rewrite-selection-patch' || patch.laiWrap || patch.operation === 'replace-selection') {
+      result = NS.PatchService?.applyRewrite?.({
+        path: patch.path || candidate.path,
+        start: patch.start,
+        end: patch.end,
+        oldText: patch.selectionText,
+        replacement: patch.text,
+        source: 'patch-manager'
+      });
+    } else {
+      result = NS.PatchService?.applyPlainPatch?.(candidate);
+    }
+
+    if (!result?.ok) {
+      State().setLog(result?.message || 'Patch failed.', [{ level: 'error', message: result?.message || 'Patch failed.', line: null }]);
+      NS.Main?.toast?.(result?.message || 'Patch failed.');
+      return false;
+    }
+
+    NS.Main?.toast?.(candidate.task === 'rewrite-selection-patch' || patch.laiWrap ? 'AI rewrite applied in \\lai{...}.' : 'Copilot patch applied.');
+    discardPatch();
+    return true;
+  }
+
+  function discardPatch() {
+    activePatch = null;
+    const review = document.getElementById('patchReview');
+    if (review) review.classList.add('hidden');
   }
 
   function renderPatch(candidate) {
@@ -130,159 +177,37 @@
     const meta = document.getElementById('patchMeta');
     const summary = document.getElementById('patchSummary');
     const diff = document.getElementById('patchDiff');
-    if (!review) return;
+    if (!review || !candidate) return;
     review.classList.remove('hidden');
-    if (meta) meta.textContent = `${candidate.operation} · ${candidate.path}`;
-    if (summary) summary.textContent = candidate.summary || 'Review this patch before applying it.';
-    if (diff) diff.textContent = buildPreview(candidate);
+    if (meta) meta.textContent = `${candidate.task} · ${candidate.operation} · ${candidate.path}`;
+    if (summary) summary.textContent = candidate.summary || 'Copilot proposed a source edit.';
+    if (diff) diff.textContent = formatPatchPreview(candidate);
   }
 
-  function buildPreview(candidate) {
-    const file = State().getFile(candidate.path) || State().getActiveFile();
-    const current = String(file?.text || '');
+  function formatPatchPreview(candidate) {
     const patch = candidate.patch || {};
-    let before = '';
-    let after = '';
-    if (candidate.operation === 'replace-file') {
-      before = current;
-      after = patch.text || '';
-    } else if (candidate.operation === 'find-replace') {
-      before = patch.find || '';
-      after = patch.replace ?? patch.text ?? '';
-    } else if (candidate.operation === 'replace-selection') {
-      const start = clamp(Number(patch.start ?? 0), 0, current.length);
-      const end = clamp(Number(patch.end ?? start), start, current.length);
-      before = current.slice(start, end) || patch.selectionText || '(empty selection)';
-      after = patch.text || '';
-    } else {
-      before = '(insert at cursor)';
-      after = patch.text || '';
+    const lines = [
+      `Path: ${patch.path || candidate.path}`,
+      `Operation: ${patch.operation || candidate.operation}`,
+    ];
+    if (patch.operation === 'replace-selection') {
+      lines.push(`Range: ${patch.start ?? '?'}-${patch.end ?? '?'}`);
+      lines.push('');
+      lines.push('Old source will be commented and new source will be wrapped in \\lai{...}.');
     }
-    return simpleDiff(before, after);
-  }
-
-  function simpleDiff(before, after) {
-    const a = String(before || '').split('\n');
-    const b = String(after || '').split('\n');
-    const out = ['--- current', '+++ proposed'];
-    const max = Math.max(a.length, b.length);
-    for (let i = 0; i < max; i++) {
-      if (a[i] === b[i]) {
-        if (a[i] !== undefined) out.push('  ' + a[i]);
-      } else {
-        if (a[i] !== undefined) out.push('- ' + a[i]);
-        if (b[i] !== undefined) out.push('+ ' + b[i]);
-      }
-      if (out.length > 180) {
-        out.push('… diff truncated …');
-        break;
-      }
+    if (patch.find) {
+      lines.push('');
+      lines.push('Find:');
+      lines.push(String(patch.find));
     }
-    return out.join('\n');
-  }
-
-
-  function shouldLaiWrap(candidate) {
-    return candidate?.task === 'rewrite-selection-patch' || /rewrite/i.test(String(candidate?.task || '')) || candidate?.patch?.laiWrap === true;
-  }
-
-  function latexCommentBlock(text) {
-    return String(text || '').split('\n').map((line) => `% ${line}`).join('\n');
-  }
-
-  function extractReplacementForLai(text) {
-    let s = cleanCopilotText(text);
-    if (/^\s*\{[\s\S]*\}\s*$/.test(s)) {
-      try {
-        const obj = JSON.parse(s);
-        const patch = obj.patch || (Array.isArray(obj.patches) ? obj.patches[0] : null) || {};
-        s = obj.replacementLatex ?? obj.replacement ?? obj.text ?? obj.content ?? patch.replacementLatex ?? patch.replacement ?? patch.text ?? patch.content ?? s;
-      } catch (_err) {}
-    }
-    const lai = String(s).trim().match(/^\\lai\s*\{([\s\S]*)\}\s*$/);
-    return lai ? lai[1].trim() : String(s || '').trim();
-  }
-
-  function laiReplacement(oldText, newText, path) {
-    const id = `lai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const replacement = extractReplacementForLai(newText);
-    return `\n% BEGIN LAI-OLD id=${id} path=${path || 'main.tex'}\n${latexCommentBlock(oldText)}\n% END LAI-OLD id=${id}\n\n\\lai{\n${replacement}\n}\n`;
-  }
-
-  function ensureLaiMacroForRoot() {
-    try {
-      const project = State().state.project;
-      const rootPath = project.rootFile || project.activePath;
-      const file = State().getFile(rootPath);
-      const ensure = NS.ProjectModel?.ensureLaiMacro;
-      if (!file || !State().textFile(file.path) || typeof ensure !== 'function') return;
-      const next = ensure(String(file.text || ''));
-      if (next !== file.text) State().updateFile(rootPath, next);
-    } catch (_err) {}
-  }
-
-  function applyActivePatch() {
-    if (!activePatch) return false;
-    const candidate = activePatch;
-    const file = State().getFile(candidate.path);
-    if (!file) {
-      State().setLog(`Copilot patch target not found: ${candidate.path}`, [{ level: 'error', message: `Patch target not found: ${candidate.path}`, line: null }]);
-      return false;
-    }
-    const patch = candidate.patch || {};
-    const current = String(file.text || '');
-    const forceLai = shouldLaiWrap(candidate);
-    if (State().state.project.activePath !== file.path) {
-      State().setActivePath(file.path);
-      NS.Editor?.render?.();
-    }
-    if (candidate.operation === 'replace-file') {
-      State().updateFile(file.path, forceLai ? laiReplacement(current, patch.text || '', file.path) : (patch.text || ''));
-      if (forceLai) ensureLaiMacroForRoot();
-      NS.Editor?.render?.();
-    } else if (candidate.operation === 'find-replace') {
-      const find = String(patch.find || '');
-      if (!find || !current.includes(find)) {
-        State().setLog('Copilot patch could not find the requested source text.', [{ level: 'error', message: 'Patch find text not found.', file: file.path, line: null }]);
-        return false;
-      }
-      const replacement = forceLai ? laiReplacement(find, patch.replace ?? patch.text ?? '', file.path) : String(patch.replace ?? patch.text ?? '');
-      State().updateFile(file.path, current.replace(find, replacement));
-      if (forceLai) ensureLaiMacroForRoot();
-      NS.Editor?.render?.();
-    } else if (candidate.operation === 'replace-selection') {
-      const start = clamp(Number(patch.start || 0), 0, current.length);
-      const end = clamp(Number(patch.end || start), start, current.length);
-      const oldText = current.slice(start, end) || patch.selectionText || '';
-      const replacement = forceLai ? laiReplacement(oldText, patch.text || '', file.path) : (patch.text || '');
-      State().updateFile(file.path, current.slice(0, start) + replacement + current.slice(end));
-      if (forceLai) ensureLaiMacroForRoot();
-      NS.Editor?.render?.();
-    } else {
-      const selection = NS.Editor?.getSelection?.() || { start: current.length, end: current.length };
-      const pos = clamp(Number(selection.start ?? current.length), 0, current.length);
-      const insertion = forceLai ? laiReplacement('', patch.text || '', file.path) : ('\n' + (patch.text || '') + '\n');
-      State().updateFile(file.path, current.slice(0, pos) + insertion + current.slice(pos));
-      if (forceLai) ensureLaiMacroForRoot();
-      NS.Editor?.render?.();
-    }
-    State().save();
-    NS.Preview?.scheduleDraftPreview?.();
-    NS.Main?.toast?.(forceLai ? 'Stage 4H patch applied in \\lai{...}.' : 'Copilot patch applied.');
-    discardPatch();
-    return true;
-  }
-
-  function discardPatch() {
-    activePatch = null;
-    document.getElementById('patchReview')?.classList.add('hidden');
-  }
-
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, Number(value) || 0));
+    lines.push('');
+    lines.push('Text:');
+    lines.push(String(patch.text || '').slice(0, 6000));
+    return lines.join('\n');
   }
 
   NS.PatchManager = {
+    STAGE,
     init,
     isPatchWorkflow,
     proposeFromText,

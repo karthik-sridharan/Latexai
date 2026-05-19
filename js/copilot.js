@@ -103,7 +103,7 @@
 
   function captureContext() {
     const file = State().getActiveFile();
-    const selection = NS.Editor?.getSelection?.() || { text: '', start: 0, end: 0 };
+    const selection = NS.SelectionService?.getSourceSelection?.({ allowStale: true }) || NS.Editor?.getSelection?.() || { text: '', start: 0, end: 0 };
     const problems = State().state.lastProblems || [];
     const rootFile = State().state.project.rootFile;
     const root = State().getFile(rootFile);
@@ -234,14 +234,16 @@
   }
 
   function applyRewriteSelectionWithLai(context, rawText) {
-    const replacement = replacementFromAi(rawText);
-    if (!replacement.trim()) return { ok: false, message: 'Copilot returned an empty replacement.' };
-    W.__LUMINA_FORCE_LAI_REWRITE = true;
-    const applied = NS.Editor?.applyLaiRewriteFromSelection?.(replacement, { context, source: 'copilot-stage4h' });
-    W.__LUMINA_FORCE_LAI_REWRITE = false;
-    if (!applied?.ok) return applied || { ok: false, message: 'Editor did not apply the LAI rewrite.' };
-    try { ensureLaiMacroForRoot(); State().save(); } catch (_err) {}
-    NS.Main?.toast?.('Stage 4H applied rewrite with \\lai{...}.');
+    const selection = context?.selection || NS.SelectionService?.getSourceSelection?.({ allowStale: true }) || {};
+    const applied = NS.PatchService?.applyRewrite?.({
+      path: selection.path || context?.activeFile?.path || context?.project?.rootFile || 'main.tex',
+      start: selection.start,
+      end: selection.end,
+      oldText: selection.text,
+      replacement: rawText,
+      source: 'copilot-stage6'
+    });
+    if (!applied?.ok) return applied || { ok: false, message: 'PatchService did not apply the LAI rewrite.' };
     return { ...applied, ok: true };
   }
 
@@ -270,8 +272,8 @@
       if (task === 'rewrite-selection-patch') {
         const applied = applyRewriteSelectionWithLai(context, text);
         output.textContent = applied.ok
-          ? `Stage 4H applied rewrite to ${applied.path}. The old source was commented and the replacement was wrapped in \lai{...}.`
-          : `Stage 4H could not apply rewrite: ${applied.message}
+          ? `Stage 6 applied rewrite to ${applied.path}. The old source was commented and the replacement was wrapped in \lai{...}.`
+          : `Stage 6 could not apply rewrite: ${applied.message}
 
 AI response:
 ${text}`;
@@ -284,8 +286,8 @@ ${text}`;
       if (task === 'rewrite-selection-patch') {
         const applied = applyRewriteSelectionWithLai(context, fallback);
         output.textContent = applied.ok
-          ? `Stage 4H fallback applied to ${applied.path} with \lai{...}. AI call failed: ${err?.message || err}`
-          : `Stage 4H fallback could not apply rewrite: ${applied.message}
+          ? `Stage 6 fallback applied to ${applied.path} with \lai{...}. AI call failed: ${err?.message || err}`
+          : `Stage 6 fallback could not apply rewrite: ${applied.message}
 
 ${fallback}`;
         return;
@@ -427,5 +429,5 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.Copilot = { STAGE: 'stage4h-simple-hard-lai-rewrite-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips, applyRewriteSelectionWithLai };
+  NS.Copilot = { STAGE: 'stage6abc-modular-selection-patchservice-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips, applyRewriteSelectionWithLai };
 })();
