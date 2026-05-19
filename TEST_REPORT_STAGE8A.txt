@@ -1,0 +1,7 @@
+Stage 8A checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node tests/stage8a-asset-service.test.cjs
+
+AssetService adds image assets and inserts figure snippets without touching AI rewrite paths.
