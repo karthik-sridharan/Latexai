@@ -1,0 +1,8 @@
+Stage 9E checks
+===============
+
+PASS node --check js/asset-service.js
+PASS node --check js/tikz-maker-service.js
+PASS node tests/stage9e-direct-tikz-insert-no-png.test.cjs
+
+TikZ is now inserted directly by default, and saved external TikZ is forced to .tex/.tikz, never .png.
