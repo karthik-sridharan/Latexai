@@ -1,0 +1,9 @@
+Stage 9G checks
+===============
+
+PASS node --check js/compiler-provider.js
+PASS node --check js/asset-service.js
+PASS node --check js/tikz-maker-service.js
+PASS node tests/stage9g-compile-normalizepath-cursor-fix.test.cjs
+
+CompilerProvider now defines normalizePath and direct TikZ insertion prefers remembered source cursor.
