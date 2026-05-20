@@ -68,3 +68,8 @@ Stage 13F figure generation notes:
 - Its title/content should describe the desired figure clearly.
 - Do not include image data in the deck JSON.
 - Figure assets are generated later and saved under /figures.
+
+
+Stage 13G package notes:
+- Keep all figure references relative to files in /talk, usually ../figures/name.svg or ../figures/name.tikz.tex.
+- The exporter validates the final package and can create manifest/README/ZIP.
