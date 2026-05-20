@@ -1,0 +1,7 @@
+Stage 13F checks
+================
+
+PASS node --check js/presentation-export-service.js
+PASS node tests/stage13f-ai-figure-assets-for-talk-export.test.cjs
+
+Presentation exporter can generate AI SVG/TikZ figure assets under /figures and use them in HTML/Beamer exports.
