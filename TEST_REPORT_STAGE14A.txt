@@ -1,0 +1,7 @@
+Stage 14A checks
+================
+
+PASS node --check js/compile-root-service.js
+PASS node tests/stage14a-active-standalone-compile-root.test.cjs
+
+Compile PDF now auto-selects the active standalone .tex file as root, otherwise falls back to normal root/main.tex.
