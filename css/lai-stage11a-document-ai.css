@@ -111,3 +111,21 @@
 .document-ai-help code {
   color: #1d4ed8;
 }
+
+
+/* Stage 11G: resolve red/new vs blue/old paper-level AI edits */
+.document-ai-resolver {
+  border: 1px dashed rgba(29,78,216,.35);
+  border-radius: 14px;
+  padding: .7rem;
+  background: rgba(239,246,255,.55);
+}
+
+.document-ai-resolver h4 {
+  margin: 0 0 .35rem;
+  font-size: .9rem;
+}
+
+.document-ai-resolver select {
+  width: 100%;
+}
