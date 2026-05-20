@@ -104,3 +104,10 @@
 .document-ai-output {
   tab-size: 2;
 }
+
+
+/* Stage 11F: old paper content is preserved with \laiold{...} in blue */
+.document-ai-status code,
+.document-ai-help code {
+  color: #1d4ed8;
+}
