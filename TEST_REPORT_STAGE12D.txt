@@ -1,0 +1,5 @@
+Stage 12D checks
+================
+
+PASS node --check js/citation-verifier-service.js
+PASS node tests/stage12d-citation-links-ai-audit.test.cjs
