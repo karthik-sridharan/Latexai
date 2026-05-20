@@ -1,0 +1,7 @@
+Stage 13B checks
+================
+
+PASS node --check js/presentation-export-service.js
+PASS node tests/stage13b-presentation-maker-compatible-export.test.cjs
+
+Exporter now emits Presentation Maker-compatible slides using leftBlocks/rightBlocks so content is visible on import.
