@@ -55,3 +55,16 @@ Validation rules:
 - Do not leave content stranded in bullets or latex fields without visible blocks.
 - Use valid block modes only: panel, plain, placeholder, pseudocode, pseudocode-latex, custom.
 - If a slide has equations, put them in a visible pseudocode-latex block.
+
+
+Multi-format export notes:
+- Figure-like content should be represented as visible placeholder/custom blocks with descriptive content.
+- Do not embed image data in JSON.
+- If a figure would be useful, use a block with mode "placeholder" or "custom" and a clear title/content describing the figure.
+
+
+Stage 13F figure generation notes:
+- For any slide that would benefit from a diagram, add a visible block with mode "placeholder" or "custom".
+- Its title/content should describe the desired figure clearly.
+- Do not include image data in the deck JSON.
+- Figure assets are generated later and saved under /figures.
