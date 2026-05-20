@@ -1,0 +1,7 @@
+Stage 12A checks
+================
+
+PASS node --check js/citation-ai-service.js
+PASS node tests/stage12a-ai-citation-filler.test.cjs
+
+AI citation filler scans \citeai{...}, asks AI for JSON citation suggestions, replaces placeholders, and appends BibTeX entries.
