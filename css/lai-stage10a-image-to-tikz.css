@@ -114,3 +114,23 @@
 .image-tikz-diagnostic.active {
   display: block;
 }
+
+
+/* Stage 10H: returned TikZ inspection / insert anyway */
+.image-tikz-returned {
+  display: none;
+  max-height: 260px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #f8fafc;
+  background: #172033;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+}
+
+.image-tikz-returned.active {
+  display: block;
+}
