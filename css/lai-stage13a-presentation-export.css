@@ -1,0 +1,74 @@
+/* Latexai Stage 13A: paper-to-presentation exporter */
+.presentation-export-card {
+  border: 1px solid rgba(15,23,42,.12);
+  background: rgba(255,255,255,.92);
+  border-radius: 16px;
+  padding: .85rem;
+  margin-top: .85rem;
+  box-shadow: 0 6px 20px rgba(15,23,42,.06);
+}
+
+.presentation-export-card h3 { margin: 0 0 .35rem; font-size: 1rem; }
+
+.presentation-export-grid { display: grid; gap: .55rem; }
+
+.presentation-export-help {
+  font-size: .72rem;
+  line-height: 1.35;
+  color: #64748b;
+}
+
+.presentation-export-card label {
+  display: grid;
+  gap: .25rem;
+  font-size: .76rem;
+  font-weight: 850;
+  color: #334155;
+}
+
+.presentation-export-card textarea,
+.presentation-export-card select,
+.presentation-export-card input {
+  border: 1px solid rgba(15,23,42,.14);
+  border-radius: 12px;
+  padding: .5rem .6rem;
+  font: inherit;
+  background: #fff;
+}
+
+.presentation-export-card textarea { resize: vertical; min-height: 64px; }
+
+.presentation-export-two {
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.presentation-export-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+.presentation-export-status {
+  font-size: .78rem;
+  color: #475569;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.presentation-export-output {
+  display: none;
+  max-height: 360px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+}
+
+.presentation-export-output.active { display: block; }
+
+@media (max-width: 760px) {
+  .presentation-export-two { grid-template-columns: 1fr; }
+}
