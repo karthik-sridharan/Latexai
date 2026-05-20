@@ -90,3 +90,9 @@
 .citation-verifier-actions .primary {
   font-weight: 850;
 }
+
+
+/* Stage 12D: citation links and AI audit */
+.citation-verifier-actions button {
+  white-space: nowrap;
+}
