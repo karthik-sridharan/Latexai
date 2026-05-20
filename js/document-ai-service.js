@@ -1,21 +1,66 @@
-/* Latexai Stage 11A DocumentAIService
- * Stage: stage11a-document-ai-appendix-review-1
+/* Latexai Stage 11D DocumentAIService
+ * Stage: stage11d-frontend-developer-prompts-1
  *
- * Adds a modular document-level AI workflow that appends an AI review/suggestions
- * section to the paper. This is the safe first paper-level mode: no in-place
- * rewrites yet, so it should not disturb the selection, figure, compile, or
- * GitHub sync paths.
+ * Paper-level AI prompts are developer-editable frontend files under /prompt/.
+ * They are shipped with the static frontend and fetched at runtime. They are NOT
+ * created inside the user's paper project and are NOT editable through the app UI.
  */
 (function () {
   'use strict';
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage11a-document-ai-appendix-review-1';
+  const STAGE = 'stage11d-frontend-developer-prompts-1';
+
+  const PROMPT_BASE = 'prompt/';
+  const COMMON_PROMPT_PATH = 'prompt/ai-document-common.txt';
+  const WORKFLOW_PROMPTS = {
+    review: 'prompt/ai-review-and-suggestions.txt',
+    remake: 'prompt/ai-total-remake-plan.txt',
+    ranking: 'prompt/ai-ranking-acceptance-improver.txt',
+    competitive: 'prompt/ai-competitive-agent-improver.txt'
+  };
+
+  const FALLBACK_PROMPTS = {
+    [COMMON_PROMPT_PATH]: [
+      'You are Latexai document-level AI.',
+      '',
+      'Operate on the full LaTeX paper context provided by the frontend.',
+      '',
+      'Current implementation mode:',
+      '- Append-only.',
+      '- Do not rewrite the paper in place.',
+      '- Return LaTeX content for a final appendix/review section only.',
+      '',
+      'Output rules:',
+      '- Return LaTeX only.',
+      '- Do not use Markdown fences.',
+      '- Do not return JSON.',
+      '- Do not include \\documentclass, \\begin{document}, or \\end{document}.',
+      '- Use concrete section/subsection headings, bullet lists, and actionable suggestions.',
+      '',
+      'User instructions:',
+      '{{USER_INSTRUCTIONS}}',
+      '',
+      'Requested mode:',
+      '{{MODE}}',
+      '',
+      'Selected workflow:',
+      '{{WORKFLOW}}',
+      '',
+      'Root file:',
+      '{{ROOT_FILE}}'
+    ].join('\n'),
+    [WORKFLOW_PROMPTS.review]: 'Workflow: Review and suggested improvements. Critically review the paper and return prioritized actionable LaTeX suggestions.',
+    [WORKFLOW_PROMPTS.remake]: 'Workflow: Total remake plan. Propose a large-scale paper remake plan in LaTeX.',
+    [WORKFLOW_PROMPTS.ranking]: 'Workflow: Ranking / acceptance improver. Return ranked recommendations that would improve venue acceptance odds.',
+    [WORKFLOW_PROMPTS.competitive]: 'Workflow: Competitive agent improver. Simulate critic, improver, mathematical clarity checker, and strategist agents.'
+  };
 
   let lastRaw = '';
   let lastSection = '';
   let lastContextSummary = '';
+  let promptCache = new Map();
 
   function State() { return NS.State; }
   function el(id) { return document.getElementById(id); }
@@ -66,11 +111,59 @@
     return State()?.getFile?.(rootPath());
   }
 
+  function allPromptPaths() {
+    return [COMMON_PROMPT_PATH, ...Object.values(WORKFLOW_PROMPTS)];
+  }
+
+  function promptUrl(path) {
+    const clean = String(path || '').replace(/^\/+/, '');
+    const stage = encodeURIComponent(W.LUMINA_LATEX_STAGE || STAGE);
+    return `${clean}?v=${stage}`;
+  }
+
+  async function loadFrontendPrompt(path) {
+    const normalized = normalizePath(path);
+    if (promptCache.has(normalized)) return promptCache.get(normalized);
+
+    try {
+      const response = await fetch(promptUrl(normalized), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      const finalText = text.trim() ? text : (FALLBACK_PROMPTS[normalized] || '');
+      promptCache.set(normalized, finalText);
+      return finalText;
+    } catch (err) {
+      const fallback = FALLBACK_PROMPTS[normalized] || '';
+      promptCache.set(normalized, fallback);
+      setStatus(`Could not load frontend prompt ${normalized}; using bundled fallback. ${err?.message || err}`);
+      return fallback;
+    }
+  }
+
+  async function loadWorkflowPrompts(workflow) {
+    const workflowPath = WORKFLOW_PROMPTS[workflow] || WORKFLOW_PROMPTS.review;
+    const [common, workflowPrompt] = await Promise.all([
+      loadFrontendPrompt(COMMON_PROMPT_PATH),
+      loadFrontendPrompt(workflowPath)
+    ]);
+    return { common, workflowPrompt, workflowPath };
+  }
+
+  function templateFill(template, values) {
+    let out = String(template || '');
+    for (const [key, value] of Object.entries(values || {})) {
+      const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
+      out = out.replace(pattern, String(value ?? ''));
+    }
+    return out;
+  }
+
   function collectProjectContext(maxChars = 70000) {
     const p = project();
     const files = (p.files || [])
       .filter((f) => textFile(f))
       .filter((f) => /\.(tex|bib|md|txt)$/i.test(f.path || ''))
+      .filter((f) => !/^prompt\//i.test(normalizePath(f.path || ''))) // ignore legacy project prompt folders if present
       .sort((a, b) => {
         const ar = normalizePath(a.path) === rootPath() ? 0 : 1;
         const br = normalizePath(b.path) === rootPath() ? 0 : 1;
@@ -91,7 +184,7 @@
       used += header.length + text.length;
     }
 
-    lastContextSummary = `${files.length} text files considered; ${used} chars included. Root: ${rootPath()}`;
+    lastContextSummary = `${files.length} text files considered; ${used} chars included. Root: ${rootPath()}. Frontend /prompt/ files supply AI instructions.`;
     return parts.join('');
   }
 
@@ -99,7 +192,7 @@
     let s = String(raw || '').trim();
     s = s.replace(/^```(?:latex|tex)?\s*/i, '').replace(/```$/i, '').trim();
 
-    // Avoid full-document replacement in Stage 11A. Keep only body-ish content.
+    // Avoid full-document replacement in Stage 11D. Keep only body-ish content.
     s = s.replace(/\\documentclass[\s\S]*?\\begin\{document\}/, '').replace(/\\end\{document\}\s*$/i, '').trim();
 
     if (!s) {
@@ -121,12 +214,12 @@
     const body = cleanAiLatex(sectionLatex);
     return [
       '',
-      `% BEGIN LATEXAI-DOCUMENT-AI stage=11A workflow=${workflow || 'review'} generated=${stamp}`,
+      `% BEGIN LATEXAI-DOCUMENT-AI stage=11D workflow=${workflow || 'review'} generated=${stamp}`,
       '\\clearpage',
       '\\lai{',
       body,
       '}',
-      `% END LATEXAI-DOCUMENT-AI stage=11A workflow=${workflow || 'review'}`,
+      `% END LATEXAI-DOCUMENT-AI stage=11D workflow=${workflow || 'review'}`,
       ''
     ].join('\n');
   }
@@ -143,35 +236,46 @@
     return rootText;
   }
 
-  function buildPromptPayload(workflow, userInstructions, mode) {
+  function workflowLabel(workflow) {
+    return {
+      review: 'Review and suggested improvements',
+      remake: 'Total remake plan',
+      ranking: 'Ranking / acceptance improver',
+      competitive: 'Competitive agent improver'
+    }[workflow] || workflow || 'review';
+  }
+
+  async function buildPromptPayload(workflow, userInstructions, mode) {
     const context = collectProjectContext();
-    const workflowText = {
-      review: 'Review the paper critically and suggest concrete improvements.',
-      remake: 'Propose a total paper remake plan: organization, narrative, theorem/proof changes, experiments, and writing.',
-      ranking: 'Suggest changes that would improve the paper ranking/acceptance odds at a strong venue. Be critical and concrete.',
-      competitive: 'Act as a small committee of competing agents: one attacks the paper, one improves it, one checks mathematical clarity, and one summarizes the best changes.'
-    }[workflow] || 'Review the paper critically and suggest concrete improvements.';
+    const { common, workflowPrompt, workflowPath } = await loadWorkflowPrompts(workflow);
+
+    const values = {
+      USER_INSTRUCTIONS: userInstructions || '(none)',
+      MODE: mode || 'append',
+      WORKFLOW: workflowLabel(workflow),
+      WORKFLOW_KEY: workflow || 'review',
+      ROOT_FILE: rootPath(),
+      PROMPT_FILE: workflowPath
+    };
 
     const input = [
-      'You are Latexai document-level AI.',
-      workflowText,
+      templateFill(common, values),
       '',
-      'Stage 11A mode: append-only. Do not rewrite the paper in place.',
-      'Return LaTeX content for a final appendix/review section only.',
-      'Do not include \\documentclass, \\begin{document}, or \\end{document}.',
-      'Use concrete bullet lists, section/subsection headings, and actionable suggestions.',
-      'If you mention changes to existing sections, name the section and explain the proposed edit.',
+      '--- Workflow-specific frontend prompt file ---',
+      templateFill(workflowPrompt, values),
       '',
-      `User instructions: ${userInstructions || '(none)'}`,
-      `Requested mode: ${mode || 'append'}`,
-      '',
-      'Project context follows:',
+      '--- Project context follows ---',
       context
     ].join('\n');
 
     return {
       instructions: 'Return LaTeX only. No markdown fences. No JSON.',
       input,
+      promptSource: {
+        kind: 'frontend-static-files',
+        commonPrompt: COMMON_PROMPT_PATH,
+        workflowPrompt: workflowPath
+      },
       temperature: 0.2,
       maxOutputTokens: 5000
     };
@@ -183,7 +287,7 @@
     const instructions = String(el('documentAiPrompt')?.value || '').trim();
 
     if (mode !== 'append') {
-      setStatus('Stage 11A only implements append-only mode. In-place LAI rewrites will be added in a later stage.');
+      setStatus('Stage 11D only implements append-only mode. In-place LAI rewrites will be added in a later stage.');
       return null;
     }
 
@@ -192,8 +296,8 @@
       return null;
     }
 
-    setStatus('Running document-level AI review...');
-    const payload = buildPromptPayload(workflow, instructions, mode);
+    setStatus(`Running document-level AI using frontend /prompt/ file for: ${workflowLabel(workflow)}.`);
+    const payload = await buildPromptPayload(workflow, instructions, mode);
 
     try {
       const response = await NS.AIProvider.ask(payload, {
@@ -201,7 +305,10 @@
         context: {
           workflow: `document-ai-${workflow}`,
           mode,
-          rootPath: rootPath()
+          rootPath: rootPath(),
+          promptSource: 'frontend-static-files',
+          commonPromptFile: COMMON_PROMPT_PATH,
+          workflowPromptFile: payload.promptSource.workflowPrompt
         }
       });
       lastRaw = NS.AIProvider.extractText(response);
@@ -210,13 +317,16 @@
         'Document AI output',
         '==================',
         '',
-        `Workflow: ${workflow}`,
+        `Workflow: ${workflowLabel(workflow)}`,
         `Mode: ${mode}`,
+        `Prompt source: frontend /prompt/ files`,
+        `Workflow prompt: ${payload.promptSource.workflowPrompt}`,
+        `Common prompt: ${COMMON_PROMPT_PATH}`,
         `Context: ${lastContextSummary}`,
         '',
         lastSection
       ].join('\n'));
-      setStatus('Document AI generated a review section. Click Append to paper to insert it in \\lai{...}.');
+      setStatus('Document AI generated a review section from frontend /prompt/ files. Click Append to paper to insert it in \\lai{...}.');
       return lastSection;
     } catch (err) {
       setStatus(`Document AI failed: ${err?.message || err}`);
@@ -282,7 +392,7 @@
     card.innerHTML = [
       '<h3>Paper-level AI</h3>',
       '<div class="document-ai-grid">',
-      '  <div class="document-ai-help">Stage 11A is append-only: it adds an AI review/suggestions section at the end of the paper using \\lai{...}. It does not rewrite sections in place yet.</div>',
+      '  <div class="document-ai-help">Stage 11D uses developer-managed static frontend prompt files in <code>/prompt/</code>. End users do not edit these prompts from the paper project; they can only provide one-off extra instructions below.</div>',
       '  <div class="document-ai-two">',
       '    <label>Workflow',
       '      <select id="documentAiWorkflow">',
@@ -299,8 +409,8 @@
       '      </select>',
       '    </label>',
       '  </div>',
-      '  <label>Instructions',
-      '    <textarea id="documentAiPrompt" placeholder="Example: focus on theorem statement clarity, missing citations, and how to improve the narrative."></textarea>',
+      '  <label>Extra one-off instructions',
+      '    <textarea id="documentAiPrompt" placeholder="Example: focus on theorem statement clarity, missing citations, and how to improve the narrative. Frontend /prompt/ files provide the base prompt."></textarea>',
       '  </label>',
       '  <div class="document-ai-actions">',
       '    <button id="runDocumentAiBtn" class="btn mini primary" type="button">Run paper AI</button>',
@@ -308,7 +418,7 @@
       '    <button id="runAppendDocumentAiBtn" class="btn mini primary" type="button">Run + append</button>',
       '    <button id="copyDocumentAiBtn" class="btn mini" type="button">Copy output</button>',
       '  </div>',
-      '  <div id="documentAiStatus" class="document-ai-status">Paper-level AI ready.</div>',
+      '  <div id="documentAiStatus" class="document-ai-status">Paper-level AI ready. Base prompts are developer-managed frontend files in /prompt/.</div>',
       '  <pre id="documentAiOutput" class="document-ai-output"></pre>',
       '</div>'
     ].join('');
@@ -334,7 +444,14 @@
 
   NS.DocumentAIService = {
     STAGE,
+    PROMPT_BASE,
+    COMMON_PROMPT_PATH,
+    WORKFLOW_PROMPTS,
     init,
+    allPromptPaths,
+    promptUrl,
+    loadFrontendPrompt,
+    loadWorkflowPrompts,
     collectProjectContext,
     buildPromptPayload,
     cleanAiLatex,
