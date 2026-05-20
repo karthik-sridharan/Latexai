@@ -1,0 +1,8 @@
+Stage 10F checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage10f-image-to-tikz-backend-first-prompt-fix.test.cjs
+
+Remake+insert TikZ now tries the image backend before asking for a fallback description.
