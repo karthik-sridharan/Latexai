@@ -1,0 +1,7 @@
+Stage 13C checks
+================
+
+PASS node --check js/presentation-export-service.js
+PASS node tests/stage13c-presentation-export-validator-autofix.test.cjs
+
+Presentation exporter now validates and auto-fixes Presentation Maker JSON before save/import.
