@@ -1,5 +1,5 @@
-/* Latexai Stage 10G ImageToTikzService
- * Stage: stage10g-image-to-tikz-no-popup-1
+/* Latexai Stage 10H ImageToTikzService
+ * Stage: stage10h-accept-real-tikz-and-insert-anyway-1
  *
  * Remakes an existing project image asset as editable TikZ.
  * - Lists image assets from AssetService
@@ -13,10 +13,14 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage10g-image-to-tikz-no-popup-1';
+  const STAGE = 'stage10h-accept-real-tikz-and-insert-anyway-1';
 
   let installed = false;
   let selectedPath = '';
+  let latestRawAIText = '';
+  let latestReturnedTikz = '';
+  let latestDecision = null;
+  let latestReturnedFile = null;
 
   function el(id) { return document.getElementById(id); }
 
@@ -147,7 +151,18 @@
     return p.length >= 4;
   }
 
-  function isGenericTikzPlaceholder(tikz, file, prompt) {
+  function hasTikzPicture(text) {
+    const s = String(text || '');
+    return /\\begin\{tikzpicture\}/.test(s) && /\\end\{tikzpicture\}/.test(s);
+  }
+
+  function countTikzDrawingCommands(text) {
+    const s = String(text || '');
+    const matches = s.match(/\\(?:draw|node|path|fill|coordinate|foreach|matrix|graph)\b/g);
+    return matches ? matches.length : 0;
+  }
+
+  function isKnownBadTikzPlaceholder(tikz, file, prompt) {
     const s = String(tikz || '');
     const path = String(file?.path || selectedPath || '');
     const p = String(prompt || '').trim();
@@ -156,11 +171,108 @@
       /\\draw\[rounded corners,\s*thick\]\s*\(0,0\)\s*rectangle\s*\(5,2\.2\)/.test(s) &&
       /\\node\[align=center\]\s*at\s*\(2\.5,1\.1\)/.test(s);
 
-    const saysRemakePath = path && s.includes(`Remake ${path} as TikZ`);
-    const saysPrompt = p && s.includes(p);
-    const saysError = /AI returned|Generated TikZ figure|Remake selected image as TikZ/i.test(s);
+    const labelLooksBad =
+      /AI returned|Generated TikZ figure|Remake selected image as TikZ/i.test(s) ||
+      (path && s.includes(`Remake ${path} as TikZ`)) ||
+      (p && /^remake\s+/i.test(p) && s.includes(p));
 
-    return genericRectangle && (saysRemakePath || saysPrompt || saysError || s.length < 280);
+    // Stage 10H: reject only the exact dumb rectangle/label placeholder family.
+    // Do not reject real simple TikZ drawings just because they are small.
+    return genericRectangle && labelLooksBad;
+  }
+
+  function assessTikzCandidate(tikz, file, prompt) {
+    const s = String(tikz || '').trim();
+    if (!s) return { ok: false, reason: 'empty-output' };
+    if (/AI returned JSON instead of TikZ|AI returned a diagram schema/i.test(s)) {
+      return { ok: false, reason: 'known-error-text' };
+    }
+    if (!hasTikzPicture(s)) {
+      return { ok: false, reason: 'no-tikzpicture' };
+    }
+    if (isKnownBadTikzPlaceholder(s, file, prompt)) {
+      return { ok: false, reason: 'known-generic-rectangle-placeholder' };
+    }
+
+    const commandCount = countTikzDrawingCommands(s);
+    if (commandCount >= 2) {
+      return { ok: true, reason: `accepted-real-tikz-${commandCount}-commands` };
+    }
+
+    // A tiny one-command tikzpicture can still be intentionally valid. Accept it
+    // but mark it as low confidence so the user can inspect/override.
+    return { ok: true, reason: `accepted-low-command-count-${commandCount}` };
+  }
+
+  // Backward-compatible name used by tests/older callers.
+  function isGenericTikzPlaceholder(tikz, file, prompt) {
+    return isKnownBadTikzPlaceholder(tikz, file, prompt);
+  }
+
+  function setReturnedTikz(raw, tikz, decision, file, source = 'remake') {
+    latestRawAIText = String(raw || '');
+    latestReturnedTikz = String(tikz || '');
+    latestDecision = decision || null;
+    latestReturnedFile = file || null;
+    renderReturnedTikz(source);
+  }
+
+  function renderReturnedTikz(source = 'remake') {
+    const node = el('imageTikzReturnedReport');
+    if (!node) return;
+    const decision = latestDecision || { ok: false, reason: 'no-decision' };
+    node.classList.add('active');
+    node.textContent = [
+      'Latest image-to-TikZ returned TikZ',
+      '=================================',
+      '',
+      `Source: ${source}`,
+      `Decision: ${decision.ok ? 'accepted' : 'not inserted automatically'}`,
+      `Reason: ${decision.reason || '(none)'}`,
+      `Selected image: ${latestReturnedFile?.path || selectedPath || '(unknown)'}`,
+      '',
+      'Returned TikZ:',
+      latestReturnedTikz || '(empty)',
+      '',
+      'Raw AI text:',
+      safeSnippet(latestRawAIText, 2200) || '(empty)'
+    ].join('\n');
+  }
+
+  async function copyReturnedTikz() {
+    if (!latestReturnedTikz.trim()) {
+      setStatus('No returned TikZ to copy yet.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(latestReturnedTikz);
+      setStatus('Returned TikZ copied.');
+    } catch (_err) {
+      setStatus('Could not copy automatically. Select the returned TikZ text manually.');
+    }
+  }
+
+  function openReturnedInTikzEditor() {
+    if (!latestReturnedTikz.trim()) {
+      setStatus('No returned TikZ to open yet.');
+      return null;
+    }
+    pushToTikzMaker(latestReturnedTikz);
+    setStatus('Returned TikZ opened in the AI TikZ maker for review/editing.');
+    return latestReturnedTikz;
+  }
+
+  function insertReturnedTikzAnyway() {
+    if (!latestReturnedTikz.trim()) {
+      setStatus('No returned TikZ to insert yet.');
+      return null;
+    }
+    pushToTikzMaker(latestReturnedTikz);
+    const result = tikzMaker()?.saveTikz?.({ direct: true });
+    setStatus(result?.ok
+      ? 'Inserted the latest returned TikZ directly into source.'
+      : (result?.message || 'Could not insert latest returned TikZ.'));
+    return result;
   }
 
   function fallbackInstructionText(file) {
@@ -175,7 +287,7 @@
   function imageBackendUnsupportedMessage(file) {
     return [
       'The AI backend did not return real image-based TikZ.',
-      'Latexai refused to insert the generic rectangle placeholder.',
+      'Latexai refused only the known bad placeholder/output.',
       '',
       `Selected image: ${file?.path || selectedPath || '(unknown)'}`,
       'Optionally type a short hint in the Instructions box, such as “simple car”, and click Remake+insert TikZ again.'
@@ -352,10 +464,13 @@
         }
       });
       const raw = NS.AIProvider.extractText(response);
+      const diagnosticTikz = tikzMaker()?.extractTikz?.(raw, prompt || `Diagnose ${file.path}`) || raw;
+      const diagnosticDecision = assessTikzCandidate(diagnosticTikz, file, prompt);
+      setReturnedTikz(raw, diagnosticTikz, diagnosticDecision, file, 'diagnostic');
       report.rawText = safeSnippet(raw, 2200);
       report.diagnosis = classifyDiagnostic(raw, file, prompt);
       renderDiagnosticReport(report);
-      setStatus('Diagnostic complete. See the backend diagnostic report below.');
+      setStatus('Diagnostic complete. See the backend diagnostic report and latest returned TikZ below.');
       return report;
     } catch (err) {
       report.error = String(err?.message || err);
@@ -464,20 +579,24 @@
 
       const raw = NS.AIProvider.extractText(response);
       let tikz = tikzMaker()?.extractTikz?.(raw, prompt || `Remake ${file.path} as TikZ`) || raw;
+      let decision = assessTikzCandidate(tikz, file, prompt);
+      setReturnedTikz(raw, tikz, decision, file, 'remake');
 
-      if (isGenericTikzPlaceholder(tikz, file, prompt)) {
-        if (isMeaningfulPrompt(prompt)) {
+      if (!decision.ok) {
+        if (isKnownBadTikzPlaceholder(tikz, file, prompt) && isMeaningfulPrompt(prompt)) {
           tikz = localFallbackTikz(file, prompt);
+          decision = assessTikzCandidate(tikz, file, prompt);
+          setReturnedTikz(raw, tikz, decision, file, 'instruction-fallback');
           pushToTikzMaker(tikz);
-          setStatus('AI returned a generic placeholder, so Latexai used your Instructions text to create editable TikZ instead.');
+          setStatus('AI returned the known generic rectangle placeholder, so Latexai used your Instructions text to create editable TikZ instead.');
           return tikz;
         }
-        setStatus(imageBackendUnsupportedMessage(file));
+        setStatus(`${imageBackendUnsupportedMessage(file)}\n\nReason: ${decision.reason}. Use “Open returned TikZ” or “Insert returned anyway” if you want to inspect/override.`);
         return null;
       }
 
       pushToTikzMaker(tikz);
-      setStatus('Image remade as editable TikZ. Review/edit the TikZ source, then use Insert TikZ directly. This does not insert the original PNG.');
+      setStatus(`Image remade as editable TikZ and accepted (${decision.reason}). Review/edit it, then use Insert TikZ directly. This does not insert the original PNG.`);
       return tikz;
     } catch (err) {
       if (!isMeaningfulPrompt(prompt)) {
@@ -485,6 +604,8 @@
         return null;
       }
       const fallback = localFallbackTikz(file, prompt);
+      const decision = assessTikzCandidate(fallback, file, prompt);
+      setReturnedTikz(String(err?.message || err), fallback, decision, file, 'local-fallback-after-error');
       pushToTikzMaker(fallback);
       setStatus(`AI image-to-TikZ failed; created editable TikZ from your Instructions text.\n${err?.message || err}`);
       return fallback;
@@ -555,10 +676,14 @@
       '    <button type="button" class="btn mini primary" id="imageTikzRemakeBtn">Remake as TikZ</button>',
       '    <button type="button" class="btn mini primary" id="imageTikzRemakeInsertBtn">Remake + insert TikZ</button>',
       '    <button type="button" class="btn mini" id="imageTikzDiagnoseBtn">Diagnose backend</button>',
+      '    <button type="button" class="btn mini" id="imageTikzOpenReturnedBtn">Open returned TikZ</button>',
+      '    <button type="button" class="btn mini" id="imageTikzInsertReturnedBtn">Insert returned anyway</button>',
+      '    <button type="button" class="btn mini" id="imageTikzCopyReturnedBtn">Copy TikZ</button>',
       '    <button type="button" class="btn mini" id="imageTikzCopyDiagBtn">Copy report</button>',
       '    <button type="button" class="btn mini" id="imageTikzRefreshBtn">Refresh images</button>',
       '  </div>',
-      '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready. Remake+insert now tries the backend image input first. It never opens a description popup; use Instructions for optional hints.</div>',
+      '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready. Stage 10H accepts real TikZ and rejects only known bad placeholders. It never opens a description popup.</div>',
+      '  <pre class="image-tikz-returned" id="imageTikzReturnedReport"></pre>',
       '  <pre class="image-tikz-diagnostic" id="imageTikzDiagnosticReport"></pre>',
       '</div>'
     ].join('');
@@ -581,6 +706,9 @@
     el('imageTikzRemakeBtn')?.addEventListener('click', remakeSelectedImage, true);
     el('imageTikzRemakeInsertBtn')?.addEventListener('click', remakeAndInsert, true);
     el('imageTikzDiagnoseBtn')?.addEventListener('click', diagnoseSelectedImageBackend, true);
+    el('imageTikzOpenReturnedBtn')?.addEventListener('click', openReturnedInTikzEditor, true);
+    el('imageTikzInsertReturnedBtn')?.addEventListener('click', insertReturnedTikzAnyway, true);
+    el('imageTikzCopyReturnedBtn')?.addEventListener('click', copyReturnedTikz, true);
     el('imageTikzCopyDiagBtn')?.addEventListener('click', copyDiagnosticReport, true);
     el('imageTikzRefreshBtn')?.addEventListener('click', () => {
       refreshImageList();
@@ -609,12 +737,19 @@
     remakeAndInsert,
     diagnoseSelectedImageBackend,
     copyDiagnosticReport,
+    copyReturnedTikz,
+    openReturnedInTikzEditor,
+    insertReturnedTikzAnyway,
     buildImageToTikzPayload,
     classifyDiagnostic,
+    assessTikzCandidate,
+    isKnownBadTikzPlaceholder,
     isGenericTikzPlaceholder,
     isMeaningfulPrompt,
     localFallbackTikz,
     pushToTikzMaker,
+    getLatestReturnedTikz: () => latestReturnedTikz,
+    getLatestDecision: () => latestDecision,
     openFiguresTab: () => {
       const button = document.querySelector('[data-right-tab="assets"]');
       if (button) button.click();
