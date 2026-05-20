@@ -72,3 +72,9 @@
 @media (max-width: 760px) {
   .presentation-export-two { grid-template-columns: 1fr; }
 }
+
+
+/* Stage 13C: validation and auto-fix controls */
+.presentation-export-actions .primary {
+  font-weight: 850;
+}
