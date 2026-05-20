@@ -1,0 +1,7 @@
+Stage 11E checks
+================
+
+PASS node --check js/document-ai-service.js
+PASS node tests/stage11e-paper-ai-inplace-lai-edits.test.cjs
+
+Paper-level AI now supports safe exact-match in-place LAI edits with old content preserved as comments.
