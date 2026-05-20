@@ -33,7 +33,7 @@ Required top-level schema:
 }
 
 Rules:
-- Every non-title slide must have at least one visible block in leftBlocks.
+- Every non-title slide must have at least one visible block in leftBlocks or rightBlocks.
 - Put bullet points into block content using LaTeX-like itemize:
   "\\begin{itemize}\n\\item first point\n\\item second point\n\\end{itemize}"
 - Put equations/theorems/proof snippets in a block with mode "pseudocode-latex".
@@ -48,3 +48,10 @@ Rules:
 - Preserve important LaTeX math.
 - Prefer a coherent narrative over section-by-section dumping.
 - Do not include images as base64.
+
+
+Validation rules:
+- Do not use the old semantic-only schema with only bullets/latex/speakerNotes.
+- Do not leave content stranded in bullets or latex fields without visible blocks.
+- Use valid block modes only: panel, plain, placeholder, pseudocode, pseudocode-latex, custom.
+- If a slide has equations, put them in a visible pseudocode-latex block.
