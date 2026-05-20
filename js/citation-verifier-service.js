@@ -1,5 +1,5 @@
-/* Latexai Stage 12D CitationVerifierService
- * Stage: stage12d-citation-links-ai-audit-1
+/* Latexai Stage 12F CitationVerifierService
+ * Stage: stage12f-clickable-link-panel-fix-1
  *
  * Deterministic local verifier for LaTeX citations and BibTeX:
  * - parse \cite-like commands in .tex files
@@ -14,7 +14,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage12d-citation-links-ai-audit-1';
+  const STAGE = 'stage12f-clickable-link-panel-fix-1';
   const MISSING_BIB_PROMPT_PATH = 'prompt/ai-missing-bibtex-repair.txt';
   const CITATION_AUDIT_PROMPT_PATH = 'prompt/ai-citation-audit.txt';
 
@@ -36,6 +36,55 @@
     if (!node) return;
     node.classList.add('active');
     node.textContent = String(text || '');
+  }
+
+  function setOutputHtml(html) {
+    const node = el('citationVerifierOutput');
+    if (!node) return;
+    node.classList.add('active');
+    node.innerHTML = String(html || '');
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  function safeHttpUrl(url) {
+    const s = String(url || '').trim();
+    if (!/^https?:\/\//i.test(s)) return '';
+    try {
+      const parsed = new URL(s);
+      if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+      return parsed.href;
+    } catch (_err) {
+      return '';
+    }
+  }
+
+  function anchor(url, label = url) {
+    const safe = safeHttpUrl(url);
+    if (!safe) return escapeHtml(label || url || '');
+    return `<a class="citation-click-link" href="${escapeHtml(safe)}" data-url="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label || safe)}</a>`;
+  }
+
+  function handleVerifierLinkClick(event) {
+    const link = event.target?.closest?.('a.citation-click-link');
+    if (!link) return;
+    const url = safeHttpUrl(link.getAttribute('data-url') || link.getAttribute('href'));
+    if (!url) return;
+
+    // Stage 12F: some app/panel click handlers can swallow anchor navigation.
+    // Stop propagation and explicitly open the URL so citation links work.
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!opened) window.location.href = url;
+    } catch (_err) {
+      window.location.href = url;
+    }
   }
 
   function normalizePath(path) {
@@ -752,11 +801,43 @@
     return lines.join('\n');
   }
 
+  function citationLinkReportHtml(report = lastReport || buildCitationReport()) {
+    const entries = report?.entries || [];
+    const html = [
+      '<div class="citation-link-report">',
+      '<h4>Citation online-link helper</h4>',
+      '<p>This is a local link helper. It builds clickable links from DOI, arXiv/eprint, and URL fields. If no direct link exists, it provides a Google Scholar search link.</p>'
+    ];
+    if (!entries.length) {
+      html.push('<p>No BibTeX entries found.</p>', '</div>');
+      return html.join('');
+    }
+
+    html.push('<ul>');
+    for (const entry of entries) {
+      const links = entryOnlineLinks(entry);
+      const search = fallbackSearchUrl(entry);
+      html.push(`<li><strong>${escapeHtml(entry.key || '(missing key)')}</strong> <span class="muted">in ${escapeHtml(entry.path)}</span>`);
+      if (links.length) {
+        html.push('<ul>');
+        for (const link of links) html.push(`<li>${escapeHtml(link.type)}: ${anchor(link.url, link.label || link.url)}</li>`);
+        html.push('</ul>');
+      } else if (search) {
+        html.push(`<ul><li>search: ${anchor(search, 'Google Scholar search')}</li></ul>`);
+      } else {
+        html.push('<ul><li>no DOI/arXiv/URL/searchable title found</li></ul>');
+      }
+      html.push('</li>');
+    }
+    html.push('</ul>', '</div>');
+    return html.join('');
+  }
+
   function showCitationLinks() {
     const report = buildCitationReport();
     renderSummary(report);
-    setOutput(citationLinkReport(report));
-    setStatus('Built local online links from BibTeX DOI/arXiv/URL fields.');
+    setOutputHtml(citationLinkReportHtml(report));
+    setStatus('Built clickable local online links from BibTeX DOI/arXiv/URL fields.');
     return report;
   }
 
@@ -839,6 +920,28 @@
     return lines.join('\n');
   }
 
+  function formatCitationAuditHtml(audit = lastAudit) {
+    if (!audit) return '<p>No AI citation audit yet.</p>';
+    if (!audit.ok) return `<h4>AI citation audit failed</h4><p>${escapeHtml(audit.error || 'Unknown error')}</p>`;
+    const html = [
+      '<div class="citation-audit-report">',
+      '<h4>AI citation audit</h4>',
+      `<p>${escapeHtml(audit.summary || `Audit items: ${audit.items.length}`)}</p>`,
+      '<ol>'
+    ];
+    audit.items.forEach((item) => {
+      html.push('<li>');
+      html.push(`<strong>[${escapeHtml(item.severity || 'info')}] ${escapeHtml(item.key || '(general)')}</strong>`);
+      html.push(`<div><span class="muted">Issue:</span> ${escapeHtml(item.issue || '(none)')}</div>`);
+      html.push(`<div><span class="muted">Suggestion:</span> ${escapeHtml(item.suggestion || '(none)')}</div>`);
+      if (item.link) html.push(`<div><span class="muted">Link:</span> ${anchor(item.link, item.link)}</div>`);
+      if (item.confidence) html.push(`<div><span class="muted">Confidence:</span> ${escapeHtml(item.confidence)}</div>`);
+      html.push('</li>');
+    });
+    html.push('</ol>', '</div>');
+    return html.join('');
+  }
+
   async function runCitationAudit() {
     const report = buildCitationReport();
     renderSummary(report);
@@ -856,7 +959,7 @@
       }, { task: 'latex-citation-ai-audit', context: { workflow: 'citation-ai-audit', promptFile: CITATION_AUDIT_PROMPT_PATH } });
       const raw = NS.AIProvider.extractText(response);
       lastAudit = parseCitationAudit(raw);
-      setOutput(formatCitationAudit(lastAudit));
+      setOutputHtml(formatCitationAuditHtml(lastAudit));
       setStatus(lastAudit.ok ? `AI citation audit returned ${lastAudit.items.length} item(s).` : lastAudit.error);
       return lastAudit;
     } catch (err) {
@@ -893,7 +996,7 @@
       '  </div>',
       '  <div id="citationVerifierStatus" class="citation-verifier-status">Local citation verifier ready.</div>',
       '  <div id="citationVerifierSummary" class="citation-verifier-summary"></div>',
-      '  <pre id="citationVerifierOutput" class="citation-verifier-output"></pre>',
+      '  <div id="citationVerifierOutput" class="citation-verifier-output" role="region" aria-label="Citation verifier output"></div>',
       '</div>'
     ].join('');
 
@@ -913,6 +1016,7 @@
     el('runCitationAuditBtn')?.addEventListener('click', runCitationAudit, true);
     el('verifyLinksAuditBtn')?.addEventListener('click', verifyLinksAndAudit, true);
     el('copyCitationVerifierBtn')?.addEventListener('click', copyVerifierReport, true);
+    el('citationVerifierOutput')?.addEventListener('click', handleVerifierLinkClick, true);
   }
 
   function init() {
@@ -940,9 +1044,12 @@
     entryOnlineLinks,
     fallbackSearchUrl,
     citationLinkReport,
+    citationLinkReportHtml,
     showCitationLinks,
     citationAuditPayload,
     parseCitationAudit,
+    formatCitationAuditHtml,
+    handleVerifierLinkClick,
     runCitationAudit,
     verifyLinksAndAudit,
     copyVerifierReport,
