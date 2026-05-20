@@ -111,3 +111,10 @@
   width: auto;
   margin: 0;
 }
+
+
+/* Stage 13F: AI figure asset generation */
+.presentation-export-format-panel input[type="radio"],
+.presentation-export-format-panel input[type="checkbox"] {
+  accent-color: #2563eb;
+}
