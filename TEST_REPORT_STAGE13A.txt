@@ -1,0 +1,7 @@
+Stage 13A checks
+================
+
+PASS node --check js/presentation-export-service.js
+PASS node tests/stage13a-paper-to-presentation-exporter.test.cjs
+
+Paper-to-presentation exporter creates Presentation Maker JSON and can save/copy/download it.
