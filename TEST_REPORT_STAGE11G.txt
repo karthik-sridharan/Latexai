@@ -1,0 +1,7 @@
+Stage 11G checks
+================
+
+PASS node --check js/document-ai-service.js
+PASS node tests/stage11g-resolve-laiold-lai-edits.test.cjs
+
+Paper-level AI edit resolver can keep red/new or blue/old content and remove LAI macros so kept content becomes normal black LaTeX.
