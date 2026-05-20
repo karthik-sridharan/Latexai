@@ -1,0 +1,7 @@
+Stage 11A checks
+================
+
+PASS node --check js/document-ai-service.js
+PASS node tests/stage11a-document-ai-appendix-review.test.cjs
+
+Document-level AI append-only review card is modular and loaded through index.html.
