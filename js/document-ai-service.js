@@ -1,5 +1,5 @@
-/* Latexai Stage 11F DocumentAIService
- * Stage: stage11f-laiold-blue-old-content-1
+/* Latexai Stage 11G DocumentAIService
+ * Stage: stage11g-resolve-laiold-lai-edits-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
  * - prompts remain developer-managed static frontend files under /prompt/
@@ -12,8 +12,8 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage11f-laiold-blue-old-content-1';
-  // Stage 11F behavior: preserving old content in blue via \\laiold{...}.
+  const STAGE = 'stage11g-resolve-laiold-lai-edits-1';
+  // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
   const COMMON_PROMPT_PATH = 'prompt/ai-document-common.txt';
@@ -194,12 +194,12 @@
     const body = cleanAiLatex(sectionLatex);
     return [
       '',
-      `% BEGIN LATEXAI-DOCUMENT-AI stage=11F workflow=${workflow || 'review'} generated=${stamp}`,
+      `% BEGIN LATEXAI-DOCUMENT-AI stage=11G workflow=${workflow || 'review'} generated=${stamp}`,
       '\\clearpage',
       '\\lai{',
       body,
       '}',
-      `% END LATEXAI-DOCUMENT-AI stage=11F workflow=${workflow || 'review'}`,
+      `% END LATEXAI-DOCUMENT-AI stage=11G workflow=${workflow || 'review'}`,
       ''
     ].join('\n');
   }
@@ -578,6 +578,224 @@
     if (runApply) runApply.textContent = mode === 'inplace' ? 'Run + apply' : 'Run + append';
   }
 
+
+  function findBraceBlock(text, command, searchFrom = 0) {
+    const s = String(text || '');
+    const needle = `\\${command}`;
+    const cmdAt = s.indexOf(needle, searchFrom);
+    if (cmdAt < 0) return null;
+
+    let openAt = s.indexOf('{', cmdAt + needle.length);
+    if (openAt < 0) return null;
+
+    let depth = 0;
+    for (let i = openAt; i < s.length; i += 1) {
+      const ch = s[i];
+      const prev = i > 0 ? s[i - 1] : '';
+      if (ch === '{' && prev !== '\\') depth += 1;
+      else if (ch === '}' && prev !== '\\') {
+        depth -= 1;
+        if (depth === 0) {
+          return {
+            command,
+            cmdAt,
+            openAt,
+            closeAt: i,
+            start: cmdAt,
+            end: i + 1,
+            inner: s.slice(openAt + 1, i)
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function scanResolvedPairsInText(text, path) {
+    const s = String(text || '');
+    const pairs = [];
+    const markerRe = /% BEGIN LAI-OLD id=([^\s]+)\s+path=([^\n]+)\n/g;
+    let match;
+
+    while ((match = markerRe.exec(s))) {
+      const markerStart = match.index;
+      const id = match[1] || `lai-old-${pairs.length}`;
+      const markerPath = normalizePath(match[2] || path || rootPath());
+
+      const oldBlock = findBraceBlock(s, 'laiold', markerRe.lastIndex);
+      if (!oldBlock) continue;
+
+      const endMarker = `% END LAI-OLD id=${id}`;
+      const endMarkerAt = s.indexOf(endMarker, oldBlock.end);
+      if (endMarkerAt < 0) continue;
+      const endMarkerEnd = s.indexOf('\n', endMarkerAt);
+      const afterOld = endMarkerEnd >= 0 ? endMarkerEnd + 1 : endMarkerAt + endMarker.length;
+
+      const nextOldAt = s.indexOf('% BEGIN LAI-OLD', afterOld);
+      const nextLai = findBraceBlock(s, 'lai', afterOld);
+      if (!nextLai) continue;
+      if (nextOldAt >= 0 && nextOldAt < nextLai.start) continue;
+
+      pairs.push({
+        id,
+        path: normalizePath(path || markerPath),
+        markerPath,
+        rangeStart: markerStart,
+        rangeEnd: nextLai.end,
+        oldText: oldBlock.inner.trim(),
+        newText: nextLai.inner.trim(),
+        oldPreview: oldBlock.inner.trim().slice(0, 180),
+        newPreview: nextLai.inner.trim().slice(0, 180)
+      });
+
+      markerRe.lastIndex = nextLai.end;
+    }
+
+    return pairs;
+  }
+
+  function scanResolvableEdits() {
+    const p = project();
+    const files = (p.files || [])
+      .filter((file) => textFile(file))
+      .filter((file) => /\.tex$/i.test(file.path || ''));
+
+    const pairs = [];
+    for (const file of files) {
+      const path = normalizePath(file.path);
+      const found = scanResolvedPairsInText(fileText(file), path);
+      pairs.push(...found);
+    }
+    return pairs;
+  }
+
+  function refreshResolveSelect() {
+    const select = el('documentAiResolveSelect');
+    if (!select) return [];
+    const pairs = scanResolvableEdits();
+    select.innerHTML = '';
+
+    if (!pairs.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No unresolved \\laiold{...} / \\lai{...} edits found';
+      select.appendChild(option);
+      setResolvePreview(null);
+      return pairs;
+    }
+
+    pairs.forEach((pair, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = `${index + 1}. ${pair.path} · ${pair.id}`;
+      select.appendChild(option);
+    });
+
+    setResolvePreview(pairs[0]);
+    return pairs;
+  }
+
+  function selectedResolvePair() {
+    const pairs = scanResolvableEdits();
+    const index = Number(el('documentAiResolveSelect')?.value || 0);
+    return pairs[index] || null;
+  }
+
+  function setResolvePreview(pair) {
+    const node = el('documentAiResolvePreview');
+    if (!node) return;
+    if (!pair) {
+      node.classList.remove('active');
+      node.textContent = '';
+      return;
+    }
+    node.classList.add('active');
+    node.textContent = [
+      'Selected paper-level AI edit',
+      '============================',
+      '',
+      `File: ${pair.path}`,
+      `ID: ${pair.id}`,
+      '',
+      'BLUE old content (\\laiold):',
+      pair.oldPreview || '(empty)',
+      '',
+      'RED new content (\\lai):',
+      pair.newPreview || '(empty)'
+    ].join('\n');
+  }
+
+  function resolvePair(pair, keep) {
+    if (!pair || !['new', 'old'].includes(keep)) {
+      setStatus('Choose an unresolved AI edit first.');
+      return { ok: false, reason: 'missing-pair' };
+    }
+
+    const file = State()?.getFile?.(pair.path);
+    if (!file || !textFile(file)) {
+      setStatus(`Could not resolve edit: file not found: ${pair.path}`);
+      return { ok: false, reason: 'file-not-found' };
+    }
+
+    const text = fileText(file);
+    const current = scanResolvedPairsInText(text, pair.path).find((candidate) => candidate.id === pair.id);
+    if (!current) {
+      setStatus('Could not find that unresolved edit anymore. Refresh the list.');
+      refreshResolveSelect();
+      return { ok: false, reason: 'not-found' };
+    }
+
+    const kept = keep === 'new' ? current.newText : current.oldText;
+    const next = text.slice(0, current.rangeStart) + kept + text.slice(current.rangeEnd);
+    State()?.updateFile?.(pair.path, next);
+
+    try { State()?.setActivePath?.(pair.path); } catch (_err) {}
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+
+    setStatus(`Resolved ${current.id}: kept ${keep === 'new' ? 'new red \\lai content' : 'old blue \\laiold content'} as normal black LaTeX.`);
+    toast(`Kept ${keep === 'new' ? 'new' : 'old'} content and removed Latexai markup.`);
+    refreshResolveSelect();
+    return { ok: true, path: pair.path, id: current.id, kept: keep };
+  }
+
+  function resolveSelectedKeepNew() {
+    return resolvePair(selectedResolvePair(), 'new');
+  }
+
+  function resolveSelectedKeepOld() {
+    return resolvePair(selectedResolvePair(), 'old');
+  }
+
+  function resolveAll(keep) {
+    if (!['new', 'old'].includes(keep)) return { ok: false };
+    let applied = 0;
+    let guard = 0;
+
+    while (guard < 500) {
+      const pair = scanResolvableEdits()[0];
+      if (!pair) break;
+      const result = resolvePair(pair, keep);
+      if (!result?.ok) break;
+      applied += 1;
+      guard += 1;
+    }
+
+    setStatus(`Resolved ${applied} paper-level AI edit(s), keeping ${keep === 'new' ? 'new red content' : 'old blue content'} as normal black LaTeX.`);
+    refreshResolveSelect();
+    return { ok: applied > 0, applied, kept: keep };
+  }
+
+  function resolveAllKeepNew() {
+    return resolveAll('new');
+  }
+
+  function resolveAllKeepOld() {
+    return resolveAll('old');
+  }
+
   function createCard() {
     const panel = el('copilotTab');
     if (!panel || el('documentAiCard')) return false;
@@ -588,7 +806,7 @@
     card.innerHTML = [
       '<h3>Paper-level AI</h3>',
       '<div class="document-ai-grid">',
-      '  <div class="document-ai-help">Stage 11F uses developer-managed static frontend prompt files in <code>/prompt/</code>. Append mode adds a final AI section. In-place mode applies exact AI JSON edits by commenting old content and inserting <code>\\lai{...}</code>.</div>',
+      '  <div class="document-ai-help">Stage 11G uses developer-managed static frontend prompt files in <code>/prompt/</code>. Append mode adds a final AI section. In-place mode applies exact AI JSON edits by commenting old content and inserting <code>\\lai{...}</code>.</div>',
       '  <div class="document-ai-two">',
       '    <label>Workflow',
       '      <select id="documentAiWorkflow">',
@@ -616,6 +834,19 @@
       '  </div>',
       '  <div id="documentAiStatus" class="document-ai-status">Paper-level AI ready. Base prompts are developer-managed frontend files in /prompt/.</div>',
       '  <pre id="documentAiOutput" class="document-ai-output"></pre>',
+      '  <div class="document-ai-resolver">',
+      '    <h4>Resolve AI edits</h4>',
+      '    <div class="document-ai-help">Choose whether to keep the red new content or blue old content. The kept content becomes normal black LaTeX and the <code>\\lai</code>/<code>\\laiold</code> markup is removed.</div>',
+      '    <label>Unresolved edit <select id="documentAiResolveSelect"></select></label>',
+      '    <div class="document-ai-actions">',
+      '      <button id="refreshDocumentAiResolveBtn" class="btn mini" type="button">Refresh edits</button>',
+      '      <button id="keepNewDocumentAiBtn" class="btn mini primary" type="button">Keep red/new</button>',
+      '      <button id="keepOldDocumentAiBtn" class="btn mini" type="button">Keep blue/old</button>',
+      '      <button id="keepAllNewDocumentAiBtn" class="btn mini" type="button">Keep all red/new</button>',
+      '      <button id="keepAllOldDocumentAiBtn" class="btn mini" type="button">Keep all blue/old</button>',
+      '    </div>',
+      '    <pre id="documentAiResolvePreview" class="document-ai-output"></pre>',
+      '  </div>',
       '</div>'
     ].join('');
 
@@ -625,6 +856,7 @@
 
     bindControls();
     updateActionLabels();
+    refreshResolveSelect();
     return true;
   }
 
@@ -634,6 +866,12 @@
     el('appendDocumentAiBtn')?.addEventListener('click', appendLastToPaper, true);
     el('runAppendDocumentAiBtn')?.addEventListener('click', runAndAppendDocumentAi, true);
     el('copyDocumentAiBtn')?.addEventListener('click', copyDocumentAiOutput, true);
+    el('refreshDocumentAiResolveBtn')?.addEventListener('click', refreshResolveSelect, true);
+    el('keepNewDocumentAiBtn')?.addEventListener('click', resolveSelectedKeepNew, true);
+    el('keepOldDocumentAiBtn')?.addEventListener('click', resolveSelectedKeepOld, true);
+    el('keepAllNewDocumentAiBtn')?.addEventListener('click', resolveAllKeepNew, true);
+    el('keepAllOldDocumentAiBtn')?.addEventListener('click', resolveAllKeepOld, true);
+    el('documentAiResolveSelect')?.addEventListener('change', () => setResolvePreview(selectedResolvePair()), true);
   }
 
   function init() {
@@ -663,6 +901,14 @@
     appendLastToPaper,
     runAndAppendDocumentAi,
     copyDocumentAiOutput,
+    scanResolvedPairsInText,
+    scanResolvableEdits,
+    refreshResolveSelect,
+    resolvePair,
+    resolveSelectedKeepNew,
+    resolveSelectedKeepOld,
+    resolveAllKeepNew,
+    resolveAllKeepOld,
     getLastSection: () => lastSection,
     getLastRaw: () => lastRaw,
     getLastPatch: () => lastPatch
