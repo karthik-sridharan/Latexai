@@ -1,5 +1,5 @@
-/* Latexai Stage 10H ImageToTikzService
- * Stage: stage10h-accept-real-tikz-and-insert-anyway-1
+/* Latexai Stage 10I ImageToTikzService
+ * Stage: stage10i-insert-raw-returned-tikz-figure-1
  *
  * Remakes an existing project image asset as editable TikZ.
  * - Lists image assets from AssetService
@@ -13,7 +13,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage10h-accept-real-tikz-and-insert-anyway-1';
+  const STAGE = 'stage10i-insert-raw-returned-tikz-figure-1';
 
   let installed = false;
   let selectedPath = '';
@@ -113,6 +113,95 @@
     const file = assetByPath(selectedPath);
     const name = String(file?.path || 'Remade figure').split('/').pop().replace(/\.[^.]+$/, '');
     return name.replace(/[-_]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+
+  function safeTikzLabel(text) {
+    const raw = String(text || 'tikz-figure')
+      .toLowerCase()
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+    return `fig:${raw || 'tikz-figure'}`;
+  }
+
+  function selectedFigureCaption() {
+    const explicit = String(el('tikzCaptionInput')?.value || '').trim();
+    return explicit || defaultCaption() || 'Image remade as TikZ';
+  }
+
+  function selectedFigureLabel() {
+    const explicit = String(el('tikzLabelInput')?.value || '').trim();
+    if (explicit) return explicit;
+    const file = assetByPath(selectedPath || el('imageTikzAssetSelect')?.value || '');
+    const stem = String(file?.path || selectedPath || 'image-tikz').split('/').pop();
+    return safeTikzLabel(stem || selectedFigureCaption());
+  }
+
+  function extractRawTikzPicture(text) {
+    const s = String(text || '');
+    const match = s.match(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/);
+    return match ? match[0].trim() : '';
+  }
+
+  function extractTikzPreferRaw(raw, prompt) {
+    // Stage 10I: the backend often already returns exactly the desired
+    // tikzpicture. Prefer that raw block and only use TikzMakerService as a
+    // fallback parser. This avoids replacing valid AI TikZ with placeholders.
+    const direct = extractRawTikzPicture(raw);
+    if (direct) return direct;
+    const parsed = tikzMaker()?.extractTikz?.(raw, prompt || 'image-to-tikz') || raw;
+    return extractRawTikzPicture(parsed) || String(parsed || '').trim();
+  }
+
+  function latestReturnedMatchesCurrentImage() {
+    const current = normalizePath(selectedPath || el('imageTikzAssetSelect')?.value || '');
+    const latest = normalizePath(latestReturnedFile?.path || '');
+    return !!latestReturnedTikz.trim() && (!current || !latest || current === latest);
+  }
+
+  function latestReturnedIsUsableForInsert() {
+    if (!latestReturnedMatchesCurrentImage()) return false;
+    const file = assetByPath(selectedPath || el('imageTikzAssetSelect')?.value || '') || latestReturnedFile;
+    const decision = assessTikzCandidate(latestReturnedTikz, file, getPrompt());
+    return !!decision.ok;
+  }
+
+  function insertTikzFigureDirect(tikz, source = 'direct') {
+    const clean = extractTikzPreferRaw(tikz, getPrompt());
+    if (!clean || !hasTikzPicture(clean)) {
+      setStatus('No complete tikzpicture block is available to insert.');
+      return { ok: false, message: 'No complete tikzpicture block is available to insert.' };
+    }
+
+    const file = assetByPath(selectedPath || el('imageTikzAssetSelect')?.value || '') || latestReturnedFile;
+    const decision = assessTikzCandidate(clean, file, getPrompt());
+    if (!decision.ok && isKnownBadTikzPlaceholder(clean, file, getPrompt())) {
+      setReturnedTikz(latestRawAIText, clean, decision, file, source);
+      setStatus(`Refused the known bad TikZ placeholder (${decision.reason}).`);
+      return { ok: false, message: `Refused known bad TikZ placeholder: ${decision.reason}` };
+    }
+
+    const asset = assetService();
+    if (!asset?.insertDirectTikzFigure) {
+      setStatus('AssetService.insertDirectTikzFigure is not available.');
+      return { ok: false, message: 'AssetService.insertDirectTikzFigure is not available.' };
+    }
+
+    const result = asset.insertDirectTikzFigure({
+      tikz: clean,
+      caption: selectedFigureCaption(),
+      label: selectedFigureLabel()
+    });
+    if (result?.ok) {
+      const accepted = assessTikzCandidate(clean, file, getPrompt());
+      setReturnedTikz(latestRawAIText || clean, clean, accepted, file, source);
+      setStatus(`Inserted returned TikZ as a figure (${accepted.reason}).`);
+      toast('Inserted returned TikZ as a figure.');
+    } else {
+      setStatus(result?.message || 'Could not insert returned TikZ.');
+    }
+    return result;
   }
 
   function buildImageToTikzPayload(file, dataUrl, prompt) {
@@ -264,15 +353,12 @@
 
   function insertReturnedTikzAnyway() {
     if (!latestReturnedTikz.trim()) {
-      setStatus('No returned TikZ to insert yet.');
+      setStatus('No returned TikZ to insert yet. Run Diagnose backend or Remake as TikZ first.');
       return null;
     }
-    pushToTikzMaker(latestReturnedTikz);
-    const result = tikzMaker()?.saveTikz?.({ direct: true });
-    setStatus(result?.ok
-      ? 'Inserted the latest returned TikZ directly into source.'
-      : (result?.message || 'Could not insert latest returned TikZ.'));
-    return result;
+    // Stage 10I: insert the raw/latest returned tikzpicture directly through
+    // AssetService so it is wrapped in a figure and \usepackage{tikz} is added.
+    return insertTikzFigureDirect(latestReturnedTikz, 'insert-returned-anyway');
   }
 
   function fallbackInstructionText(file) {
@@ -464,7 +550,7 @@
         }
       });
       const raw = NS.AIProvider.extractText(response);
-      const diagnosticTikz = tikzMaker()?.extractTikz?.(raw, prompt || `Diagnose ${file.path}`) || raw;
+      const diagnosticTikz = extractTikzPreferRaw(raw, prompt || `Diagnose ${file.path}`);
       const diagnosticDecision = assessTikzCandidate(diagnosticTikz, file, prompt);
       setReturnedTikz(raw, diagnosticTikz, diagnosticDecision, file, 'diagnostic');
       report.rawText = safeSnippet(raw, 2200);
@@ -578,7 +664,7 @@
       });
 
       const raw = NS.AIProvider.extractText(response);
-      let tikz = tikzMaker()?.extractTikz?.(raw, prompt || `Remake ${file.path} as TikZ`) || raw;
+      let tikz = extractTikzPreferRaw(raw, prompt || `Remake ${file.path} as TikZ`);
       let decision = assessTikzCandidate(tikz, file, prompt);
       setReturnedTikz(raw, tikz, decision, file, 'remake');
 
@@ -591,7 +677,7 @@
           setStatus('AI returned the known generic rectangle placeholder, so Latexai used your Instructions text to create editable TikZ instead.');
           return tikz;
         }
-        setStatus(`${imageBackendUnsupportedMessage(file)}\n\nReason: ${decision.reason}. Use “Open returned TikZ” or “Insert returned anyway” if you want to inspect/override.`);
+        setStatus(`${imageBackendUnsupportedMessage(file)}\n\nReason: ${decision.reason}. Use “Open returned TikZ” or “Insert returned as figure” if you want to inspect/override.`);
         return null;
       }
 
@@ -640,16 +726,20 @@
   }
 
   async function remakeAndInsert() {
-    const tikz = await remakeSelectedImage({ allowInstructionFallback: true });
-    if (!tikz) return null;
-
-    // Use TikzMakerService direct insert path so cursor/package/root behavior stays centralized.
-    const result = tikzMaker()?.saveTikz?.({ direct: true });
-    if (result?.ok) {
-      setStatus('Remade image as editable TikZ and inserted directly into source. No PNG includegraphics snippet was inserted.');
-      toast('Image remade and inserted as TikZ.');
+    // Stage 10I: if Diagnose backend already returned usable TikZ for this
+    // selected image, insert that exact TikZ instead of making a fresh call that
+    // may vary. Otherwise call the image backend, then insert the raw returned
+    // tikzpicture directly as a figure.
+    if (latestReturnedIsUsableForInsert()) {
+      return insertTikzFigureDirect(latestReturnedTikz, 'reuse-latest-returned');
     }
-    return result;
+
+    const tikz = await remakeSelectedImage({ allowInstructionFallback: true });
+    if (!tikz) {
+      setStatus('No usable TikZ returned. If the diagnostic report shows good raw TikZ, click “Insert returned anyway”.');
+      return null;
+    }
+    return insertTikzFigureDirect(tikz, 'remake-and-insert');
   }
 
   function createCard() {
@@ -677,12 +767,12 @@
       '    <button type="button" class="btn mini primary" id="imageTikzRemakeInsertBtn">Remake + insert TikZ</button>',
       '    <button type="button" class="btn mini" id="imageTikzDiagnoseBtn">Diagnose backend</button>',
       '    <button type="button" class="btn mini" id="imageTikzOpenReturnedBtn">Open returned TikZ</button>',
-      '    <button type="button" class="btn mini" id="imageTikzInsertReturnedBtn">Insert returned anyway</button>',
+      '    <button type="button" class="btn mini" id="imageTikzInsertReturnedBtn">Insert returned as figure</button>',
       '    <button type="button" class="btn mini" id="imageTikzCopyReturnedBtn">Copy TikZ</button>',
       '    <button type="button" class="btn mini" id="imageTikzCopyDiagBtn">Copy report</button>',
       '    <button type="button" class="btn mini" id="imageTikzRefreshBtn">Refresh images</button>',
       '  </div>',
-      '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready. Stage 10H accepts real TikZ and rejects only known bad placeholders. It never opens a description popup.</div>',
+      '  <div class="image-tikz-status" id="imageTikzStatus">Image-to-TikZ remaker ready. Stage 10I inserts the raw returned tikzpicture directly as a figure and reuses diagnostic TikZ when available.</div>',
       '  <pre class="image-tikz-returned" id="imageTikzReturnedReport"></pre>',
       '  <pre class="image-tikz-diagnostic" id="imageTikzDiagnosticReport"></pre>',
       '</div>'
@@ -740,6 +830,10 @@
     copyReturnedTikz,
     openReturnedInTikzEditor,
     insertReturnedTikzAnyway,
+    insertTikzFigureDirect,
+    extractRawTikzPicture,
+    extractTikzPreferRaw,
+    latestReturnedIsUsableForInsert,
     buildImageToTikzPayload,
     classifyDiagnostic,
     assessTikzCandidate,

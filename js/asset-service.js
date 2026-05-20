@@ -1,5 +1,5 @@
 /* Latexai Stage 8A AssetService
- * Stage: stage10h-accept-real-tikz-and-insert-anyway-1
+ * Stage: stage10i-insert-raw-returned-tikz-figure-1
  *
  * First modular asset foundation for figure workflows.
  * - Adds binary image assets into the current project, usually under figures/
@@ -16,7 +16,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage10h-accept-real-tikz-and-insert-anyway-1';
+  const STAGE = 'stage10i-insert-raw-returned-tikz-figure-1';
 
   let installed = false;
   let selectedAssetPath = '';
