@@ -96,3 +96,66 @@
 .citation-verifier-actions button {
   white-space: nowrap;
 }
+
+
+/* Stage 12E: clickable citation links */
+.citation-verifier-output a {
+  color: #93c5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.citation-verifier-output a:hover {
+  color: #bfdbfe;
+}
+
+.citation-link-report,
+.citation-audit-report {
+  white-space: normal;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.citation-link-report h4,
+.citation-audit-report h4 {
+  margin: 0 0 .45rem;
+  font-size: .9rem;
+}
+
+.citation-link-report ul,
+.citation-audit-report ol,
+.citation-audit-report ul {
+  margin-top: .35rem;
+  padding-left: 1.15rem;
+}
+
+.citation-link-report li,
+.citation-audit-report li {
+  margin-bottom: .35rem;
+}
+
+.citation-link-report .muted,
+.citation-audit-report .muted {
+  color: #cbd5e1;
+}
+
+
+/* Stage 12F: dedicated clickable citation-link panel fix */
+.citation-verifier-output {
+  user-select: text;
+}
+
+.citation-verifier-output .citation-click-link {
+  pointer-events: auto;
+  cursor: pointer;
+  color: #93c5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-word;
+}
+
+.citation-verifier-output .citation-click-link:active,
+.citation-verifier-output .citation-click-link:hover {
+  color: #dbeafe;
+}
