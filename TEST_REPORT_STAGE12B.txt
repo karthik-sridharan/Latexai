@@ -1,0 +1,7 @@
+Stage 12B checks
+================
+
+PASS node --check js/citation-verifier-service.js
+PASS node tests/stage12b-local-citation-verifier.test.cjs
+
+Local citation verifier checks missing keys, duplicate BibTeX keys, unused entries, weak fields, and leftover \citeai placeholders.
