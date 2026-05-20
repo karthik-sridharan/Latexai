@@ -1,0 +1,8 @@
+Stage 10G checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage10g-image-to-tikz-no-popup.test.cjs
+
+Image-to-TikZ now never opens the manual-description popup.
