@@ -1,9 +1,9 @@
-/* Latexai Stage 13D PresentationExportService
- * Stage: stage13d-presentation-maker-handoff-1
+/* Latexai Stage 13E PresentationExportService
+ * Stage: stage13e-multiformat-talk-export-1
  *
  * Fixes Stage 13A export schema so Presentation Maker imports visible content.
  * Presentation Maker expects slides with leftBlocks/rightBlocks, not only
- * semantic fields like bullets/latex. Stage 13D normalizes every exported slide
+ * semantic fields like bullets/latex. Stage 13E normalizes every exported slide
  * into the Presentation Maker deck schema:
  *
  * deckTitle, summary, slides[].slideType/title/lede/leftBlocks/rightBlocks/etc.
@@ -13,7 +13,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage13d-presentation-maker-handoff-1';
+  const STAGE = 'stage13e-multiformat-talk-export-1';
   const PROMPT_PATH = 'prompt/ai-paper-to-presentation-export.txt';
 
   let promptCache = '';
@@ -710,6 +710,365 @@
     return openPresentationMaker();
   }
 
+  function selectedExportFormats() {
+    const formats = [];
+    if (el('presentationExportFormatJson')?.checked) formats.push('json');
+    if (el('presentationExportFormatHtml')?.checked) formats.push('html');
+    if (el('presentationExportFormatBeamer')?.checked) formats.push('beamer');
+    return formats.length ? formats : ['json'];
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  function escapeTex(value) {
+    return String(value || '')
+      .replace(/\\/g, '\\textbackslash{}')
+      .replace(/([#$%&_{}])/g, '\\$1')
+      .replace(/\^/g, '\\textasciicircum{}')
+      .replace(/~/g, '\\textasciitilde{}');
+  }
+
+  function stripLatexItemize(value) {
+    return String(value || '')
+      .replace(/\\begin\{itemize\}/g, '')
+      .replace(/\\end\{itemize\}/g, '')
+      .split(/\n+/)
+      .map((line) => line.replace(/^\s*\\item\s*/, '').trim())
+      .filter(Boolean);
+  }
+
+  function isLatexish(content) {
+    const s = String(content || '');
+    return /\\\[|\\\]|\\\(|\\\)|\\begin\{|\\end\{|\\frac|\\sum|\\int|\\mathbb|\\mathbf|EQ:/.test(s);
+  }
+
+  function cleanEqPrefix(content) {
+    return String(content || '').replace(/^\s*EQ:\s*/i, '').trim();
+  }
+
+  function slideBlocks(slide) {
+    return [...(slide?.leftBlocks || []), ...(slide?.rightBlocks || [])];
+  }
+
+  function figureBlocks(deck) {
+    const figs = [];
+    (deck?.slides || []).forEach((slide, slideIndex) => {
+      slideBlocks(slide).forEach((block, blockIndex) => {
+        const mode = cleanText(block?.mode).toLowerCase();
+        const title = cleanText(block?.title);
+        const content = cleanText(block?.content);
+        if (mode === 'placeholder' || /figure|diagram|plot|image/i.test(`${title} ${content}`)) {
+          figs.push({ slide, slideIndex, block, blockIndex, title, content });
+        }
+      });
+    });
+    return figs;
+  }
+
+  function svgFigureForBlock(fig, filename) {
+    const title = fig.title || `Figure ${fig.slideIndex + 1}`;
+    const content = fig.content || fig.slide?.title || 'Suggested figure';
+    const lines = [title, ...content.split(/\s+/).reduce((acc, word) => {
+      const last = acc[acc.length - 1] || '';
+      if ((last + ' ' + word).trim().length > 54) acc.push(word);
+      else acc[acc.length - 1] = (last + ' ' + word).trim();
+      return acc;
+    }, ['']).filter(Boolean).slice(0, 5)];
+    const text = lines.map((line, i) => `<text x="400" y="${155 + i * 38}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${i === 0 ? 28 : 20}" fill="#0f172a">${escapeHtml(line)}</text>`).join('\n  ');
+    return [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">',
+      '  <rect width="800" height="450" fill="#f8fafc"/>',
+      '  <rect x="45" y="45" width="710" height="360" rx="24" fill="#ffffff" stroke="#94a3b8" stroke-width="4" stroke-dasharray="14 12"/>',
+      `  <text x="400" y="92" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#64748b">${escapeHtml(filename)}</text>`,
+      `  ${text}`,
+      '</svg>'
+    ].join('\n');
+  }
+
+  function buildTalkPackage(deck = lastDeck) {
+    if (!deck?.slides?.length) return { ok: false, error: 'No deck available. Run exporter first.' };
+
+    const fixedDeck = autoFixDeck(deck, {
+      style: el('presentationExportStyle')?.value || deck?.metadata?.style || 'research-talk',
+      targetSlideCount: Number(el('presentationExportSlideCount')?.value || deck?.metadata?.targetSlideCount || deck?.slides?.length || 10)
+    });
+    const validation = validatePresentationDeck(fixedDeck, fixedDeck);
+    if (!validation.ok) return { ok: false, error: 'Deck has validation errors.', deck: fixedDeck, report: validation };
+
+    const base = slug(fixedDeck.deckTitle || 'talk');
+    const figs = figureBlocks(fixedDeck);
+    const figureAssets = figs.map((fig, i) => {
+      const filename = `${base}-fig-${String(i + 1).padStart(2, '0')}.svg`;
+      return {
+        ...fig,
+        filename,
+        path: normalizePath(`figures/${filename}`),
+        relFromTalk: `../figures/${filename}`,
+        svg: svgFigureForBlock(fig, filename)
+      };
+    });
+
+    const json = JSON.stringify(fixedDeck, null, 2) + '\n';
+    const html = renderDeckHtml(fixedDeck, figureAssets);
+    const beamer = renderDeckBeamer(fixedDeck, figureAssets);
+
+    return {
+      ok: true,
+      base,
+      deck: fixedDeck,
+      validation,
+      figureAssets,
+      files: {
+        json: { path: normalizePath(`talk/${base}.presentation.json`), content: json, mime: 'application/json' },
+        html: { path: normalizePath(`talk/${base}.html`), content: html, mime: 'text/html' },
+        beamer: { path: normalizePath(`talk/${base}.beamer.tex`), content: beamer, mime: 'application/x-tex' }
+      }
+    };
+  }
+
+  function findFigureAsset(figureAssets, slideIndex, blockIndex) {
+    return (figureAssets || []).find((a) => a.slideIndex === slideIndex && a.blockIndex === blockIndex);
+  }
+
+  function renderBlockHtml(block, slideIndex, blockIndex, figureAssets) {
+    const asset = findFigureAsset(figureAssets, slideIndex, blockIndex);
+    const title = cleanText(block?.title);
+    const content = cleanText(block?.content);
+    const mode = cleanText(block?.mode || 'plain');
+
+    if (asset) {
+      return `<section class="block figure-block"><h3>${escapeHtml(title || 'Figure')}</h3><img src="${escapeHtml(asset.relFromTalk)}" alt="${escapeHtml(title || 'figure')}" /><p>${escapeHtml(content)}</p></section>`;
+    }
+
+    if (mode === 'pseudocode-latex' || isLatexish(content)) {
+      return `<section class="block math-block"><h3>${escapeHtml(title || 'Math')}</h3><pre>${escapeHtml(cleanEqPrefix(content))}</pre></section>`;
+    }
+
+    const items = stripLatexItemize(content);
+    if (items.length > 1 || /\\item/.test(content)) {
+      return `<section class="block"><h3>${escapeHtml(title || 'Key points')}</h3><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>`;
+    }
+
+    return `<section class="block"><h3>${escapeHtml(title || 'Content')}</h3><p>${escapeHtml(content)}</p></section>`;
+  }
+
+  function renderDeckHtml(deck, figureAssets = []) {
+    const slides = (deck.slides || []).map((slide, slideIndex) => {
+      const blocks = slideBlocks(slide).map((block, blockIndex) => renderBlockHtml(block, slideIndex, blockIndex, figureAssets)).join('\n');
+      const title = escapeHtml(slide.title || `Slide ${slideIndex + 1}`);
+      const lede = slide.lede ? `<p class="lede">${escapeHtml(slide.lede)}</p>` : '';
+      const notes = slide.notesBody ? `<aside class="notes"><strong>${escapeHtml(slide.notesTitle || 'Notes')}</strong><p>${escapeHtml(slide.notesBody)}</p></aside>` : '';
+      return `<article class="slide ${escapeHtml(slide.slideType || 'single')}">\n<h2>${title}</h2>\n${lede}\n<div class="blocks">${blocks}</div>\n${notes}\n</article>`;
+    }).join('\n');
+
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(deck.deckTitle || 'Presentation')}</title>
+<style>
+body{margin:0;background:#e2e8f0;color:#0f172a;font-family:Arial,Helvetica,sans-serif}
+.deck{max-width:1100px;margin:0 auto;padding:32px}
+.slide{background:#fff;min-height:620px;margin:0 0 32px;padding:48px;border-radius:24px;box-shadow:0 18px 50px rgba(15,23,42,.16);page-break-after:always}
+.slide h2{font-size:42px;margin:0 0 18px}
+.title-center{display:flex;flex-direction:column;justify-content:center;text-align:center}
+.title-center h2{font-size:56px}
+.lede{font-size:24px;color:#475569}
+.blocks{display:grid;gap:18px}
+.two-col .blocks{grid-template-columns:1fr 1fr}
+.block{border:1px solid #cbd5e1;border-radius:18px;padding:18px;background:#f8fafc}
+.block h3{margin:0 0 10px;font-size:22px}
+.block p,.block li{font-size:21px;line-height:1.38}
+.math-block pre{white-space:pre-wrap;font-size:19px;line-height:1.35;background:#0f172a;color:#e5e7eb;padding:16px;border-radius:12px}
+.figure-block img{max-width:100%;border-radius:14px;border:1px solid #cbd5e1;background:white}
+.notes{margin-top:18px;color:#64748b;font-size:14px}
+@media print{body{background:#fff}.deck{padding:0}.slide{box-shadow:none;border-radius:0;margin:0;min-height:90vh}}
+</style>
+</head>
+<body>
+<main class="deck">
+${slides}
+</main>
+</body>
+</html>
+`;
+  }
+
+  function renderBlockBeamer(block, slideIndex, blockIndex, figureAssets) {
+    const asset = findFigureAsset(figureAssets, slideIndex, blockIndex);
+    const title = cleanText(block?.title || 'Content');
+    const content = cleanText(block?.content || '');
+    const mode = cleanText(block?.mode || 'plain');
+
+    if (asset) {
+      return [
+        `\\begin{block}{${escapeTex(title || 'Figure')}}`,
+        `\\centering\\includegraphics[width=.82\\linewidth]{${escapeTex(asset.relFromTalk)}}`,
+        '',
+        escapeTex(content),
+        '\\end{block}'
+      ].join('\n');
+    }
+
+    if (mode === 'pseudocode-latex' || isLatexish(content)) {
+      return [
+        `\\begin{block}{${escapeTex(title || 'Math')}}`,
+        cleanEqPrefix(content),
+        '\\end{block}'
+      ].join('\n');
+    }
+
+    const items = stripLatexItemize(content);
+    if (items.length > 1 || /\\item/.test(content)) {
+      return [
+        `\\begin{block}{${escapeTex(title || 'Key points')}}`,
+        '\\begin{itemize}',
+        ...items.map((item) => `\\item ${escapeTex(item)}`),
+        '\\end{itemize}',
+        '\\end{block}'
+      ].join('\n');
+    }
+
+    return [
+      `\\begin{block}{${escapeTex(title)}}`,
+      escapeTex(content),
+      '\\end{block}'
+    ].join('\n');
+  }
+
+  function renderDeckBeamer(deck, figureAssets = []) {
+    const frames = (deck.slides || []).map((slide, slideIndex) => {
+      if (slide.slideType === 'title-center') {
+        return [
+          `\\title{${escapeTex(deck.deckTitle || slide.title || 'Presentation')}}`,
+          deck.summary ? `\\subtitle{${escapeTex(deck.summary)}}` : '',
+          '\\frame{\\titlepage}'
+        ].filter(Boolean).join('\n');
+      }
+
+      const blocks = slideBlocks(slide).map((block, blockIndex) => renderBlockBeamer(block, slideIndex, blockIndex, figureAssets)).join('\n\n');
+      return [
+        `\\begin{frame}{${escapeTex(slide.title || `Slide ${slideIndex + 1}`)}}`,
+        slide.lede ? escapeTex(slide.lede) + '\n' : '',
+        blocks,
+        '\\end{frame}'
+      ].join('\n');
+    }).join('\n\n');
+
+    return [
+      '\\documentclass{beamer}',
+      '\\usepackage[utf8]{inputenc}',
+      '\\usepackage{amsmath,amssymb}',
+      '\\usepackage{graphicx}',
+      '\\usetheme{Madrid}',
+      `\\title{${escapeTex(deck.deckTitle || 'Presentation')}}`,
+      deck.summary ? `\\subtitle{${escapeTex(deck.summary)}}` : '',
+      '\\begin{document}',
+      frames,
+      '\\end{document}',
+      ''
+    ].filter((line) => line !== '').join('\n');
+  }
+
+  function writeProjectFile(path, content) {
+    const normalized = normalizePath(path);
+    const existing = State()?.getFile?.(normalized);
+    if (existing) State()?.updateFile?.(normalized, content);
+    else State()?.createFile?.(normalized, content);
+    return normalized;
+  }
+
+  function addSelectedExportsToGit() {
+    const pkg = buildTalkPackage(lastDeck);
+    if (!pkg.ok) {
+      setStatus(pkg.error || 'Could not build talk export package.');
+      if (pkg.report) setOutput(formatValidationReport(pkg.report));
+      return pkg;
+    }
+
+    const formats = selectedExportFormats();
+    const written = [];
+    for (const format of formats) {
+      const file = pkg.files[format];
+      if (!file) continue;
+      written.push(writeProjectFile(file.path, file.content));
+    }
+
+    for (const asset of pkg.figureAssets) {
+      written.push(writeProjectFile(asset.path, asset.svg));
+    }
+
+    lastDeck = pkg.deck;
+    try { State()?.setActivePath?.(written[0] || 'talk'); } catch (_err) {}
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+
+    setOutput([
+      'Talk export files added to project',
+      '==================================',
+      '',
+      ...written.map((p) => `- ${p}`)
+    ].join('\n'));
+    setStatus(`Added ${written.length} talk export file(s) to project.`);
+    toast('Talk export files added.');
+    return { ok: true, written, package: pkg };
+  }
+
+  function downloadBlob(filename, content, mime) {
+    const blob = new Blob([content], { type: mime || 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.split('/').pop();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function downloadSelectedExports() {
+    const pkg = buildTalkPackage(lastDeck);
+    if (!pkg.ok) {
+      setStatus(pkg.error || 'Could not build talk export package.');
+      if (pkg.report) setOutput(formatValidationReport(pkg.report));
+      return pkg;
+    }
+
+    const formats = selectedExportFormats();
+    let count = 0;
+    for (const format of formats) {
+      const file = pkg.files[format];
+      if (!file) continue;
+      downloadBlob(file.path, file.content, file.mime);
+      count += 1;
+    }
+    for (const asset of pkg.figureAssets) {
+      downloadBlob(asset.path, asset.svg, 'image/svg+xml');
+      count += 1;
+    }
+
+    setStatus(`Downloaded ${count} selected export/figure file(s).`);
+    return { ok: true, downloaded: count, package: pkg };
+  }
+
+  async function runAndAddSelectedExportsToGit() {
+    const result = await runPresentationExport();
+    if (!result?.ok) return result;
+    return addSelectedExportsToGit();
+  }
+
+  async function runAndDownloadSelectedExports() {
+    const result = await runPresentationExport();
+    if (!result?.ok) return result;
+    return downloadSelectedExports();
+  }
+
   function buildPayload(style, targetSlideCount, instructions) {
     return loadExportPrompt().then((prompt) => {
       const context = collectPaperContext();
@@ -912,7 +1271,7 @@
     card.innerHTML = [
       '<h3>Paper → Presentation exporter</h3>',
       '<div class="presentation-export-grid">',
-      '  <div class="presentation-export-help">Stage 13D exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
+      '  <div class="presentation-export-help">Stage 13E exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
       '  <div class="presentation-export-two">',
       '    <label>Style',
       '      <select id="presentationExportStyle">',
@@ -932,6 +1291,12 @@
       '  <label>Presentation Maker URL',
       `    <input id="presentationMakerUrl" type="text" value="${defaultPresentationMakerUrl()}" placeholder="presentation-maker.html or full URL" />`,
       '  </label>',
+      '  <div class="presentation-export-format-panel">',
+      '    <div class="presentation-export-help"><strong>Export formats</strong></div>',
+      '    <label class="presentation-export-check"><input id="presentationExportFormatJson" type="checkbox" checked /> JSON</label>',
+      '    <label class="presentation-export-check"><input id="presentationExportFormatHtml" type="checkbox" /> HTML</label>',
+      '    <label class="presentation-export-check"><input id="presentationExportFormatBeamer" type="checkbox" /> Beamer TeX</label>',
+      '  </div>',
       '  <div class="presentation-export-actions">',
       '    <button id="runPresentationExportBtn" class="btn mini primary" type="button">Run exporter</button>',
       '    <button id="convertPresentationExportBtn" class="btn mini" type="button">Convert current JSON</button>',
@@ -943,6 +1308,10 @@
       '    <button id="preparePresentationHandoffBtn" class="btn mini" type="button">Prepare handoff</button>',
       '    <button id="openPresentationMakerBtn" class="btn mini primary" type="button">Open maker</button>',
       '    <button id="runOpenPresentationMakerBtn" class="btn mini primary" type="button">Run + open maker</button>',
+      '    <button id="addTalkExportsBtn" class="btn mini primary" type="button">Add selected to /talk</button>',
+      '    <button id="downloadTalkExportsBtn" class="btn mini" type="button">Download selected</button>',
+      '    <button id="runAddTalkExportsBtn" class="btn mini primary" type="button">Run + add to /talk</button>',
+      '    <button id="runDownloadTalkExportsBtn" class="btn mini" type="button">Run + download selected</button>',
       '    <button id="copyPresentationExportBtn" class="btn mini" type="button">Copy JSON</button>',
       '    <button id="downloadPresentationExportBtn" class="btn mini" type="button">Download JSON</button>',
       '  </div>',
@@ -974,6 +1343,10 @@
     el('openPresentationMakerBtn')?.addEventListener('click', openPresentationMaker, true);
     el('runOpenPresentationMakerBtn')?.addEventListener('click', runAndOpenPresentationMaker, true);
     el('presentationMakerUrl')?.addEventListener('change', persistPresentationMakerUrl, true);
+    el('addTalkExportsBtn')?.addEventListener('click', addSelectedExportsToGit, true);
+    el('downloadTalkExportsBtn')?.addEventListener('click', downloadSelectedExports, true);
+    el('runAddTalkExportsBtn')?.addEventListener('click', runAndAddSelectedExportsToGit, true);
+    el('runDownloadTalkExportsBtn')?.addEventListener('click', runAndDownloadSelectedExports, true);
     el('copyPresentationExportBtn')?.addEventListener('click', copyDeckJson, true);
     el('downloadPresentationExportBtn')?.addEventListener('click', () => downloadDeckJson(lastDeck), true);
   }
@@ -1006,6 +1379,14 @@
     runAndOpenPresentationMaker,
     handoffUrl,
     buildHandoffPayload,
+    selectedExportFormats,
+    buildTalkPackage,
+    renderDeckHtml,
+    renderDeckBeamer,
+    addSelectedExportsToGit,
+    downloadSelectedExports,
+    runAndAddSelectedExportsToGit,
+    runAndDownloadSelectedExports,
     buildPayload,
     runPresentationExport,
     saveDeckToProject,
