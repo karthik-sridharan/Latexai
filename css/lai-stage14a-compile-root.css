@@ -1,0 +1,17 @@
+/* Latexai Stage 14A: active standalone compile root */
+.stage14a-compile-root-box {
+  margin-top: .55rem;
+  border: 1px dashed rgba(37,99,235,.28);
+  border-radius: 12px;
+  padding: .55rem;
+  background: rgba(239,246,255,.58);
+}
+
+.stage14a-compile-root-check {
+  margin: 0;
+}
+
+.stage14a-compile-root-status {
+  margin-top: .35rem;
+  color: #334155;
+}
