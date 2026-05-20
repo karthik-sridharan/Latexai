@@ -1,0 +1,7 @@
+Stage 12F checks
+================
+
+PASS node --check js/citation-verifier-service.js
+PASS node tests/stage12f-clickable-link-panel-fix.test.cjs
+
+Citation links are rendered in a div with dedicated anchors and a delegated click handler that opens links explicitly.
