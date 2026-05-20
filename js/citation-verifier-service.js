@@ -1,5 +1,5 @@
-/* Latexai Stage 12B CitationVerifierService
- * Stage: stage12b-local-citation-verifier-1
+/* Latexai Stage 12C CitationVerifierService
+ * Stage: stage12c-missing-bibtex-repair-1
  *
  * Deterministic local verifier for LaTeX citations and BibTeX:
  * - parse \cite-like commands in .tex files
@@ -14,9 +14,11 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage12b-local-citation-verifier-1';
+  const STAGE = 'stage12c-missing-bibtex-repair-1';
+  const MISSING_BIB_PROMPT_PATH = 'prompt/ai-missing-bibtex-repair.txt';
 
   let lastReport = null;
+  let missingBibPromptCache = '';
 
   function State() { return NS.State; }
   function el(id) { return document.getElementById(id); }
@@ -432,6 +434,247 @@
     }
   }
 
+
+  function sanitizeCitationKey(key) {
+    return String(key || '').trim().replace(/[^A-Za-z0-9:_-]+/g, '');
+  }
+
+  function bibEntryKey(bibtex) {
+    const m = String(bibtex || '').match(/@\w+\s*\{\s*([^,\s]+)\s*,/);
+    return sanitizeCitationKey(m?.[1] || '');
+  }
+
+  function bibPath() {
+    const files = project().files || [];
+    const existing = files.find((file) => /\.bib$/i.test(file.path || ''));
+    return normalizePath(existing?.path || 'references.bib');
+  }
+
+  function getOrCreateBibFile(path) {
+    const normalized = normalizePath(path || bibPath());
+    let file = State()?.getFile?.(normalized);
+    if (!file) {
+      State()?.createFile?.(normalized, '');
+      file = State()?.getFile?.(normalized);
+    }
+    return file;
+  }
+
+  function missingBibPromptUrl() {
+    const stage = encodeURIComponent(W.LUMINA_LATEX_STAGE || STAGE);
+    return `${MISSING_BIB_PROMPT_PATH}?v=${stage}`;
+  }
+
+  async function loadMissingBibPrompt() {
+    if (missingBibPromptCache) return missingBibPromptCache;
+    try {
+      const response = await fetch(missingBibPromptUrl(), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      missingBibPromptCache = text.trim() || 'Return JSON BibTeX entries for missing citation keys.';
+    } catch (_err) {
+      missingBibPromptCache = 'Return JSON only: {"items":[{"citationKey":"key","bibtex":"@article{key,...}","confidence":"low","note":"..."}],"summary":"..."}';
+    }
+    return missingBibPromptCache;
+  }
+
+  function collectMissingBibContext(maxChars = 60000) {
+    const files = (project().files || [])
+      .filter((file) => textFile(file))
+      .filter((file) => /\.(tex|bib|bbl|md|txt)$/i.test(file.path || ''))
+      .filter((file) => !/^prompt\//i.test(normalizePath(file.path || '')))
+      .sort((a, b) => normalizePath(a.path).localeCompare(normalizePath(b.path)));
+
+    let used = 0;
+    const parts = [];
+    for (const file of files) {
+      const path = normalizePath(file.path);
+      let text = fileText(file);
+      const header = `\n\n%%%% FILE: ${path}\n`;
+      const remaining = maxChars - used - header.length;
+      if (remaining <= 0) break;
+      if (text.length > remaining) text = text.slice(0, Math.max(0, remaining)) + '\n% [truncated]\n';
+      parts.push(header + text);
+      used += header.length + text.length;
+    }
+    return parts.join('');
+  }
+
+  function stripJsonFence(raw) {
+    let s = String(raw || '').trim();
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
+    const first = s.indexOf('{');
+    const last = s.lastIndexOf('}');
+    if (first >= 0 && last > first) s = s.slice(first, last + 1);
+    return s;
+  }
+
+  function parseMissingBibPlan(raw) {
+    let data;
+    try {
+      data = JSON.parse(stripJsonFence(raw));
+    } catch (err) {
+      return { ok: false, error: `Could not parse missing-BibTeX JSON: ${err.message}`, items: [], summary: '' };
+    }
+
+    const items = (Array.isArray(data.items) ? data.items : []).map((item) => ({
+      citationKey: sanitizeCitationKey(item.citationKey || ''),
+      bibtex: String(item.bibtex || '').trim(),
+      confidence: String(item.confidence || ''),
+      note: String(item.note || '')
+    })).filter((item) => item.citationKey && item.bibtex);
+
+    return { ok: true, items, summary: String(data.summary || ''), raw: data };
+  }
+
+  function normalizeBibtexItem(item) {
+    const key = sanitizeCitationKey(item.citationKey) || bibEntryKey(item.bibtex);
+    let bibtex = String(item.bibtex || '').trim();
+    const existing = bibEntryKey(bibtex);
+    if (key && existing && key !== existing) {
+      bibtex = bibtex.replace(/(@\w+\s*\{\s*)[^,\s]+(\s*,)/, `$1${key}$2`);
+    }
+    return { ...item, citationKey: key || existing, bibtex };
+  }
+
+  function appendBibtexItems(items = []) {
+    const bib = getOrCreateBibFile(bibPath());
+    const bpath = normalizePath(bib?.path || bibPath());
+    let bibText = fileText(bib);
+    let added = 0;
+    const messages = [];
+
+    for (const raw of items) {
+      const item = normalizeBibtexItem(raw);
+      const key = sanitizeCitationKey(item.citationKey) || bibEntryKey(item.bibtex);
+      if (!key || !item.bibtex) continue;
+
+      const keyRe = new RegExp(`@\\w+\\s*\\{\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,`, 'i');
+      if (keyRe.test(bibText)) {
+        messages.push(`Already present: ${key}`);
+        continue;
+      }
+
+      bibText = `${bibText.trimEnd()}\n\n${item.bibtex.trim()}\n`;
+      added += 1;
+      messages.push(`Added ${key} to ${bpath}${item.confidence ? ` (${item.confidence})` : ''}`);
+    }
+
+    State()?.updateFile?.(bpath, bibText);
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+
+    return { ok: true, added, path: bpath, messages };
+  }
+
+  async function repairMissingBibtex() {
+    const report = buildCitationReport();
+    renderSummary(report);
+    if (!report.missingKeys.length) {
+      setOutput(formatReport(report));
+      setStatus('No missing citation keys to repair.');
+      return { ok: true, added: 0 };
+    }
+
+    if (!NS.AIProvider?.ask) {
+      setStatus('AIProvider is not loaded.');
+      return { ok: false, added: 0 };
+    }
+
+    const missing = report.missingKeys.map((item) => ({
+      citationKey: item.key,
+      occurrences: item.citations.map((citation) => ({
+        path: citation.path,
+        command: citation.command,
+        raw: citation.raw
+      }))
+    }));
+
+    setStatus(`Asking AI for BibTeX entries for ${missing.length} missing key(s)...`);
+
+    try {
+      const prompt = await loadMissingBibPrompt();
+      const input = [
+        prompt,
+        '',
+        '--- Missing citation keys ---',
+        JSON.stringify(missing, null, 2),
+        '',
+        '--- Local verifier report ---',
+        formatReport(report),
+        '',
+        '--- Paper/project context ---',
+        collectMissingBibContext()
+      ].join('\n');
+
+      const response = await NS.AIProvider.ask({
+        instructions: 'Return JSON only. No markdown fences. No prose outside JSON.',
+        input,
+        temperature: 0.05,
+        maxOutputTokens: 7000,
+        citationVerifierRepair: {
+          missing,
+          promptFile: MISSING_BIB_PROMPT_PATH,
+          rootPath: (project().rootFile || 'main.tex')
+        }
+      }, {
+        task: 'latex-citation-missing-bibtex-repair',
+        context: {
+          workflow: 'citation-verifier-missing-bibtex-repair',
+          missingCount: missing.length,
+          promptFile: MISSING_BIB_PROMPT_PATH
+        }
+      });
+
+      const raw = NS.AIProvider.extractText(response);
+      const plan = parseMissingBibPlan(raw);
+      if (!plan.ok) {
+        setOutput([
+          'Missing BibTeX repair failed',
+          '============================',
+          '',
+          plan.error,
+          '',
+          'Raw AI output:',
+          raw
+        ].join('\n'));
+        setStatus(plan.error);
+        return { ok: false, added: 0, error: plan.error };
+      }
+
+      const result = appendBibtexItems(plan.items);
+      const after = buildCitationReport();
+      renderSummary(after);
+      setOutput([
+        'Missing BibTeX repair report',
+        '============================',
+        '',
+        `Requested missing keys: ${missing.length}`,
+        `AI BibTeX items: ${plan.items.length}`,
+        `Entries added: ${result.added}`,
+        plan.summary ? `Summary: ${plan.summary}` : '',
+        '',
+        ...result.messages,
+        '',
+        'Updated verifier report',
+        '-----------------------',
+        formatReport(after)
+      ].join('\n'));
+      setStatus(`Added ${result.added} missing BibTeX entr${result.added === 1 ? 'y' : 'ies'}.`);
+      return { ok: true, added: result.added, plan, result, report: after };
+    } catch (err) {
+      setStatus(`Missing BibTeX repair failed: ${err?.message || err}`);
+      return { ok: false, added: 0, error: err?.message || String(err) };
+    }
+  }
+
+  async function verifyAndRepairMissingBibtex() {
+    verifyCitations();
+    return repairMissingBibtex();
+  }
+
   function createCard() {
     const panel = el('copilotTab');
     if (!panel || el('citationVerifierCard')) return false;
@@ -445,6 +688,8 @@
       '  <div class="citation-verifier-help">Stage 12B checks citations locally: missing keys, duplicate BibTeX keys, unused entries, weak BibTeX fields, and leftover <code>\\citeai{...}</code>. It does not verify online existence yet.</div>',
       '  <div class="citation-verifier-actions">',
       '    <button id="verifyCitationsBtn" class="btn mini primary" type="button">Verify citations</button>',
+      '    <button id="repairMissingBibtexBtn" class="btn mini primary" type="button">Add missing BibTeX with AI</button>',
+      '    <button id="verifyRepairMissingBibtexBtn" class="btn mini" type="button">Verify + add missing BibTeX</button>',
       '    <button id="copyCitationVerifierBtn" class="btn mini" type="button">Copy report</button>',
       '  </div>',
       '  <div id="citationVerifierStatus" class="citation-verifier-status">Local citation verifier ready.</div>',
@@ -463,6 +708,8 @@
 
   function bindControls() {
     el('verifyCitationsBtn')?.addEventListener('click', verifyCitations, true);
+    el('repairMissingBibtexBtn')?.addEventListener('click', repairMissingBibtex, true);
+    el('verifyRepairMissingBibtexBtn')?.addEventListener('click', verifyAndRepairMissingBibtex, true);
     el('copyCitationVerifierBtn')?.addEventListener('click', copyVerifierReport, true);
   }
 
@@ -484,6 +731,10 @@
     buildCitationReport,
     formatReport,
     verifyCitations,
+    repairMissingBibtex,
+    verifyAndRepairMissingBibtex,
+    parseMissingBibPlan,
+    appendBibtexItems,
     copyVerifierReport,
     getLastReport: () => lastReport
   };

@@ -1,5 +1,5 @@
-/* Latexai Stage 12A CitationAIService
- * Stage: stage12a-ai-citation-filler-1
+/* Latexai Stage 12C CitationAIService
+ * Stage: stage12c-missing-bibtex-repair-1
  *
  * Adds AI citation filler for \citeai{...}. This first stage is intentionally
  * review/apply based:
@@ -13,7 +13,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage12a-ai-citation-filler-1';
+  const STAGE = 'stage12c-missing-bibtex-repair-1';
   const PROMPT_PATH = 'prompt/ai-citation-filler.txt';
 
   const FALLBACK_PROMPT = [
@@ -251,6 +251,39 @@
     return s;
   }
 
+
+  function findMatchingBraceInString(text, openAt) {
+    const s = String(text || '');
+    let depth = 0;
+    for (let i = openAt; i < s.length; i += 1) {
+      const ch = s[i];
+      const prev = i > 0 ? s[i - 1] : '';
+      if (ch === '{' && prev !== '\\') depth += 1;
+      else if (ch === '}' && prev !== '\\') {
+        depth -= 1;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  function extractRawBibtexEntries(text) {
+    const s = String(text || '');
+    const entries = [];
+    const entryRe = /@([A-Za-z]+)\s*\{\s*([^,\s]+)\s*,/g;
+    let match;
+    while ((match = entryRe.exec(s))) {
+      const openAt = s.indexOf('{', match.index);
+      const closeAt = findMatchingBraceInString(s, openAt);
+      if (closeAt < 0) break;
+      const raw = s.slice(match.index, closeAt + 1).trim();
+      const key = sanitizeCitationKey(match[2] || '');
+      if (key && raw) entries.push({ citationKey: key, bibtex: raw, source: 'raw-ai-text' });
+      entryRe.lastIndex = closeAt + 1;
+    }
+    return entries;
+  }
+
   function parseCitationPlan(raw) {
     let data;
     try {
@@ -272,6 +305,7 @@
     return {
       ok: true,
       items,
+      rawBibEntries: extractRawBibtexEntries(raw),
       summary: String(data.summary || ''),
       raw: data
     };
@@ -359,6 +393,7 @@
       '================',
       '',
       plan?.ok ? `Suggestions: ${plan.items.length}` : (plan?.error || 'No plan yet.'),
+      plan?.rawBibEntries?.length ? `Raw BibTeX entries found in AI output: ${plan.rawBibEntries.length}` : '',
       plan?.summary ? `Summary: ${plan.summary}` : ''
     ];
 
@@ -411,21 +446,37 @@
       if (changed) State()?.updateFile?.(path, text);
     }
 
-    // Add bib entries if the keys are not already present.
+    // Add BibTeX entries if the keys are not already present.
+    // Stage 12C: be more robust. In addition to parsed JSON items, also scan
+    // the raw AI text for @article/@book/etc blocks. This fixes cases where AI
+    // produced usable BibTeX but slightly outside the expected JSON fields.
     const bib = getOrCreateBibFile(bibPath());
     const bpath = normalizePath(bib?.path || bibPath());
     let bibText = fileText(bib);
     let bibAdded = 0;
 
+    const bibCandidates = [];
     for (const item of items) {
       const key = sanitizeCitationKey(item.citationKey) || bibEntryKey(item.bibtex);
       const bibtex = String(item.bibtex || '').trim();
-      if (!key || !bibtex) continue;
+      if (key && bibtex) bibCandidates.push({ citationKey: key, bibtex, source: 'json-item' });
+    }
+    for (const rawEntry of (plan.rawBibEntries || [])) {
+      const key = sanitizeCitationKey(rawEntry.citationKey) || bibEntryKey(rawEntry.bibtex);
+      if (key && rawEntry.bibtex) bibCandidates.push({ citationKey: key, bibtex: rawEntry.bibtex, source: 'raw-ai-text' });
+    }
+
+    const seenCandidate = new Set();
+    for (const item of bibCandidates) {
+      const key = sanitizeCitationKey(item.citationKey) || bibEntryKey(item.bibtex);
+      const bibtex = String(item.bibtex || '').trim();
+      if (!key || !bibtex || seenCandidate.has(key)) continue;
+      seenCandidate.add(key);
       const keyRe = new RegExp(`@\\w+\\s*\\{\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,`, 'i');
       if (keyRe.test(bibText)) continue;
       bibText = `${bibText.trimEnd()}\n\n${bibtex}\n`;
       bibAdded += 1;
-      messages.push(`Added BibTeX entry ${key} to ${bpath}`);
+      messages.push(`Added BibTeX entry ${key} to ${bpath} (${item.source})`);
     }
     State()?.updateFile?.(bpath, bibText);
 
@@ -525,6 +576,7 @@
     scanCiteAiPlaceholders,
     buildCitationPayload,
     parseCitationPlan,
+    extractRawBibtexEntries,
     applyCitationPlan,
     runCitationAi,
     runAndApplyCitationAi,
