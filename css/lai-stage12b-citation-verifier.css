@@ -84,3 +84,9 @@
   background: rgba(34,197,94,.16);
   color: #166534;
 }
+
+
+/* Stage 12C: missing BibTeX repair */
+.citation-verifier-actions .primary {
+  font-weight: 850;
+}
