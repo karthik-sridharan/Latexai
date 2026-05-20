@@ -1,9 +1,9 @@
-/* Latexai Stage 13B PresentationExportService
- * Stage: stage13b-presentation-maker-compatible-export-1
+/* Latexai Stage 13C PresentationExportService
+ * Stage: stage13c-presentation-export-validator-autofix-1
  *
  * Fixes Stage 13A export schema so Presentation Maker imports visible content.
  * Presentation Maker expects slides with leftBlocks/rightBlocks, not only
- * semantic fields like bullets/latex. Stage 13B normalizes every exported slide
+ * semantic fields like bullets/latex. Stage 13C normalizes every exported slide
  * into the Presentation Maker deck schema:
  *
  * deckTitle, summary, slides[].slideType/title/lede/leftBlocks/rightBlocks/etc.
@@ -13,7 +13,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage13b-presentation-maker-compatible-export-1';
+  const STAGE = 'stage13c-presentation-export-validator-autofix-1';
   const PROMPT_PATH = 'prompt/ai-paper-to-presentation-export.txt';
 
   let promptCache = '';
@@ -306,6 +306,256 @@
     return { ok: true, deck };
   }
 
+  const VALID_SLIDE_TYPES = new Set(['title-center', 'single', 'two-col']);
+  const VALID_HEADING_LEVELS = new Set(['h1', 'h2']);
+  const VALID_BLOCK_MODES = new Set(['panel', 'plain', 'placeholder', 'pseudocode', 'pseudocode-latex', 'custom']);
+
+  function parseJsonText(text) {
+    try {
+      return { ok: true, data: JSON.parse(stripJsonFence(text)) };
+    } catch (err) {
+      return { ok: false, error: `Could not parse JSON: ${err.message}` };
+    }
+  }
+
+  function slideHasVisibleBlocks(slide) {
+    const blocks = [...(slide?.leftBlocks || []), ...(slide?.rightBlocks || [])];
+    return blocks.some((b) => cleanText(b?.content || b?.title));
+  }
+
+  function hasLegacyStrandedContent(rawSlide) {
+    if (!rawSlide || typeof rawSlide !== 'object') return false;
+    const hasBlocks = Array.isArray(rawSlide.leftBlocks) || Array.isArray(rawSlide.rightBlocks);
+    const hasLegacy = (Array.isArray(rawSlide.bullets) && rawSlide.bullets.length) || cleanText(rawSlide.latex) || cleanText(rawSlide.speakerNotes);
+    return hasLegacy && !hasBlocks;
+  }
+
+  function validatePresentationDeck(deck, rawData = null) {
+    const errors = [];
+    const warnings = [];
+    const fixes = [];
+
+    if (!deck || typeof deck !== 'object') errors.push('Deck is not an object.');
+    if (!cleanText(deck?.deckTitle)) errors.push('Missing deckTitle.');
+    if (!Array.isArray(deck?.slides)) errors.push('slides must be an array.');
+    if (Array.isArray(deck?.slides) && !deck.slides.length) errors.push('Deck has no slides.');
+
+    const rawSlides = Array.isArray(rawData?.slides) ? rawData.slides : [];
+
+    (deck?.slides || []).forEach((slide, index) => {
+      const label = `slide ${index + 1}${slide?.title ? ` (${slide.title})` : ''}`;
+      if (!cleanText(slide?.title)) errors.push(`${label}: missing title.`);
+      if (!VALID_SLIDE_TYPES.has(slide?.slideType)) errors.push(`${label}: invalid slideType ${slide?.slideType || '(missing)'}.`);
+      if (!VALID_HEADING_LEVELS.has(slide?.headingLevel)) warnings.push(`${label}: headingLevel should be h1 or h2.`);
+      if (!/^#[0-9a-f]{6}$/i.test(slide?.bgColor || '')) warnings.push(`${label}: bgColor should be a #RRGGBB color.`);
+      if (!/^#[0-9a-f]{6}$/i.test(slide?.fontColor || '')) warnings.push(`${label}: fontColor should be a #RRGGBB color.`);
+
+      const blocks = [...(slide?.leftBlocks || []), ...(slide?.rightBlocks || [])];
+      if (slide?.slideType !== 'title-center' && !slideHasVisibleBlocks(slide)) {
+        errors.push(`${label}: non-title slide has no visible leftBlocks/rightBlocks content.`);
+        fixes.push(`${label}: add a visible placeholder/content block.`);
+      }
+
+      blocks.forEach((block, bIndex) => {
+        const bLabel = `${label} block ${bIndex + 1}`;
+        if (!VALID_BLOCK_MODES.has(block?.mode)) {
+          warnings.push(`${bLabel}: invalid mode ${block?.mode || '(missing)'}.`);
+          fixes.push(`${bLabel}: change mode to plain.`);
+        }
+        if (!cleanText(block?.content) && !cleanText(block?.title)) {
+          warnings.push(`${bLabel}: block has no title or content.`);
+        }
+      });
+
+      const rawSlide = rawSlides[index];
+      if (hasLegacyStrandedContent(rawSlide)) {
+        warnings.push(`${label}: raw slide has old semantic bullets/latex without visible blocks.`);
+        fixes.push(`${label}: convert bullets to panel block and latex to pseudocode-latex block.`);
+      }
+    });
+
+    const contentSlides = (deck?.slides || []).filter((slide) => slide.slideType !== 'title-center');
+    if (!contentSlides.length && (deck?.slides || []).length > 1) {
+      warnings.push('Deck has multiple slides but no non-title content slides.');
+    }
+
+    return {
+      ok: errors.length === 0,
+      errors,
+      warnings,
+      fixes,
+      summary: {
+        slideCount: deck?.slides?.length || 0,
+        errorCount: errors.length,
+        warningCount: warnings.length,
+        fixCount: fixes.length
+      }
+    };
+  }
+
+  function formatValidationReport(report) {
+    if (!report) return 'No validation report yet.';
+    const lines = [
+      'Presentation export validation report',
+      '=====================================',
+      '',
+      `Slides: ${report.summary.slideCount}`,
+      `Errors: ${report.summary.errorCount}`,
+      `Warnings: ${report.summary.warningCount}`,
+      `Suggested fixes: ${report.summary.fixCount}`,
+      ''
+    ];
+
+    if (report.errors.length) {
+      lines.push('Errors', '------');
+      report.errors.forEach((item) => lines.push(`- ${item}`));
+      lines.push('');
+    }
+
+    if (report.warnings.length) {
+      lines.push('Warnings', '--------');
+      report.warnings.forEach((item) => lines.push(`- ${item}`));
+      lines.push('');
+    }
+
+    if (report.fixes.length) {
+      lines.push('Suggested fixes', '---------------');
+      report.fixes.forEach((item) => lines.push(`- ${item}`));
+      lines.push('');
+    }
+
+    if (report.ok) lines.push('Deck passed required Presentation Maker compatibility checks.');
+    else lines.push('Deck has required compatibility errors. Click Auto-fix deck or fix manually.');
+
+    return lines.join('\n');
+  }
+
+  function autoFixBlock(block, fallbackTitle = 'Content') {
+    const fixed = normalizeBlock(block, fallbackTitle);
+    if (!VALID_BLOCK_MODES.has(fixed.mode)) fixed.mode = 'plain';
+    if (!cleanText(fixed.title)) fixed.title = fallbackTitle;
+    if (!cleanText(fixed.content)) fixed.content = fixed.title;
+    return fixed;
+  }
+
+  function autoFixDeck(input, options = {}) {
+    const deck = normalizeDeck(input || {}, options);
+    if (!cleanText(deck.deckTitle)) deck.deckTitle = 'Latexai Presentation';
+    if (!cleanText(deck.summary)) deck.summary = `Presentation exported from ${rootPath()}`;
+
+    deck.slides = (deck.slides || []).map((slide, index) => {
+      const fixed = normalizePmSlide(slide, index);
+      if (!VALID_SLIDE_TYPES.has(fixed.slideType)) fixed.slideType = index === 0 ? 'title-center' : 'single';
+      if (!VALID_HEADING_LEVELS.has(fixed.headingLevel)) fixed.headingLevel = fixed.slideType === 'title-center' ? 'h1' : 'h2';
+      fixed.bgColor = clampColor(fixed.bgColor, '#ffffff');
+      fixed.fontColor = clampColor(fixed.fontColor, '#000000');
+      fixed.leftBlocks = (fixed.leftBlocks || []).map((b) => autoFixBlock(b, 'Content'));
+      fixed.rightBlocks = (fixed.rightBlocks || []).map((b) => autoFixBlock(b, 'Details'));
+
+      if (fixed.slideType !== 'title-center' && !slideHasVisibleBlocks(fixed)) {
+        fixed.leftBlocks = [{
+          mode: 'placeholder',
+          title: 'Content needed',
+          content: fixed.lede || fixed.title || `Slide ${index + 1}`
+        }];
+      }
+
+      if (fixed.slideType === 'title-center') {
+        fixed.leftBlocks = [];
+        fixed.rightBlocks = [];
+      }
+
+      return fixed;
+    });
+
+    deck.slides = ensureTitleSlide(deck.deckTitle, deck.summary, deck.slides);
+    deck.schema = 'presentation-maker-deck-v1';
+    deck.exportSchema = 'latexai-presentation-maker-json-v1';
+    deck.stage = STAGE;
+    deck.metadata = deck.metadata || {};
+    deck.metadata.validatedAt = new Date().toISOString();
+    return deck;
+  }
+
+  function parseCurrentOutputData() {
+    const text = cleanText(el('presentationExportOutput')?.textContent || (lastDeck ? JSON.stringify(lastDeck) : lastRaw || ''));
+    if (!text) return { ok: false, error: 'No presentation JSON output to validate.' };
+    return parseJsonText(text);
+  }
+
+  function validateCurrentDeck() {
+    const parsed = parseCurrentOutputData();
+    if (!parsed.ok) {
+      setOutput(parsed.error);
+      setStatus(parsed.error);
+      return { ok: false, error: parsed.error };
+    }
+
+    const deck = normalizeDeck(parsed.data, {
+      style: el('presentationExportStyle')?.value || 'research-talk',
+      targetSlideCount: Number(el('presentationExportSlideCount')?.value || 10)
+    });
+    const report = validatePresentationDeck(deck, parsed.data);
+    setOutput(formatValidationReport(report));
+    setStatus(report.ok
+      ? 'Presentation deck passed required validation.'
+      : `Presentation deck has ${report.errors.length} error(s) and ${report.warnings.length} warning(s).`);
+    return { ok: report.ok, deck, report };
+  }
+
+  function autoFixCurrentDeck() {
+    const parsed = parseCurrentOutputData();
+    if (!parsed.ok) {
+      setOutput(parsed.error);
+      setStatus(parsed.error);
+      return { ok: false, error: parsed.error };
+    }
+
+    const deck = autoFixDeck(parsed.data, {
+      style: el('presentationExportStyle')?.value || 'research-talk',
+      targetSlideCount: Number(el('presentationExportSlideCount')?.value || 10)
+    });
+    const report = validatePresentationDeck(deck, deck);
+    lastDeck = deck;
+    setOutput(JSON.stringify(deck, null, 2));
+    setStatus(report.ok
+      ? 'Auto-fixed deck and passed required validation.'
+      : `Auto-fixed deck, but ${report.errors.length} validation error(s) remain.`);
+    return { ok: report.ok, deck, report };
+  }
+
+  function validateAndSaveDeck() {
+    let deck = lastDeck;
+    if (!deck) {
+      const parsed = parseCurrentOutputData();
+      if (!parsed.ok) {
+        setStatus(parsed.error);
+        setOutput(parsed.error);
+        return { ok: false, error: parsed.error };
+      }
+      deck = autoFixDeck(parsed.data, {
+        style: el('presentationExportStyle')?.value || 'research-talk',
+        targetSlideCount: Number(el('presentationExportSlideCount')?.value || 10)
+      });
+    }
+
+    deck = autoFixDeck(deck, {
+      style: el('presentationExportStyle')?.value || 'research-talk',
+      targetSlideCount: Number(el('presentationExportSlideCount')?.value || 10)
+    });
+    const report = validatePresentationDeck(deck, deck);
+    if (!report.ok) {
+      lastDeck = deck;
+      setOutput(formatValidationReport(report));
+      setStatus('Deck still has validation errors; not saved.');
+      return { ok: false, deck, report };
+    }
+
+    lastDeck = deck;
+    setOutput(JSON.stringify(deck, null, 2));
+    return saveDeckToProject(deck);
+  }
+
   function buildPayload(style, targetSlideCount, instructions) {
     return loadExportPrompt().then((prompt) => {
       const context = collectPaperContext();
@@ -405,6 +655,19 @@
       return { ok: false };
     }
 
+    deck = autoFixDeck(deck, {
+      style: el('presentationExportStyle')?.value || deck?.metadata?.style || 'research-talk',
+      targetSlideCount: Number(el('presentationExportSlideCount')?.value || deck?.metadata?.targetSlideCount || deck?.slides?.length || 10)
+    });
+    const validation = validatePresentationDeck(deck, deck);
+    if (!validation.ok) {
+      lastDeck = deck;
+      setOutput(formatValidationReport(validation));
+      setStatus('Deck has validation errors; not saved. Click Auto-fix deck or inspect report.');
+      return { ok: false, deck, report: validation };
+    }
+    lastDeck = deck;
+
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const path = normalizePath(`exports/${slug(deck.deckTitle || deck.title)}-${stamp}.presentation.json`);
     const text = JSON.stringify(deck, null, 2) + '\n';
@@ -495,7 +758,7 @@
     card.innerHTML = [
       '<h3>Paper → Presentation exporter</h3>',
       '<div class="presentation-export-grid">',
-      '  <div class="presentation-export-help">Stage 13B exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
+      '  <div class="presentation-export-help">Stage 13C exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
       '  <div class="presentation-export-two">',
       '    <label>Style',
       '      <select id="presentationExportStyle">',
@@ -515,6 +778,9 @@
       '  <div class="presentation-export-actions">',
       '    <button id="runPresentationExportBtn" class="btn mini primary" type="button">Run exporter</button>',
       '    <button id="convertPresentationExportBtn" class="btn mini" type="button">Convert current JSON</button>',
+      '    <button id="validatePresentationExportBtn" class="btn mini" type="button">Validate deck</button>',
+      '    <button id="autoFixPresentationExportBtn" class="btn mini" type="button">Auto-fix deck</button>',
+      '    <button id="validateSavePresentationExportBtn" class="btn mini primary" type="button">Validate + save</button>',
       '    <button id="savePresentationExportBtn" class="btn mini" type="button">Save JSON</button>',
       '    <button id="runSavePresentationExportBtn" class="btn mini primary" type="button">Run + save</button>',
       '    <button id="copyPresentationExportBtn" class="btn mini" type="button">Copy JSON</button>',
@@ -539,6 +805,9 @@
   function bindControls() {
     el('runPresentationExportBtn')?.addEventListener('click', runPresentationExport, true);
     el('convertPresentationExportBtn')?.addEventListener('click', convertCurrentOutputToPresentationMaker, true);
+    el('validatePresentationExportBtn')?.addEventListener('click', validateCurrentDeck, true);
+    el('autoFixPresentationExportBtn')?.addEventListener('click', autoFixCurrentDeck, true);
+    el('validateSavePresentationExportBtn')?.addEventListener('click', validateAndSaveDeck, true);
     el('savePresentationExportBtn')?.addEventListener('click', () => saveDeckToProject(lastDeck), true);
     el('runSavePresentationExportBtn')?.addEventListener('click', runAndSavePresentationExport, true);
     el('copyPresentationExportBtn')?.addEventListener('click', copyDeckJson, true);
@@ -560,6 +829,12 @@
     normalizePmSlide,
     normalizeDeck,
     parseDeck,
+    validatePresentationDeck,
+    formatValidationReport,
+    autoFixDeck,
+    validateCurrentDeck,
+    autoFixCurrentDeck,
+    validateAndSaveDeck,
     buildPayload,
     runPresentationExport,
     saveDeckToProject,
