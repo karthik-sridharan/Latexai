@@ -118,3 +118,9 @@
 .presentation-export-format-panel input[type="checkbox"] {
   accent-color: #2563eb;
 }
+
+
+/* Stage 13G: talk package validation and ZIP export */
+.presentation-export-actions button#downloadTalkPackageZipBtn {
+  font-weight: 900;
+}
