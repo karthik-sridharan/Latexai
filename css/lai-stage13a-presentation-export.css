@@ -78,3 +78,10 @@
 .presentation-export-actions .primary {
   font-weight: 850;
 }
+
+
+/* Stage 13D: Presentation Maker handoff */
+.presentation-export-card input#presentationMakerUrl {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .78rem;
+}
