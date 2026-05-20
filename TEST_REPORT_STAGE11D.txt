@@ -1,0 +1,7 @@
+Stage 11D checks
+================
+
+PASS node --check js/document-ai-service.js
+PASS node tests/stage11d-frontend-developer-prompts.test.cjs
+
+Paper-level AI prompts are now static developer-managed frontend files under /prompt/.
