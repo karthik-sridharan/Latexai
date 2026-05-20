@@ -1,0 +1,7 @@
+Stage 13E checks
+================
+
+PASS node --check js/presentation-export-service.js
+PASS node tests/stage13e-multiformat-talk-export.test.cjs
+
+Presentation exporter now supports selectable JSON/HTML/Beamer exports, download, and writing selected files to /talk with figure assets under /figures.
