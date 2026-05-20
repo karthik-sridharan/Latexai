@@ -85,3 +85,29 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: .78rem;
 }
+
+
+/* Stage 13E: multi-format talk export */
+.presentation-export-format-panel {
+  border: 1px dashed rgba(15,23,42,.18);
+  border-radius: 14px;
+  padding: .6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem .9rem;
+  align-items: center;
+  background: rgba(248,250,252,.8);
+}
+
+.presentation-export-check {
+  display: inline-flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: .35rem !important;
+  font-weight: 800 !important;
+}
+
+.presentation-export-check input {
+  width: auto;
+  margin: 0;
+}
