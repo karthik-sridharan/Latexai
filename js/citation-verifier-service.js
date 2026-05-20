@@ -1,5 +1,5 @@
-/* Latexai Stage 12C CitationVerifierService
- * Stage: stage12c-missing-bibtex-repair-1
+/* Latexai Stage 12D CitationVerifierService
+ * Stage: stage12d-citation-links-ai-audit-1
  *
  * Deterministic local verifier for LaTeX citations and BibTeX:
  * - parse \cite-like commands in .tex files
@@ -14,11 +14,14 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage12c-missing-bibtex-repair-1';
+  const STAGE = 'stage12d-citation-links-ai-audit-1';
   const MISSING_BIB_PROMPT_PATH = 'prompt/ai-missing-bibtex-repair.txt';
+  const CITATION_AUDIT_PROMPT_PATH = 'prompt/ai-citation-audit.txt';
 
   let lastReport = null;
   let missingBibPromptCache = '';
+  let citationAuditPromptCache = '';
+  let lastAudit = null;
 
   function State() { return NS.State; }
   function el(id) { return document.getElementById(id); }
@@ -675,6 +678,199 @@
     return repairMissingBibtex();
   }
 
+
+  function stripOuterBraces(value) {
+    let s = String(value || '').trim();
+    while (s.startsWith('{') && s.endsWith('}')) s = s.slice(1, -1).trim();
+    return s;
+  }
+
+  function normalizeDoi(doi) {
+    return stripOuterBraces(doi)
+      .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '')
+      .replace(/^doi:\s*/i, '')
+      .trim();
+  }
+
+  function normalizeArxiv(value) {
+    return stripOuterBraces(value)
+      .replace(/^arxiv:/i, '')
+      .replace(/^https?:\/\/arxiv\.org\/(?:abs|pdf)\//i, '')
+      .replace(/\.pdf$/i, '')
+      .trim();
+  }
+
+  function entryOnlineLinks(entry) {
+    const f = entry?.fields || {};
+    const links = [];
+    const doi = normalizeDoi(f.doi || '');
+    if (doi) links.push({ type: 'doi', url: `https://doi.org/${encodeURIComponent(doi).replace(/%2F/g, '/')}`, label: doi });
+
+    const archive = String(f.archiveprefix || f.eprinttype || '').toLowerCase();
+    const eprint = normalizeArxiv(f.eprint || f.arxiv || '');
+    if (eprint && (archive.includes('arxiv') || /^\d{4}\.\d{4,5}/.test(eprint) || /^[a-z-]+\/\d{7}/i.test(eprint))) {
+      links.push({ type: 'arxiv', url: `https://arxiv.org/abs/${encodeURIComponent(eprint)}`, label: eprint });
+    }
+
+    const url = stripOuterBraces(f.url || '');
+    if (url && /^https?:\/\//i.test(url)) links.push({ type: 'url', url, label: url });
+    return links;
+  }
+
+  function fallbackSearchUrl(entry) {
+    const f = entry?.fields || {};
+    const title = stripOuterBraces(f.title || '');
+    const author = stripOuterBraces(f.author || f.editor || '').split(/\s+and\s+/i)[0] || '';
+    const year = stripOuterBraces(f.year || f.date || '');
+    const query = [title, author, year].filter(Boolean).join(' ');
+    if (!query.trim()) return '';
+    return `https://scholar.google.com/scholar?q=${encodeURIComponent(query)}`;
+  }
+
+  function citationLinkReport(report = lastReport || buildCitationReport()) {
+    const entries = report?.entries || [];
+    const lines = [
+      'Citation online-link helper',
+      '===========================',
+      '',
+      'This is a local link helper. It builds links from DOI, arXiv/eprint, and URL fields.',
+      'If no direct link exists, it provides a Google Scholar search URL.',
+      ''
+    ];
+    if (!entries.length) {
+      lines.push('No BibTeX entries found.');
+      return lines.join('\n');
+    }
+    for (const entry of entries) {
+      const links = entryOnlineLinks(entry);
+      const search = fallbackSearchUrl(entry);
+      lines.push(`${entry.key || '(missing key)'} in ${entry.path}`);
+      if (links.length) for (const link of links) lines.push(`  ${link.type}: ${link.url}`);
+      else if (search) lines.push(`  search: ${search}`);
+      else lines.push('  no DOI/arXiv/URL/searchable title found');
+    }
+    return lines.join('\n');
+  }
+
+  function showCitationLinks() {
+    const report = buildCitationReport();
+    renderSummary(report);
+    setOutput(citationLinkReport(report));
+    setStatus('Built local online links from BibTeX DOI/arXiv/URL fields.');
+    return report;
+  }
+
+  function citationAuditPromptUrl() {
+    const stage = encodeURIComponent(W.LUMINA_LATEX_STAGE || STAGE);
+    return `${CITATION_AUDIT_PROMPT_PATH}?v=${stage}`;
+  }
+
+  async function loadCitationAuditPrompt() {
+    if (citationAuditPromptCache) return citationAuditPromptCache;
+    try {
+      const response = await fetch(citationAuditPromptUrl(), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      citationAuditPromptCache = text.trim() || 'Audit the citation and BibTeX report. Return JSON only.';
+    } catch (_err) {
+      citationAuditPromptCache = 'Return JSON only with items describing citation/BibTeX issues and suggested fixes.';
+    }
+    return citationAuditPromptCache;
+  }
+
+  function compactEntryForAudit(entry) {
+    const f = entry.fields || {};
+    return {
+      path: entry.path,
+      type: entry.type,
+      key: entry.key,
+      title: stripOuterBraces(f.title || ''),
+      author: stripOuterBraces(f.author || f.editor || ''),
+      year: stripOuterBraces(f.year || f.date || ''),
+      venue: stripOuterBraces(f.journal || f.booktitle || f.publisher || f.institution || f.school || ''),
+      doi: normalizeDoi(f.doi || ''),
+      eprint: normalizeArxiv(f.eprint || f.arxiv || ''),
+      archiveprefix: stripOuterBraces(f.archiveprefix || f.eprinttype || ''),
+      url: stripOuterBraces(f.url || ''),
+      links: entryOnlineLinks(entry),
+      warnings: entryQualityWarnings(entry)
+    };
+  }
+
+  function citationAuditPayload(report = lastReport || buildCitationReport()) {
+    return {
+      summary: report.summary,
+      missingKeys: report.missingKeys.map((item) => ({ key: item.key, locations: item.citations.map((citation) => `${citation.path}: \\${citation.command}{${citation.key}}`) })),
+      duplicateKeys: report.duplicateEntries.map((item) => ({ key: item.key, locations: item.entries.map((entry) => `${entry.path}: @${entry.type}`) })),
+      unusedEntries: report.unusedEntries.map((item) => item.key),
+      weakEntries: report.weakEntries.map((item) => ({ key: item.entry.key, path: item.entry.path, warnings: item.warnings, entry: compactEntryForAudit(item.entry) })),
+      entries: report.entries.map(compactEntryForAudit),
+      linkReport: citationLinkReport(report)
+    };
+  }
+
+  function parseCitationAudit(raw) {
+    let data;
+    try { data = JSON.parse(stripJsonFence(raw)); }
+    catch (err) { return { ok: false, error: `Could not parse citation audit JSON: ${err.message}`, items: [], summary: '' }; }
+    const items = (Array.isArray(data.items) ? data.items : []).map((item) => ({
+      severity: String(item.severity || 'info'),
+      key: String(item.key || ''),
+      issue: String(item.issue || ''),
+      suggestion: String(item.suggestion || ''),
+      link: String(item.link || ''),
+      confidence: String(item.confidence || '')
+    })).filter((item) => item.issue || item.suggestion || item.key);
+    return { ok: true, items, summary: String(data.summary || ''), raw: data };
+  }
+
+  function formatCitationAudit(audit = lastAudit) {
+    if (!audit) return 'No AI citation audit yet.';
+    if (!audit.ok) return `AI citation audit failed\n========================\n\n${audit.error || 'Unknown error'}`;
+    const lines = ['AI citation audit', '=================', '', audit.summary || `Audit items: ${audit.items.length}`, ''];
+    audit.items.forEach((item, index) => {
+      lines.push(`${index + 1}. [${item.severity || 'info'}] ${item.key || '(general)'}`);
+      lines.push(`Issue: ${item.issue || '(none)'}`);
+      lines.push(`Suggestion: ${item.suggestion || '(none)'}`);
+      if (item.link) lines.push(`Link: ${item.link}`);
+      if (item.confidence) lines.push(`Confidence: ${item.confidence}`);
+      lines.push('');
+    });
+    return lines.join('\n');
+  }
+
+  async function runCitationAudit() {
+    const report = buildCitationReport();
+    renderSummary(report);
+    if (!NS.AIProvider?.ask) { setStatus('AIProvider is not loaded.'); return null; }
+    setStatus('Running AI citation audit from local verifier report...');
+    try {
+      const prompt = await loadCitationAuditPrompt();
+      const input = [prompt, '', '--- Local citation verifier report ---', formatReport(report), '', '--- Structured citation audit payload ---', JSON.stringify(citationAuditPayload(report), null, 2)].join('\n');
+      const response = await NS.AIProvider.ask({
+        instructions: 'Return JSON only. No markdown fences. No prose outside JSON.',
+        input,
+        temperature: 0.05,
+        maxOutputTokens: 7000,
+        citationAudit: { promptFile: CITATION_AUDIT_PROMPT_PATH, summary: report.summary }
+      }, { task: 'latex-citation-ai-audit', context: { workflow: 'citation-ai-audit', promptFile: CITATION_AUDIT_PROMPT_PATH } });
+      const raw = NS.AIProvider.extractText(response);
+      lastAudit = parseCitationAudit(raw);
+      setOutput(formatCitationAudit(lastAudit));
+      setStatus(lastAudit.ok ? `AI citation audit returned ${lastAudit.items.length} item(s).` : lastAudit.error);
+      return lastAudit;
+    } catch (err) {
+      setStatus(`AI citation audit failed: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  async function verifyLinksAndAudit() {
+    verifyCitations();
+    showCitationLinks();
+    return runCitationAudit();
+  }
+
   function createCard() {
     const panel = el('copilotTab');
     if (!panel || el('citationVerifierCard')) return false;
@@ -690,6 +886,9 @@
       '    <button id="verifyCitationsBtn" class="btn mini primary" type="button">Verify citations</button>',
       '    <button id="repairMissingBibtexBtn" class="btn mini primary" type="button">Add missing BibTeX with AI</button>',
       '    <button id="verifyRepairMissingBibtexBtn" class="btn mini" type="button">Verify + add missing BibTeX</button>',
+      '    <button id="showCitationLinksBtn" class="btn mini" type="button">Show online links</button>',
+      '    <button id="runCitationAuditBtn" class="btn mini primary" type="button">Run AI audit</button>',
+      '    <button id="verifyLinksAuditBtn" class="btn mini" type="button">Verify + links + audit</button>',
       '    <button id="copyCitationVerifierBtn" class="btn mini" type="button">Copy report</button>',
       '  </div>',
       '  <div id="citationVerifierStatus" class="citation-verifier-status">Local citation verifier ready.</div>',
@@ -710,6 +909,9 @@
     el('verifyCitationsBtn')?.addEventListener('click', verifyCitations, true);
     el('repairMissingBibtexBtn')?.addEventListener('click', repairMissingBibtex, true);
     el('verifyRepairMissingBibtexBtn')?.addEventListener('click', verifyAndRepairMissingBibtex, true);
+    el('showCitationLinksBtn')?.addEventListener('click', showCitationLinks, true);
+    el('runCitationAuditBtn')?.addEventListener('click', runCitationAudit, true);
+    el('verifyLinksAuditBtn')?.addEventListener('click', verifyLinksAndAudit, true);
     el('copyCitationVerifierBtn')?.addEventListener('click', copyVerifierReport, true);
   }
 
@@ -735,6 +937,14 @@
     verifyAndRepairMissingBibtex,
     parseMissingBibPlan,
     appendBibtexItems,
+    entryOnlineLinks,
+    fallbackSearchUrl,
+    citationLinkReport,
+    showCitationLinks,
+    citationAuditPayload,
+    parseCitationAudit,
+    runCitationAudit,
+    verifyLinksAndAudit,
     copyVerifierReport,
     getLastReport: () => lastReport
   };
