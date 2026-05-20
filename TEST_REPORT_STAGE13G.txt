@@ -1,0 +1,7 @@
+Stage 13G checks
+================
+
+PASS node --check js/presentation-export-service.js
+PASS node tests/stage13g-talk-package-validator-zip.test.cjs
+
+Talk package validator and client-side ZIP download added.
