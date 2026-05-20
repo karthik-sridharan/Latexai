@@ -1,9 +1,9 @@
-/* Latexai Stage 13E PresentationExportService
- * Stage: stage13e-multiformat-talk-export-1
+/* Latexai Stage 13F PresentationExportService
+ * Stage: stage13f-ai-figure-assets-for-talk-export-1
  *
  * Fixes Stage 13A export schema so Presentation Maker imports visible content.
  * Presentation Maker expects slides with leftBlocks/rightBlocks, not only
- * semantic fields like bullets/latex. Stage 13E normalizes every exported slide
+ * semantic fields like bullets/latex. Stage 13F normalizes every exported slide
  * into the Presentation Maker deck schema:
  *
  * deckTitle, summary, slides[].slideType/title/lede/leftBlocks/rightBlocks/etc.
@@ -13,10 +13,12 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage13e-multiformat-talk-export-1';
+  const STAGE = 'stage13f-ai-figure-assets-for-talk-export-1';
   const PROMPT_PATH = 'prompt/ai-paper-to-presentation-export.txt';
+  const FIGURE_PROMPT_PATH = 'prompt/ai-presentation-figure-asset.txt';
 
   let promptCache = '';
+  let figurePromptCache = '';
   let lastRaw = '';
   let lastDeck = null;
   let lastSavedPath = '';
@@ -710,6 +712,207 @@
     return openPresentationMaker();
   }
 
+  function selectedFigureMode() {
+    if (el('presentationFigureModeAi')?.checked) return 'ai';
+    return 'placeholder';
+  }
+
+  function figureAssetFormats() {
+    const formats = [];
+    if (el('presentationFigureAssetSvg')?.checked) formats.push('svg');
+    if (el('presentationFigureAssetTikz')?.checked) formats.push('tikz');
+    return formats.length ? formats : ['svg', 'tikz'];
+  }
+
+  function figurePromptUrl() {
+    const stage = encodeURIComponent(W.LUMINA_LATEX_STAGE || STAGE);
+    return `${FIGURE_PROMPT_PATH}?v=${stage}`;
+  }
+
+  async function loadFigurePrompt() {
+    if (figurePromptCache) return figurePromptCache;
+    try {
+      const response = await fetch(figurePromptUrl(), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      figurePromptCache = text.trim() || 'Return JSON with svg and tikz for the requested figure.';
+    } catch (_err) {
+      figurePromptCache = 'Return JSON only with {"title":"...","svg":"<svg ...>...</svg>","tikz":"\\\\begin{tikzpicture}...\\\\end{tikzpicture}","notes":"..."}';
+    }
+    return figurePromptCache;
+  }
+
+  function stripJsonFenceForFigure(raw) {
+    let s = String(raw || '').trim();
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
+    const first = s.indexOf('{');
+    const last = s.lastIndexOf('}');
+    if (first >= 0 && last > first) s = s.slice(first, last + 1);
+    return s;
+  }
+
+  function safeSvg(svg, fallbackSvg) {
+    const s = String(svg || '').trim();
+    if (/^<svg[\s\S]*<\/svg>\s*$/i.test(s) && !/<script\b/i.test(s) && !/\bon\w+\s*=/i.test(s) && !/<foreignObject\b/i.test(s)) {
+      return s;
+    }
+    return fallbackSvg;
+  }
+
+  function safeTikz(tikz, fallbackTikz) {
+    let s = String(tikz || '').trim();
+    s = s.replace(/^```(?:tex|latex)?\s*/i, '').replace(/```$/i, '').trim();
+    if (/\\begin\{tikzpicture\}[\s\S]*\\end\{tikzpicture\}/.test(s) && !/\\(write18|input|include|openout|read|catcode)\b/.test(s)) {
+      return s;
+    }
+    return fallbackTikz;
+  }
+
+  function placeholderTikzForFigure(fig) {
+    const title = escapeTex(fig.title || `Figure ${fig.slideIndex + 1}`);
+    const text = escapeTex((fig.content || fig.slide?.title || 'Suggested figure').slice(0, 160));
+    return [
+      '\\begin{tikzpicture}[scale=1]',
+      '  \\draw[rounded corners, thick, dashed] (0,0) rectangle (10,5.6);',
+      `  \\node[font=\\bfseries, align=center] at (5,4.25) {${title}};`,
+      `  \\node[align=center, text width=8.5cm] at (5,2.5) {${text}};`,
+      '\\end{tikzpicture}'
+    ].join('\n');
+  }
+
+  async function generateAiFigureAsset(fig, base, index) {
+    const formats = figureAssetFormats();
+    const svgName = `${base}-fig-${String(index + 1).padStart(2, '0')}.svg`;
+    const tikzName = `${base}-fig-${String(index + 1).padStart(2, '0')}.tikz.tex`;
+    const fallbackSvg = svgFigureForBlock(fig, svgName);
+    const fallbackTikz = placeholderTikzForFigure(fig);
+
+    if (selectedFigureMode() !== 'ai') {
+      return {
+        ...fig,
+        filename: svgName,
+        tikzFilename: tikzName,
+        path: normalizePath(`figures/${svgName}`),
+        tikzPath: normalizePath(`figures/${tikzName}`),
+        relFromTalk: `../figures/${svgName}`,
+        tikzRelFromTalk: `../figures/${tikzName}`,
+        svg: fallbackSvg,
+        tikz: fallbackTikz,
+        aiGenerated: false,
+        notes: 'Placeholder figure asset.'
+      };
+    }
+
+    if (!NS.AIProvider?.ask) {
+      return {
+        ...fig,
+        filename: svgName,
+        tikzFilename: tikzName,
+        path: normalizePath(`figures/${svgName}`),
+        tikzPath: normalizePath(`figures/${tikzName}`),
+        relFromTalk: `../figures/${svgName}`,
+        tikzRelFromTalk: `../figures/${tikzName}`,
+        svg: fallbackSvg,
+        tikz: fallbackTikz,
+        aiGenerated: false,
+        notes: 'AIProvider unavailable; used placeholder figure.'
+      };
+    }
+
+    try {
+      const prompt = await loadFigurePrompt();
+      const input = [
+        prompt,
+        '',
+        '--- Requested figure asset ---',
+        JSON.stringify({
+          deckTitle: lastDeck?.deckTitle || '',
+          slideTitle: fig.slide?.title || '',
+          slideIndex: fig.slideIndex + 1,
+          blockTitle: fig.title || '',
+          blockContent: fig.content || '',
+          desiredFormats: formats,
+          svgFilename: svgName,
+          tikzFilename: tikzName
+        }, null, 2),
+        '',
+        '--- Output requirements ---',
+        'Return JSON only with fields: title, svg, tikz, notes.',
+        'SVG must be standalone <svg xmlns="http://www.w3.org/2000/svg" ...>...</svg>.',
+        'TikZ must be only a \\begin{tikzpicture}...\\end{tikzpicture} block.'
+      ].join('\n');
+
+      const response = await NS.AIProvider.ask({
+        instructions: 'Return JSON only. No markdown fences. No prose outside JSON.',
+        input,
+        temperature: 0.15,
+        maxOutputTokens: 6000,
+        presentationFigureAsset: {
+          promptFile: FIGURE_PROMPT_PATH,
+          desiredFormats: formats,
+          slideTitle: fig.slide?.title || '',
+          blockTitle: fig.title || ''
+        }
+      }, {
+        task: 'latex-presentation-figure-asset',
+        context: {
+          workflow: 'presentation-figure-asset',
+          promptFile: FIGURE_PROMPT_PATH,
+          slideTitle: fig.slide?.title || '',
+          blockTitle: fig.title || ''
+        }
+      });
+
+      const raw = NS.AIProvider.extractText(response);
+      let data = {};
+      try { data = JSON.parse(stripJsonFenceForFigure(raw)); } catch (_err) { data = {}; }
+
+      return {
+        ...fig,
+        filename: svgName,
+        tikzFilename: tikzName,
+        path: normalizePath(`figures/${svgName}`),
+        tikzPath: normalizePath(`figures/${tikzName}`),
+        relFromTalk: `../figures/${svgName}`,
+        tikzRelFromTalk: `../figures/${tikzName}`,
+        svg: safeSvg(data.svg, fallbackSvg),
+        tikz: safeTikz(data.tikz, fallbackTikz),
+        aiGenerated: Boolean(data.svg || data.tikz),
+        notes: cleanText(data.notes || (data.svg || data.tikz ? 'AI-generated figure asset.' : 'AI returned no usable asset; used placeholder.')),
+        rawAi: raw
+      };
+    } catch (err) {
+      return {
+        ...fig,
+        filename: svgName,
+        tikzFilename: tikzName,
+        path: normalizePath(`figures/${svgName}`),
+        tikzPath: normalizePath(`figures/${tikzName}`),
+        relFromTalk: `../figures/${svgName}`,
+        tikzRelFromTalk: `../figures/${tikzName}`,
+        svg: fallbackSvg,
+        tikz: fallbackTikz,
+        aiGenerated: false,
+        notes: `AI figure generation failed: ${err?.message || err}`
+      };
+    }
+  }
+
+  async function generateFigureAssetsForDeck(deck = lastDeck) {
+    if (!deck?.slides?.length) return { ok: false, error: 'No deck available. Run exporter first.', figureAssets: [] };
+    const base = slug(deck.deckTitle || 'talk');
+    const figs = figureBlocks(deck);
+    const figureAssets = [];
+    for (let i = 0; i < figs.length; i += 1) {
+      setStatus(`Generating figure asset ${i + 1} of ${figs.length}...`);
+      // Sequential calls avoid overloading the AI backend and keep status meaningful.
+      const asset = await generateAiFigureAsset(figs[i], base, i);
+      figureAssets.push(asset);
+    }
+    setStatus(`Prepared ${figureAssets.length} figure asset(s).`);
+    return { ok: true, figureAssets };
+  }
+
   function selectedExportFormats() {
     const formats = [];
     if (el('presentationExportFormatJson')?.checked) formats.push('json');
@@ -789,7 +992,7 @@
     ].join('\n');
   }
 
-  function buildTalkPackage(deck = lastDeck) {
+  async function buildTalkPackage(deck = lastDeck) {
     if (!deck?.slides?.length) return { ok: false, error: 'No deck available. Run exporter first.' };
 
     const fixedDeck = autoFixDeck(deck, {
@@ -800,17 +1003,8 @@
     if (!validation.ok) return { ok: false, error: 'Deck has validation errors.', deck: fixedDeck, report: validation };
 
     const base = slug(fixedDeck.deckTitle || 'talk');
-    const figs = figureBlocks(fixedDeck);
-    const figureAssets = figs.map((fig, i) => {
-      const filename = `${base}-fig-${String(i + 1).padStart(2, '0')}.svg`;
-      return {
-        ...fig,
-        filename,
-        path: normalizePath(`figures/${filename}`),
-        relFromTalk: `../figures/${filename}`,
-        svg: svgFigureForBlock(fig, filename)
-      };
-    });
+    const generated = await generateFigureAssetsForDeck(fixedDeck);
+    const figureAssets = generated.figureAssets || [];
 
     const json = JSON.stringify(fixedDeck, null, 2) + '\n';
     const html = renderDeckHtml(fixedDeck, figureAssets);
@@ -906,9 +1100,12 @@ ${slides}
     const mode = cleanText(block?.mode || 'plain');
 
     if (asset) {
+      const useTikz = figureAssetFormats().includes('tikz') && asset.tikzRelFromTalk;
       return [
         `\\begin{block}{${escapeTex(title || 'Figure')}}`,
-        `\\centering\\includegraphics[width=.82\\linewidth]{${escapeTex(asset.relFromTalk)}}`,
+        useTikz
+          ? `\\centering\\resizebox{.82\\linewidth}{!}{\\input{${escapeTex(asset.tikzRelFromTalk)}}}`
+          : `\\centering\\includegraphics[width=.82\\linewidth]{${escapeTex(asset.relFromTalk)}}`,
         '',
         escapeTex(content),
         '\\end{block}'
@@ -965,6 +1162,7 @@ ${slides}
       '\\usepackage[utf8]{inputenc}',
       '\\usepackage{amsmath,amssymb}',
       '\\usepackage{graphicx}',
+      '\\usepackage{tikz}',
       '\\usetheme{Madrid}',
       `\\title{${escapeTex(deck.deckTitle || 'Presentation')}}`,
       deck.summary ? `\\subtitle{${escapeTex(deck.summary)}}` : '',
@@ -983,8 +1181,8 @@ ${slides}
     return normalized;
   }
 
-  function addSelectedExportsToGit() {
-    const pkg = buildTalkPackage(lastDeck);
+  async function addSelectedExportsToGit() {
+    const pkg = await buildTalkPackage(lastDeck);
     if (!pkg.ok) {
       setStatus(pkg.error || 'Could not build talk export package.');
       if (pkg.report) setOutput(formatValidationReport(pkg.report));
@@ -999,8 +1197,10 @@ ${slides}
       written.push(writeProjectFile(file.path, file.content));
     }
 
+    const assetFormats = figureAssetFormats();
     for (const asset of pkg.figureAssets) {
-      written.push(writeProjectFile(asset.path, asset.svg));
+      if (assetFormats.includes('svg')) written.push(writeProjectFile(asset.path, asset.svg));
+      if (assetFormats.includes('tikz')) written.push(writeProjectFile(asset.tikzPath, asset.tikz));
     }
 
     lastDeck = pkg.deck;
@@ -1032,8 +1232,8 @@ ${slides}
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function downloadSelectedExports() {
-    const pkg = buildTalkPackage(lastDeck);
+  async function downloadSelectedExports() {
+    const pkg = await buildTalkPackage(lastDeck);
     if (!pkg.ok) {
       setStatus(pkg.error || 'Could not build talk export package.');
       if (pkg.report) setOutput(formatValidationReport(pkg.report));
@@ -1048,13 +1248,50 @@ ${slides}
       downloadBlob(file.path, file.content, file.mime);
       count += 1;
     }
+    const assetFormats = figureAssetFormats();
     for (const asset of pkg.figureAssets) {
-      downloadBlob(asset.path, asset.svg, 'image/svg+xml');
-      count += 1;
+      if (assetFormats.includes('svg')) {
+        downloadBlob(asset.path, asset.svg, 'image/svg+xml');
+        count += 1;
+      }
+      if (assetFormats.includes('tikz')) {
+        downloadBlob(asset.tikzPath, asset.tikz, 'application/x-tex');
+        count += 1;
+      }
     }
 
     setStatus(`Downloaded ${count} selected export/figure file(s).`);
     return { ok: true, downloaded: count, package: pkg };
+  }
+
+  async function generateAndAddFigureAssets() {
+    const current = currentDeckOrParsed();
+    if (!current.ok) {
+      setStatus(current.error || 'No valid deck available for figure generation.');
+      return current;
+    }
+    const deck = autoFixDeck(current.deck, {
+      style: el('presentationExportStyle')?.value || current.deck?.metadata?.style || 'research-talk',
+      targetSlideCount: Number(el('presentationExportSlideCount')?.value || current.deck?.metadata?.targetSlideCount || current.deck?.slides?.length || 10)
+    });
+    lastDeck = deck;
+    const generated = await generateFigureAssetsForDeck(deck);
+    const formats = figureAssetFormats();
+    const written = [];
+    for (const asset of generated.figureAssets || []) {
+      if (formats.includes('svg')) written.push(writeProjectFile(asset.path, asset.svg));
+      if (formats.includes('tikz')) written.push(writeProjectFile(asset.tikzPath, asset.tikz));
+    }
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    setOutput([
+      'Figure assets generated',
+      '=======================',
+      '',
+      ...written.map((p) => `- ${p}`)
+    ].join('\n'));
+    setStatus(`Generated ${written.length} figure asset file(s) under /figures.`);
+    return { ok: true, written, figureAssets: generated.figureAssets || [] };
   }
 
   async function runAndAddSelectedExportsToGit() {
@@ -1271,7 +1508,7 @@ ${slides}
     card.innerHTML = [
       '<h3>Paper → Presentation exporter</h3>',
       '<div class="presentation-export-grid">',
-      '  <div class="presentation-export-help">Stage 13E exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
+      '  <div class="presentation-export-help">Stage 13F exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
       '  <div class="presentation-export-two">',
       '    <label>Style',
       '      <select id="presentationExportStyle">',
@@ -1297,6 +1534,13 @@ ${slides}
       '    <label class="presentation-export-check"><input id="presentationExportFormatHtml" type="checkbox" /> HTML</label>',
       '    <label class="presentation-export-check"><input id="presentationExportFormatBeamer" type="checkbox" /> Beamer TeX</label>',
       '  </div>',
+      '  <div class="presentation-export-format-panel">',
+      '    <div class="presentation-export-help"><strong>Figure assets</strong></div>',
+      '    <label class="presentation-export-check"><input id="presentationFigureModePlaceholder" name="presentationFigureMode" type="radio" checked /> Placeholder</label>',
+      '    <label class="presentation-export-check"><input id="presentationFigureModeAi" name="presentationFigureMode" type="radio" /> AI SVG/TikZ</label>',
+      '    <label class="presentation-export-check"><input id="presentationFigureAssetSvg" type="checkbox" checked /> Save SVG</label>',
+      '    <label class="presentation-export-check"><input id="presentationFigureAssetTikz" type="checkbox" checked /> Save TikZ</label>',
+      '  </div>',
       '  <div class="presentation-export-actions">',
       '    <button id="runPresentationExportBtn" class="btn mini primary" type="button">Run exporter</button>',
       '    <button id="convertPresentationExportBtn" class="btn mini" type="button">Convert current JSON</button>',
@@ -1308,6 +1552,7 @@ ${slides}
       '    <button id="preparePresentationHandoffBtn" class="btn mini" type="button">Prepare handoff</button>',
       '    <button id="openPresentationMakerBtn" class="btn mini primary" type="button">Open maker</button>',
       '    <button id="runOpenPresentationMakerBtn" class="btn mini primary" type="button">Run + open maker</button>',
+      '    <button id="generatePresentationFiguresBtn" class="btn mini" type="button">Generate figures</button>',
       '    <button id="addTalkExportsBtn" class="btn mini primary" type="button">Add selected to /talk</button>',
       '    <button id="downloadTalkExportsBtn" class="btn mini" type="button">Download selected</button>',
       '    <button id="runAddTalkExportsBtn" class="btn mini primary" type="button">Run + add to /talk</button>',
@@ -1343,6 +1588,7 @@ ${slides}
     el('openPresentationMakerBtn')?.addEventListener('click', openPresentationMaker, true);
     el('runOpenPresentationMakerBtn')?.addEventListener('click', runAndOpenPresentationMaker, true);
     el('presentationMakerUrl')?.addEventListener('change', persistPresentationMakerUrl, true);
+    el('generatePresentationFiguresBtn')?.addEventListener('click', generateAndAddFigureAssets, true);
     el('addTalkExportsBtn')?.addEventListener('click', addSelectedExportsToGit, true);
     el('downloadTalkExportsBtn')?.addEventListener('click', downloadSelectedExports, true);
     el('runAddTalkExportsBtn')?.addEventListener('click', runAndAddSelectedExportsToGit, true);
@@ -1356,6 +1602,7 @@ ${slides}
   NS.PresentationExportService = {
     STAGE,
     PROMPT_PATH,
+    FIGURE_PROMPT_PATH,
     init,
     loadExportPrompt,
     collectPaperContext,
@@ -1380,6 +1627,12 @@ ${slides}
     handoffUrl,
     buildHandoffPayload,
     selectedExportFormats,
+    selectedFigureMode,
+    figureAssetFormats,
+    loadFigurePrompt,
+    generateAiFigureAsset,
+    generateFigureAssetsForDeck,
+    generateAndAddFigureAssets,
     buildTalkPackage,
     renderDeckHtml,
     renderDeckBeamer,
