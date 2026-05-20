@@ -1,0 +1,8 @@
+Stage 10I checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage10i-raw-returned-tikz-figure-insert.test.cjs
+
+Raw returned TikZ is preferred and inserted directly as a figure through AssetService.
