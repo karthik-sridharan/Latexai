@@ -1,19 +1,23 @@
-/* Latexai Stage 11D DocumentAIService
- * Stage: stage11d-frontend-developer-prompts-1
+/* Latexai Stage 11F DocumentAIService
+ * Stage: stage11f-laiold-blue-old-content-1
  *
- * Paper-level AI prompts are developer-editable frontend files under /prompt/.
- * They are shipped with the static frontend and fetched at runtime. They are NOT
- * created inside the user's paper project and are NOT editable through the app UI.
+ * Extends Stage 11D with a safe in-place mode for paper-level AI:
+ * - prompts remain developer-managed static frontend files under /prompt/
+ * - append mode behaves like Stage 11D/11A
+ * - in-place mode asks AI for exact JSON edits
+ * - each applied edit comments old content and inserts \lai{...}
  */
 (function () {
   'use strict';
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage11d-frontend-developer-prompts-1';
+  const STAGE = 'stage11f-laiold-blue-old-content-1';
+  // Stage 11F behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
   const COMMON_PROMPT_PATH = 'prompt/ai-document-common.txt';
+  const INPLACE_PROMPT_PATH = 'prompt/ai-inplace-rewrite-format.txt';
   const WORKFLOW_PROMPTS = {
     review: 'prompt/ai-review-and-suggestions.txt',
     remake: 'prompt/ai-total-remake-plan.txt',
@@ -22,43 +26,17 @@
   };
 
   const FALLBACK_PROMPTS = {
-    [COMMON_PROMPT_PATH]: [
-      'You are Latexai document-level AI.',
-      '',
-      'Operate on the full LaTeX paper context provided by the frontend.',
-      '',
-      'Current implementation mode:',
-      '- Append-only.',
-      '- Do not rewrite the paper in place.',
-      '- Return LaTeX content for a final appendix/review section only.',
-      '',
-      'Output rules:',
-      '- Return LaTeX only.',
-      '- Do not use Markdown fences.',
-      '- Do not return JSON.',
-      '- Do not include \\documentclass, \\begin{document}, or \\end{document}.',
-      '- Use concrete section/subsection headings, bullet lists, and actionable suggestions.',
-      '',
-      'User instructions:',
-      '{{USER_INSTRUCTIONS}}',
-      '',
-      'Requested mode:',
-      '{{MODE}}',
-      '',
-      'Selected workflow:',
-      '{{WORKFLOW}}',
-      '',
-      'Root file:',
-      '{{ROOT_FILE}}'
-    ].join('\n'),
-    [WORKFLOW_PROMPTS.review]: 'Workflow: Review and suggested improvements. Critically review the paper and return prioritized actionable LaTeX suggestions.',
-    [WORKFLOW_PROMPTS.remake]: 'Workflow: Total remake plan. Propose a large-scale paper remake plan in LaTeX.',
-    [WORKFLOW_PROMPTS.ranking]: 'Workflow: Ranking / acceptance improver. Return ranked recommendations that would improve venue acceptance odds.',
+    [COMMON_PROMPT_PATH]: 'You are Latexai document-level AI. Return useful paper-level output. User instructions: {{USER_INSTRUCTIONS}}. Mode: {{MODE}}. Workflow: {{WORKFLOW}}.',
+    [INPLACE_PROMPT_PATH]: 'Return JSON only with {"edits":[{"path":"main.tex","oldText":"exact existing text","newText":"replacement LaTeX","reason":"why"}],"summary":"..."}',
+    [WORKFLOW_PROMPTS.review]: 'Workflow: Review and suggested improvements. Critically review the paper and return prioritized actionable suggestions.',
+    [WORKFLOW_PROMPTS.remake]: 'Workflow: Total remake plan. Propose a large-scale paper remake plan.',
+    [WORKFLOW_PROMPTS.ranking]: 'Workflow: Ranking / acceptance improver. Return ranked recommendations that would improve acceptance odds.',
     [WORKFLOW_PROMPTS.competitive]: 'Workflow: Competitive agent improver. Simulate critic, improver, mathematical clarity checker, and strategist agents.'
   };
 
   let lastRaw = '';
   let lastSection = '';
+  let lastPatch = null;
   let lastContextSummary = '';
   let promptCache = new Map();
 
@@ -112,7 +90,7 @@
   }
 
   function allPromptPaths() {
-    return [COMMON_PROMPT_PATH, ...Object.values(WORKFLOW_PROMPTS)];
+    return [COMMON_PROMPT_PATH, INPLACE_PROMPT_PATH, ...Object.values(WORKFLOW_PROMPTS)];
   }
 
   function promptUrl(path) {
@@ -140,13 +118,17 @@
     }
   }
 
-  async function loadWorkflowPrompts(workflow) {
+  async function loadWorkflowPrompts(workflow, mode) {
     const workflowPath = WORKFLOW_PROMPTS[workflow] || WORKFLOW_PROMPTS.review;
-    const [common, workflowPrompt] = await Promise.all([
-      loadFrontendPrompt(COMMON_PROMPT_PATH),
-      loadFrontendPrompt(workflowPath)
-    ]);
-    return { common, workflowPrompt, workflowPath };
+    const paths = [COMMON_PROMPT_PATH, workflowPath];
+    if (mode === 'inplace') paths.push(INPLACE_PROMPT_PATH);
+    const loaded = await Promise.all(paths.map((path) => loadFrontendPrompt(path)));
+    return {
+      common: loaded[0],
+      workflowPrompt: loaded[1],
+      inplacePrompt: mode === 'inplace' ? loaded[2] : '',
+      workflowPath
+    };
   }
 
   function templateFill(template, values) {
@@ -158,7 +140,7 @@
     return out;
   }
 
-  function collectProjectContext(maxChars = 70000) {
+  function collectProjectContext(maxChars = 90000) {
     const p = project();
     const files = (p.files || [])
       .filter((f) => textFile(f))
@@ -191,8 +173,6 @@
   function cleanAiLatex(raw) {
     let s = String(raw || '').trim();
     s = s.replace(/^```(?:latex|tex)?\s*/i, '').replace(/```$/i, '').trim();
-
-    // Avoid full-document replacement in Stage 11D. Keep only body-ish content.
     s = s.replace(/\\documentclass[\s\S]*?\\begin\{document\}/, '').replace(/\\end\{document\}\s*$/i, '').trim();
 
     if (!s) {
@@ -214,12 +194,12 @@
     const body = cleanAiLatex(sectionLatex);
     return [
       '',
-      `% BEGIN LATEXAI-DOCUMENT-AI stage=11D workflow=${workflow || 'review'} generated=${stamp}`,
+      `% BEGIN LATEXAI-DOCUMENT-AI stage=11F workflow=${workflow || 'review'} generated=${stamp}`,
       '\\clearpage',
       '\\lai{',
       body,
       '}',
-      `% END LATEXAI-DOCUMENT-AI stage=11D workflow=${workflow || 'review'}`,
+      `% END LATEXAI-DOCUMENT-AI stage=11F workflow=${workflow || 'review'}`,
       ''
     ].join('\n');
   }
@@ -247,7 +227,7 @@
 
   async function buildPromptPayload(workflow, userInstructions, mode) {
     const context = collectProjectContext();
-    const { common, workflowPrompt, workflowPath } = await loadWorkflowPrompts(workflow);
+    const { common, workflowPrompt, inplacePrompt, workflowPath } = await loadWorkflowPrompts(workflow, mode);
 
     const values = {
       USER_INSTRUCTIONS: userInstructions || '(none)',
@@ -258,27 +238,208 @@
       PROMPT_FILE: workflowPath
     };
 
-    const input = [
+    const pieces = [
       templateFill(common, values),
       '',
       '--- Workflow-specific frontend prompt file ---',
-      templateFill(workflowPrompt, values),
-      '',
-      '--- Project context follows ---',
-      context
-    ].join('\n');
+      templateFill(workflowPrompt, values)
+    ];
+
+    if (mode === 'inplace') {
+      pieces.push('', '--- In-place edit JSON format prompt file ---', templateFill(inplacePrompt, values));
+    }
+
+    pieces.push('', '--- Project context follows ---', context);
 
     return {
-      instructions: 'Return LaTeX only. No markdown fences. No JSON.',
-      input,
+      instructions: mode === 'inplace'
+        ? 'Return JSON only. No markdown fences. No prose outside JSON.'
+        : 'Return LaTeX only. No markdown fences. No JSON.',
+      input: pieces.join('\n'),
       promptSource: {
         kind: 'frontend-static-files',
         commonPrompt: COMMON_PROMPT_PATH,
-        workflowPrompt: workflowPath
+        workflowPrompt: workflowPath,
+        inplacePrompt: mode === 'inplace' ? INPLACE_PROMPT_PATH : ''
       },
-      temperature: 0.2,
-      maxOutputTokens: 5000
+      temperature: mode === 'inplace' ? 0.05 : 0.2,
+      maxOutputTokens: mode === 'inplace' ? 7000 : 5000
     };
+  }
+
+  function stripJsonFence(raw) {
+    let s = String(raw || '').trim();
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
+    const first = s.indexOf('{');
+    const last = s.lastIndexOf('}');
+    if (first >= 0 && last > first) s = s.slice(first, last + 1);
+    return s;
+  }
+
+  function parseInplacePatch(raw) {
+    const s = stripJsonFence(raw);
+    let data;
+    try {
+      data = JSON.parse(s);
+    } catch (err) {
+      return { ok: false, error: `Could not parse AI JSON patch: ${err.message}`, edits: [], summary: '' };
+    }
+
+    const edits = Array.isArray(data?.edits) ? data.edits : [];
+    const normalized = [];
+    for (const edit of edits) {
+      const path = normalizePath(edit?.path || rootPath());
+      const oldText = String(edit?.oldText || '');
+      const newText = String(edit?.newText || '');
+      const reason = String(edit?.reason || '');
+      if (!path || !oldText.trim() || !newText.trim()) continue;
+      normalized.push({ path, oldText, newText, reason });
+    }
+
+    return {
+      ok: true,
+      edits: normalized,
+      summary: String(data?.summary || ''),
+      raw: data
+    };
+  }
+
+  function ensurePackageInPreamble(tex, packageName) {
+    const s = String(tex || '');
+    const pkgRe = new RegExp(`\\\\usepackage(?:\\[[^\\]]*\\])?\\{${packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`);
+    if (pkgRe.test(s)) return s;
+
+    const docIdx = s.indexOf('\\begin{document}');
+    const line = `\\usepackage{${packageName}}\n`;
+    if (docIdx >= 0) return s.slice(0, docIdx) + line + s.slice(docIdx);
+
+    const classMatch = s.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}\s*/);
+    if (classMatch?.index !== undefined) {
+      const at = classMatch.index + classMatch[0].length;
+      return s.slice(0, at) + '\n' + line + s.slice(at);
+    }
+
+    return line + s;
+  }
+
+  function ensureLaiOldMacro(rootText) {
+    let s = String(rootText || '');
+    s = ensurePackageInPreamble(s, 'xcolor');
+
+    if (/\\(?:long\\s*)?\\def\\s*\\laiold\b|\\newcommand\s*\\{\\laiold\\}|\\providecommand\s*\\{\\laiold\\}/.test(s)) {
+      return s;
+    }
+
+    const macro = [
+      '',
+      '% --- Latexai old-content highlighting macro ---',
+      '% Old paper content preserved by paper-level AI in-place edits.',
+      '\\long\\def\\laiold#1{{\\color{blue}#1}}',
+      '% --- end Latexai old-content highlighting macro ---',
+      ''
+    ].join('\n');
+
+    const laiIdx = s.search(/% --- Latexai AI-change highlighting macro ---|\\long\\def\\lai#1|\\newcommand\s*\\{\\lai\\}/);
+    if (laiIdx >= 0) {
+      return s.slice(0, laiIdx) + macro + s.slice(laiIdx);
+    }
+
+    const docIdx = s.indexOf('\\begin{document}');
+    if (docIdx >= 0) return s.slice(0, docIdx) + macro + s.slice(docIdx);
+
+    return macro + s;
+  }
+
+  function oldTextBlock(oldText, id, path) {
+    return [
+      `% BEGIN LAI-OLD id=${id} path=${path}`,
+      '\\laiold{',
+      String(oldText || '').trim(),
+      '}',
+      `% END LAI-OLD id=${id}`
+    ].join('\n');
+  }
+
+  function wrapInplaceReplacement(edit, index) {
+    const id = `lai-doc-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+    const reason = edit.reason ? `% LAI reason: ${edit.reason}\n` : '';
+    return [
+      oldTextBlock(edit.oldText, id, edit.path),
+      '',
+      reason + '\\lai{',
+      String(edit.newText || '').trim(),
+      '}'
+    ].join('\n');
+  }
+
+  function ensureRootLaiMacro() {
+    const root = rootFile();
+    if (!root || !textFile(root)) return false;
+    let next = ensureLai(fileText(root));
+    next = ensureLaiOldMacro(next);
+    if (next !== fileText(root)) {
+      State()?.updateFile?.(normalizePath(root.path), next);
+    }
+    return true;
+  }
+
+  function applyInplacePatch(patch = lastPatch) {
+    if (!patch || !Array.isArray(patch.edits)) {
+      setStatus('No in-place AI patch to apply. Run paper AI in in-place mode first.');
+      return { ok: false, applied: 0, skipped: 0 };
+    }
+
+    ensureRootLaiMacro();
+
+    let applied = 0;
+    let skipped = 0;
+    const messages = [];
+
+    patch.edits.forEach((edit, index) => {
+      const path = normalizePath(edit.path || rootPath());
+      const file = State()?.getFile?.(path);
+      if (!file || !textFile(file)) {
+        skipped += 1;
+        messages.push(`SKIP ${path}: file not found or not text.`);
+        return;
+      }
+
+      const text = fileText(file);
+      const oldText = String(edit.oldText || '');
+      const at = text.indexOf(oldText);
+      if (at < 0) {
+        skipped += 1;
+        messages.push(`SKIP ${path}: oldText was not an exact substring.`);
+        return;
+      }
+
+      const replacement = wrapInplaceReplacement({ ...edit, path }, index);
+      const next = text.slice(0, at) + replacement + text.slice(at + oldText.length);
+      State()?.updateFile?.(path, next);
+      applied += 1;
+      messages.push(`APPLY ${path}: ${edit.reason || 'AI edit applied.'}`);
+    });
+
+    try { State()?.setActivePath?.(rootPath()); } catch (_err) {}
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+
+    const report = [
+      'In-place AI patch apply report',
+      '==============================',
+      '',
+      `Applied: ${applied}`,
+      `Skipped: ${skipped}`,
+      '',
+      ...messages
+    ].join('\n');
+
+    setOutput(report);
+    setStatus(`Applied ${applied} in-place edit(s); skipped ${skipped}.`);
+    if (applied) toast(`Applied ${applied} paper-level AI edit(s).`);
+    return { ok: applied > 0, applied, skipped, messages };
   }
 
   async function runDocumentAi() {
@@ -286,17 +447,12 @@
     const mode = el('documentAiMode')?.value || 'append';
     const instructions = String(el('documentAiPrompt')?.value || '').trim();
 
-    if (mode !== 'append') {
-      setStatus('Stage 11D only implements append-only mode. In-place LAI rewrites will be added in a later stage.');
-      return null;
-    }
-
     if (!NS.AIProvider?.ask) {
       setStatus('AIProvider is not loaded.');
       return null;
     }
 
-    setStatus(`Running document-level AI using frontend /prompt/ file for: ${workflowLabel(workflow)}.`);
+    setStatus(`Running document-level AI (${mode}) using frontend /prompt/ file for: ${workflowLabel(workflow)}.`);
     const payload = await buildPromptPayload(workflow, instructions, mode);
 
     try {
@@ -308,10 +464,39 @@
           rootPath: rootPath(),
           promptSource: 'frontend-static-files',
           commonPromptFile: COMMON_PROMPT_PATH,
-          workflowPromptFile: payload.promptSource.workflowPrompt
+          workflowPromptFile: payload.promptSource.workflowPrompt,
+          inplacePromptFile: payload.promptSource.inplacePrompt
         }
       });
       lastRaw = NS.AIProvider.extractText(response);
+
+      if (mode === 'inplace') {
+        lastPatch = parseInplacePatch(lastRaw);
+        lastSection = '';
+        setOutput([
+          'Document AI in-place patch output',
+          '=================================',
+          '',
+          `Workflow: ${workflowLabel(workflow)}`,
+          `Mode: ${mode}`,
+          `Prompt source: frontend /prompt/ files`,
+          `Workflow prompt: ${payload.promptSource.workflowPrompt}`,
+          `In-place prompt: ${payload.promptSource.inplacePrompt}`,
+          `Context: ${lastContextSummary}`,
+          '',
+          lastPatch.ok ? `Parsed edits: ${lastPatch.edits.length}` : lastPatch.error,
+          lastPatch.summary ? `Summary: ${lastPatch.summary}` : '',
+          '',
+          'Raw AI output:',
+          lastRaw
+        ].join('\n'));
+        setStatus(lastPatch.ok
+          ? `Document AI returned ${lastPatch.edits.length} exact in-place edit(s). Click Apply to paper to insert with LAI comments.`
+          : `Document AI did not return parseable JSON. ${lastPatch.error}`);
+        return lastPatch;
+      }
+
+      lastPatch = null;
       lastSection = cleanAiLatex(lastRaw);
       setOutput([
         'Document AI output',
@@ -335,6 +520,9 @@
   }
 
   function appendLastToPaper() {
+    const mode = el('documentAiMode')?.value || 'append';
+    if (mode === 'inplace') return applyInplacePatch(lastPatch);
+
     const root = rootFile();
     if (!root || !textFile(root)) {
       setStatus('No root LaTeX file found.');
@@ -363,13 +551,13 @@
   }
 
   async function runAndAppendDocumentAi() {
-    const section = await runDocumentAi();
-    if (!section) return null;
+    const result = await runDocumentAi();
+    if (!result) return null;
     return appendLastToPaper();
   }
 
   async function copyDocumentAiOutput() {
-    const text = lastSection || lastRaw || el('documentAiOutput')?.textContent || '';
+    const text = lastSection || (lastPatch ? JSON.stringify(lastPatch.raw || lastPatch, null, 2) : '') || lastRaw || el('documentAiOutput')?.textContent || '';
     if (!text.trim()) {
       setStatus('No document AI output to copy yet.');
       return;
@@ -382,6 +570,14 @@
     }
   }
 
+  function updateActionLabels() {
+    const mode = el('documentAiMode')?.value || 'append';
+    const apply = el('appendDocumentAiBtn');
+    const runApply = el('runAppendDocumentAiBtn');
+    if (apply) apply.textContent = mode === 'inplace' ? 'Apply to paper' : 'Append to paper';
+    if (runApply) runApply.textContent = mode === 'inplace' ? 'Run + apply' : 'Run + append';
+  }
+
   function createCard() {
     const panel = el('copilotTab');
     if (!panel || el('documentAiCard')) return false;
@@ -392,7 +588,7 @@
     card.innerHTML = [
       '<h3>Paper-level AI</h3>',
       '<div class="document-ai-grid">',
-      '  <div class="document-ai-help">Stage 11D uses developer-managed static frontend prompt files in <code>/prompt/</code>. End users do not edit these prompts from the paper project; they can only provide one-off extra instructions below.</div>',
+      '  <div class="document-ai-help">Stage 11F uses developer-managed static frontend prompt files in <code>/prompt/</code>. Append mode adds a final AI section. In-place mode applies exact AI JSON edits by commenting old content and inserting <code>\\lai{...}</code>.</div>',
       '  <div class="document-ai-two">',
       '    <label>Workflow',
       '      <select id="documentAiWorkflow">',
@@ -405,7 +601,7 @@
       '    <label>Mode',
       '      <select id="documentAiMode">',
       '        <option value="append">Append as final AI section</option>',
-      '        <option value="inplace" disabled>In-place with LAI comments (later)</option>',
+      '        <option value="inplace">In-place with LAI comments</option>',
       '      </select>',
       '    </label>',
       '  </div>',
@@ -428,10 +624,12 @@
     else panel.appendChild(card);
 
     bindControls();
+    updateActionLabels();
     return true;
   }
 
   function bindControls() {
+    el('documentAiMode')?.addEventListener('change', updateActionLabels, true);
     el('runDocumentAiBtn')?.addEventListener('click', runDocumentAi, true);
     el('appendDocumentAiBtn')?.addEventListener('click', appendLastToPaper, true);
     el('runAppendDocumentAiBtn')?.addEventListener('click', runAndAppendDocumentAi, true);
@@ -446,6 +644,7 @@
     STAGE,
     PROMPT_BASE,
     COMMON_PROMPT_PATH,
+    INPLACE_PROMPT_PATH,
     WORKFLOW_PROMPTS,
     init,
     allPromptPaths,
@@ -455,6 +654,9 @@
     collectProjectContext,
     buildPromptPayload,
     cleanAiLatex,
+    parseInplacePatch,
+    applyInplacePatch,
+    wrapInplaceReplacement,
     wrapAppendixSection,
     insertBeforeEndDocument,
     runDocumentAi,
@@ -462,7 +664,8 @@
     runAndAppendDocumentAi,
     copyDocumentAiOutput,
     getLastSection: () => lastSection,
-    getLastRaw: () => lastRaw
+    getLastRaw: () => lastRaw,
+    getLastPatch: () => lastPatch
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
