@@ -1,0 +1,8 @@
+Stage 12C checks
+================
+
+PASS node --check js/citation-ai-service.js
+PASS node --check js/citation-verifier-service.js
+PASS node tests/stage12c-missing-bibtex-repair.test.cjs
+
+Missing BibTeX repair added to local verifier; citation filler also recovers raw BibTeX blocks from AI output.
