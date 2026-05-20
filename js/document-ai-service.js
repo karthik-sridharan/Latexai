@@ -1,5 +1,5 @@
-/* Latexai Stage 11F DocumentAIService
- * Stage: stage11f-laiold-blue-old-content-1
+/* Latexai Stage 11E DocumentAIService
+ * Stage: stage11e-paper-ai-inplace-lai-edits-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
  * - prompts remain developer-managed static frontend files under /prompt/
@@ -12,8 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage11f-laiold-blue-old-content-1';
-  // Stage 11F behavior: preserving old content in blue via \\laiold{...}.
+  const STAGE = 'stage11e-paper-ai-inplace-lai-edits-1';
 
   const PROMPT_BASE = 'prompt/';
   const COMMON_PROMPT_PATH = 'prompt/ai-document-common.txt';
@@ -194,12 +193,12 @@
     const body = cleanAiLatex(sectionLatex);
     return [
       '',
-      `% BEGIN LATEXAI-DOCUMENT-AI stage=11F workflow=${workflow || 'review'} generated=${stamp}`,
+      `% BEGIN LATEXAI-DOCUMENT-AI stage=11E workflow=${workflow || 'review'} generated=${stamp}`,
       '\\clearpage',
       '\\lai{',
       body,
       '}',
-      `% END LATEXAI-DOCUMENT-AI stage=11F workflow=${workflow || 'review'}`,
+      `% END LATEXAI-DOCUMENT-AI stage=11E workflow=${workflow || 'review'}`,
       ''
     ].join('\n');
   }
@@ -304,58 +303,11 @@
     };
   }
 
-  function ensurePackageInPreamble(tex, packageName) {
-    const s = String(tex || '');
-    const pkgRe = new RegExp(`\\\\usepackage(?:\\[[^\\]]*\\])?\\{${packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`);
-    if (pkgRe.test(s)) return s;
-
-    const docIdx = s.indexOf('\\begin{document}');
-    const line = `\\usepackage{${packageName}}\n`;
-    if (docIdx >= 0) return s.slice(0, docIdx) + line + s.slice(docIdx);
-
-    const classMatch = s.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}\s*/);
-    if (classMatch?.index !== undefined) {
-      const at = classMatch.index + classMatch[0].length;
-      return s.slice(0, at) + '\n' + line + s.slice(at);
-    }
-
-    return line + s;
-  }
-
-  function ensureLaiOldMacro(rootText) {
-    let s = String(rootText || '');
-    s = ensurePackageInPreamble(s, 'xcolor');
-
-    if (/\\(?:long\\s*)?\\def\\s*\\laiold\b|\\newcommand\s*\\{\\laiold\\}|\\providecommand\s*\\{\\laiold\\}/.test(s)) {
-      return s;
-    }
-
-    const macro = [
-      '',
-      '% --- Latexai old-content highlighting macro ---',
-      '% Old paper content preserved by paper-level AI in-place edits.',
-      '\\long\\def\\laiold#1{{\\color{blue}#1}}',
-      '% --- end Latexai old-content highlighting macro ---',
-      ''
-    ].join('\n');
-
-    const laiIdx = s.search(/% --- Latexai AI-change highlighting macro ---|\\long\\def\\lai#1|\\newcommand\s*\\{\\lai\\}/);
-    if (laiIdx >= 0) {
-      return s.slice(0, laiIdx) + macro + s.slice(laiIdx);
-    }
-
-    const docIdx = s.indexOf('\\begin{document}');
-    if (docIdx >= 0) return s.slice(0, docIdx) + macro + s.slice(docIdx);
-
-    return macro + s;
-  }
-
-  function oldTextBlock(oldText, id, path) {
+  function commentOldText(oldText, id, path) {
+    const commented = String(oldText || '').split('\n').map((line) => `% ${line}`).join('\n');
     return [
       `% BEGIN LAI-OLD id=${id} path=${path}`,
-      '\\laiold{',
-      String(oldText || '').trim(),
-      '}',
+      commented,
       `% END LAI-OLD id=${id}`
     ].join('\n');
   }
@@ -364,7 +316,7 @@
     const id = `lai-doc-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 8)}`;
     const reason = edit.reason ? `% LAI reason: ${edit.reason}\n` : '';
     return [
-      oldTextBlock(edit.oldText, id, edit.path),
+      commentOldText(edit.oldText, id, edit.path),
       '',
       reason + '\\lai{',
       String(edit.newText || '').trim(),
@@ -375,8 +327,7 @@
   function ensureRootLaiMacro() {
     const root = rootFile();
     if (!root || !textFile(root)) return false;
-    let next = ensureLai(fileText(root));
-    next = ensureLaiOldMacro(next);
+    const next = ensureLai(fileText(root));
     if (next !== fileText(root)) {
       State()?.updateFile?.(normalizePath(root.path), next);
     }
@@ -588,7 +539,7 @@
     card.innerHTML = [
       '<h3>Paper-level AI</h3>',
       '<div class="document-ai-grid">',
-      '  <div class="document-ai-help">Stage 11F uses developer-managed static frontend prompt files in <code>/prompt/</code>. Append mode adds a final AI section. In-place mode applies exact AI JSON edits by commenting old content and inserting <code>\\lai{...}</code>.</div>',
+      '  <div class="document-ai-help">Stage 11E uses developer-managed static frontend prompt files in <code>/prompt/</code>. Append mode adds a final AI section. In-place mode applies exact AI JSON edits by commenting old content and inserting <code>\\lai{...}</code>.</div>',
       '  <div class="document-ai-two">',
       '    <label>Workflow',
       '      <select id="documentAiWorkflow">',
