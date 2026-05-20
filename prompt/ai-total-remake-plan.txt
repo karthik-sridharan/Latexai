@@ -1,0 +1,13 @@
+Workflow: Total remake plan.
+
+Propose a large-scale remake of the paper.
+
+Focus on:
+- the ideal paper narrative;
+- reordered section structure;
+- what should be merged, split, shortened, or expanded;
+- how the main theorem/result should be framed;
+- which examples, figures, experiments, or explanations would make the paper clearer;
+- a concrete step-by-step rewrite plan.
+
+Return a LaTeX section that is a complete remake plan, not a direct rewrite of the paper.

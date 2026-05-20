@@ -1,0 +1,9 @@
+Workflow: Competitive agent improver.
+
+Simulate a committee of agents:
+1. The critic attacks the paper and identifies the weakest points.
+2. The improver proposes concrete fixes.
+3. The mathematical clarity checker focuses on definitions, assumptions, statements, and proof flow.
+4. The strategist summarizes the changes with the highest impact.
+
+Return a LaTeX section organized by these agents, followed by a consolidated action plan.
