@@ -1,9 +1,9 @@
-/* Latexai Stage 13C PresentationExportService
- * Stage: stage13c-presentation-export-validator-autofix-1
+/* Latexai Stage 13D PresentationExportService
+ * Stage: stage13d-presentation-maker-handoff-1
  *
  * Fixes Stage 13A export schema so Presentation Maker imports visible content.
  * Presentation Maker expects slides with leftBlocks/rightBlocks, not only
- * semantic fields like bullets/latex. Stage 13C normalizes every exported slide
+ * semantic fields like bullets/latex. Stage 13D normalizes every exported slide
  * into the Presentation Maker deck schema:
  *
  * deckTitle, summary, slides[].slideType/title/lede/leftBlocks/rightBlocks/etc.
@@ -13,13 +13,14 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage13c-presentation-export-validator-autofix-1';
+  const STAGE = 'stage13d-presentation-maker-handoff-1';
   const PROMPT_PATH = 'prompt/ai-paper-to-presentation-export.txt';
 
   let promptCache = '';
   let lastRaw = '';
   let lastDeck = null;
   let lastSavedPath = '';
+  let lastHandoff = null;
 
   function State() { return NS.State; }
   function el(id) { return document.getElementById(id); }
@@ -556,6 +557,159 @@
     return saveDeckToProject(deck);
   }
 
+  function defaultPresentationMakerUrl() {
+    try {
+      return localStorage.getItem('latexai:presentationMakerUrl') || 'presentation-maker.html';
+    } catch (_err) {
+      return 'presentation-maker.html';
+    }
+  }
+
+  function presentationMakerUrl() {
+    return cleanText(el('presentationMakerUrl')?.value || defaultPresentationMakerUrl() || 'presentation-maker.html');
+  }
+
+  function persistPresentationMakerUrl() {
+    const url = presentationMakerUrl();
+    try { localStorage.setItem('latexai:presentationMakerUrl', url); } catch (_err) {}
+    return url;
+  }
+
+  function handoffKey() {
+    return `latexai:presentation-maker:handoff:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function buildHandoffPayload(deck) {
+    return {
+      schema: 'latexai-presentation-handoff-v1',
+      stage: STAGE,
+      createdAt: new Date().toISOString(),
+      source: {
+        app: 'Latexai',
+        rootPath: rootPath(),
+        savedPath: lastSavedPath || ''
+      },
+      deck
+    };
+  }
+
+  function handoffUrl(baseUrl, key) {
+    const raw = cleanText(baseUrl || 'presentation-maker.html');
+    try {
+      const url = new URL(raw, window.location.href);
+      url.searchParams.set('latexaiImport', 'localStorage');
+      url.searchParams.set('handoffKey', key);
+      url.searchParams.set('schema', 'latexai-presentation-handoff-v1');
+      return url.href;
+    } catch (_err) {
+      const sep = raw.includes('?') ? '&' : '?';
+      return `${raw}${sep}latexaiImport=localStorage&handoffKey=${encodeURIComponent(key)}&schema=latexai-presentation-handoff-v1`;
+    }
+  }
+
+  function currentDeckOrParsed() {
+    if (lastDeck?.slides?.length) return { ok: true, deck: lastDeck };
+    const parsed = parseCurrentOutputData();
+    if (!parsed.ok) return parsed;
+    return {
+      ok: true,
+      deck: autoFixDeck(parsed.data, {
+        style: el('presentationExportStyle')?.value || 'research-talk',
+        targetSlideCount: Number(el('presentationExportSlideCount')?.value || 10)
+      })
+    };
+  }
+
+  function preparePresentationHandoff() {
+    const current = currentDeckOrParsed();
+    if (!current.ok) {
+      setStatus(current.error || 'No valid deck available for handoff.');
+      if (current.error) setOutput(current.error);
+      return { ok: false, error: current.error || 'missing deck' };
+    }
+
+    const deck = autoFixDeck(current.deck, {
+      style: el('presentationExportStyle')?.value || current.deck?.metadata?.style || 'research-talk',
+      targetSlideCount: Number(el('presentationExportSlideCount')?.value || current.deck?.metadata?.targetSlideCount || current.deck?.slides?.length || 10)
+    });
+    const report = validatePresentationDeck(deck, deck);
+    if (!report.ok) {
+      lastDeck = deck;
+      setOutput(formatValidationReport(report));
+      setStatus('Deck still has validation errors; handoff not prepared.');
+      return { ok: false, deck, report };
+    }
+
+    lastDeck = deck;
+    persistPresentationMakerUrl();
+
+    const key = handoffKey();
+    const payload = buildHandoffPayload(deck);
+    const payloadText = JSON.stringify(payload);
+    const deckText = JSON.stringify(deck, null, 2);
+    const url = handoffUrl(presentationMakerUrl(), key);
+
+    try {
+      localStorage.setItem(key, payloadText);
+      localStorage.setItem('latexai:presentation-maker:latest', key);
+      localStorage.setItem('latexai:presentation-maker:importDeck', deckText);
+      localStorage.setItem('presentation-maker-import-deck', deckText);
+      localStorage.setItem('presentationMakerImportDeck', deckText);
+      sessionStorage.setItem(key, payloadText);
+    } catch (err) {
+      setStatus(`Could not write handoff to browser storage: ${err?.message || err}. Use Copy JSON or Download JSON.`);
+      return { ok: false, error: err?.message || String(err), deck, report };
+    }
+
+    lastHandoff = { key, url, payload, deck, report };
+
+    setOutput([
+      'Presentation Maker handoff prepared',
+      '====================================',
+      '',
+      `Deck: ${deck.deckTitle}`,
+      `Slides: ${deck.slides.length}`,
+      `Storage key: ${key}`,
+      `Open URL: ${url}`,
+      '',
+      'Stored keys:',
+      '- latexai:presentation-maker:latest',
+      '- latexai:presentation-maker:importDeck',
+      '- presentation-maker-import-deck',
+      '- presentationMakerImportDeck',
+      '',
+      'If the Presentation Maker is on the same origin, it can read the handoff from localStorage.',
+      'If not, use Copy JSON or Download JSON and import manually.'
+    ].join('\n'));
+
+    setStatus('Presentation handoff prepared. Click Open maker or use Copy/Download JSON as fallback.');
+    toast('Presentation handoff prepared.');
+    return { ok: true, key, url, deck, payload, report };
+  }
+
+  function openPresentationMaker() {
+    const handoff = lastHandoff?.url ? lastHandoff : preparePresentationHandoff();
+    if (!handoff?.ok && !handoff?.url) return handoff;
+
+    const url = handoff.url || lastHandoff?.url;
+    try {
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!opened) window.location.href = url;
+    } catch (_err) {
+      window.location.href = url;
+    }
+    setStatus('Opened Presentation Maker handoff URL.');
+    return handoff;
+  }
+
+  async function runAndOpenPresentationMaker() {
+    const result = await runPresentationExport();
+    if (!result?.ok) return result;
+    const handoff = preparePresentationHandoff();
+    if (!handoff?.ok) return handoff;
+    return openPresentationMaker();
+  }
+
   function buildPayload(style, targetSlideCount, instructions) {
     return loadExportPrompt().then((prompt) => {
       const context = collectPaperContext();
@@ -758,7 +912,7 @@
     card.innerHTML = [
       '<h3>Paper → Presentation exporter</h3>',
       '<div class="presentation-export-grid">',
-      '  <div class="presentation-export-help">Stage 13C exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
+      '  <div class="presentation-export-help">Stage 13D exports Presentation Maker compatible JSON. Slides now use <code>leftBlocks</code>/<code>rightBlocks</code> so content appears when imported, not only titles.</div>',
       '  <div class="presentation-export-two">',
       '    <label>Style',
       '      <select id="presentationExportStyle">',
@@ -775,6 +929,9 @@
       '  <label>Extra instructions',
       '    <textarea id="presentationExportPrompt" placeholder="Example: make this a 15-minute theory talk and include one slide for intuition before each theorem."></textarea>',
       '  </label>',
+      '  <label>Presentation Maker URL',
+      `    <input id="presentationMakerUrl" type="text" value="${defaultPresentationMakerUrl()}" placeholder="presentation-maker.html or full URL" />`,
+      '  </label>',
       '  <div class="presentation-export-actions">',
       '    <button id="runPresentationExportBtn" class="btn mini primary" type="button">Run exporter</button>',
       '    <button id="convertPresentationExportBtn" class="btn mini" type="button">Convert current JSON</button>',
@@ -783,6 +940,9 @@
       '    <button id="validateSavePresentationExportBtn" class="btn mini primary" type="button">Validate + save</button>',
       '    <button id="savePresentationExportBtn" class="btn mini" type="button">Save JSON</button>',
       '    <button id="runSavePresentationExportBtn" class="btn mini primary" type="button">Run + save</button>',
+      '    <button id="preparePresentationHandoffBtn" class="btn mini" type="button">Prepare handoff</button>',
+      '    <button id="openPresentationMakerBtn" class="btn mini primary" type="button">Open maker</button>',
+      '    <button id="runOpenPresentationMakerBtn" class="btn mini primary" type="button">Run + open maker</button>',
       '    <button id="copyPresentationExportBtn" class="btn mini" type="button">Copy JSON</button>',
       '    <button id="downloadPresentationExportBtn" class="btn mini" type="button">Download JSON</button>',
       '  </div>',
@@ -810,6 +970,10 @@
     el('validateSavePresentationExportBtn')?.addEventListener('click', validateAndSaveDeck, true);
     el('savePresentationExportBtn')?.addEventListener('click', () => saveDeckToProject(lastDeck), true);
     el('runSavePresentationExportBtn')?.addEventListener('click', runAndSavePresentationExport, true);
+    el('preparePresentationHandoffBtn')?.addEventListener('click', preparePresentationHandoff, true);
+    el('openPresentationMakerBtn')?.addEventListener('click', openPresentationMaker, true);
+    el('runOpenPresentationMakerBtn')?.addEventListener('click', runAndOpenPresentationMaker, true);
+    el('presentationMakerUrl')?.addEventListener('change', persistPresentationMakerUrl, true);
     el('copyPresentationExportBtn')?.addEventListener('click', copyDeckJson, true);
     el('downloadPresentationExportBtn')?.addEventListener('click', () => downloadDeckJson(lastDeck), true);
   }
@@ -835,6 +999,13 @@
     validateCurrentDeck,
     autoFixCurrentDeck,
     validateAndSaveDeck,
+    defaultPresentationMakerUrl,
+    presentationMakerUrl,
+    preparePresentationHandoff,
+    openPresentationMaker,
+    runAndOpenPresentationMaker,
+    handoffUrl,
+    buildHandoffPayload,
     buildPayload,
     runPresentationExport,
     saveDeckToProject,
@@ -844,7 +1015,8 @@
     downloadDeckJson,
     getLastDeck: () => lastDeck,
     getLastRaw: () => lastRaw,
-    getLastSavedPath: () => lastSavedPath
+    getLastSavedPath: () => lastSavedPath,
+    getLastHandoff: () => lastHandoff
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
