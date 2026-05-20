@@ -1,0 +1,7 @@
+Stage 13D checks
+================
+
+PASS node --check js/presentation-export-service.js
+PASS node tests/stage13d-presentation-maker-handoff.test.cjs
+
+Presentation exporter can now prepare/open a browser-storage handoff for Presentation Maker.
