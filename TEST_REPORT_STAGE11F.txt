@@ -1,0 +1,7 @@
+Stage 11F checks
+================
+
+PASS node --check js/document-ai-service.js
+PASS node tests/stage11f-laiold-blue-old-content.test.cjs
+
+In-place paper-level AI now preserves old content as visible blue \\laiold{...}, rather than commented lines.
