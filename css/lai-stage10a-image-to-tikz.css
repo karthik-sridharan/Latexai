@@ -134,3 +134,10 @@
 .image-tikz-returned.active {
   display: block;
 }
+
+
+/* Stage 10I: raw returned TikZ insertion */
+.image-tikz-returned::selection,
+.image-tikz-diagnostic::selection {
+  background: rgba(96, 165, 250, .45);
+}
