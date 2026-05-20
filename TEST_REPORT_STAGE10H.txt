@@ -1,0 +1,8 @@
+Stage 10H checks
+================
+
+PASS node --check js/image-to-tikz-service.js
+PASS node --check js/asset-service.js
+PASS node tests/stage10h-accept-real-tikz-insert-anyway.test.cjs
+
+Image-to-TikZ now accepts real TikZ, rejects only known bad placeholders, and exposes returned TikZ with insert-anyway controls.
