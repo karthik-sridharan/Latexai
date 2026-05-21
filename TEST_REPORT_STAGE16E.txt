@@ -1,0 +1,8 @@
+Stage 16E checks
+================
+
+PASS node --check js/ai-revision-history-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage16e-ai-revision-history.test.cjs
+
+AI revision history added as a feature-gated local snapshot/compare/restore workflow.
