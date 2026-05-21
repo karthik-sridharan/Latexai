@@ -1,0 +1,119 @@
+/* Latexai Stage 17D: left panel layout stabilization
+ *
+ * Fixes visual overlap between the Source tree block and the Document map block.
+ * The left panel is a real stacked flex column; file tree and outline areas
+ * scroll internally instead of expanding over the next card.
+ */
+
+.left-panel.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  min-height: 0;
+  max-height: calc(100dvh - 180px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1rem;
+}
+
+.left-panel .panel-section {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 0;
+  margin: 0;
+  z-index: 0;
+}
+
+.left-panel .project-card {
+  flex: 0 0 auto;
+}
+
+/* Source tree card: keep long project file lists contained. */
+.left-panel .panel-section:not(.project-card):not(.outline-card) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(46dvh, 430px);
+  overflow: hidden;
+}
+
+.left-panel #fileTree.file-tree {
+  flex: 1 1 auto;
+  min-height: 96px;
+  max-height: min(34dvh, 330px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: .15rem;
+  padding-bottom: .35rem;
+}
+
+.left-panel .micro-actions {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-top: .55rem;
+  padding-top: .35rem;
+  background: inherit;
+  z-index: 1;
+}
+
+/* Document map card: never slide underneath the Source tree. */
+.left-panel .outline-card {
+  flex: 0 0 auto;
+  min-height: 128px;
+  max-height: min(30dvh, 280px);
+  overflow: hidden;
+  margin-top: 0 !important;
+  clear: both;
+  z-index: 0;
+}
+
+.left-panel #outlineList.outline-list {
+  max-height: min(22dvh, 210px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: .15rem;
+}
+
+/* Keep cards readable on iPad/narrow layouts where Safari chrome reduces height. */
+@media (max-height: 760px) {
+  .left-panel.panel {
+    max-height: calc(100dvh - 160px);
+    gap: .8rem;
+  }
+
+  .left-panel .panel-section:not(.project-card):not(.outline-card) {
+    max-height: min(42dvh, 360px);
+  }
+
+  .left-panel #fileTree.file-tree {
+    max-height: min(28dvh, 260px);
+  }
+
+  .left-panel .outline-card {
+    max-height: min(28dvh, 230px);
+  }
+
+  .left-panel #outlineList.outline-list {
+    max-height: min(20dvh, 170px);
+  }
+}
+
+@media (max-width: 860px) {
+  .left-panel.panel {
+    max-height: none;
+  }
+
+  .left-panel .panel-section:not(.project-card):not(.outline-card),
+  .left-panel #fileTree.file-tree,
+  .left-panel .outline-card,
+  .left-panel #outlineList.outline-list {
+    max-height: none;
+  }
+}
