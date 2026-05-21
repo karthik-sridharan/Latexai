@@ -162,3 +162,17 @@
 .right-panel-group[open] > .right-panel-group-body:not([hidden]) {
   display: grid;
 }
+
+
+/* Stage 17J5: bulk command state wins over delayed rerenders/native details toggles. */
+#copilotTab[data-rpo-forced-open="false"] details.right-panel-group > .right-panel-group-body,
+#settingsTab[data-rpo-forced-open="false"] details.right-panel-group > .right-panel-group-body,
+details.right-panel-group[data-rpo-open="false"] > .right-panel-group-body {
+  display: none !important;
+}
+
+#copilotTab[data-rpo-forced-open="true"] details.right-panel-group[open] > .right-panel-group-body,
+#settingsTab[data-rpo-forced-open="true"] details.right-panel-group[open] > .right-panel-group-body,
+details.right-panel-group[data-rpo-open="true"] > .right-panel-group-body:not([hidden]) {
+  display: grid;
+}
