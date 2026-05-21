@@ -1,0 +1,7 @@
+Stage 15I checks
+================
+
+PASS node --check js/release-verify-service.js
+PASS node tests/stage15i-release-deploy-verifier.test.cjs
+
+Release/deploy verifier added without observers, intervals, compile jobs, or AI calls.
