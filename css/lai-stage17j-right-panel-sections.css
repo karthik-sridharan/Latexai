@@ -1,4 +1,4 @@
-/* Latexai Stage 17J: right panel collapsible workflow sections */
+/* Latexai Stage 17J3: right panel collapsible workflow sections */
 
 .right-panel-organizer-toolbar {
   display: flex;
@@ -122,4 +122,15 @@
   .right-panel-organizer-actions {
     justify-content: flex-start;
   }
+}
+
+
+/* Stage 17J3: make organizer controls clearly clickable above grouped cards. */
+.right-panel-organizer-toolbar button[data-rpo-expand],
+.right-panel-organizer-toolbar button[data-rpo-collapse],
+.right-panel-organizer-toolbar button[data-rpo-refresh],
+.right-panel-organizer-toolbar button[data-rpo-copy-report] {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
 }
