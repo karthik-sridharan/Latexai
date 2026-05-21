@@ -1,0 +1,7 @@
+Stage 14B checks
+================
+
+PASS node --check js/standalone-path-service.js
+PASS node tests/stage14b-standalone-path-fixer.test.cjs
+
+Standalone compile path checker/fixer added for active Beamer/talk files.
