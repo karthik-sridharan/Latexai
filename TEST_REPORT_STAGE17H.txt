@@ -1,0 +1,8 @@
+Stage 17H checks
+================
+
+PASS node --check js/model-provider-service.js
+PASS node --check js/devils-advocate-debate-service.js
+PASS node tests/stage17h-debate-agent-model-routing-bypass-fix.test.cjs
+
+Devil debate now bypasses generic paper model routing and sends the visible per-agent provider/model explicitly.
