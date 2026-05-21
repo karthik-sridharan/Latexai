@@ -28,6 +28,7 @@
     { key: 'presentation-export', title: 'Presentation/talk export', tier: 'stable', defaultEnabled: true, description: 'Paper → presentation JSON/HTML/Beamer and talk package export.' },
     { key: 'paper-ai-polish', title: 'Paper AI edit review', tier: 'stable', defaultEnabled: true, description: 'Review and resolve \\lai / \\laiold paper-level AI edits before compile or commit.' },
     { key: 'competitive-review', title: 'Competitive paper review', tier: 'experimental', defaultEnabled: true, description: 'Requires a web-search-capable AI backend; compares the current draft against competitor URLs and produces an improvement roadmap.' },
+    { key: 'devils-advocate-debate', title: 'Devil’s advocate debate', tier: 'experimental', defaultEnabled: true, description: 'Runs advocate, critic, and synthesizer AI agents to produce a balanced paper improvement plan.' },
     { key: 'citation-ai', title: 'Citation AI', tier: 'stable', defaultEnabled: true, description: 'Citation filler and missing BibTeX workflows.' },
     { key: 'citation-verifier', title: 'Citation verifier', tier: 'stable', defaultEnabled: true, description: 'Local citation report and BibTeX completeness checks.' },
     { key: 'compile-root-service', title: 'Active standalone compile root', tier: 'stable', defaultEnabled: true, description: 'Compile active standalone .tex files such as generated Beamer talks.' },
