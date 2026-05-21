@@ -34,6 +34,7 @@
     { key: 'paper-ai-dashboard', title: 'Paper AI dashboard', tier: 'stable', defaultEnabled: true, description: 'Quick-launch and status dashboard for paper AI workflows.' },
     { key: 'ai-reports-browser', title: 'Unified AI reports / reviews browser', tier: 'stable', defaultEnabled: true, description: 'Save AI workflow reports under /reviews and browse/copy/open/delete review files.' },
     { key: 'ai-routing-inspector', title: 'AI model routing inspector', tier: 'stable', defaultEnabled: true, description: 'Inspect visible, routed, and final AI models; check backend allowed models and web-search support.' },
+    { key: 'right-panel-organizer', title: 'Right panel collapsible sections', tier: 'stable', defaultEnabled: true, description: 'Organize Copilot and Settings cards into collapsible workflow sections.' },
     { key: 'citation-ai', title: 'Citation AI', tier: 'stable', defaultEnabled: true, description: 'Citation filler and missing BibTeX workflows.' },
     { key: 'citation-verifier', title: 'Citation verifier', tier: 'stable', defaultEnabled: true, description: 'Local citation report and BibTeX completeness checks.' },
     { key: 'compile-root-service', title: 'Active standalone compile root', tier: 'stable', defaultEnabled: true, description: 'Compile active standalone .tex files such as generated Beamer talks.' },
