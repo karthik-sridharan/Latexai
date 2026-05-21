@@ -1,4 +1,4 @@
-/* Latexai Stage 17J8: right panel collapsible workflow sections */
+/* Latexai Stage 17J9: right panel collapsible workflow sections */
 
 .right-panel-organizer-toolbar {
   display: flex;
@@ -59,6 +59,10 @@
 
 .right-panel-group.empty {
   opacity: .68;
+}
+
+.right-panel-group.is-catchall.empty {
+  display: none;
 }
 
 .right-panel-group-summary {
