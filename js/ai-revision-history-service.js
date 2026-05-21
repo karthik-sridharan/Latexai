@@ -412,9 +412,9 @@
       ['PaperAiPolishService', 'applyChoices', 'Before applying paper AI selected edits', 'paper-ai-apply-selected'],
       ['PaperAiPolishService', 'acceptAllNew', 'Before accepting all paper AI new content', 'paper-ai-accept-all-new'],
       ['PaperAiPolishService', 'rejectAllKeepOld', 'Before rejecting all paper AI new content', 'paper-ai-reject-all-keep-old'],
-      ['CompetitivePaperReviewService', 'insertRoadmapComment', 'Before inserting competitive roadmap comments', 'competitive-roadmap-insert'],
+      ['CompetitivePaperReviewService', 'insertRoadmapComment', 'Before inserting competitive \lai plan/edits', 'competitive-lai-insert'],
       ['CompetitivePaperReviewService', 'addReportToProject', 'Before adding competitive review report', 'competitive-review-report-add'],
-      ['DevilsAdvocateDebateService', 'insertImprovementPlan', 'Before inserting devil’s advocate improvement plan', 'devils-plan-insert'],
+      ['DevilsAdvocateDebateService', 'insertImprovementPlan', 'Before inserting devil’s advocate \lai plan/edits', 'devils-lai-insert'],
       ['DevilsAdvocateDebateService', 'addReportToProject', 'Before adding devil’s advocate debate report', 'devils-report-add']
     ];
 

@@ -1,5 +1,5 @@
-/* Latexai Stage 16D DevilsAdvocateDebateService
- * Stage: stage17h-debate-agent-model-routing-bypass-fix-1
+/* Latexai Stage 17N DevilsAdvocateDebateService
+ * Stage: stage17n-actionable-devils-competitive-lai-edits-1
  *
  * Devil's advocate paper debate workflow:
  * - one AI agent argues for the current draft;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17h-debate-agent-model-routing-bypass-fix-1';
+  const STAGE = 'stage17n-actionable-devils-competitive-lai-edits-1';
   const PROMPT_PATH = 'prompt/ai-devils-advocate-debate.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('devils-advocate-debate-service')) {
@@ -297,7 +297,8 @@
       'Advocate: make the strongest case for the current draft.',
       'Critic: make the strongest critical case against the current draft.',
       'Synthesizer: produce a balanced improvement plan using both sides.',
-      'Be concrete, section-specific, and constructive.'
+      'Be concrete, section-specific, and constructive.',
+      'The final synthesis should include a fenced latexai_actionable_edits JSON block with exact oldText/newText edits for \\laiold/\\lai insertion.'
     ].join('\n');
   }
 
@@ -403,8 +404,11 @@
           '',
           'You are the SYNTHESIZER agent.',
           'Use both the advocate and critic arguments to produce a balanced, constructive improvement plan.',
-          'Return Markdown with: summary, strongest positives, most serious risks, prioritized edits, citation/related-work fixes, theorem/proof fixes, predicted acceptance impact, and suggested \\laiold{...}\\lai{...} edit blocks.',
-          'No JSON.'
+          'Return Markdown with: summary, strongest positives, most serious risks, prioritized edits, citation/related-work fixes, theorem/proof fixes, predicted acceptance impact, and suggested visible \\lai edits.',
+          'Also include one fenced code block labelled latexai_actionable_edits.',
+          'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
+          'For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
+          'If you cannot localize a suggestion safely, put it in appendPlan rather than inventing an oldText.'
         ].join('\n'),
         input: currentDebateContext(payload, lastTranscript),
         temperature: 0.2,
@@ -476,25 +480,273 @@
     return { ok: true, path };
   }
 
-  function insertImprovementPlan() {
+  function ensurePackageInPreamble(tex, packageName) {
+    const s = String(tex || '');
+    const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pkgRe = new RegExp(`\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\b${escaped}\\b[^}]*\\}`);
+    if (pkgRe.test(s)) return s;
+    const line = `\\usepackage{${packageName}}\n`;
+    const docIdx = s.indexOf('\\begin{document}');
+    if (docIdx >= 0) return s.slice(0, docIdx) + line + s.slice(docIdx);
+    const classMatch = s.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}\s*/);
+    if (classMatch?.index !== undefined) {
+      const at = classMatch.index + classMatch[0].length;
+      return s.slice(0, at) + '\n' + line + s.slice(at);
+    }
+    return line + s;
+  }
+
+  function hasLaiMacro(tex) {
+    const s = String(tex || '');
+    return /\\newif\\iflaishowchanges/.test(s) && /\\(?:long\\def|def|newcommand)\s*\\lai\b/.test(s);
+  }
+
+  function ensureLaiMacroLocal(rootText) {
+    let s = String(rootText || '');
+    if (hasLaiMacro(s)) return s;
+    s = ensurePackageInPreamble(s, 'xcolor');
+    const macro = [
+      '% --- Latexai AI-change highlighting macro ---',
+      '% Set this to \\laishowchangesfalse to hide red AI markup.',
+      '\\newif\\iflaishowchanges',
+      '\\laishowchangestrue',
+      '\\long\\def\\lai#1{%',
+      '  \\iflaishowchanges',
+      '    {\\color{red}#1}%',
+      '  \\else',
+      '    #1%',
+      '  \\fi',
+      '}',
+      '% --- end Latexai AI-change highlighting macro ---',
+      ''
+    ].join('\n');
+    const docIdx = s.indexOf('\\begin{document}');
+    if (docIdx >= 0) return s.slice(0, docIdx) + macro + '\n' + s.slice(docIdx);
+    return macro + '\n' + s;
+  }
+
+  function ensureLaiOldMacro(rootText) {
+    let s = String(rootText || '');
+    s = ensurePackageInPreamble(s, 'xcolor');
+    if (/\\(?:long\s*)?\\?def\s*\\laiold\b|\\newcommand\s*\{\\laiold\}|\\providecommand\s*\{\\laiold\}/.test(s)) return s;
+    const macro = [
+      '',
+      '% --- Latexai old-content highlighting macro ---',
+      '% Old source preserved by actionable AI edits.',
+      '\\long\\def\\laiold#1{{\\color{blue}#1}}',
+      '% --- end Latexai old-content highlighting macro ---',
+      ''
+    ].join('\n');
+    const laiIdx = s.search(/% --- Latexai AI-change highlighting macro ---|\\long\\def\\lai#1|\\newcommand\s*\{\\lai\}/);
+    if (laiIdx >= 0) return s.slice(0, laiIdx) + macro + s.slice(laiIdx);
+    const docIdx = s.indexOf('\\begin{document}');
+    if (docIdx >= 0) return s.slice(0, docIdx) + macro + s.slice(docIdx);
+    return macro + s;
+  }
+
+  function ensureRootLaiMacros() {
+    const root = getFile(rootPath());
+    if (!root) return false;
+    let text = fileText(root);
+    let next = NS.ProjectModel?.ensureLaiMacro ? NS.ProjectModel.ensureLaiMacro(text) : text;
+    next = ensureLaiMacroLocal(next);
+    next = ensureLaiOldMacro(next);
+    if (next !== text) updateActiveOrProjectSource(rootPath(), next);
+    return true;
+  }
+
+  function updateActiveOrProjectSource(path, text) {
+    const normalized = normalizePath(path);
+    if (normalized === normalizePath(activePath())) updateActiveSource(normalized, text);
+    else {
+      try {
+        if (State()?.updateFile) State().updateFile(normalized, text);
+        else {
+          const file = getFile(normalized);
+          if (file) file.text = text;
+          else writeProjectFile(normalized, text);
+        }
+      } catch (_err) {
+        const file = getFile(normalized);
+        if (file) file.text = text;
+        else writeProjectFile(normalized, text);
+      }
+      try { NS.Editor?.render?.(); } catch (_err) {}
+      try { NS.FileTree?.render?.(); } catch (_err) {}
+      try { State()?.save?.(); } catch (_err) {}
+      try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+    }
+  }
+
+  function insertBeforeEndDocument(tex, insertion) {
+    const s = String(tex || '');
+    const marker = '\\end{document}';
+    const at = s.lastIndexOf(marker);
+    const block = `\n\n${String(insertion || '').trim()}\n\n`;
+    if (at >= 0) return s.slice(0, at).replace(/\s*$/, '') + block + s.slice(at);
+    return s.replace(/\s*$/, '') + block;
+  }
+
+  function escapeLatexText(value) {
+    return String(value || '')
+      .replace(/\\/g, '\\textbackslash{}')
+      .replace(/([#$%&_{}])/g, '\\$1')
+      .replace(/~/g, '\\textasciitilde{}')
+      .replace(/\^/g, '\\textasciicircum{}');
+  }
+
+  function markdownToLaiPlan(markdown, title, maxLines = 140) {
+    const lines = String(markdown || '').split(/\r?\n/).slice(0, maxLines);
+    const out = ['\\lai{', `\\section*{${escapeLatexText(title)}}`];
+    let inItems = false;
+    const closeItems = () => { if (inItems) { out.push('\\end{itemize}'); inItems = false; } };
+    for (const raw of lines) {
+      const line = String(raw || '').trim();
+      if (!line) { closeItems(); out.push(''); continue; }
+      const heading = line.match(/^#{1,4}\s+(.+)$/);
+      if (heading) { closeItems(); out.push(`\\paragraph{${escapeLatexText(heading[1]).replace(/\.$/, '')}.}`); continue; }
+      const bullet = line.match(/^[-*]\s+(.+)$/);
+      if (bullet) {
+        if (!inItems) { out.push('\\begin{itemize}'); inItems = true; }
+        out.push(`\\item ${escapeLatexText(bullet[1])}`);
+        continue;
+      }
+      closeItems();
+      out.push(`${escapeLatexText(line)}\\par`);
+    }
+    closeItems();
+    out.push('}');
+    return out.join('\n');
+  }
+
+  function parseJsonCandidates(text) {
+    const s = String(text || '');
+    const candidates = [];
+    const fenceRe = /```(?:json|latexai_actionable_edits)?\s*([\s\S]*?)```/gi;
+    let match;
+    while ((match = fenceRe.exec(s))) candidates.push(match[1].trim());
+    const first = s.indexOf('{');
+    const last = s.lastIndexOf('}');
+    if (first >= 0 && last > first) candidates.push(s.slice(first, last + 1));
+    return candidates;
+  }
+
+  function normalizeActionableEdit(edit, index) {
+    const modeRaw = clean(edit?.mode || edit?.operation || edit?.type || (edit?.oldText ? 'replace' : 'insert_after')).toLowerCase();
+    const mode = /insert[_ -]?before/.test(modeRaw) ? 'insert_before' : /insert[_ -]?after|append/.test(modeRaw) ? 'insert_after' : 'replace';
+    const oldText = String(edit?.oldText ?? edit?.old ?? edit?.before ?? edit?.sourceText ?? edit?.anchorText ?? edit?.insertAfter ?? '');
+    const newText = String(edit?.newText ?? edit?.new ?? edit?.after ?? edit?.replacement ?? edit?.text ?? edit?.lai ?? '');
+    const path = normalizePath(edit?.path || edit?.file || edit?.texPath || activePath());
+    const targetHint = String(edit?.targetHint || edit?.location || edit?.section || edit?.reason || `actionable edit ${index + 1}`);
+    const confidence = Number(edit?.confidence);
+    if (!newText.trim()) return null;
+    if (mode === 'replace' && !oldText.trim()) return null;
+    if (mode !== 'replace' && !oldText.trim()) return null;
+    return { mode, path, oldText, newText, targetHint, confidence: Number.isFinite(confidence) ? confidence : null };
+  }
+
+  function extractActionableEdits(text) {
+    for (const candidate of parseJsonCandidates(text)) {
+      try {
+        const data = JSON.parse(candidate);
+        const list = Array.isArray(data) ? data : Array.isArray(data?.actionableEdits) ? data.actionableEdits : Array.isArray(data?.edits) ? data.edits : [];
+        const edits = list.map(normalizeActionableEdit).filter(Boolean);
+        if (edits.length) return { source: 'latexai_actionable_edits_json', edits, appendPlan: String(data?.appendPlan || '') };
+      } catch (_err) {}
+    }
+
+    const pairs = [];
+    const re = /\\laiold\s*\{([\s\S]*?)\}\s*\\lai\s*\{([\s\S]*?)\}/g;
+    let match;
+    while ((match = re.exec(String(text || '')))) {
+      const edit = normalizeActionableEdit({ mode: 'replace', oldText: match[1], newText: match[2], targetHint: 'AI-provided \\laiold/\\lai pair' }, pairs.length);
+      if (edit) pairs.push(edit);
+    }
+    return { source: pairs.length ? 'laiold_lai_pairs' : 'none', edits: pairs, appendPlan: '' };
+  }
+
+  function wrapActionableReplacement(edit, index) {
+    const id = `lai-devils-${Date.now().toString(36)}-${index}`;
+    const header = `% BEGIN LAI-ACTIONABLE-EDIT id=${id} workflow=devils-advocate path=${edit.path}`;
+    const hint = edit.targetHint ? `% LAI target: ${edit.targetHint}` : '';
+    const footer = `% END LAI-ACTIONABLE-EDIT id=${id}`;
+    if (edit.mode === 'replace') {
+      return [header, hint, '\\laiold{', String(edit.oldText || '').trim(), '}', '\\lai{', String(edit.newText || '').trim(), '}', footer].filter(Boolean).join('\n');
+    }
+    return [header, hint, '\\lai{', String(edit.newText || '').trim(), '}', footer].filter(Boolean).join('\n');
+  }
+
+  function insertActionableEditsAtMatches() {
     if (!lastSynthesis.trim()) {
       setStatus('Run a debate and synthesis first.');
       return { ok: false, error: 'No synthesis' };
     }
 
-    const active = activeSource();
-    const marker = [
-      '',
-      '% --- Latexai devil\'s advocate improvement plan ---',
-      ...lastSynthesis.split(/\r?\n/).slice(0, 100).map((line) => `% ${line}`),
-      '% --- End Latexai devil\'s advocate improvement plan ---',
-      ''
-    ].join('\n');
+    ensureRootLaiMacros();
+    const parsed = extractActionableEdits(lastSynthesis);
+    if (!parsed.edits.length) {
+      setStatus('No exact actionable edit JSON or \\laiold/\\lai pairs found. Use Append \\lai plan instead.');
+      return { ok: false, applied: 0, skipped: 0, source: parsed.source };
+    }
 
-    const next = `${active.text}\n${marker}`;
-    updateActiveSource(active.path, next);
-    setStatus('Inserted debate improvement plan as LaTeX comments at the end of the active file.');
-    return { ok: true, path: active.path };
+    const queued = new Map();
+    const messages = [];
+    let skipped = 0;
+
+    parsed.edits.forEach((edit, index) => {
+      const path = normalizePath(edit.path || activePath());
+      const file = getFile(path);
+      if (!file) { skipped += 1; messages.push(`SKIP ${path}: file not found for ${edit.targetHint}.`); return; }
+      const text = fileText(file);
+      const anchor = String(edit.oldText || '');
+      const at = text.indexOf(anchor);
+      if (at < 0) { skipped += 1; messages.push(`SKIP ${path}: exact oldText/anchor not found for ${edit.targetHint}.`); return; }
+      const replacement = wrapActionableReplacement({ ...edit, path }, index);
+      const start = at;
+      const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
+      const insert = edit.mode === 'replace' ? replacement : edit.mode === 'insert_after' ? `${anchor}\n\n${replacement}` : `${replacement}\n\n${anchor}`;
+      if (!queued.has(path)) queued.set(path, []);
+      queued.get(path).push({ start, end, insert, targetHint: edit.targetHint });
+    });
+
+    let applied = 0;
+    for (const [path, ops] of queued.entries()) {
+      const file = getFile(path);
+      let text = fileText(file);
+      ops.sort((a, b) => b.start - a.start);
+      for (const op of ops) {
+        text = text.slice(0, op.start) + op.insert + text.slice(op.end);
+        applied += 1;
+        messages.push(`APPLY ${path}: ${op.targetHint}`);
+      }
+      updateActiveOrProjectSource(path, text);
+    }
+
+    setStatus(`Inserted ${applied} devil’s advocate \\lai edit(s) at exact matches; skipped ${skipped}.`);
+    setOutput([formatFullReport(), '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
+    return { ok: applied > 0, applied, skipped, messages, source: parsed.source };
+  }
+
+  function appendLaiImprovementPlan() {
+    if (!lastSynthesis.trim()) {
+      setStatus('Run a debate and synthesis first.');
+      return { ok: false, error: 'No synthesis' };
+    }
+
+    ensureRootLaiMacros();
+    const root = getFile(rootPath());
+    const active = root ? { path: rootPath(), file: root, text: fileText(root) } : activeSource();
+    const parsed = extractActionableEdits(lastSynthesis);
+    const planText = parsed.appendPlan && parsed.appendPlan.trim() ? parsed.appendPlan : lastSynthesis;
+    const insertion = markdownToLaiPlan(planText, 'Latexai Devil\'s Advocate Improvement Plan');
+    const next = insertBeforeEndDocument(active.text, insertion);
+    updateActiveOrProjectSource(active.path, next);
+    setStatus(`Appended devil’s advocate improvement plan as visible \\lai markup to ${active.path}.`);
+    return { ok: true, path: active.path, mode: 'append-lai-plan' };
+  }
+
+  function insertImprovementPlan() {
+    return appendLaiImprovementPlan();
   }
 
   async function copyReport() {
@@ -601,8 +853,10 @@
       '  <button id="cancelDevilsDebateBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyDevilsDebateBtn" class="btn mini" type="button">Copy report</button>',
       '  <button id="addDevilsDebateBtn" class="btn mini" type="button">Add report to /reviews</button>',
-      '  <button id="insertDevilsPlanBtn" class="btn mini" type="button">Insert improvement plan</button>',
+      '  <button id="insertDevilsInlineLaiBtn" class="btn mini" type="button">Insert \\lai edits at matches</button>',
+      '  <button id="insertDevilsPlanBtn" class="btn mini" type="button">Append \\lai plan</button>',
       '</div>',
+      '<div class="settings-note">Stage 17N saves the debate report to <code>/reviews</code>, while insertion uses visible <code>\\lai</code>/<code>\\laiold</code> markup instead of LaTeX comments.</div>',
       '<div id="devilsDebateStatus" class="settings-note">Devil’s advocate debate ready.</div>',
       '<pre id="devilsDebateOutput" class="devils-output"></pre>'
     ].join('');
@@ -613,7 +867,8 @@
     el('cancelDevilsDebateBtn')?.addEventListener('click', cancelDebate, true);
     el('copyDevilsDebateBtn')?.addEventListener('click', copyReport, true);
     el('addDevilsDebateBtn')?.addEventListener('click', addReportToProject, true);
-    el('insertDevilsPlanBtn')?.addEventListener('click', insertImprovementPlan, true);
+    el('insertDevilsInlineLaiBtn')?.addEventListener('click', insertActionableEditsAtMatches, true);
+    el('insertDevilsPlanBtn')?.addEventListener('click', appendLaiImprovementPlan, true);
 
     return true;
   }
@@ -631,6 +886,9 @@
     cancelDebate,
     addReportToProject,
     insertImprovementPlan,
+    appendLaiImprovementPlan,
+    insertActionableEditsAtMatches,
+    extractActionableEdits,
     formatFullReport,
     getLastTranscript: () => lastTranscript,
     getLastSynthesis: () => lastSynthesis,
