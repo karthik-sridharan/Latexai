@@ -1,0 +1,158 @@
+/* Latexai Stage 15J: feature flag registry + guarded optional-script loader */
+
+.feature-flag-card {
+  margin-top: .85rem;
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 16px;
+  padding: .8rem;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+.feature-flag-help {
+  margin: .35rem 0 .65rem;
+  color: #64748b;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.feature-flag-safe-note {
+  border-radius: 12px;
+  padding: .48rem .6rem;
+  margin-bottom: .55rem;
+  font-size: .75rem;
+  font-weight: 850;
+  color: #14532d;
+  background: rgba(220,252,231,.72);
+  border: 1px solid rgba(22,163,74,.18);
+}
+
+.feature-flag-safe-note.safe-active {
+  color: #7f1d1d;
+  background: rgba(254,226,226,.72);
+  border-color: rgba(220,38,38,.22);
+}
+
+.feature-flag-rows {
+  display: grid;
+  gap: .45rem;
+}
+
+.feature-flag-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .6rem;
+  align-items: center;
+  padding: .55rem;
+  border: 1px solid rgba(15,23,42,.09);
+  border-radius: 12px;
+  background: rgba(248,250,252,.82);
+}
+
+.feature-flag-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .5rem;
+  align-items: start;
+  cursor: pointer;
+}
+
+.feature-flag-check input {
+  margin-top: .2rem;
+}
+
+.feature-flag-check span {
+  display: grid;
+  gap: .12rem;
+}
+
+.feature-flag-check strong {
+  color: #0f172a;
+  font-size: .78rem;
+}
+
+.feature-flag-check em {
+  width: max-content;
+  color: #1d4ed8;
+  background: rgba(219,234,254,.8);
+  border-radius: 999px;
+  padding: .08rem .35rem;
+  font-size: .62rem;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.feature-flag-check small {
+  color: #64748b;
+  font-size: .68rem;
+  line-height: 1.25;
+}
+
+.feature-flag-status {
+  border-radius: 999px;
+  padding: .18rem .42rem;
+  font-size: .62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #475569;
+  background: rgba(226,232,240,.7);
+}
+
+.feature-flag-status[data-state="loaded"] {
+  color: #14532d;
+  background: rgba(220,252,231,.86);
+}
+
+.feature-flag-status[data-state="loading"] {
+  color: #1d4ed8;
+  background: rgba(219,234,254,.86);
+}
+
+.feature-flag-status[data-state="disabled"],
+.feature-flag-status[data-state="disabled-safe-mode"] {
+  color: #78350f;
+  background: rgba(254,243,199,.86);
+}
+
+.feature-flag-status[data-state="failed"] {
+  color: #7f1d1d;
+  background: rgba(254,226,226,.86);
+}
+
+.feature-flag-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-top: .65rem;
+}
+
+.feature-flag-output {
+  display: none;
+  max-height: 420px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+  margin-top: .6rem;
+}
+
+.feature-flag-output.active {
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .feature-flag-row {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-flag-status {
+    width: max-content;
+  }
+}
