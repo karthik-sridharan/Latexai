@@ -1,0 +1,7 @@
+Stage 15B checks
+================
+
+PASS node --check js/ui-cleanup-service.js
+PASS node tests/stage15b-copilot-card-visibility-fix.test.cjs
+
+Copilot card visibility fixed: known cards only, expanded by default, focus mode optional, and stale Stage 15A blank-bar behavior overridden.
