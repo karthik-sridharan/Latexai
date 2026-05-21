@@ -1,0 +1,32 @@
+Stage 17J9 right panel organizer visible catch-all fix
+======================================================
+
+Checks run:
+
+- node --check js/right-panel-organizer-service.js
+- node --check js/citation-ai-service.js
+- node --check js/citation-verifier-service.js
+- node --check js/presentation-export-service.js
+- node --check js/document-ai-service.js
+- node tests/stage17j9-right-panel-organizer-visible-catchall.test.cjs
+- Local Chromium CDP smoke test using real mouse events:
+  - no .boot-error-box overlay after load
+  - Copilot Collapse all hides all Copilot group bodies
+  - no direct Copilot children remain outside organizer groups
+  - Copilot Paper AI header toggles open with a real mouse click
+  - Settings Collapse all hides all Settings group bodies
+  - no direct Settings children remain outside organizer groups
+  - Settings Compile / backend settings header toggles open with a real mouse click
+
+Root cause found:
+
+- Stage 17J8 grouped/moved documentAiCard before later optional scripts inserted relative to it.
+- citation-ai-service then called panel.insertBefore(card, docAiCard.nextSibling) even though docAiCard was no longer a child of panel.
+- That raised a NotFoundError and showed a fixed .boot-error-box overlay. The overlay intercepted clicks, making Expand all / Collapse all and section headers look dead.
+
+Fix summary:
+
+- Load right-panel-organizer after later right-panel feature cards.
+- Guard all relevant insertBefore calls with parentElement === panel.
+- Add catch-all groups so no visible direct Copilot/Settings children remain outside collapsible groups.
+- Change group headers to toggle once per click/key activation, with shell hit-test fallback for browsers that target the group shell rather than the nested button.
