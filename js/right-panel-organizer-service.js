@@ -1,5 +1,5 @@
-/* Latexai Stage 17J5 RightPanelOrganizerService
- * Stage: stage17j5-right-panel-organizer-forced-state-1
+/* Latexai Stage 17J6 RightPanelOrganizerService
+ * Stage: stage17j6-right-panel-organizer-global-bulk-state-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j5-right-panel-organizer-forced-state-1';
+  const STAGE = 'stage17j6-right-panel-organizer-global-bulk-state-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v1';
   const FORCE_STATE_KEY = 'latexai:right-panel-sections:forced-tab-state:v1';
   let suppressToggleUntil = 0;
@@ -449,7 +449,17 @@
     GROUPS.filter((group) => group.tab === tab).forEach((group) => rememberOpen(group, desired));
   }
 
-  function setAllGroups(tab, open) {
+  function normalizeBulkTabs(tab = 'all') {
+    // Users read Expand all / Collapse all as a right-panel-wide command.
+    // Stage 17J5 only changed the tab inferred from the clicked toolbar, which
+    // made Settings remain open when the command was triggered from Copilot.
+    // Treat toolbar buttons and global fallbacks as all-tab commands; keep
+    // setAllGroupsOne below for internal/per-tab implementation.
+    if (tab === 'copilot' || tab === 'settings') return ['copilot', 'settings'];
+    return ['copilot', 'settings'];
+  }
+
+  function setAllGroupsOne(tab, open) {
     const desired = Boolean(open);
     const panel = panelFor(tab);
     if (!panel) return false;
@@ -484,6 +494,21 @@
     }, 120);
 
     setStatus(`${tab === 'settings' ? 'Settings' : 'Copilot'} sections ${desired ? 'expanded' : 'collapsed'} (${changed} group${changed === 1 ? '' : 's'}).`, tab);
+    return desired;
+  }
+
+  function setAllGroups(tab = 'all', open) {
+    const desired = Boolean(open);
+    const tabs = normalizeBulkTabs(tab);
+    let touched = 0;
+    tabs.forEach((item) => {
+      const panel = panelFor(item);
+      if (!panel) return;
+      setAllGroupsOne(item, desired);
+      touched += 1;
+    });
+    const label = touched > 1 ? 'All right-panel' : (tabs[0] === 'settings' ? 'Settings' : 'Copilot');
+    setStatus(`${label} sections ${desired ? 'expanded' : 'collapsed'}.`, tab === 'settings' ? 'settings' : 'copilot');
     return desired;
   }
 
@@ -696,11 +721,11 @@
     installToolbarReportButton();
   }
 
-  W.LatexaiRightPanelExpandAll = function LatexaiRightPanelExpandAll(tab = 'settings') {
+  W.LatexaiRightPanelExpandAll = function LatexaiRightPanelExpandAll(tab = 'all') {
     return setAllGroups(tab, true);
   };
 
-  W.LatexaiRightPanelCollapseAll = function LatexaiRightPanelCollapseAll(tab = 'settings') {
+  W.LatexaiRightPanelCollapseAll = function LatexaiRightPanelCollapseAll(tab = 'all') {
     return setAllGroups(tab, false);
   };
 
