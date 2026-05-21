@@ -547,7 +547,7 @@
     ].join('');
 
     const docAiCard = el('documentAiCard');
-    if (docAiCard?.nextSibling) panel.insertBefore(card, docAiCard.nextSibling);
+    if (docAiCard?.parentElement === panel && docAiCard.nextSibling) panel.insertBefore(card, docAiCard.nextSibling);
     else panel.appendChild(card);
 
     bindControls();

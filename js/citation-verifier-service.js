@@ -1001,7 +1001,7 @@
     ].join('');
 
     const citationCard = el('citationAiCard');
-    if (citationCard?.nextSibling) panel.insertBefore(card, citationCard.nextSibling);
+    if (citationCard?.parentElement === panel && citationCard.nextSibling) panel.insertBefore(card, citationCard.nextSibling);
     else panel.appendChild(card);
 
     bindControls();

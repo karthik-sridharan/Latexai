@@ -1940,7 +1940,7 @@ ${slides}
     const citationCard = el('citationAiCard');
     const docCard = el('documentAiCard');
     const anchor = verifierCard || citationCard || docCard;
-    if (anchor?.nextSibling) panel.insertBefore(card, anchor.nextSibling);
+    if (anchor?.parentElement === panel && anchor.nextSibling) panel.insertBefore(card, anchor.nextSibling);
     else panel.appendChild(card);
 
     bindControls();

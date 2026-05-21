@@ -1,9 +1,9 @@
-/* Latexai Stage 17J8 RightPanelOrganizerService
- * Stage: stage17j8-right-panel-organizer-browser-verified-1
+/* Latexai Stage 17J9 RightPanelOrganizerService
+ * Stage: stage17j9-right-panel-organizer-visible-catchall-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
- * Stage 17J8 deliberately stops using native <details> for these groups.
+ * Stage 17J9 keeps the controlled button shell and adds a visible catch-all group.
  * iPad/Safari and delayed re-organize passes made the native toggle event fight
  * our forced hidden/body state.  Each group is now a small controlled shell:
  * a button header plus a body div.  Bulk buttons and individual group headers
@@ -15,8 +15,9 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j8-right-panel-organizer-browser-verified-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v3';
+  const STAGE = 'stage17j9-right-panel-organizer-visible-catchall-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v4';
+  const STAGE17J8_STORAGE_KEY = 'latexai:right-panel-sections:v3';
   const STAGE17J7_STORAGE_KEY = 'latexai:right-panel-sections:v2';
   const LEGACY_STORAGE_KEY = 'latexai:right-panel-sections:v1';
   const LEGACY_FORCE_STATE_KEY = 'latexai:right-panel-sections:forced-tab-state:v1';
@@ -52,7 +53,8 @@
         '#insertCopilotBtn',
         '#replaceCopilotBtn',
         '#patchReview',
-        '#copilotOutput'
+        '#copilotOutput',
+        '#copilotContextChips'
       ],
       cardIds: []
     },
@@ -94,6 +96,7 @@
       title: 'Paper AI',
       defaultOpen: true,
       cardIds: [
+        'documentAiCard',
         'paperAiDashboardCard',
         'paperAiPolishCard',
         'competitiveReviewCard',
@@ -149,6 +152,15 @@
       ]
     },
     {
+      tab: 'copilot',
+      key: 'other-copilot',
+      title: 'Other Copilot controls',
+      defaultOpen: true,
+      catchAll: true,
+      selectors: [],
+      cardIds: []
+    },
+    {
       tab: 'settings',
       key: 'reports-reviews',
       title: 'Reports / Reviews',
@@ -184,6 +196,15 @@
         'aiProviderCard',
         'aiRoutingInspectorCard'
       ]
+    },
+    {
+      tab: 'settings',
+      key: 'other-settings',
+      title: 'Other Settings controls',
+      defaultOpen: true,
+      catchAll: true,
+      selectors: [],
+      cardIds: []
     }
   ];
 
@@ -225,6 +246,8 @@
   function readState() {
     const fresh = readJson(STORAGE_KEY);
     if (Object.keys(fresh).length) return fresh;
+    const legacyJ8 = readJson(STAGE17J8_STORAGE_KEY);
+    if (Object.keys(legacyJ8).length) return legacyJ8;
     const legacyJ7 = readJson(STAGE17J7_STORAGE_KEY);
     if (Object.keys(legacyJ7).length) return legacyJ7;
     return readJson(LEGACY_STORAGE_KEY);
@@ -295,6 +318,16 @@
     const panel = panelFor(group.tab);
     if (!panel) return cards;
 
+    if (group.catchAll) {
+      Array.from(panel.children).forEach((node) => {
+        if (!isElement(node)) return;
+        if (node.classList.contains('right-panel-group') || node.classList.contains('right-panel-organizer-toolbar')) return;
+        if (node.id && node.id.startsWith('rightPanelOrganizer')) return;
+        addUniqueCard(cards, seen, node);
+      });
+      return cards;
+    }
+
     // Direct id matches for optional feature cards.  These may already be inside
     // another group, so keep the exact card node and let organize() move it only
     // when necessary.
@@ -344,7 +377,7 @@
     const initialOpen = desiredGroupOpen(group);
     const shell = D.createElement('div');
     shell.id = groupId(group);
-    shell.className = 'right-panel-group';
+    shell.className = group.catchAll ? 'right-panel-group is-catchall' : 'right-panel-group';
     shell.dataset.groupTab = group.tab;
     shell.dataset.groupKey = group.key;
     shell.setAttribute('role', 'group');
@@ -367,7 +400,7 @@
 
     shell.appendChild(button);
     shell.appendChild(body);
-    bindControlEvents(button, handleGroupToggleEvent);
+    bindGroupToggleEvents(button);
     setGroupOpen(group, shell, initialOpen, { remember: false });
     return shell;
   }
@@ -397,7 +430,7 @@
 
     const button = shell.querySelector('.right-panel-group-summary[data-rpo-group-toggle]');
     const body = shell.querySelector('.right-panel-group-body');
-    if (button) button.addEventListener('click', handleGroupToggleEvent, false);
+    if (button) bindGroupToggleEvents(button);
     if (body) body.id = bodyId(group);
     setGroupOpen(group, shell, desiredGroupOpen(group, shell.dataset.rpoOpen !== 'false'), { remember: false });
     return shell;
@@ -456,8 +489,8 @@
   }
 
   function bindControlEvents(node, handler) {
-    if (!node || node.dataset.rpoBoundStage17j8 === 'true') return;
-    node.dataset.rpoBoundStage17j8 = 'true';
+    if (!node || node.dataset.rpoBoundStage17j9 === 'true') return;
+    node.dataset.rpoBoundStage17j9 = 'true';
     ['pointerdown', 'mousedown', 'touchend', 'click'].forEach((type) => {
       node.addEventListener(type, (event) => {
         stopControlEvent(event);
@@ -471,6 +504,21 @@
     }, true);
   }
 
+  function bindGroupToggleEvents(node) {
+    if (!node || node.dataset.rpoGroupBoundStage17j9 === 'true') return;
+    node.dataset.rpoGroupBoundStage17j9 = 'true';
+    // Group headers must toggle exactly once per user activation.  Earlier
+    // versions listened to pointerdown, mousedown, touchend, and click; on real
+    // browsers that can open on mousedown and close again on click, making
+    // individual section headers look dead.  Bulk buttons are idempotent and can
+    // keep the aggressive multi-event binding, but group headers use click/keys.
+    node.addEventListener('click', handleGroupToggleEvent, true);
+    node.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      handleGroupToggleEvent(event);
+    }, true);
+  }
+
   function toggleGroup(shell) {
     const group = groupFromShell(shell);
     if (!group) return false;
@@ -481,7 +529,20 @@
   }
 
   function handleGroupToggleEvent(event) {
-    const button = event?.target?.closest?.('[data-rpo-group-toggle]') || event?.currentTarget;
+    let button = event?.target?.closest?.('[data-rpo-group-toggle]') || null;
+    if (!button && event?.currentTarget?.matches?.('[data-rpo-group-toggle]')) button = event.currentTarget;
+
+    // Chromium/Safari hit testing can sometimes return the group shell rather
+    // than the nested button even though the button is visible.  Treat clicks on
+    // the shell's header area as header toggles, while leaving clicks inside an
+    // open body alone so form controls inside cards still work normally.
+    if (!button) {
+      const shellTarget = event?.target?.closest?.('.right-panel-group');
+      if (shellTarget && !event?.target?.closest?.('.right-panel-group-body')) {
+        button = shellTarget.querySelector?.('[data-rpo-group-toggle]') || null;
+      }
+    }
+
     if (!button) return false;
     const shell = button.closest?.('.right-panel-group');
     if (!shell) return false;
@@ -738,12 +799,16 @@
   }
 
   function installDelegatedHandlers() {
-    if (D.documentElement.dataset.stage17j8OrganizerButtonShell === 'true') return;
-    D.documentElement.dataset.stage17j8OrganizerButtonShell = 'true';
+    if (D.documentElement.dataset.stage17j9OrganizerButtonShell === 'true') return;
+    D.documentElement.dataset.stage17j9OrganizerButtonShell = 'true';
 
     const routePointerEvent = (event) => {
       const groupButton = event.target?.closest?.('[data-rpo-group-toggle]');
-      if (groupButton) return handleGroupToggleEvent(event);
+      const groupShell = !groupButton ? event.target?.closest?.('.right-panel-group') : null;
+      if (groupButton || (groupShell && !event.target?.closest?.('.right-panel-group-body'))) {
+        if (event.type !== 'click' && event.type !== 'keydown') return false;
+        return handleGroupToggleEvent(event);
+      }
       return handleOrganizerButtonEvent(event);
     };
     ['pointerdown', 'mousedown', 'touchend', 'click'].forEach((type) => {

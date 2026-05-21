@@ -851,7 +851,7 @@
     ].join('');
 
     const copilotOutput = el('copilotOutput');
-    if (copilotOutput?.nextSibling) panel.insertBefore(card, copilotOutput.nextSibling);
+    if (copilotOutput?.parentElement === panel && copilotOutput.nextSibling) panel.insertBefore(card, copilotOutput.nextSibling);
     else panel.appendChild(card);
 
     bindControls();
