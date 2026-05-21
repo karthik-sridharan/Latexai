@@ -1,31 +1,36 @@
-/* Latexai Stage 17J10: right panel collapsible workflow sections + scroll containment */
+/* Latexai Stage 17K: right panel collapsible sections + polish/regression lock */
 
 .right-panel-organizer-toolbar {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(78px, 1fr) minmax(148px, 1.25fr);
   align-items: center;
-  gap: .7rem;
-  margin: 0 0 .75rem;
-  padding: .7rem .75rem;
+  gap: .4rem .55rem;
+  margin: 0 0 .6rem;
+  padding: .45rem .52rem;
   border: 1px solid rgba(15,23,42,.1);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(248,250,252,.94);
-  box-shadow: 0 8px 22px rgba(15,23,42,.045);
+  box-shadow: 0 6px 16px rgba(15,23,42,.04);
   position: relative;
   z-index: 50;
   pointer-events: auto;
 }
 
+.right-panel-organizer-label {
+  min-width: 0;
+}
+
 .right-panel-organizer-toolbar strong {
   color: #0f172a;
-  font-size: .82rem;
+  font-size: .78rem;
+  line-height: 1.08;
 }
 
 .right-panel-organizer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .35rem;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(66px, 1fr));
+  gap: .28rem;
+  justify-content: stretch;
   pointer-events: auto !important;
 }
 
@@ -38,14 +43,21 @@
   position: relative;
   z-index: 3;
   pointer-events: auto !important;
+  min-height: 1.75rem;
+  padding: .22rem .42rem;
+  font-size: .7rem;
+  line-height: 1.05;
+  white-space: nowrap;
 }
 
 .right-panel-organizer-status {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
   color: #64748b;
-  font-size: .68rem;
+  font-size: .64rem;
   font-weight: 800;
-  margin-top: .25rem;
+  line-height: 1.15;
+  min-height: .8rem;
+  margin-top: -.05rem;
 }
 
 .right-panel-group {
@@ -145,17 +157,16 @@
 
 @media (max-width: 980px) {
   .right-panel-organizer-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .right-panel-organizer-actions {
-    justify-content: flex-start;
+    grid-template-columns: repeat(2, minmax(86px, 1fr));
   }
 }
 
 
-/* Stage 17J10 scroll containment fix.
+/* Stage 17K keeps the Stage 17J10 scroll containment fix.
    The Copilot/Settings tab panels are flex children of .right-panel.  When the
    active tab itself is a flex-column container, its section groups can shrink
    to fit the panel height.  Because group shells intentionally used
