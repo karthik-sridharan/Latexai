@@ -1,5 +1,5 @@
 /* Latexai Stage 17J RightPanelOrganizerService
- * Stage: stage17j2-right-panel-organizer-cachebust-hotfix-1
+ * Stage: stage17j3-right-panel-organizer-buttons-hotfix-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j2-right-panel-organizer-cachebust-hotfix-1';
+  const STAGE = 'stage17j3-right-panel-organizer-buttons-hotfix-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('right-panel-organizer-service')) {
@@ -268,19 +268,38 @@
 
     panel.insertBefore(toolbar, panel.firstChild);
 
-    toolbar.querySelector('[data-rpo-expand]')?.addEventListener('click', () => setAllGroups(tab, true), true);
-    toolbar.querySelector('[data-rpo-collapse]')?.addEventListener('click', () => setAllGroups(tab, false), true);
-    toolbar.querySelector('[data-rpo-refresh]')?.addEventListener('click', () => organize(tab), true);
+    toolbar.querySelector('[data-rpo-expand]')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setAllGroups(tab, true);
+    }, true);
+    toolbar.querySelector('[data-rpo-collapse]')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setAllGroups(tab, false);
+    }, true);
+    toolbar.querySelector('[data-rpo-refresh]')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      organize(tab);
+    }, true);
 
     return toolbar;
   }
 
   function setAllGroups(tab, open) {
+    const desired = Boolean(open);
     GROUPS.filter((group) => group.tab === tab).forEach((group) => {
-      rememberOpen(group, open);
-      const details = el(groupId(group));
-      if (details) details.open = open;
+      rememberOpen(group, desired);
+      const details = el(groupId(group)) || ensureGroup(group);
+      if (details) {
+        details.open = desired;
+        if (desired) details.setAttribute('open', '');
+        else details.removeAttribute('open');
+      }
     });
+    setStatus(`${tab === 'settings' ? 'Settings' : 'Copilot'} sections ${desired ? 'expanded' : 'collapsed'}.`);
+    return desired;
   }
 
   function placeGroupsInOrder(tab) {
@@ -391,12 +410,43 @@
       btn.type = 'button';
       btn.dataset.rpoCopyReport = tab;
       btn.textContent = 'Copy report';
-      btn.addEventListener('click', copyReport, true);
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        copyReport();
+      }, true);
       actions?.appendChild(btn);
     });
   }
 
+  function installDelegatedButtonHandlers() {
+    if (D.documentElement.dataset.stage17j3DelegatedOrganizerButtons === 'true') return;
+    D.documentElement.dataset.stage17j3DelegatedOrganizerButtons = 'true';
+
+    D.addEventListener('click', (event) => {
+      const button = event.target?.closest?.('[data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]');
+      if (!button) return;
+
+      const tab = button.dataset.rpoExpand || button.dataset.rpoCollapse || button.dataset.rpoRefresh || button.dataset.rpoCopyReport || 'copilot';
+      if (!['copilot', 'settings'].includes(tab)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (button.dataset.rpoExpand) {
+        setAllGroups(tab, true);
+      } else if (button.dataset.rpoCollapse) {
+        setAllGroups(tab, false);
+      } else if (button.dataset.rpoRefresh) {
+        organize(tab);
+      } else if (button.dataset.rpoCopyReport) {
+        copyReport();
+      }
+    }, true);
+  }
+
   function init() {
+    installDelegatedButtonHandlers();
     organize();
     installToolbarReportButton();
   }
