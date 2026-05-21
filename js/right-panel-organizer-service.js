@@ -1,12 +1,12 @@
-/* Latexai Stage 17L RightPanelOrganizerService
- * Stage: stage17l-restore-figure-drawing-tab-1
+/* Latexai Stage 17M RightPanelOrganizerService
+ * Stage: stage17m-tab-integrity-regression-lock-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
- * Stage 17L keeps the J10/K scroll fix and restores the dedicated Figures tab:
- * persisted section state migration, compact toolbar markup, richer diagnostics,
- * and report data that makes click overlays/scroll clipping visible before users
- * have to debug by screenshot.
+ * Stage 17M keeps the J10/K/L scroll and Figures-tab fixes, then adds
+ * a tab-ownership integrity lock so organizer passes cannot silently move cards
+ * between Copilot, Settings, and Figures. Diagnostics now report per-tab card
+ * counts, misplaced known cards, and Figures-tool completeness.
  */
 (function () {
   'use strict';
@@ -14,8 +14,9 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17l-restore-figure-drawing-tab-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v6';
+  const STAGE = 'stage17m-tab-integrity-regression-lock-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v7';
+  const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
   const STAGE17J9_STORAGE_KEY = 'latexai:right-panel-sections:v4';
   const STAGE17J8_STORAGE_KEY = 'latexai:right-panel-sections:v3';
@@ -24,6 +25,60 @@
   const LEGACY_FORCE_STATE_KEY = 'latexai:right-panel-sections:forced-tab-state:v1';
   let lastHandledControl = { id: '', time: 0 };
 
+  const RIGHT_TAB_PANELS = {
+    copilot: 'copilotTab',
+    settings: 'settingsTab',
+    assets: 'assetsTab'
+  };
+
+  const KNOWN_CARD_OWNERS = {
+    // Copilot-owned workflow cards.
+    documentAiCard: ['copilot'],
+    paperAiDashboardCard: ['copilot'],
+    paperAiPolishCard: ['copilot'],
+    competitiveReviewCard: ['copilot'],
+    devilsDebateCard: ['copilot'],
+    citationAiCard: ['copilot'],
+    citationVerifierCard: ['copilot'],
+    localCitationVerifierCard: ['copilot'],
+    citationVerifierPanel: ['copilot'],
+    citationAiPanel: ['copilot'],
+    aiCommentsCard: ['copilot'],
+    presentationExportCard: ['copilot'],
+    talkPackageCard: ['copilot'],
+    presentationMakerCard: ['copilot'],
+
+    // Settings-owned diagnostics/model/report cards.
+    aiRevisionCard: ['settings'],
+    aiReportBrowserCard: ['settings'],
+    aiRoutingInspectorCard: ['settings'],
+    backendDiagnosticsCard: ['settings'],
+    regressionChecklistCard: ['settings'],
+    releaseVerifyCard: ['settings'],
+    featureVisibilityCard: ['settings'],
+    featureFlagCard: ['settings'],
+    modelRoutingCard: ['settings'],
+    aiSettingsCard: ['settings'],
+    aiProviderCard: ['settings'],
+
+    // Figures-tab-owned drawing/TikZ/asset controls.  These must never be
+    // moved into Copilot's optional "Figures" group or Settings catch-alls.
+    figureEditorCard: ['assets'],
+    tikzMakerCard: ['assets'],
+    imageToTikzCard: ['assets'],
+    assetFileInput: ['assets'],
+    assetSnippetPreview: ['assets'],
+    assetList: ['assets']
+  };
+
+  const FIGURES_REQUIRED_IDS = [
+    ['figureEditorCard', 'Draw figure'],
+    ['tikzMakerCard', 'AI TikZ maker'],
+    ['imageToTikzCard', 'Image → TikZ remaker'],
+    ['assetFileInput', 'Image assets'],
+    ['assetSnippetPreview', 'Snippet preview'],
+    ['assetList', 'Project images']
+  ];
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('right-panel-organizer-service')) {
     NS.RightPanelOrganizerService = {
@@ -271,6 +326,8 @@
   function readState() {
     const fresh = readJson(STORAGE_KEY);
     if (Object.keys(fresh).length) return fresh;
+    const legacyL = readJson(STAGE17L_STORAGE_KEY);
+    if (Object.keys(legacyL).length) return legacyL;
     const legacyJ10 = readJson(STAGE17J10_STORAGE_KEY);
     if (Object.keys(legacyJ10).length) return legacyJ10;
     const legacyJ9 = readJson(STAGE17J9_STORAGE_KEY);
@@ -305,7 +362,43 @@
   }
 
   function panelFor(tab) {
-    return el(tab === 'settings' ? 'settingsTab' : 'copilotTab');
+    return el(RIGHT_TAB_PANELS[tab] || (tab === 'settings' ? 'settingsTab' : 'copilotTab'));
+  }
+
+  function tabForPanel(panel) {
+    if (!panel) return '';
+    if (panel.id === 'copilotTab') return 'copilot';
+    if (panel.id === 'settingsTab') return 'settings';
+    if (panel.id === 'assetsTab') return 'assets';
+    return panel.id || '';
+  }
+
+  function panelForNode(node) {
+    if (!isElement(node)) return null;
+    return node.closest?.('.right-tab-panel') || null;
+  }
+
+  function tabForNode(node) {
+    return tabForPanel(panelForNode(node));
+  }
+
+  function expectedTabsForNode(node) {
+    if (!isElement(node)) return [];
+    if (node.id && KNOWN_CARD_OWNERS[node.id]) return KNOWN_CARD_OWNERS[node.id];
+    const known = node.querySelector?.('[id]');
+    if (known && KNOWN_CARD_OWNERS[known.id]) return KNOWN_CARD_OWNERS[known.id];
+    return [];
+  }
+
+  function nodeAllowedForTab(node, tab) {
+    const expected = expectedTabsForNode(node);
+    return !expected.length || expected.includes(tab);
+  }
+
+  function isCardMisplaced(node) {
+    const expected = expectedTabsForNode(node);
+    const actual = tabForNode(node);
+    return expected.length && actual && !expected.includes(actual);
   }
 
   function groupFor(tab, key) {
@@ -331,6 +424,8 @@
     while (current && current.parentElement && current.parentElement !== panel) current = current.parentElement;
     if (!current || current.parentElement !== panel) return null;
     if (current.classList?.contains('right-panel-group') || current.classList?.contains('right-panel-organizer-toolbar')) return null;
+    const tab = tabForPanel(panel);
+    if (!nodeAllowedForTab(current, tab)) return null;
     return current;
   }
 
@@ -352,6 +447,7 @@
         if (!isElement(node)) return;
         if (node.classList.contains('right-panel-group') || node.classList.contains('right-panel-organizer-toolbar')) return;
         if (node.id && node.id.startsWith('rightPanelOrganizer')) return;
+        if (!nodeAllowedForTab(node, group.tab)) return;
         addUniqueCard(cards, seen, node);
       });
       return cards;
@@ -366,6 +462,7 @@
       const node = el(id);
       if (!isElement(node)) continue;
       if (!panel.contains(node)) continue;
+      if (!nodeAllowedForTab(node, group.tab)) continue;
       addUniqueCard(cards, seen, node);
     }
 
@@ -399,6 +496,7 @@
       Array.from(panel.children).forEach((node) => {
         if (!isElement(node)) return;
         if (node.classList.contains('right-panel-group') || node.classList.contains('right-panel-organizer-toolbar')) return;
+        if (!nodeAllowedForTab(node, group.tab)) return;
         const text = clean(node.querySelector('h2')?.textContent || node.textContent).toLowerCase();
         if (titleNeedles.some((needle) => text.includes(needle))) addUniqueCard(cards, seen, node);
       });
@@ -742,7 +840,11 @@
           return true;
         });
 
-        for (const card of cards) body.appendChild(card);
+        for (const card of cards) {
+          const beforePanel = panelForNode(card);
+          if (beforePanel !== panel || !nodeAllowedForTab(card, t) || isCardMisplaced(card)) continue;
+          body.appendChild(card);
+        }
 
         const count = el(`${groupId(group)}Count`);
         if (count) count.textContent = String(body.children.length);
@@ -811,6 +913,60 @@
     return `blocked by ${label}`;
   }
 
+  function knownCardPlacementRows() {
+    return Object.keys(KNOWN_CARD_OWNERS).sort().map((id) => {
+      const node = el(id);
+      const expected = KNOWN_CARD_OWNERS[id].join('|');
+      const actual = node ? (tabForNode(node) || 'outside right tabs') : 'missing';
+      const ok = node ? KNOWN_CARD_OWNERS[id].includes(actual) : false;
+      return { id, expected, actual, ok };
+    });
+  }
+
+  function misplacedKnownCards() {
+    return knownCardPlacementRows().filter((row) => row.actual !== 'missing' && !row.ok);
+  }
+
+  function tabCardCount(tab) {
+    const panel = panelFor(tab);
+    if (!panel) return { tab, present: false, direct: 0, grouped: 0, total: 0 };
+    const groups = Array.from(panel.querySelectorAll('.right-panel-group-body'));
+    const grouped = groups.reduce((sum, body) => sum + body.children.length, 0);
+    const direct = Array.from(panel.children).filter((node) => {
+      if (!isElement(node)) return false;
+      if (node.classList.contains('right-panel-group') || node.classList.contains('right-panel-organizer-toolbar')) return false;
+      if (node.id && node.id.startsWith('rightPanelOrganizer')) return false;
+      return true;
+    }).length;
+    return { tab, present: true, direct, grouped, total: direct + grouped };
+  }
+
+  function figuresTabHealth() {
+    const panel = panelFor('assets');
+    const rows = FIGURES_REQUIRED_IDS.map(([id, label]) => {
+      const node = el(id);
+      const actual = node ? (tabForNode(node) || 'outside right tabs') : 'missing';
+      const ok = Boolean(node && actual === 'assets');
+      return { id, label, ok, actual };
+    });
+    return {
+      present: Boolean(panel),
+      ok: Boolean(panel) && rows.every((row) => row.ok),
+      rows
+    };
+  }
+
+  function tabIntegritySummary() {
+    const misplaced = misplacedKnownCards();
+    const figures = figuresTabHealth();
+    return {
+      ok: misplaced.length === 0 && figures.ok,
+      misplaced,
+      figures,
+      counts: ['copilot', 'settings', 'assets'].map(tabCardCount)
+    };
+  }
+
   function panelDiagnostics(tab) {
     const panel = panelFor(tab);
     if (!panel) return `${tab}: missing`;
@@ -836,6 +992,20 @@
     if (overlay.lastError) lines.push(`Last boot error: ${overlay.lastError}`);
     lines.push(`Panel scroll / hit-test: ${panelDiagnostics('copilot')}`);
     lines.push(`Panel scroll / hit-test: ${panelDiagnostics('settings')}`);
+    if (panelFor('assets')) lines.push(`Panel scroll / hit-test: ${panelDiagnostics('assets')}`);
+
+    const integrity = tabIntegritySummary();
+    lines.push(`Tab integrity: ${integrity.ok ? 'ok' : 'problem'}`);
+    integrity.counts.forEach((count) => {
+      lines.push(`Tab card count: ${count.tab}: ${count.present ? `${count.total} total (${count.grouped} grouped, ${count.direct} direct)` : 'missing panel'}`);
+    });
+    if (integrity.misplaced.length) {
+      integrity.misplaced.forEach((row) => lines.push(`Misplaced known card: #${row.id} expected ${row.expected}, actual ${row.actual}`));
+    } else {
+      lines.push('Misplaced known cards: none');
+    }
+    lines.push(`Figures tab tools: ${integrity.figures.ok ? 'ok' : 'problem'}${integrity.figures.present ? '' : ' (missing Figures tab)'}`);
+    integrity.figures.rows.forEach((row) => lines.push(`  - ${row.label}: ${row.ok ? 'ok' : `missing/wrong tab (${row.actual})`}`));
     lines.push('');
 
     for (const group of GROUPS) {
@@ -992,6 +1162,7 @@
     setAllGroups,
     currentReport,
     copyReport,
+    tabIntegritySummary,
     handleOrganizerButton,
     toggleGroup,
     setGroupOpen
