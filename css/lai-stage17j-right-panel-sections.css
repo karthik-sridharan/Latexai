@@ -1,4 +1,4 @@
-/* Latexai Stage 17J3: right panel collapsible workflow sections */
+/* Latexai Stage 17J4: right panel collapsible workflow sections */
 
 .right-panel-organizer-toolbar {
   display: flex;
@@ -133,4 +133,32 @@
   position: relative;
   z-index: 3;
   pointer-events: auto;
+}
+
+/* Stage 17J4: harden organizer click hit-testing and open/closed state. */
+.right-panel-organizer-toolbar {
+  position: relative;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.right-panel-organizer-actions,
+.right-panel-organizer-actions > button,
+.right-panel-organizer-toolbar button[data-rpo-action],
+.right-panel-organizer-toolbar button[data-rpo-expand],
+.right-panel-organizer-toolbar button[data-rpo-collapse],
+.right-panel-organizer-toolbar button[data-rpo-refresh],
+.right-panel-organizer-toolbar button[data-rpo-copy-report] {
+  pointer-events: auto !important;
+}
+
+.right-panel-group[data-rpo-open="false"] > .right-panel-group-body,
+.right-panel-group:not([open]) > .right-panel-group-body,
+.right-panel-group-body[hidden] {
+  display: none !important;
+}
+
+.right-panel-group[data-rpo-open="true"] > .right-panel-group-body,
+.right-panel-group[open] > .right-panel-group-body:not([hidden]) {
+  display: grid;
 }
