@@ -1,0 +1,7 @@
+Stage 15A checks
+================
+
+PASS node --check js/ui-cleanup-service.js
+PASS node tests/stage15a-ui-cleanup-panel-stabilization.test.cjs
+
+UI cleanup added: one active right tab, collapsible Copilot cards, compact mode, and panel scroll stabilization.
