@@ -1,0 +1,19 @@
+Stage 17M test report
+=====================
+
+Stage: stage17m-tab-integrity-regression-lock-1
+
+Passed:
+- node --check js/right-panel-organizer-service.js
+- node --check js/asset-service.js
+- node --check js/figure-editor-service.js
+- node tests/stage17m-tab-integrity-regression-lock.test.cjs
+- python3 tests/stage17m-chromium-tab-integrity-regression-lock.py
+
+Chromium harness verified:
+- Copilot groups expand/collapse.
+- Settings groups expand/collapse.
+- Figures tab opens and remains separate.
+- Draw figure, AI TikZ maker, and Image → TikZ stay in assetsTab.
+- Copy report includes Tab integrity, per-tab card counts, misplaced known-card diagnostics, and Figures tab tool health.
+- A deliberately misplaced Draw figure card is reported and is not moved into Copilot's Figures group.
