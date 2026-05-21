@@ -1,0 +1,25 @@
+Latexai Stage 17O test report
+=============================
+
+Stage: stage17o-lai-review-integration-for-devils-competitive-1
+
+Checks run:
+
+- node --check js/paper-ai-polish-service.js
+- node --check js/competitive-paper-review-service.js
+- node --check js/devils-advocate-debate-service.js
+- node --check js/ai-revision-history-service.js
+- node tests/stage17o-lai-review-integration.test.cjs
+- python3 tests/stage17o-chromium-lai-review-integration.py
+
+Result: PASS
+
+Chromium integration verified:
+
+- Competitive Review inline \lai insertion refreshes Paper-level edit review.
+- Competitive Review append \lai plan is scanned by Paper-level edit review.
+- Devil's Advocate inline \lai insertion refreshes Paper-level edit review.
+- Devil's Advocate append \lai plan is scanned by Paper-level edit review.
+- Inserted edit rows are labeled with source workflow.
+- Project-level paper AI scan can see edits across modified TeX files.
+- Old comment-only roadmap insertion remains absent from the main insertion path.
