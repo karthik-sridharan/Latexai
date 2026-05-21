@@ -1,0 +1,8 @@
+Stage 16A checks
+================
+
+PASS node --check js/paper-ai-polish-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage16a-paper-ai-workflow-polish.test.cjs
+
+Paper-level AI workflow polish added as a feature-gated local edit-review card.
