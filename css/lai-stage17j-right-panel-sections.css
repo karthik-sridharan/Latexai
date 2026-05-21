@@ -1,4 +1,4 @@
-/* Latexai Stage 17J4: right panel collapsible workflow sections */
+/* Latexai Stage 17J7: right panel collapsible workflow sections */
 
 .right-panel-organizer-toolbar {
   display: flex;
@@ -11,6 +11,9 @@
   border-radius: 16px;
   background: rgba(248,250,252,.94);
   box-shadow: 0 8px 22px rgba(15,23,42,.045);
+  position: relative;
+  z-index: 50;
+  pointer-events: auto;
 }
 
 .right-panel-organizer-toolbar strong {
@@ -23,6 +26,18 @@
   flex-wrap: wrap;
   gap: .35rem;
   justify-content: flex-end;
+  pointer-events: auto !important;
+}
+
+.right-panel-organizer-actions > button,
+.right-panel-organizer-toolbar button[data-rpo-action],
+.right-panel-organizer-toolbar button[data-rpo-expand],
+.right-panel-organizer-toolbar button[data-rpo-collapse],
+.right-panel-organizer-toolbar button[data-rpo-refresh],
+.right-panel-organizer-toolbar button[data-rpo-copy-report] {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto !important;
 }
 
 .right-panel-organizer-status {
@@ -47,6 +62,11 @@
 }
 
 .right-panel-group-summary {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  border: 0;
+  background: transparent;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -55,12 +75,10 @@
   user-select: none;
   padding: .7rem .78rem;
   color: #0f172a;
+  font: inherit;
   font-weight: 950;
-  list-style: none;
-}
-
-.right-panel-group-summary::-webkit-details-marker {
-  display: none;
+  text-align: left;
+  pointer-events: auto !important;
 }
 
 .right-panel-group-summary::before {
@@ -71,7 +89,8 @@
   transform: translateY(-1px);
 }
 
-.right-panel-group[open] > .right-panel-group-summary::before {
+.right-panel-group[data-rpo-open="true"] > .right-panel-group-summary::before,
+.right-panel-group.is-open > .right-panel-group-summary::before {
   content: '▾';
 }
 
@@ -98,8 +117,15 @@
   padding: 0 .72rem .78rem;
 }
 
-.right-panel-group:not([open]) > .right-panel-group-body {
-  display: none;
+.right-panel-group[data-rpo-open="false"] > .right-panel-group-body,
+.right-panel-group.is-collapsed > .right-panel-group-body,
+.right-panel-group-body[hidden] {
+  display: none !important;
+}
+
+.right-panel-group[data-rpo-open="true"] > .right-panel-group-body:not([hidden]),
+.right-panel-group.is-open > .right-panel-group-body:not([hidden]) {
+  display: grid;
 }
 
 /* Cards moved into groups should not keep excessive top spacing. */
@@ -122,57 +148,4 @@
   .right-panel-organizer-actions {
     justify-content: flex-start;
   }
-}
-
-
-/* Stage 17J3: make organizer controls clearly clickable above grouped cards. */
-.right-panel-organizer-toolbar button[data-rpo-expand],
-.right-panel-organizer-toolbar button[data-rpo-collapse],
-.right-panel-organizer-toolbar button[data-rpo-refresh],
-.right-panel-organizer-toolbar button[data-rpo-copy-report] {
-  position: relative;
-  z-index: 3;
-  pointer-events: auto;
-}
-
-/* Stage 17J4: harden organizer click hit-testing and open/closed state. */
-.right-panel-organizer-toolbar {
-  position: relative;
-  z-index: 50;
-  pointer-events: auto;
-}
-
-.right-panel-organizer-actions,
-.right-panel-organizer-actions > button,
-.right-panel-organizer-toolbar button[data-rpo-action],
-.right-panel-organizer-toolbar button[data-rpo-expand],
-.right-panel-organizer-toolbar button[data-rpo-collapse],
-.right-panel-organizer-toolbar button[data-rpo-refresh],
-.right-panel-organizer-toolbar button[data-rpo-copy-report] {
-  pointer-events: auto !important;
-}
-
-.right-panel-group[data-rpo-open="false"] > .right-panel-group-body,
-.right-panel-group:not([open]) > .right-panel-group-body,
-.right-panel-group-body[hidden] {
-  display: none !important;
-}
-
-.right-panel-group[data-rpo-open="true"] > .right-panel-group-body,
-.right-panel-group[open] > .right-panel-group-body:not([hidden]) {
-  display: grid;
-}
-
-
-/* Stage 17J5: bulk command state wins over delayed rerenders/native details toggles. */
-#copilotTab[data-rpo-forced-open="false"] details.right-panel-group > .right-panel-group-body,
-#settingsTab[data-rpo-forced-open="false"] details.right-panel-group > .right-panel-group-body,
-details.right-panel-group[data-rpo-open="false"] > .right-panel-group-body {
-  display: none !important;
-}
-
-#copilotTab[data-rpo-forced-open="true"] details.right-panel-group[open] > .right-panel-group-body,
-#settingsTab[data-rpo-forced-open="true"] details.right-panel-group[open] > .right-panel-group-body,
-details.right-panel-group[data-rpo-open="true"] > .right-panel-group-body:not([hidden]) {
-  display: grid;
 }
