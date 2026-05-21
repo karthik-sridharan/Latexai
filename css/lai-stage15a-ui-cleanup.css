@@ -1,0 +1,228 @@
+/* Latexai Stage 15A: UI cleanup and panel stabilization */
+
+body.stage15a-ui-cleanup .workspace {
+  min-height: 0;
+}
+
+body.stage15a-ui-cleanup .panel {
+  min-height: 0;
+}
+
+.stage15a-left-stable,
+.stage15a-right-stable {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage15a-left-stable {
+  display: flex;
+  flex-direction: column;
+}
+
+.stage15a-left-stable .panel-section {
+  min-height: 0;
+}
+
+.stage15a-left-stable .project-card {
+  flex: 0 0 auto;
+}
+
+.stage15a-left-stable .outline-card {
+  flex: 1 1 auto;
+  min-height: 140px;
+}
+
+.stage15a-scroll-region {
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stage15a-right-stable {
+  display: flex;
+  flex-direction: column;
+}
+
+.stage15a-right-stable .right-tabs {
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  background: inherit;
+  border-bottom: 1px solid rgba(15,23,42,.08);
+}
+
+.stage15a-compact-toggle-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: .25rem .5rem .1rem;
+}
+
+.stage15a-compact-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .72rem;
+  font-weight: 800;
+  color: #475569;
+  user-select: none;
+}
+
+.stage15a-compact-toggle input {
+  margin: 0;
+}
+
+.stage15a-right-stable .right-tab-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stage15a-right-stable .right-tab-panel:not(.active),
+.stage15a-hidden-panel {
+  display: none !important;
+}
+
+.stage15a-copilot-stable,
+.stage15a-settings-stable {
+  gap: .55rem;
+}
+
+.stage15a-collapsible-card {
+  border-radius: 14px !important;
+  overflow: hidden;
+  border: 1px solid rgba(15,23,42,.12) !important;
+  background: rgba(255,255,255,.94);
+}
+
+.stage15a-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .62rem .72rem;
+  background: rgba(248,250,252,.95);
+  border-bottom: 1px solid rgba(15,23,42,.08);
+}
+
+.stage15a-card-toggle {
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 900;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stage15a-card-toggle:hover .stage15a-card-title {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.stage15a-card-caret {
+  width: 1em;
+  color: #2563eb;
+  font-weight: 900;
+}
+
+.stage15a-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage15a-card-meta {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.stage15a-card-body {
+  padding: .75rem;
+}
+
+.stage15a-collapsed .stage15a-card-body {
+  display: none;
+}
+
+.stage15a-expanded .stage15a-card-meta::after {
+  content: "ed";
+}
+
+.stage15a-expanded .stage15a-card-meta {
+  font-size: 0;
+}
+
+.stage15a-expanded .stage15a-card-meta::before {
+  content: "Open";
+  font-size: .68rem;
+}
+
+body.stage15a-compact .right-tab {
+  padding-inline: .55rem;
+  font-size: .78rem;
+}
+
+body.stage15a-compact .right-tab-panel {
+  padding: .6rem !important;
+}
+
+body.stage15a-compact .field,
+body.stage15a-compact .settings-note,
+body.stage15a-compact .presentation-export-help,
+body.stage15a-compact .citation-verifier-help {
+  font-size: .72rem;
+}
+
+body.stage15a-compact textarea {
+  min-height: 56px;
+}
+
+body.stage15a-compact .presentation-export-actions,
+body.stage15a-compact .citation-verifier-actions,
+body.stage15a-compact .micro-actions {
+  gap: .3rem;
+}
+
+body.stage15a-compact .btn.mini {
+  padding: .32rem .48rem;
+}
+
+@media (max-width: 980px) {
+  body.stage15a-ui-cleanup .workspace {
+    grid-template-columns: minmax(180px, .8fr) minmax(0, 1.4fr) minmax(260px, 1fr);
+  }
+
+  .stage15a-card-body {
+    padding: .6rem;
+  }
+}
+
+@media (max-width: 760px) {
+  body.stage15a-ui-cleanup .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stage15a-left-stable,
+  .stage15a-right-stable {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .stage15a-right-stable .right-tab-panel {
+    max-height: 70vh;
+  }
+}
