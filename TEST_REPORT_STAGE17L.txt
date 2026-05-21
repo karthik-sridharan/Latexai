@@ -1,0 +1,10 @@
+Stage 17L test report
+=====================
+
+Checks run:
+- node --check js/right-panel-organizer-service.js
+- node --check js/asset-service.js
+- node --check js/figure-editor-service.js
+- node tests/stage17l-restore-figure-drawing-tab.test.cjs
+
+Result: passed
