@@ -1,0 +1,8 @@
+Stage 17J3 checks
+=================
+
+PASS node --check js/feature-flag-service.js
+PASS node --check js/right-panel-organizer-service.js
+PASS node tests/stage17j3-right-panel-organizer-buttons-hotfix.test.cjs
+
+Expand all / Collapse all / Refresh sections / Copy report buttons now use robust delegated handlers.
