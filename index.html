@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage17j5-right-panel-organizer-forced-state-20260521-1';
+  window.LUMINA_LATEX_STAGE='latex-stage17j6-right-panel-organizer-global-bulk-state-20260521-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -65,16 +65,16 @@
 <link rel="stylesheet" href="css/lai-stage17d-left-panel-layout.css?v=stage17d-left-panel-layout-fix-1" />
 <link rel="stylesheet" href="css/lai-stage17ef-ai-reports-browser.css?v=stage17ef-unified-ai-reports-browser-1" />
 <link rel="stylesheet" href="css/lai-stage17i-ai-routing-inspector.css?v=stage17i-ai-model-routing-inspector-preflight-1" />
-<link rel="stylesheet" href="css/lai-stage17j-right-panel-sections.css?v=stage17j5-right-panel-organizer-forced-state-1" />
+<link rel="stylesheet" href="css/lai-stage17j-right-panel-sections.css?v=stage17j6-right-panel-organizer-global-bulk-state-1" />
 <link rel="stylesheet" href="css/lai-stage15f-backend-diagnostics.css?v=stage15f-backend-diagnostics-dashboard-1" />
 <link rel="stylesheet" href="css/lai-stage15g-model-routing.css?v=stage15g-model-provider-routing-cleanup-1" />
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
 <script src="js/safe-mode-service.js?v=stage15e-safe-mode-recovery-1"></script>
-<script src="js/feature-flag-service.js?v=stage17j5-right-panel-organizer-forced-state-1"></script>
+<script src="js/feature-flag-service.js?v=stage17j6-right-panel-organizer-global-bulk-state-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage17j5-right-panel-organizer-forced-state-20260521-1">
+<div class="app-shell" data-stage="latex-stage17j6-right-panel-organizer-global-bulk-state-20260521-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -407,7 +407,7 @@
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-reports-browser" data-src="js/ai-report-service.js?v=stage17ef-unified-ai-reports-browser-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-routing-inspector" data-src="js/ai-routing-inspector-service.js?v=stage17i-ai-model-routing-inspector-preflight-1"></script>
-<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage17j5-right-panel-organizer-forced-state-1"></script>
+<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage17j6-right-panel-organizer-global-bulk-state-1"></script>
 <script type="application/latexai-feature-script" data-feature="citation-ai" data-src="js/citation-ai-service.js?v=stage12c-missing-bibtex-repair-1"></script>
 <script type="application/latexai-feature-script" data-feature="citation-verifier" data-src="js/citation-verifier-service.js?v=stage12f-clickable-link-panel-fix-1"></script>
 <script type="application/latexai-feature-script" data-feature="presentation-export" data-src="js/presentation-export-service.js?v=stage13g-talk-package-validator-zip-1"></script>
@@ -420,8 +420,8 @@
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 
-<script id="stage17j5-right-panel-organizer-fallback">
-/* LATEXAI_STAGE17J5_RIGHT_PANEL_ORGANIZER_FALLBACK_LOADER: load organizer if the feature loader cache or saved flags are stale. */
+<script id="stage17j6-right-panel-organizer-fallback">
+/* LATEXAI_STAGE17J6_RIGHT_PANEL_ORGANIZER_FALLBACK_LOADER: load organizer if the feature loader cache or saved flags are stale. */
 window.addEventListener('DOMContentLoaded', function () {
   setTimeout(function () {
     try {
@@ -430,15 +430,15 @@ window.addEventListener('DOMContentLoaded', function () {
         return;
       }
       var existing = document.querySelector('script[src*="right-panel-organizer-service.js"]');
-      if (existing && existing.dataset.stage17j5FallbackLoaded === 'true') return;
+      if (existing && existing.dataset.stage17j6FallbackLoaded === 'true') return;
       var s = document.createElement('script');
-      s.src = 'js/right-panel-organizer-service.js?v=stage17j5-right-panel-organizer-forced-state-1';
+      s.src = 'js/right-panel-organizer-service.js?v=stage17j6-right-panel-organizer-global-bulk-state-1';
       s.defer = true;
-      s.dataset.stage17j5FallbackLoaded = 'true';
+      s.dataset.stage17j6FallbackLoaded = 'true';
       document.body.appendChild(s);
     } catch (err) {
       try {
-        (window.LUMINA_LATEX_BOOT_ERRORS = window.LUMINA_LATEX_BOOT_ERRORS || []).push('Stage 17J5 organizer fallback failed: ' + (err && (err.message || err)));
+        (window.LUMINA_LATEX_BOOT_ERRORS = window.LUMINA_LATEX_BOOT_ERRORS || []).push('Stage 17J6 organizer fallback failed: ' + (err && (err.message || err)));
       } catch (_ignored) {}
     }
   }, 900);
