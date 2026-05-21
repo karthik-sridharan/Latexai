@@ -1,0 +1,72 @@
+/* Latexai Stage 16B: competitive paper review */
+
+.competitive-review-card {
+  margin-top: .85rem;
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 16px;
+  padding: .8rem;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+.competitive-review-help {
+  margin: .35rem 0 .65rem;
+  color: #64748b;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.competitive-mode-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem .7rem;
+  padding: .62rem;
+  margin: .55rem 0;
+  border: 1px solid rgba(15,23,42,.1);
+  border-radius: 12px;
+  background: rgba(248,250,252,.86);
+}
+
+.competitive-mode-title {
+  flex-basis: 100%;
+  color: #334155;
+  font-size: .68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.competitive-mode-box label {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  color: #475569;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.competitive-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin: .55rem 0;
+}
+
+.competitive-review-output {
+  display: none;
+  max-height: 520px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+  margin-top: .65rem;
+}
+
+.competitive-review-output.active {
+  display: block;
+}
