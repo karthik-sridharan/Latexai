@@ -1,0 +1,7 @@
+Stage 15H checks
+================
+
+PASS node --check js/regression-checklist-service.js
+PASS node tests/stage15h-in-app-regression-checklist.test.cjs
+
+In-app regression checklist added without observers, intervals, compile jobs, or AI calls.
