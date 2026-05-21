@@ -1,49 +1,46 @@
-/* Latexai Stage 15A: UI cleanup and panel stabilization */
+/* Latexai Stage 15B: Copilot card visibility fix + panel stabilization */
 
-body.stage15a-ui-cleanup .workspace {
+body.stage15b-ui-cleanup .workspace,
+body.stage15b-ui-cleanup .panel {
   min-height: 0;
 }
 
-body.stage15a-ui-cleanup .panel {
-  min-height: 0;
-}
-
-.stage15a-left-stable,
-.stage15a-right-stable {
+.stage15b-left-stable,
+.stage15b-right-stable {
   min-height: 0;
   overflow: hidden;
 }
 
-.stage15a-left-stable {
+.stage15b-left-stable {
   display: flex;
   flex-direction: column;
 }
 
-.stage15a-left-stable .panel-section {
+.stage15b-left-stable .panel-section {
   min-height: 0;
 }
 
-.stage15a-left-stable .project-card {
+.stage15b-left-stable .project-card {
   flex: 0 0 auto;
 }
 
-.stage15a-left-stable .outline-card {
+.stage15b-left-stable .outline-card {
   flex: 1 1 auto;
   min-height: 140px;
 }
 
-.stage15a-scroll-region {
+.stage15b-scroll-region {
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.stage15a-right-stable {
+.stage15b-right-stable {
   display: flex;
   flex-direction: column;
 }
 
-.stage15a-right-stable .right-tabs {
+.stage15b-right-stable .right-tabs {
   flex: 0 0 auto;
   position: sticky;
   top: 0;
@@ -52,14 +49,16 @@ body.stage15a-ui-cleanup .panel {
   border-bottom: 1px solid rgba(15,23,42,.08);
 }
 
-.stage15a-compact-toggle-wrap {
+.stage15b-ui-controls {
   flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: .55rem;
   padding: .25rem .5rem .1rem;
 }
 
-.stage15a-compact-toggle {
+.stage15b-toggle {
   display: inline-flex;
   align-items: center;
   gap: .35rem;
@@ -69,46 +68,49 @@ body.stage15a-ui-cleanup .panel {
   user-select: none;
 }
 
-.stage15a-compact-toggle input {
+.stage15b-toggle input {
   margin: 0;
 }
 
-.stage15a-right-stable .right-tab-panel {
+.stage15b-right-stable .right-tab-panel {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.stage15a-right-stable .right-tab-panel:not(.active),
-.stage15a-hidden-panel {
+.stage15b-right-stable .right-tab-panel:not(.active),
+.stage15b-hidden-panel {
   display: none !important;
 }
 
-.stage15a-copilot-stable,
-.stage15a-settings-stable {
+.stage15b-copilot-stable,
+.stage15b-settings-stable {
   gap: .55rem;
 }
 
-.stage15a-collapsible-card {
+/* Critical Stage 15B fix: known cards stay visible and expanded by default. */
+.stage15b-collapsible-card {
   border-radius: 14px !important;
   overflow: hidden;
   border: 1px solid rgba(15,23,42,.12) !important;
-  background: rgba(255,255,255,.94);
+  background: rgba(255,255,255,.96);
+  margin-bottom: .65rem;
 }
 
-.stage15a-card-header {
+.stage15b-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: .6rem;
   padding: .62rem .72rem;
-  background: rgba(248,250,252,.95);
+  background: rgba(248,250,252,.98);
   border-bottom: 1px solid rgba(15,23,42,.08);
 }
 
-.stage15a-card-toggle {
+.stage15b-card-toggle {
   flex: 1 1 auto;
+  min-width: 0;
   border: 0;
   background: transparent;
   color: #0f172a;
@@ -123,24 +125,27 @@ body.stage15a-ui-cleanup .panel {
   cursor: pointer;
 }
 
-.stage15a-card-toggle:hover .stage15a-card-title {
+.stage15b-card-toggle:hover .stage15b-card-title {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.stage15a-card-caret {
+.stage15b-card-caret {
+  flex: 0 0 auto;
   width: 1em;
   color: #2563eb;
   font-weight: 900;
 }
 
-.stage15a-card-title {
+.stage15b-card-title {
+  display: inline-block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.stage15a-card-meta {
+.stage15b-card-meta {
   flex: 0 0 auto;
   color: #64748b;
   font-size: .68rem;
@@ -149,80 +154,77 @@ body.stage15a-ui-cleanup .panel {
   letter-spacing: .04em;
 }
 
-.stage15a-card-body {
+.stage15b-card-body {
   padding: .75rem;
+  display: block;
 }
 
-.stage15a-collapsed .stage15a-card-body {
-  display: none;
+.stage15b-card-body[hidden] {
+  display: none !important;
 }
 
-.stage15a-expanded .stage15a-card-meta::after {
-  content: "ed";
-}
-
-.stage15a-expanded .stage15a-card-meta {
-  font-size: 0;
-}
-
-.stage15a-expanded .stage15a-card-meta::before {
-  content: "Open";
-  font-size: .68rem;
-}
-
-body.stage15a-compact .right-tab {
+body.stage15b-compact .right-tab {
   padding-inline: .55rem;
   font-size: .78rem;
 }
 
-body.stage15a-compact .right-tab-panel {
+body.stage15b-compact .right-tab-panel {
   padding: .6rem !important;
 }
 
-body.stage15a-compact .field,
-body.stage15a-compact .settings-note,
-body.stage15a-compact .presentation-export-help,
-body.stage15a-compact .citation-verifier-help {
+body.stage15b-compact .field,
+body.stage15b-compact .settings-note,
+body.stage15b-compact .presentation-export-help,
+body.stage15b-compact .citation-verifier-help {
   font-size: .72rem;
 }
 
-body.stage15a-compact textarea {
+body.stage15b-compact textarea {
   min-height: 56px;
 }
 
-body.stage15a-compact .presentation-export-actions,
-body.stage15a-compact .citation-verifier-actions,
-body.stage15a-compact .micro-actions {
+body.stage15b-compact .presentation-export-actions,
+body.stage15b-compact .citation-verifier-actions,
+body.stage15b-compact .micro-actions {
   gap: .3rem;
 }
 
-body.stage15a-compact .btn.mini {
+body.stage15b-compact .btn.mini {
   padding: .32rem .48rem;
 }
 
+/* If old Stage 15A CSS is cached, override its collapsed blank-bar behavior. */
+.stage15a-collapsible-card:not(.stage15b-collapsible-card) .stage15a-card-body {
+  display: block !important;
+}
+
 @media (max-width: 980px) {
-  body.stage15a-ui-cleanup .workspace {
+  body.stage15b-ui-cleanup .workspace {
     grid-template-columns: minmax(180px, .8fr) minmax(0, 1.4fr) minmax(260px, 1fr);
   }
 
-  .stage15a-card-body {
+  .stage15b-card-body {
     padding: .6rem;
+  }
+
+  .stage15b-ui-controls {
+    flex-wrap: wrap;
   }
 }
 
 @media (max-width: 760px) {
-  body.stage15a-ui-cleanup .workspace {
+  body.stage15b-ui-cleanup .workspace {
     display: flex;
     flex-direction: column;
   }
 
-  .stage15a-left-stable,
-  .stage15a-right-stable {
+  .stage15b-left-stable,
+  .stage15b-right-stable {
     max-height: none;
     overflow: visible;
   }
 
-  .stage15a-right-stable .right-tab-panel {
+  .stage15b-right-stable .right-tab-panel {
     max-height: 70vh;
   }
 }
