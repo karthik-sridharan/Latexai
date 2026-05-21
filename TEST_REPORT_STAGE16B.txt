@@ -1,0 +1,8 @@
+Stage 16B checks
+================
+
+PASS node --check js/competitive-paper-review-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage16b-competitive-paper-review.test.cjs
+
+Competitive paper review added as a feature-gated Copilot workflow.
