@@ -1,0 +1,9 @@
+Stage 15E+15F checks
+=====================
+
+PASS node --check js/safe-mode-service.js
+PASS node --check js/backend-diagnostics-service.js
+PASS node --check js/ui-cleanup-service.js
+PASS node tests/stage15ef-safe-mode-backend-diagnostics.test.cjs
+
+Safe mode boot guard and backend diagnostics dashboard added.
