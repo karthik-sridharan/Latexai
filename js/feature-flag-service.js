@@ -31,6 +31,7 @@
     { key: 'devils-advocate-debate', title: 'Devil’s advocate debate', tier: 'experimental', defaultEnabled: true, description: 'Runs advocate, critic, and synthesizer AI agents to produce a balanced paper improvement plan.' },
     { key: 'ai-revision-history', title: 'AI revision history', tier: 'stable', defaultEnabled: true, description: 'Create snapshots, compare AI changes, and restore/revert if needed.' },
     { key: 'ai-suggestion-comments', title: 'AI suggestion comments', tier: 'stable', defaultEnabled: true, description: 'Annotate AI suggestions, resolve/reopen comments, and exchange comments with coauthors as JSON.' },
+    { key: 'paper-ai-dashboard', title: 'Paper AI dashboard', tier: 'stable', defaultEnabled: true, description: 'Quick-launch and status dashboard for paper AI workflows.' },
     { key: 'citation-ai', title: 'Citation AI', tier: 'stable', defaultEnabled: true, description: 'Citation filler and missing BibTeX workflows.' },
     { key: 'citation-verifier', title: 'Citation verifier', tier: 'stable', defaultEnabled: true, description: 'Local citation report and BibTeX completeness checks.' },
     { key: 'compile-root-service', title: 'Active standalone compile root', tier: 'stable', defaultEnabled: true, description: 'Compile active standalone .tex files such as generated Beamer talks.' },
