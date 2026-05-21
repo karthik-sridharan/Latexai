@@ -1,0 +1,8 @@
+Stage 17J checks
+================
+
+PASS node --check js/right-panel-organizer-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage17j-right-panel-collapsible-sections.test.cjs
+
+Right panel collapsible workflow sections added.
