@@ -1,0 +1,125 @@
+/* Latexai Stage 17J: right panel collapsible workflow sections */
+
+.right-panel-organizer-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .7rem;
+  margin: 0 0 .75rem;
+  padding: .7rem .75rem;
+  border: 1px solid rgba(15,23,42,.1);
+  border-radius: 16px;
+  background: rgba(248,250,252,.94);
+  box-shadow: 0 8px 22px rgba(15,23,42,.045);
+}
+
+.right-panel-organizer-toolbar strong {
+  color: #0f172a;
+  font-size: .82rem;
+}
+
+.right-panel-organizer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  justify-content: flex-end;
+}
+
+.right-panel-organizer-status {
+  flex-basis: 100%;
+  color: #64748b;
+  font-size: .68rem;
+  font-weight: 800;
+  margin-top: .25rem;
+}
+
+.right-panel-group {
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 16px;
+  background: rgba(255,255,255,.96);
+  margin: .75rem 0;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(15,23,42,.055);
+}
+
+.right-panel-group.empty {
+  opacity: .68;
+}
+
+.right-panel-group-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .65rem;
+  cursor: pointer;
+  user-select: none;
+  padding: .7rem .78rem;
+  color: #0f172a;
+  font-weight: 950;
+  list-style: none;
+}
+
+.right-panel-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.right-panel-group-summary::before {
+  content: '▸';
+  color: #2563eb;
+  font-size: .8rem;
+  margin-right: .25rem;
+  transform: translateY(-1px);
+}
+
+.right-panel-group[open] > .right-panel-group-summary::before {
+  content: '▾';
+}
+
+.right-panel-group-title {
+  flex: 1 1 auto;
+  font-size: .84rem;
+}
+
+.right-panel-group-count {
+  flex: 0 0 auto;
+  min-width: 1.45rem;
+  text-align: center;
+  border-radius: 999px;
+  padding: .08rem .42rem;
+  color: #1d4ed8;
+  background: rgba(219,234,254,.85);
+  font-size: .66rem;
+  font-weight: 950;
+}
+
+.right-panel-group-body {
+  display: grid;
+  gap: .75rem;
+  padding: 0 .72rem .78rem;
+}
+
+.right-panel-group:not([open]) > .right-panel-group-body {
+  display: none;
+}
+
+/* Cards moved into groups should not keep excessive top spacing. */
+.right-panel-group-body > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Keep the top dashboard prominent inside the Paper AI section. */
+#rightPanelGroup-copilot-paper-ai #paperAiDashboardCard {
+  border-color: rgba(37,99,235,.22);
+}
+
+@media (max-width: 980px) {
+  .right-panel-organizer-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .right-panel-organizer-actions {
+    justify-content: flex-start;
+  }
+}
