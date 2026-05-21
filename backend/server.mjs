@@ -1,11 +1,16 @@
 import express from 'express';
 import cors from 'cors';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { compileWithTexLive, detectTeXLive } from './providers/compile-texlive.mjs';
 import { sandboxPolicyFromEnv } from './security/sandbox-policy.mjs';
 import { validateCompilePayload, normalizeProjectPayload, safeProjectId, httpError } from './security/validate-project.mjs';
 
-const STAGE = 'latex-stage10e-backend-vision-forwarding-fix-20260519-1';
+const STAGE = 'latex-stage16c-web-search-required-competitive-review-backend-20260521-1';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const PROVIDERS = new Set(['openai', 'anthropic', 'gemini']);
@@ -13,10 +18,19 @@ const PROJECTS = new Map();
 const JOBS = new Map();
 const JOB_TTL_MS = Number(process.env.COMPILE_JOB_TTL_MS || 15 * 60_000);
 const RETURN_RAW = String(process.env.RETURN_RAW_PROVIDER_RESPONSE || 'false').toLowerCase() === 'true';
+const OPENAI_WEB_SEARCH_ENABLED = String(process.env.OPENAI_WEB_SEARCH_ENABLED || 'true').toLowerCase() !== 'false';
+const OPENAI_WEB_SEARCH_TOOL = process.env.OPENAI_WEB_SEARCH_TOOL || 'web_search';
 const POLICY = sandboxPolicyFromEnv(process.env);
 
 function envList(name, fallback = '') {
   return String(process.env[name] || fallback || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function hasProviderKey(provider) {
+  if (provider === 'openai') return Boolean(process.env.OPENAI_API_KEY);
+  if (provider === 'anthropic') return Boolean(process.env.ANTHROPIC_API_KEY);
+  if (provider === 'gemini') return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  return false;
 }
 
 const DEFAULT_MODELS = {
@@ -136,6 +150,23 @@ app.get('/api/lumina/ai/status', requireProxyToken, (_req, res) => {
     workflows: COPILOT_WORKFLOWS,
     patchSchema: 'lumina-latex-ai-patch-v1',
     imageInputsForwarded: true,
+    webSearch: {
+      supported: true,
+      enabled: OPENAI_WEB_SEARCH_ENABLED,
+      defaultRequiredForCompetitiveReview: true,
+      providers: {
+        openai: {
+          configured: !!process.env.OPENAI_API_KEY,
+          supported: true,
+          enabled: OPENAI_WEB_SEARCH_ENABLED,
+          available: !!process.env.OPENAI_API_KEY && OPENAI_WEB_SEARCH_ENABLED,
+          endpoint: 'responses',
+          toolType: OPENAI_WEB_SEARCH_TOOL
+        },
+        anthropic: { supported: false, available: false },
+        gemini: { supported: false, available: false }
+      }
+    },
     note: 'API keys remain backend-only. Browser requests must go through this proxy. Stage 10E preserves image inputs for vision-capable models.'
   });
 });
@@ -241,13 +272,35 @@ app.get('/ws/lumina/projects/:projectId', (_req, res) => {
 
 app.post('/api/lumina/ai', requireProxyToken, async (req, res) => {
   try {
-    const { provider, model } = pickProviderAndModel(req.body || {});
-    const payload = normalizeAiPayload(req.body || {});
+    const requestBody = req.body || {};
+    const { provider, model } = pickProviderAndModel(requestBody);
+    const payload = (requestBody.task === 'latex-document-ai' || requestBody.payload?.documentAi)
+      ? await normalizeDocumentAiPayload(requestBody)
+      : normalizeAiPayload(requestBody);
+    if (payload.webSearchRequired && provider !== 'openai') {
+      throw httpError(400, 'Web search is required for this workflow. Choose an OpenAI backend/model with web search enabled.');
+    }
+    if (payload.webSearchRequired && !OPENAI_WEB_SEARCH_ENABLED) {
+      throw httpError(400, 'Web search is required for this workflow, but OPENAI_WEB_SEARCH_ENABLED is false on the backend.');
+    }
+
     let result;
     if (provider === 'openai') result = await callOpenAi(model, payload);
     else if (provider === 'anthropic') result = await callAnthropic(model, payload);
     else result = await callGemini(model, payload);
-    res.json({ ok: true, schema: 'lumina-latex-ai-response-v1', stage: STAGE, provider, model, task: req.body?.task || 'latex-copilot', text: result.text, raw: RETURN_RAW ? result.raw : undefined });
+    res.json({
+      ok: true,
+      schema: 'lumina-latex-ai-response-v1',
+      stage: STAGE,
+      provider,
+      model,
+      task: requestBody.task || 'latex-copilot',
+      documentAi: payload.documentAi,
+      text: result.text,
+      webSearchRequired: payload.webSearchRequired,
+      webSearchEnabled: !!result.webSearchEnabled,
+      raw: RETURN_RAW ? result.raw : undefined
+    });
   } catch (err) {
     sendError(res, err);
   }
@@ -398,6 +451,151 @@ function chatMessagesToResponsesInput(messages) {
   });
 }
 
+
+const DOCUMENT_AI_PROMPT_FILES = {
+  common: 'ai-document-common.txt',
+  review: 'ai-review-and-suggestions.txt',
+  remake: 'ai-total-remake-plan.txt',
+  ranking: 'ai-ranking-acceptance-improver.txt',
+  competitive: 'ai-competitive-agent-improver.txt'
+};
+
+const DOCUMENT_AI_DEFAULT_PROMPTS = {
+  common: `You are Latexai document-level AI.
+
+Operate on the full LaTeX paper context provided by the frontend.
+
+Current implementation mode:
+- Stage 11C is append-only.
+- Do not rewrite the paper in place.
+- Return LaTeX content for a final appendix/review section only.
+
+Output rules:
+- Return LaTeX only.
+- Do not use Markdown fences.
+- Do not return JSON.
+- Do not include \\documentclass, \\begin{document}, or \\end{document}.
+- Use concrete section/subsection headings, bullet lists, and actionable suggestions.
+
+User instructions:
+{{USER_INSTRUCTIONS}}
+
+Requested mode:
+{{MODE}}
+
+Selected workflow:
+{{WORKFLOW}}
+
+Root file:
+{{ROOT_FILE}}`,
+
+  review: `Workflow: Review and suggested improvements.
+
+Critically review the paper as a strong technical reviewer.
+Focus on clarity, correctness, missing definitions, proof gaps, citation gaps, organization, notation, and concrete edits.
+Return a LaTeX section with prioritized, actionable suggestions.`,
+
+  remake: `Workflow: Total remake plan.
+
+Propose a large-scale remake of the paper: ideal narrative, reordered sections, what to merge/split/expand, how to frame the main result, and a step-by-step rewrite plan.
+Return a LaTeX section that is a complete remake plan, not a direct rewrite of the paper.`,
+
+  ranking: `Workflow: Ranking / acceptance improver.
+
+Improve the paper's chance at a strong venue.
+Focus on likely reviewer objections, low-score risks, claims needing evidence, presentation changes, missing experiments/examples/comparisons/citations, and the highest-impact fixes.
+Return a LaTeX section with ranked recommendations.`,
+
+  competitive: `Workflow: Competitive agent improver.
+
+Simulate a committee of agents:
+1. A critic attacks the paper.
+2. An improver proposes fixes.
+3. A mathematical clarity checker reviews definitions, assumptions, statements, and proofs.
+4. A strategist summarizes the highest-impact changes.
+Return a LaTeX section organized by these agents, followed by a consolidated action plan.`
+};
+
+function workflowLabel(workflow) {
+  return {
+    review: 'Review and suggested improvements',
+    remake: 'Total remake plan',
+    ranking: 'Ranking / acceptance improver',
+    competitive: 'Competitive agent improver'
+  }[workflow] || 'Review and suggested improvements';
+}
+
+function templateFill(template, values = {}) {
+  let out = String(template || '');
+  for (const [key, value] of Object.entries(values)) {
+    out = out.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value ?? ''));
+  }
+  return out;
+}
+
+async function readDeveloperPrompt(kind) {
+  const key = DOCUMENT_AI_PROMPT_FILES[kind] ? kind : 'review';
+  const filename = DOCUMENT_AI_PROMPT_FILES[key];
+  const promptDir = process.env.LATEXAI_PROMPT_DIR || join(__dirname, 'prompt');
+  try {
+    const text = await readFile(join(promptDir, filename), 'utf8');
+    return text.trim() ? text : DOCUMENT_AI_DEFAULT_PROMPTS[key];
+  } catch (_err) {
+    return DOCUMENT_AI_DEFAULT_PROMPTS[key];
+  }
+}
+
+async function normalizeDocumentAiPayload(body) {
+  const payload = body.payload || {};
+  const doc = payload.documentAi || {};
+  const workflow = DOCUMENT_AI_PROMPT_FILES[doc.workflow] ? doc.workflow : 'review';
+  const mode = String(doc.mode || 'append');
+  const userInstructions = String(doc.userInstructions || '');
+  const rootPath = String(doc.rootPath || 'main.tex');
+  const projectContext = String(doc.projectContext || payload.input || payload.textInput || '');
+  if (!projectContext.trim()) throw httpError(400, 'Missing document AI project context.');
+
+  const values = {
+    USER_INSTRUCTIONS: userInstructions || '(none)',
+    MODE: mode,
+    WORKFLOW: workflowLabel(workflow),
+    WORKFLOW_KEY: workflow,
+    ROOT_FILE: rootPath,
+    PROMPT_FILE: DOCUMENT_AI_PROMPT_FILES[workflow]
+  };
+
+  const common = templateFill(await readDeveloperPrompt('common'), values);
+  const workflowPrompt = templateFill(await readDeveloperPrompt(workflow), values);
+
+  const input = [
+    common,
+    '',
+    '--- Workflow-specific developer prompt ---',
+    workflowPrompt,
+    '',
+    '--- Project context follows ---',
+    projectContext
+  ].join('\n');
+
+  const maxOutputTokens = Math.max(256, Math.min(Number(payload.maxOutputTokens || payload.max_output_tokens || 5000), 64000));
+  const temperature = typeof payload.temperature === 'number' && Number.isFinite(payload.temperature) ? Math.max(0, Math.min(payload.temperature, 2)) : 0.2;
+  return {
+    system: String(payload.instructions || 'Return LaTeX only. No markdown fences. No JSON.'),
+    input,
+    textInput: input,
+    hasImages: false,
+    maxOutputTokens,
+    temperature,
+    documentAi: {
+      workflow,
+      mode,
+      promptDirectory: process.env.LATEXAI_PROMPT_DIR || join(__dirname, 'prompt'),
+      commonPromptFile: DOCUMENT_AI_PROMPT_FILES.common,
+      workflowPromptFile: DOCUMENT_AI_PROMPT_FILES[workflow]
+    }
+  };
+}
+
 function normalizeAiPayload(body) {
   const payload = body.payload || {};
   const system = String(payload.instructions || payload.system || 'You are Lumina LaTeX Copilot. Return directly usable LaTeX or concise advice.');
@@ -419,7 +617,16 @@ function normalizeAiPayload(body) {
 
   const maxOutputTokens = Math.max(256, Math.min(Number(payload.maxOutputTokens || payload.max_output_tokens || 3500), 64000));
   const temperature = typeof payload.temperature === 'number' && Number.isFinite(payload.temperature) ? Math.max(0, Math.min(payload.temperature, 2)) : 0.25;
-  return { system, input, textInput, hasImages, maxOutputTokens, temperature };
+  const webSearchRequired = Boolean(
+    body.webSearchRequired ||
+    body.context?.requireWebSearch ||
+    body.context?.workflow === 'competitive-paper-review-web-search' ||
+    payload.webSearchRequired ||
+    payload.requireWebSearch ||
+    payload.competitiveReview?.requireWebSearch ||
+    (Array.isArray(payload.requiredTools) && payload.requiredTools.includes('web_search'))
+  );
+  return { system, input, textInput, hasImages, maxOutputTokens, temperature, webSearchRequired };
 }
 
 async function callOpenAi(model, payload) {
@@ -432,6 +639,10 @@ async function callOpenAi(model, payload) {
     temperature: payload.temperature,
     max_output_tokens: payload.maxOutputTokens
   };
+  if (payload.webSearchRequired) {
+    requestBody.tools = [{ type: OPENAI_WEB_SEARCH_TOOL }];
+    requestBody.tool_choice = 'auto';
+  }
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
@@ -439,7 +650,7 @@ async function callOpenAi(model, payload) {
   });
   const data = await response.json();
   if (!response.ok) throw httpError(response.status, data?.error?.message || 'OpenAI request failed.');
-  return { text: extractOpenAiText(data), raw: data };
+  return { text: extractOpenAiText(data), raw: data, webSearchEnabled: !!payload.webSearchRequired };
 }
 
 async function callAnthropic(model, payload) {
