@@ -1,0 +1,42 @@
+/* Latexai Stage 15F: backend diagnostics dashboard */
+
+.backend-diagnostics-card {
+  margin-top: .85rem;
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 16px;
+  padding: .8rem;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+.backend-diagnostics-help {
+  margin: .35rem 0 .65rem;
+  color: #64748b;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.backend-diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-bottom: .5rem;
+}
+
+.backend-diagnostics-output {
+  display: none;
+  max-height: 420px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+}
+
+.backend-diagnostics-output.active {
+  display: block;
+}

@@ -1,0 +1,39 @@
+/* Latexai Stage 15E: safe mode and recovery controls */
+
+.safe-mode-recovery-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .55rem .75rem;
+  margin: .45rem .75rem;
+  border: 1px solid rgba(37,99,235,.22);
+  border-radius: 14px;
+  background: rgba(239,246,255,.95);
+  color: #1e293b;
+  font-size: .78rem;
+  box-shadow: 0 4px 14px rgba(15,23,42,.08);
+}
+
+.safe-mode-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  justify-content: flex-end;
+}
+
+html.latexai-safe-mode .safe-mode-recovery-bar {
+  border-color: rgba(220,38,38,.28);
+  background: rgba(254,242,242,.96);
+}
+
+@media (max-width: 760px) {
+  .safe-mode-recovery-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .safe-mode-recovery-actions {
+    justify-content: flex-start;
+  }
+}
