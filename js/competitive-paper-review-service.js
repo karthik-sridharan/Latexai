@@ -1,12 +1,12 @@
-/* Latexai Stage 16B CompetitivePaperReviewService
- * Stage: stage16b-competitive-paper-review-1
+/* Latexai Stage 16C CompetitivePaperReviewService
+ * Stage: stage16c-web-search-required-competitive-review-1
  *
  * Competitive paper comparison workflow.
  *
- * First version intentionally does not download or parse competitor URLs.
- * The developer/user provides competitor URLs plus optional notes/abstracts.
- * The service asks the configured AI backend for a structured comparison and
- * can save the report under /reviews.
+ * Web-search-required version:
+ * - competitor URLs are expected to be opened/searched by the selected AI backend;
+ * - the workflow refuses to run unless /api/lumina/ai/status reports web search;
+ * - no Latexai PDF downloader/extractor is used.
  */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage16b-competitive-paper-review-1';
+  const STAGE = 'stage16c-web-search-required-competitive-review-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -169,6 +169,87 @@
     ].join('\n');
   }
 
+  function aiStatusUrl() {
+    const raw = clean(el('aiProxyUrl')?.value) || '/api/lumina/ai';
+    try {
+      const url = new URL(raw, W.location.href);
+      if (/\/api\/lumina\/ai\/?$/i.test(url.pathname)) {
+        url.pathname = url.pathname.replace(/\/?$/, '/status');
+        url.search = '';
+        return url.href;
+      }
+      if (/\/api\/lumina\/ai\/status\/?$/i.test(url.pathname)) return url.href;
+    } catch (_err) {}
+    return raw.replace(/\/api\/lumina\/ai\/?$/i, '/api/lumina/ai/status');
+  }
+
+  function currentAiProvider() {
+    return clean(el('aiProvider')?.value || 'openai');
+  }
+
+  function currentAiModel() {
+    return clean(el('aiModel')?.value || '');
+  }
+
+  function requireWebSearch() {
+    // Stage 16C policy: competitive review must use web-search-capable AI.
+    return true;
+  }
+
+  function webSearchAvailableFromStatus(status) {
+    const provider = currentAiProvider();
+    const web = status?.webSearch || status?.capabilities?.webSearch || {};
+    if (web.available === true || web.supported === true && web.enabled !== false) {
+      if (!web.providers) return true;
+    }
+    const providerInfo = web.providers?.[provider] || status?.providers?.[provider]?.webSearch || {};
+    if (providerInfo === true) return true;
+    if (providerInfo?.available === true) return true;
+    if (providerInfo?.supported === true && providerInfo?.enabled !== false && providerInfo?.configured !== false) return true;
+    return false;
+  }
+
+  async function checkWebSearchCapability() {
+    const statusNode = el('competitiveWebSearchStatus');
+    if (statusNode) statusNode.textContent = 'Checking AI backend web-search capability...';
+
+    try {
+      let status;
+      if (NS.AIProvider?.getStatus) status = await NS.AIProvider.getStatus();
+      else {
+        const headers = {};
+        const token = clean(el('aiProxyToken')?.value);
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const response = await fetch(aiStatusUrl(), { headers, cache: 'no-store' });
+        status = await response.json().catch(() => ({}));
+        if (!response.ok || status.ok === false) throw new Error(status?.error?.message || `AI status HTTP ${response.status}`);
+      }
+
+      const available = webSearchAvailableFromStatus(status);
+      const provider = currentAiProvider();
+      const model = currentAiModel();
+      const message = available
+        ? `Web search available for ${provider}${model ? ` / ${model}` : ''}.`
+        : `Web search unavailable for ${provider}${model ? ` / ${model}` : ''}. Choose a web-search-capable backend/model.`;
+
+      if (statusNode) {
+        statusNode.textContent = message;
+        statusNode.classList.toggle('ok', available);
+        statusNode.classList.toggle('bad', !available);
+      }
+
+      return { ok: available, status, message };
+    } catch (err) {
+      const message = `Could not verify web search: ${err?.message || err}`;
+      if (statusNode) {
+        statusNode.textContent = message;
+        statusNode.classList.remove('ok');
+        statusNode.classList.add('bad');
+      }
+      return { ok: false, error: message };
+    }
+  }
+
   function buildPayload() {
     const active = activeSource();
     const competitors = parseCompetitorInputs();
@@ -189,6 +270,13 @@
       competitorUrls: competitors.urls,
       competitorNotes: competitors.notes,
       extraInstructions: instructions,
+      requireWebSearch: requireWebSearch(),
+      webSearchPolicy: {
+        required: true,
+        provider: currentAiProvider(),
+        model: currentAiModel(),
+        expectation: 'AI backend must use a web_search tool to inspect/search competitor URLs.'
+      },
       draftExcerpt: draftExcerpt(active.text)
     };
   }
@@ -216,6 +304,22 @@
       return { ok: false, errors };
     }
 
+    if (requireWebSearch()) {
+      const capability = await checkWebSearchCapability();
+      if (!capability.ok) {
+        const message = capability.message || capability.error || 'Choose a web-search-capable AI backend/model.';
+        setStatus(message);
+        setOutput([
+          'Competitive review requires web search.',
+          '',
+          message,
+          '',
+          'Use an AI backend that reports webSearch.available=true from /api/lumina/ai/status.'
+        ].join('\n'));
+        return { ok: false, error: message, capability, payload };
+      }
+    }
+
     lastPayload = payload;
     setStatus('Running competitive paper review...');
 
@@ -236,18 +340,24 @@
         input,
         temperature: 0.2,
         maxOutputTokens: 7000,
+        webSearchRequired: true,
+        requireWebSearch: true,
+        requiredTools: ['web_search'],
         competitiveReview: {
           targetVenue: payload.targetVenue,
           comparisonModes: payload.comparisonModes,
-          competitorUrlCount: payload.competitorUrls.length
+          competitorUrlCount: payload.competitorUrls.length,
+          requireWebSearch: true,
+          webSearchEvidenceRequired: true
         }
       }, {
         task: 'latex-competitive-paper-review',
         context: {
-          workflow: 'competitive-paper-review',
+          workflow: 'competitive-paper-review-web-search',
           promptFile: PROMPT_PATH,
           targetVenue: payload.targetVenue,
-          comparisonModes: payload.comparisonModes
+          comparisonModes: payload.comparisonModes,
+          requireWebSearch: true
         }
       });
 
@@ -380,9 +490,11 @@
       '    <h2>Competitive paper review</h2>',
       '  </div>',
       '</div>',
-      '<p class="competitive-review-help">Compare the current draft against competitor paper URLs/notes and generate a concrete improvement roadmap. This first version does not download papers automatically.</p>',
+      '<p class="competitive-review-help">Compare the current draft against competitor paper URLs using a web-search-capable AI backend. Latexai does not download papers itself; the selected AI/backend must report web search support.</p>',
+      '<label class="competitive-web-required"><input id="competitiveRequireWebSearch" type="checkbox" checked disabled /> Require web-search-capable AI for this workflow</label>',
+      '<div id="competitiveWebSearchStatus" class="competitive-web-status">Web search not checked yet.</div>',
       '<label class="field">Competitor paper URLs',
-      '  <textarea id="competitivePaperUrls" rows="4" placeholder="One URL per line, e.g. arXiv/OpenReview/proceedings links"></textarea>',
+      '  <textarea id="competitivePaperUrls" rows="4" placeholder="One URL per line. The AI backend must search/open these URLs."></textarea>',
       '</label>',
       '<label class="field">Competitor notes / abstracts / titles',
       '  <textarea id="competitivePaperNotes" rows="5" placeholder="Paste titles, abstracts, claims, strengths, or notes for the competitor papers."></textarea>',
@@ -408,6 +520,7 @@
       '  <textarea id="competitiveExtraInstructions" rows="3" placeholder="Optional: be extremely critical, focus on theorem statement, improve intro, etc."></textarea>',
       '</label>',
       '<div class="competitive-review-actions">',
+      '  <button id="checkCompetitiveWebSearchBtn" class="btn mini" type="button">Check web search</button>',
       '  <button id="runCompetitiveReviewBtn" class="btn mini primary" type="button">Run competitive review</button>',
       '  <button id="copyCompetitiveReviewBtn" class="btn mini" type="button">Copy report</button>',
       '  <button id="addCompetitiveReviewBtn" class="btn mini" type="button">Add report to /reviews</button>',
@@ -419,6 +532,7 @@
 
     panel.appendChild(card);
 
+    el('checkCompetitiveWebSearchBtn')?.addEventListener('click', checkWebSearchCapability, true);
     el('runCompetitiveReviewBtn')?.addEventListener('click', runCompetitiveReview, true);
     el('copyCompetitiveReviewBtn')?.addEventListener('click', copyReport, true);
     el('addCompetitiveReviewBtn')?.addEventListener('click', addReportToProject, true);
@@ -436,6 +550,8 @@
     init,
     buildPayload,
     validatePayload,
+    checkWebSearchCapability,
+    requireWebSearch,
     runCompetitiveReview,
     addReportToProject,
     insertRoadmapComment,
