@@ -1,5 +1,5 @@
-/* Latexai Stage 16A PaperAiPolishService
- * Stage: stage16a-paper-ai-workflow-polish-1
+/* Latexai Stage 17O PaperAiPolishService
+ * Stage: stage17o-lai-review-integration-for-devils-competitive-1
  *
  * Paper-level AI workflow polish:
  * - scans \lai{...} and \laiold{...} markup;
@@ -18,7 +18,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage16a-paper-ai-workflow-polish-1';
+  const STAGE = 'stage17o-lai-review-integration-for-devils-competitive-1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('paper-ai-polish-service')) {
     NS.PaperAiPolishService = {
@@ -201,7 +201,91 @@
     return s.length <= n ? s : `${s.slice(0, n - 1)}…`;
   }
 
-  function scanText(text) {
+  function slugPath(path) {
+    return normalizePath(path || 'active').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'file';
+  }
+
+  function isTexPath(path) {
+    const normalized = normalizePath(path || '');
+    return /\.tex$/i.test(normalized) && !/^reviews\//i.test(normalized);
+  }
+
+  function sourceLabelFor(workflow) {
+    const key = clean(workflow || '').toLowerCase();
+    if (/devil/.test(key)) return "Devil's Advocate";
+    if (/competitive/.test(key)) return 'Competitive Review';
+    if (/paper/.test(key)) return 'Paper AI';
+    return key ? key.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Paper AI';
+  }
+
+  function parseKeyValues(value) {
+    const out = {};
+    String(value || '').replace(/([A-Za-z0-9_-]+)=([^\s]+)/g, (_m, key, raw) => {
+      out[key] = String(raw || '').replace(/^[\"']|[\"']$/g, '');
+      return _m;
+    });
+    return out;
+  }
+
+  function editMetadataAt(text, start) {
+    const before = String(text || '').slice(Math.max(0, start - 900), start);
+    const begin = [...before.matchAll(/%\s*BEGIN\s+LAI-ACTIONABLE-EDIT\s+([^\n]*)/g)].pop();
+    const afterBegin = begin ? before.slice(begin.index + begin[0].length) : '';
+    const hasEndAfterBegin = /%\s*END\s+LAI-ACTIONABLE-EDIT/i.test(afterBegin);
+    const meta = begin && !hasEndAfterBegin ? parseKeyValues(begin[1]) : {};
+    const hint = [...before.matchAll(/%\s*LAI\s+target:\s*([^\n]+)/gi)].pop();
+    return {
+      sourceId: meta.id || '',
+      sourceWorkflow: meta.workflow || meta.source || '',
+      sourceLabel: sourceLabelFor(meta.workflow || meta.source || ''),
+      targetHint: hint ? clean(hint[1]) : ''
+    };
+  }
+
+  function updateProjectSource(path, text) {
+    const normalized = normalizePath(path);
+    try {
+      if (State()?.updateFile) State().updateFile(normalized, text);
+      else {
+        const file = getFile(normalized);
+        if (file) file.text = text;
+      }
+    } catch (_err) {
+      const file = getFile(normalized);
+      if (file) file.text = text;
+    }
+
+    if (normalizePath(activePath()) === normalized && el('sourceEditor')) {
+      el('sourceEditor').value = text;
+      try { el('sourceEditor').dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+    }
+
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+  }
+
+  function openPath(path) {
+    const normalized = normalizePath(path);
+    const file = getFile(normalized);
+    if (!file) return false;
+    try { if (State()?.openFile) State().openFile(normalized); } catch (_err) {}
+    try {
+      project().activePath = normalized;
+      if (State()?.state) State().state.activePath = normalized;
+    } catch (_err) {}
+    const editor = el('sourceEditor');
+    if (editor) {
+      editor.value = fileText(file);
+      try { editor.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+    }
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    setStatus(`Opened ${normalized}.`);
+    return true;
+  }
+
+  function scanText(text, path = activePath(), idPrefix = '') {
     const edits = [];
     let i = 0;
 
@@ -213,7 +297,9 @@
         if (newMacro) {
           const fullEnd = newMacro.end;
           edits.push({
-            id: `edit-${edits.length + 1}`,
+            id: idPrefix ? `${idPrefix}-edit-${edits.length + 1}` : `edit-${edits.length + 1}`,
+            path: normalizePath(path),
+            ...editMetadataAt(text, oldMacro.start),
             kind: 'replace-old-with-new',
             start: oldMacro.start,
             end: fullEnd,
@@ -229,7 +315,9 @@
         }
 
         edits.push({
-          id: `edit-${edits.length + 1}`,
+          id: idPrefix ? `${idPrefix}-edit-${edits.length + 1}` : `edit-${edits.length + 1}`,
+          path: normalizePath(path),
+          ...editMetadataAt(text, oldMacro.start),
           kind: 'old-only',
           start: oldMacro.start,
           end: oldMacro.end,
@@ -247,7 +335,9 @@
       const newMacro = parseMacroAt(text, i, 'lai');
       if (newMacro) {
         edits.push({
-          id: `edit-${edits.length + 1}`,
+          id: idPrefix ? `${idPrefix}-edit-${edits.length + 1}` : `edit-${edits.length + 1}`,
+          path: normalizePath(path),
+          ...editMetadataAt(text, newMacro.start),
           kind: 'new-only',
           start: newMacro.start,
           end: newMacro.end,
@@ -289,8 +379,9 @@
     if (!scan) return null;
     const bySection = new Map();
     for (const edit of scan.edits) {
-      if (!bySection.has(edit.section)) bySection.set(edit.section, []);
-      bySection.get(edit.section).push(edit);
+      const key = `${edit.path || scan.path} :: ${edit.section}`;
+      if (!bySection.has(key)) bySection.set(key, []);
+      bySection.get(key).push(edit);
     }
 
     const citations = [...new Set(scan.edits.flatMap((edit) => edit.citations))].sort();
@@ -301,16 +392,21 @@
       stage: STAGE,
       generatedAt: new Date().toISOString(),
       path: scan.path,
+      scanKind: scan.scanKind || 'active-file',
+      files: (scan.files || [{ path: scan.path, editCount: scan.edits.length }]).map((file) => ({ path: file.path, editCount: file.edits?.length ?? file.editCount ?? 0 })),
+      sources: [...new Set(scan.edits.map((edit) => edit.sourceLabel || 'Paper AI'))].sort(),
       summary: {
         editCount: scan.edits.length,
         pairedEdits: scan.edits.filter((e) => e.kind === 'replace-old-with-new').length,
         newOnlyEdits: scan.edits.filter((e) => e.kind === 'new-only').length,
         oldOnlyEdits: scan.edits.filter((e) => e.kind === 'old-only').length,
         sectionsTouched: bySection.size,
+        filesTouched: new Set(scan.edits.map((edit) => edit.path || scan.path)).size,
         citationsTouched: citations.length
       },
-      changedSections: [...bySection.entries()].map(([section, edits]) => ({
-        section,
+      changedSections: [...bySection.entries()].map(([sectionKey, edits]) => ({
+        path: edits[0]?.path || scan.path,
+        section: String(sectionKey || '').replace(/^.*? :: /, ''),
         editIds: edits.map((edit) => edit.id),
         count: edits.length
       })),
@@ -319,8 +415,13 @@
       edits: scan.edits.map((edit) => ({
         id: edit.id,
         kind: edit.kind,
+        path: edit.path || scan.path,
         line: edit.line,
         section: edit.section,
+        sourceWorkflow: edit.sourceWorkflow || '',
+        sourceLabel: edit.sourceLabel || 'Paper AI',
+        sourceId: edit.sourceId || '',
+        targetHint: edit.targetHint || '',
         citations: edit.citations,
         oldPreview: short(edit.oldText),
         newPreview: short(edit.newText)
@@ -335,7 +436,10 @@
       '==========================',
       '',
       `Generated: ${report.generatedAt}`,
+      `Scope: ${report.scanKind || 'active-file'}`,
       `File: ${report.path}`,
+      `Files with edits: ${(report.files || []).filter((file) => file.editCount > 0).length}`,
+      `Sources: ${(report.sources || ['Paper AI']).join(', ')}`,
       '',
       'Summary',
       '-------',
@@ -344,6 +448,7 @@
       `New-only edits: ${report.summary.newOnlyEdits}`,
       `Old-only edits: ${report.summary.oldOnlyEdits}`,
       `Sections touched: ${report.summary.sectionsTouched}`,
+      `Files touched: ${report.summary.filesTouched || 0}`,
       `Citations touched: ${report.summary.citationsTouched}`,
       '',
       'Changed sections',
@@ -351,7 +456,7 @@
     ];
 
     if (report.changedSections.length) {
-      for (const item of report.changedSections) lines.push(`- ${item.section}: ${item.count} edit(s)`);
+      for (const item of report.changedSections) lines.push(`- ${item.path} · ${item.section}: ${item.count} edit(s)`);
     } else lines.push('- none');
 
     lines.push('', 'Citations affected', '------------------');
@@ -364,7 +469,9 @@
 
     lines.push('', 'Edits', '-----');
     for (const edit of report.edits) {
-      lines.push(`- ${edit.id} · line ${edit.line} · ${edit.kind} · ${edit.section}`);
+      lines.push(`- ${edit.id} · ${edit.path} · line ${edit.line} · ${edit.kind} · ${edit.section}`);
+      if (edit.sourceLabel) lines.push(`  source: ${edit.sourceLabel}${edit.sourceId ? ` (${edit.sourceId})` : ''}`);
+      if (edit.targetHint) lines.push(`  target: ${edit.targetHint}`);
       if (edit.oldPreview) lines.push(`  old: ${edit.oldPreview}`);
       if (edit.newPreview) lines.push(`  new: ${edit.newPreview}`);
       if (edit.citations.length) lines.push(`  citations: ${edit.citations.join(', ')}`);
@@ -375,15 +482,54 @@
 
   function scan() {
     const active = activeSource();
-    const edits = scanText(active.text);
+    return scanPath(active.path, { open: false });
+  }
+
+  function scanPath(path, options = {}) {
+    const normalized = normalizePath(path || activePath());
+    if (options.open) openPath(normalized);
+    const file = getFile(normalized);
+    const text = normalizePath(activePath()) === normalized && el('sourceEditor')?.value ? String(el('sourceEditor').value || '') : fileText(file);
+    const edits = scanText(text, normalized);
     lastScan = {
-      path: active.path,
-      text: active.text,
+      scanKind: 'active-file',
+      path: normalized,
+      text,
+      files: [{ path: normalized, text, edits }],
       edits
     };
     lastReport = structuredReport(lastScan);
     renderScan(lastScan, lastReport);
-    setStatus(edits.length ? `Found ${edits.length} AI edit block(s).` : 'No \\lai / \\laiold edit blocks found.');
+    setStatus(edits.length ? `Found ${edits.length} AI edit block(s) in ${normalized}.` : `No \\lai / \\laiold edit blocks found in ${normalized}.`);
+    return lastScan;
+  }
+
+  function scanProject(options = {}) {
+    const only = Array.isArray(options.paths) && options.paths.length
+      ? new Set(options.paths.map(normalizePath))
+      : null;
+    const texFiles = files()
+      .filter((file) => file?.path && isTexPath(file.path))
+      .filter((file) => !only || only.has(normalizePath(file.path)))
+      .sort((a, b) => normalizePath(a.path).localeCompare(normalizePath(b.path)));
+    const scanned = texFiles.map((file) => {
+      const path = normalizePath(file.path);
+      const text = fileText(file);
+      const edits = scanText(text, path, slugPath(path));
+      return { path, text, edits };
+    });
+    const edits = scanned.flatMap((item) => item.edits);
+    lastScan = {
+      scanKind: 'project',
+      path: only ? [...only].join(', ') : '(project)',
+      text: '',
+      files: scanned,
+      edits
+    };
+    lastReport = structuredReport(lastScan);
+    renderScan(lastScan, lastReport);
+    const scope = only ? `${scanned.length} modified file(s)` : `${scanned.length} TeX file(s)`;
+    setStatus(edits.length ? `Found ${edits.length} AI edit block(s) across ${scope}.` : `No \\lai / \\laiold edit blocks found across ${scope}.`);
     return lastScan;
   }
 
@@ -400,22 +546,35 @@
       return { ok: true, changed: 0 };
     }
 
-    let next = current.text;
-    let changed = 0;
-    const edits = [...current.edits].sort((a, b) => b.start - a.start);
-    for (const edit of edits) {
+    const fileEntries = current.files?.length ? current.files : [{ path: current.path, text: current.text, edits: current.edits }];
+    const textByPath = new Map(fileEntries.map((file) => [normalizePath(file.path), String(file.text || '')]));
+    const editsByPath = new Map();
+    for (const edit of current.edits) {
       const choice = choices[edit.id];
       if (!choice && onlySelected) continue;
       if (!choice) continue;
-      next = next.slice(0, edit.start) + replacementFor(edit, choice) + next.slice(edit.end);
-      changed += 1;
+      const path = normalizePath(edit.path || current.path);
+      if (!editsByPath.has(path)) editsByPath.set(path, []);
+      editsByPath.get(path).push({ ...edit, choice });
     }
 
-    updateActiveSource(current.path, next);
-    const after = scan();
+    let changed = 0;
+    for (const [path, edits] of editsByPath.entries()) {
+      let next = textByPath.get(path);
+      if (next == null) next = fileText(getFile(path));
+      edits.sort((a, b) => b.start - a.start);
+      for (const edit of edits) {
+        next = next.slice(0, edit.start) + replacementFor(edit, edit.choice) + next.slice(edit.end);
+        changed += 1;
+      }
+      updateProjectSource(path, next);
+    }
+
+    const changedPaths = [...editsByPath.keys()];
+    const after = current.scanKind === 'project' ? scanProject({ paths: changedPaths.length ? changedPaths : undefined }) : scanPath(current.path);
     if (el('paperAiRunRegressionAfterApply')?.checked) runRegressionChecklist();
     setStatus(`Applied ${changed} selected AI edit decision(s). Remaining AI markup blocks: ${after.edits.length}.`);
-    return { ok: true, changed, remaining: after.edits.length };
+    return { ok: true, changed, remaining: after.edits.length, paths: changedPaths };
   }
 
   function selectedChoices(defaultChoiceForChecked = null) {
@@ -468,7 +627,7 @@
     ];
 
     for (const edit of chosen) {
-      lines.push(`${edit.id} · line ${edit.line} · keep ${choices[edit.id]}`);
+      lines.push(`${edit.id} · ${edit.path || current.path} · line ${edit.line} · keep ${choices[edit.id]}`);
       if (choices[edit.id] === 'old') lines.push(short(edit.oldText, 300));
       else lines.push(short(edit.newText, 300));
       lines.push('');
@@ -521,10 +680,12 @@
     return scanResult.edits.map((edit) => [
       `<div class="paper-ai-edit-row" data-paper-ai-edit="${escapeHtml(edit.id)}">`,
       '  <div class="paper-ai-edit-head">',
-      `    <label><input type="checkbox" data-paper-ai-edit-check="${escapeHtml(edit.id)}" checked /> ${escapeHtml(edit.id)} · line ${edit.line}</label>`,
+      `    <label><input type="checkbox" data-paper-ai-edit-check="${escapeHtml(edit.id)}" checked /> ${escapeHtml(edit.id)} · ${escapeHtml(edit.path || '')} · line ${edit.line}</label>`,
       `    <span>${escapeHtml(edit.kind)}</span>`,
       '  </div>',
       `  <div class="paper-ai-edit-section">${escapeHtml(edit.section)}</div>`,
+      `  <div class="paper-ai-edit-section"><strong>Source:</strong> ${escapeHtml(edit.sourceLabel || 'Paper AI')}${edit.targetHint ? ` · ${escapeHtml(edit.targetHint)}` : ''}</div>`,
+      `  <div class="paper-ai-actions"><button class="btn mini" type="button" data-paper-ai-open-path="${escapeHtml(edit.path || '')}">Open file</button></div>`,
       '  <div class="paper-ai-choice-row">',
       `    <label><input type="radio" name="paper-ai-choice-${escapeHtml(edit.id)}" value="new" checked /> keep new</label>`,
       `    <label><input type="radio" name="paper-ai-choice-${escapeHtml(edit.id)}" value="old" /> keep old</label>`,
@@ -550,7 +711,7 @@
 
     const summary = el('paperAiPolishSummary');
     if (summary && report) {
-      summary.textContent = `${report.summary.editCount} edit(s), ${report.summary.sectionsTouched} section(s), ${report.summary.citationsTouched} citation key(s), ${report.compileRisks.length} compile-risk note(s).`;
+      summary.textContent = `${report.summary.editCount} edit(s), ${report.summary.filesTouched || 0} file(s), ${report.summary.sectionsTouched} section(s), ${report.summary.citationsTouched} citation key(s), ${report.compileRisks.length} compile-risk note(s).`;
       summary.classList.toggle('has-edits', report.summary.editCount > 0);
     }
 
@@ -574,7 +735,8 @@
       '<p class="paper-ai-help">Review and resolve \\lai / \\laiold paper-level AI edits before compiling or committing.</p>',
       '<div id="paperAiPolishSummary" class="paper-ai-summary">No scan run yet.</div>',
       '<div class="paper-ai-actions">',
-      '  <button id="paperAiScanBtn" class="btn mini primary" type="button">Scan AI edits</button>',
+      '  <button id="paperAiScanBtn" class="btn mini primary" type="button">Scan active file</button>',
+      '  <button id="paperAiScanProjectBtn" class="btn mini" type="button">Scan project AI edits</button>',
       '  <button id="paperAiPreviewSelectedBtn" class="btn mini" type="button">Preview selected</button>',
       '  <button id="paperAiApplySelectedBtn" class="btn mini primary" type="button">Apply selected edits</button>',
       '  <button id="paperAiRejectSelectedBtn" class="btn mini" type="button">Reject selected edits</button>',
@@ -593,6 +755,11 @@
     panel.appendChild(card);
 
     el('paperAiScanBtn')?.addEventListener('click', scan, true);
+    el('paperAiScanProjectBtn')?.addEventListener('click', () => scanProject(), true);
+    el('paperAiEditList')?.addEventListener('click', (event) => {
+      const button = event.target?.closest?.('[data-paper-ai-open-path]');
+      if (button) openPath(button.dataset.paperAiOpenPath);
+    }, true);
     el('paperAiPreviewSelectedBtn')?.addEventListener('click', previewSelected, true);
     el('paperAiApplySelectedBtn')?.addEventListener('click', applySelected, true);
     el('paperAiRejectSelectedBtn')?.addEventListener('click', rejectSelected, true);
@@ -612,6 +779,9 @@
     init,
     scan,
     scanText,
+    scanPath,
+    scanProject,
+    openPath,
     structuredReport,
     formatReport,
     applyChoices,

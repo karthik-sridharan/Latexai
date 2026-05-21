@@ -1,5 +1,5 @@
-/* Latexai Stage 17N DevilsAdvocateDebateService
- * Stage: stage17n-actionable-devils-competitive-lai-edits-1
+/* Latexai Stage 17O DevilsAdvocateDebateService
+ * Stage: stage17o-lai-review-integration-for-devils-competitive-1
  *
  * Devil's advocate paper debate workflow:
  * - one AI agent argues for the current draft;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17n-actionable-devils-competitive-lai-edits-1';
+  const STAGE = 'stage17o-lai-review-integration-for-devils-competitive-1';
   const PROMPT_PATH = 'prompt/ai-devils-advocate-debate.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('devils-advocate-debate-service')) {
@@ -587,6 +587,36 @@
     return s.replace(/\s*$/, '') + block;
   }
 
+
+  function refreshPaperAiReview(paths, source = "Devil's Advocate") {
+    const normalized = [...new Set((paths || []).map(normalizePath).filter(Boolean))];
+    try {
+      if (NS.PaperAiPolishService?.scanProject) {
+        return NS.PaperAiPolishService.scanProject({ paths: normalized });
+      }
+      if (normalized[0] && NS.PaperAiPolishService?.scanPath) {
+        return NS.PaperAiPolishService.scanPath(normalized[0], { open: false });
+      }
+      if (NS.PaperAiPolishService?.scan) return NS.PaperAiPolishService.scan();
+    } catch (err) {
+      try { console.warn('[Latexai] could not refresh paper AI review after devil’s advocate insertion', err); } catch (_err) {}
+    }
+    return null;
+  }
+
+  function workflowBlockHeader(id, path, extra = '') {
+    return `% BEGIN LAI-ACTIONABLE-EDIT id=${id} workflow=devils-advocate path=${path}${extra ? ` ${extra}` : ''}`;
+  }
+
+  function workflowBlockFooter(id) {
+    return `% END LAI-ACTIONABLE-EDIT id=${id}`;
+  }
+
+  function wrapLaiPlanBlock(laiBlock, path) {
+    const id = `lai-devils-plan-${Date.now().toString(36)}`;
+    return [workflowBlockHeader(id, normalizePath(path), 'mode=append-plan'), "% LAI target: end-of-paper devil's advocate improvement plan", String(laiBlock || '').trim(), workflowBlockFooter(id)].join('\n');
+  }
+
   function escapeLatexText(value) {
     return String(value || '')
       .replace(/\\/g, '\\textbackslash{}')
@@ -667,9 +697,9 @@
 
   function wrapActionableReplacement(edit, index) {
     const id = `lai-devils-${Date.now().toString(36)}-${index}`;
-    const header = `% BEGIN LAI-ACTIONABLE-EDIT id=${id} workflow=devils-advocate path=${edit.path}`;
+    const header = workflowBlockHeader(id, edit.path, `mode=${edit.mode}`);
     const hint = edit.targetHint ? `% LAI target: ${edit.targetHint}` : '';
-    const footer = `% END LAI-ACTIONABLE-EDIT id=${id}`;
+    const footer = workflowBlockFooter(id);
     if (edit.mode === 'replace') {
       return [header, hint, '\\laiold{', String(edit.oldText || '').trim(), '}', '\\lai{', String(edit.newText || '').trim(), '}', footer].filter(Boolean).join('\n');
     }
@@ -722,9 +752,11 @@
       updateActiveOrProjectSource(path, text);
     }
 
-    setStatus(`Inserted ${applied} devil’s advocate \\lai edit(s) at exact matches; skipped ${skipped}.`);
+    const modifiedPaths = [...queued.keys()];
+    refreshPaperAiReview(modifiedPaths, "Devil's Advocate");
+    setStatus(`Inserted ${applied} devil’s advocate \\lai edit(s) at exact matches; skipped ${skipped}. Paper-level edit review refreshed.`);
     setOutput([formatFullReport(), '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
-    return { ok: applied > 0, applied, skipped, messages, source: parsed.source };
+    return { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()] };
   }
 
   function appendLaiImprovementPlan() {
@@ -738,10 +770,11 @@
     const active = root ? { path: rootPath(), file: root, text: fileText(root) } : activeSource();
     const parsed = extractActionableEdits(lastSynthesis);
     const planText = parsed.appendPlan && parsed.appendPlan.trim() ? parsed.appendPlan : lastSynthesis;
-    const insertion = markdownToLaiPlan(planText, 'Latexai Devil\'s Advocate Improvement Plan');
+    const insertion = wrapLaiPlanBlock(markdownToLaiPlan(planText, 'Latexai Devil\'s Advocate Improvement Plan'), active.path);
     const next = insertBeforeEndDocument(active.text, insertion);
     updateActiveOrProjectSource(active.path, next);
-    setStatus(`Appended devil’s advocate improvement plan as visible \\lai markup to ${active.path}.`);
+    refreshPaperAiReview([active.path], "Devil's Advocate");
+    setStatus(`Appended devil’s advocate improvement plan as visible \\lai markup to ${active.path}. Paper-level edit review refreshed.`);
     return { ok: true, path: active.path, mode: 'append-lai-plan' };
   }
 
@@ -856,7 +889,7 @@
       '  <button id="insertDevilsInlineLaiBtn" class="btn mini" type="button">Insert \\lai edits at matches</button>',
       '  <button id="insertDevilsPlanBtn" class="btn mini" type="button">Append \\lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 17N saves the debate report to <code>/reviews</code>, while insertion uses visible <code>\\lai</code>/<code>\\laiold</code> markup instead of LaTeX comments.</div>',
+      '<div class="settings-note">Stage 17O saves the debate report to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
       '<div id="devilsDebateStatus" class="settings-note">Devil’s advocate debate ready.</div>',
       '<pre id="devilsDebateOutput" class="devils-output"></pre>'
     ].join('');

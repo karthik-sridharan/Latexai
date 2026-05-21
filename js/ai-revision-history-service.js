@@ -1,5 +1,5 @@
-/* Latexai Stage 16E AiRevisionHistoryService
- * Stage: stage16e-ai-revision-history-1
+/* Latexai Stage 17O AiRevisionHistoryService
+ * Stage: stage17o-lai-review-integration-for-devils-competitive-1
  *
  * AI revision history + revert/compare.
  *
@@ -17,7 +17,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage16e-ai-revision-history-1';
+  const STAGE = 'stage17o-lai-review-integration-for-devils-competitive-1';
   const STORAGE_KEY = 'latexai:ai-revision-history:v1';
   const MAX_SNAPSHOTS = 25;
   const MAX_FILE_CHARS = 250000;
@@ -412,9 +412,13 @@
       ['PaperAiPolishService', 'applyChoices', 'Before applying paper AI selected edits', 'paper-ai-apply-selected'],
       ['PaperAiPolishService', 'acceptAllNew', 'Before accepting all paper AI new content', 'paper-ai-accept-all-new'],
       ['PaperAiPolishService', 'rejectAllKeepOld', 'Before rejecting all paper AI new content', 'paper-ai-reject-all-keep-old'],
-      ['CompetitivePaperReviewService', 'insertRoadmapComment', 'Before inserting competitive \lai plan/edits', 'competitive-lai-insert'],
+      ['CompetitivePaperReviewService', 'insertRoadmapComment', 'Before appending competitive \\lai plan', 'competitive-lai-plan-append'],
+      ['CompetitivePaperReviewService', 'appendLaiImprovementPlan', 'Before appending competitive \\lai plan', 'competitive-lai-plan-append'],
+      ['CompetitivePaperReviewService', 'insertActionableEditsAtMatches', 'Before inserting competitive inline \\lai edits', 'competitive-lai-inline-insert'],
       ['CompetitivePaperReviewService', 'addReportToProject', 'Before adding competitive review report', 'competitive-review-report-add'],
-      ['DevilsAdvocateDebateService', 'insertImprovementPlan', 'Before inserting devil’s advocate \lai plan/edits', 'devils-lai-insert'],
+      ['DevilsAdvocateDebateService', 'insertImprovementPlan', 'Before appending devil’s advocate \\lai plan', 'devils-lai-plan-append'],
+      ['DevilsAdvocateDebateService', 'appendLaiImprovementPlan', 'Before appending devil’s advocate \\lai plan', 'devils-lai-plan-append'],
+      ['DevilsAdvocateDebateService', 'insertActionableEditsAtMatches', 'Before inserting devil’s advocate inline \\lai edits', 'devils-lai-inline-insert'],
       ['DevilsAdvocateDebateService', 'addReportToProject', 'Before adding devil’s advocate debate report', 'devils-report-add']
     ];
 
