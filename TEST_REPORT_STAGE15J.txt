@@ -1,0 +1,7 @@
+Stage 15J checks
+================
+
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage15j-feature-flag-registry-guarded-loader.test.cjs
+
+Feature flag registry and guarded optional-script loader added. Optional scripts are inert placeholders until enabled and loaded by FeatureFlagService.
