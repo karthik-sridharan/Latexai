@@ -1,5 +1,5 @@
 /* Latexai Stage 17J RightPanelOrganizerService
- * Stage: stage17j-right-panel-collapsible-sections-1
+ * Stage: stage17j2-right-panel-organizer-cachebust-hotfix-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j-right-panel-collapsible-sections-1';
+  const STAGE = 'stage17j2-right-panel-organizer-cachebust-hotfix-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('right-panel-organizer-service')) {
@@ -418,6 +418,7 @@
   setTimeout(init, 700);
   setTimeout(init, 1500);
   setTimeout(init, 2800);
+  setTimeout(init, 4500);
 
   try { console.log('[Latexai]', STAGE, 'active'); } catch (_err) {}
 })();
