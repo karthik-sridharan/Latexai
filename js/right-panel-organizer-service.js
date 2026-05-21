@@ -1,13 +1,12 @@
-/* Latexai Stage 17J10 RightPanelOrganizerService
- * Stage: stage17j10-right-panel-organizer-scroll-containment-1
+/* Latexai Stage 17K RightPanelOrganizerService
+ * Stage: stage17k-right-panel-polish-regression-lock-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
- * Stage 17J10 keeps the controlled button shell and adds a visible catch-all group.
- * iPad/Safari and delayed re-organize passes made the native toggle event fight
- * our forced hidden/body state.  Each group is now a small controlled shell:
- * a button header plus a body div.  Bulk buttons and individual group headers
- * use the same setGroupOpen path, so reports, ARIA, and visible state cannot drift.
+ * Stage 17K keeps the J10 scroll fix and adds a polish/regression lock layer:
+ * persisted section state migration, compact toolbar markup, richer diagnostics,
+ * and report data that makes click overlays/scroll clipping visible before users
+ * have to debug by screenshot.
  */
 (function () {
   'use strict';
@@ -15,8 +14,9 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j10-right-panel-organizer-scroll-containment-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v5';
+  const STAGE = 'stage17k-right-panel-polish-regression-lock-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v6';
+  const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
   const STAGE17J9_STORAGE_KEY = 'latexai:right-panel-sections:v4';
   const STAGE17J8_STORAGE_KEY = 'latexai:right-panel-sections:v3';
   const STAGE17J7_STORAGE_KEY = 'latexai:right-panel-sections:v2';
@@ -222,9 +222,33 @@
     }[ch]));
   }
 
+  function memoryStorage() {
+    if (W.__LATEXAI_RPO_MEMORY_STORAGE) return W.__LATEXAI_RPO_MEMORY_STORAGE;
+    const store = {};
+    W.__LATEXAI_RPO_MEMORY_STORAGE = {
+      getItem: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null),
+      setItem: (key, value) => { store[key] = String(value); },
+      removeItem: (key) => { delete store[key]; }
+    };
+    return W.__LATEXAI_RPO_MEMORY_STORAGE;
+  }
+
+  function storageAdapter() {
+    if (W.__LATEXAI_RPO_STORAGE && typeof W.__LATEXAI_RPO_STORAGE.getItem === 'function') return W.__LATEXAI_RPO_STORAGE;
+    try {
+      const storage = W.localStorage;
+      const probe = '__latexai_rpo_storage_probe__';
+      storage.setItem(probe, '1');
+      storage.removeItem(probe);
+      return storage;
+    } catch (_err) {
+      return memoryStorage();
+    }
+  }
+
   function readJson(key) {
     try {
-      const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+      const parsed = JSON.parse(storageAdapter().getItem(key) || '{}');
       return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (_err) {
       return {};
@@ -232,11 +256,11 @@
   }
 
   function writeJson(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value || {})); } catch (_err) {}
+    try { storageAdapter().setItem(key, JSON.stringify(value || {})); } catch (_err) {}
   }
 
   function clearLegacyForcedState() {
-    try { localStorage.removeItem(LEGACY_FORCE_STATE_KEY); } catch (_err) {}
+    try { storageAdapter().removeItem(LEGACY_FORCE_STATE_KEY); } catch (_err) {}
     try { delete W.__LATEXAI_RPO_FORCED_TAB_STATE; } catch (_err) { W.__LATEXAI_RPO_FORCED_TAB_STATE = {}; }
     ['copilot', 'settings'].forEach((tab) => {
       const panel = panelFor(tab);
@@ -247,6 +271,8 @@
   function readState() {
     const fresh = readJson(STORAGE_KEY);
     if (Object.keys(fresh).length) return fresh;
+    const legacyJ10 = readJson(STAGE17J10_STORAGE_KEY);
+    if (Object.keys(legacyJ10).length) return legacyJ10;
     const legacyJ9 = readJson(STAGE17J9_STORAGE_KEY);
     if (Object.keys(legacyJ9).length) return legacyJ9;
     const legacyJ8 = readJson(STAGE17J8_STORAGE_KEY);
@@ -532,8 +558,8 @@
   }
 
   function bindControlEvents(node, handler) {
-    if (!node || node.dataset.rpoBoundStage17j10 === 'true') return;
-    node.dataset.rpoBoundStage17j10 = 'true';
+    if (!node || node.dataset.rpoBoundStage17k === 'true') return;
+    node.dataset.rpoBoundStage17k = 'true';
     ['pointerdown', 'mousedown', 'touchend', 'click'].forEach((type) => {
       node.addEventListener(type, (event) => {
         stopControlEvent(event);
@@ -548,8 +574,8 @@
   }
 
   function bindGroupToggleEvents(node) {
-    if (!node || node.dataset.rpoGroupBoundStage17j10 === 'true') return;
-    node.dataset.rpoGroupBoundStage17j10 = 'true';
+    if (!node || node.dataset.rpoGroupBoundStage17k === 'true') return;
+    node.dataset.rpoGroupBoundStage17k = 'true';
     // Group headers must toggle exactly once per user activation.  Earlier
     // versions listened to pointerdown, mousedown, touchend, and click; on real
     // browsers that can open on mousedown and close again on click, making
@@ -606,14 +632,14 @@
     toolbar.id = id;
     toolbar.className = 'right-panel-organizer-toolbar';
     toolbar.innerHTML = [
-      '<div>',
+      '<div class="right-panel-organizer-label">',
       '<div class="smallcaps">Sections</div>',
-      `<strong>${tab === 'settings' ? 'Settings organization' : 'Copilot organization'}</strong>`,
+      `<strong>${tab === 'settings' ? 'Settings' : 'Copilot'}</strong>`,
       '</div>',
       '<div class="right-panel-organizer-actions">',
-      `<button class="btn mini" type="button" data-rpo-action="expand" data-rpo-tab="${tab}" onclick="window.LatexaiRightPanelExpandAll && window.LatexaiRightPanelExpandAll('${tab}'); return false;">Expand all</button>`,
-      `<button class="btn mini" type="button" data-rpo-action="collapse" data-rpo-tab="${tab}" onclick="window.LatexaiRightPanelCollapseAll && window.LatexaiRightPanelCollapseAll('${tab}'); return false;">Collapse all</button>`,
-      `<button class="btn mini" type="button" data-rpo-action="refresh" data-rpo-tab="${tab}" onclick="window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.organize && window.LuminaLatex.RightPanelOrganizerService.organize('${tab}'); return false;">Refresh sections</button>`,
+      `<button class="btn mini" type="button" title="Expand all ${tab} sections" data-rpo-action="expand" data-rpo-tab="${tab}" onclick="window.LatexaiRightPanelExpandAll && window.LatexaiRightPanelExpandAll('${tab}'); return false;">Expand all</button>`,
+      `<button class="btn mini" type="button" title="Collapse all ${tab} sections" data-rpo-action="collapse" data-rpo-tab="${tab}" onclick="window.LatexaiRightPanelCollapseAll && window.LatexaiRightPanelCollapseAll('${tab}'); return false;">Collapse all</button>`,
+      `<button class="btn mini" type="button" title="Re-scan ${tab} sections" data-rpo-action="refresh" data-rpo-tab="${tab}" onclick="window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.organize && window.LuminaLatex.RightPanelOrganizerService.organize('${tab}'); return false;">Refresh</button>`,
       '</div>'
     ].join('');
 
@@ -724,6 +750,71 @@
     return true;
   }
 
+
+  function activeRightTabName() {
+    const activeButton = D.querySelector('.right-tab.active');
+    const fromButton = activeButton?.dataset?.tab || clean(activeButton?.textContent || '').toLowerCase();
+    if (fromButton) return fromButton;
+    const activePanel = D.querySelector('.right-tab-panel.active');
+    if (!activePanel) return 'none';
+    return activePanel.id === 'settingsTab' ? 'settings' : (activePanel.id === 'copilotTab' ? 'copilot' : activePanel.id || 'unknown');
+  }
+
+  function isVisibleNode(node) {
+    if (!isElement(node)) return false;
+    if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+    const cs = W.getComputedStyle ? W.getComputedStyle(node) : null;
+    if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+    return Boolean(node.offsetWidth || node.offsetHeight || node.getClientRects?.().length);
+  }
+
+  function visibleUngroupedCards(tab) {
+    const panel = panelFor(tab);
+    if (!panel) return [];
+    return Array.from(panel.children).filter((node) => {
+      if (!isElement(node)) return false;
+      if (node.classList.contains('right-panel-group')) return false;
+      if (node.classList.contains('right-panel-organizer-toolbar')) return false;
+      if (node.id && node.id.startsWith('rightPanelOrganizer')) return false;
+      return isVisibleNode(node);
+    });
+  }
+
+  function overlayDiagnostics() {
+    const bootBox = D.querySelector('.boot-error-box');
+    const errors = Array.isArray(W.LUMINA_LATEX_BOOT_ERRORS) ? W.LUMINA_LATEX_BOOT_ERRORS : [];
+    const visible = isVisibleNode(bootBox);
+    return {
+      present: Boolean(bootBox),
+      visible,
+      errorCount: errors.length,
+      lastError: errors.length ? String(errors[errors.length - 1]).slice(0, 180) : ''
+    };
+  }
+
+  function toolbarHitTest(tab) {
+    const toolbar = el(`rightPanelOrganizerToolbar-${tab}`);
+    if (!toolbar || !toolbar.getBoundingClientRect || !D.elementFromPoint) return 'not available';
+    const rect = toolbar.getBoundingClientRect();
+    if (!rect.width || !rect.height) return 'toolbar not visible';
+    const x = Math.min(Math.max(rect.left + rect.width * 0.55, 0), Math.max(0, W.innerWidth - 1));
+    const y = Math.min(Math.max(rect.top + Math.min(rect.height * 0.55, 34), 0), Math.max(0, W.innerHeight - 1));
+    const hit = D.elementFromPoint(x, y);
+    if (!hit) return 'no hit target';
+    if (toolbar.contains(hit)) return 'ok';
+    const label = hit.className ? `.${String(hit.className).trim().replace(/\s+/g, '.')}` : hit.tagName;
+    return `blocked by ${label}`;
+  }
+
+  function panelDiagnostics(tab) {
+    const panel = panelFor(tab);
+    if (!panel) return `${tab}: missing`;
+    const cs = W.getComputedStyle ? W.getComputedStyle(panel) : null;
+    const ungrouped = visibleUngroupedCards(tab);
+    const scrollable = panel.scrollHeight > panel.clientHeight + 2;
+    return `${tab}: active=${panel.classList.contains('active') ? 'yes' : 'no'}, display=${cs?.display || 'n/a'}, overflowY=${cs?.overflowY || 'n/a'}, client=${panel.clientHeight}, scroll=${panel.scrollHeight}, scrollTop=${panel.scrollTop}, scrollable=${scrollable ? 'yes' : 'no'}, visible ungrouped=${ungrouped.length}, hit-test=${toolbarHitTest(tab)}`;
+  }
+
   function currentReport() {
     const lines = [
       'Latexai right panel organization report',
@@ -731,8 +822,16 @@
       '',
       `Stage: ${STAGE}`,
       `Generated: ${new Date().toISOString()}`,
+      `Active right tab: ${activeRightTabName()}`,
       ''
     ];
+
+    const overlay = overlayDiagnostics();
+    lines.push(`Boot overlay: ${overlay.present ? 'present' : 'absent'}${overlay.visible ? ', visible' : ''}; boot errors=${overlay.errorCount}`);
+    if (overlay.lastError) lines.push(`Last boot error: ${overlay.lastError}`);
+    lines.push(`Panel scroll / hit-test: ${panelDiagnostics('copilot')}`);
+    lines.push(`Panel scroll / hit-test: ${panelDiagnostics('settings')}`);
+    lines.push('');
 
     for (const group of GROUPS) {
       const body = el(bodyId(group));
@@ -782,7 +881,8 @@
       btn.dataset.rpoAction = 'copy-report';
       btn.dataset.rpoTab = tab;
       btn.setAttribute('onclick', 'window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.copyReport && window.LuminaLatex.RightPanelOrganizerService.copyReport(); return false;');
-      btn.textContent = 'Copy report';
+      btn.title = 'Copy right-panel organization report';
+      btn.textContent = 'Report';
       bindControlEvents(btn, handleOrganizerButtonEvent);
       actions?.appendChild(btn);
     });
@@ -843,8 +943,8 @@
   }
 
   function installDelegatedHandlers() {
-    if (D.documentElement.dataset.stage17j10OrganizerButtonShell === 'true') return;
-    D.documentElement.dataset.stage17j10OrganizerButtonShell = 'true';
+    if (D.documentElement.dataset.stage17kOrganizerButtonShell === 'true') return;
+    D.documentElement.dataset.stage17kOrganizerButtonShell = 'true';
 
     const routePointerEvent = (event) => {
       const groupButton = event.target?.closest?.('[data-rpo-group-toggle]');
