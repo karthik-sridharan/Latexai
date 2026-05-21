@@ -1,46 +1,46 @@
-/* Latexai Stage 15B: Copilot card visibility fix + panel stabilization */
+/* Latexai Stage 15C: disable Copilot card collapse and keep safe panel stabilization */
 
-body.stage15b-ui-cleanup .workspace,
-body.stage15b-ui-cleanup .panel {
+body.stage15c-ui-cleanup .workspace,
+body.stage15c-ui-cleanup .panel {
   min-height: 0;
 }
 
-.stage15b-left-stable,
-.stage15b-right-stable {
+.stage15c-left-stable,
+.stage15c-right-stable {
   min-height: 0;
   overflow: hidden;
 }
 
-.stage15b-left-stable {
+.stage15c-left-stable {
   display: flex;
   flex-direction: column;
 }
 
-.stage15b-left-stable .panel-section {
+.stage15c-left-stable .panel-section {
   min-height: 0;
 }
 
-.stage15b-left-stable .project-card {
+.stage15c-left-stable .project-card {
   flex: 0 0 auto;
 }
 
-.stage15b-left-stable .outline-card {
+.stage15c-left-stable .outline-card {
   flex: 1 1 auto;
   min-height: 140px;
 }
 
-.stage15b-scroll-region {
+.stage15c-scroll-region {
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.stage15b-right-stable {
+.stage15c-right-stable {
   display: flex;
   flex-direction: column;
 }
 
-.stage15b-right-stable .right-tabs {
+.stage15c-right-stable .right-tabs {
   flex: 0 0 auto;
   position: sticky;
   top: 0;
@@ -49,7 +49,7 @@ body.stage15b-ui-cleanup .panel {
   border-bottom: 1px solid rgba(15,23,42,.08);
 }
 
-.stage15b-ui-controls {
+.stage15c-ui-controls {
   flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
@@ -58,7 +58,7 @@ body.stage15b-ui-cleanup .panel {
   padding: .25rem .5rem .1rem;
 }
 
-.stage15b-toggle {
+.stage15c-toggle {
   display: inline-flex;
   align-items: center;
   gap: .35rem;
@@ -68,163 +68,104 @@ body.stage15b-ui-cleanup .panel {
   user-select: none;
 }
 
-.stage15b-toggle input {
+.stage15c-toggle input {
   margin: 0;
 }
 
-.stage15b-right-stable .right-tab-panel {
+.stage15c-right-stable .right-tab-panel {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.stage15b-right-stable .right-tab-panel:not(.active),
-.stage15b-hidden-panel {
+.stage15c-right-stable .right-tab-panel:not(.active),
+.stage15c-hidden-panel {
   display: none !important;
 }
 
-.stage15b-copilot-stable,
-.stage15b-settings-stable {
-  gap: .55rem;
+/* The important fix: no Copilot card collapse at all. */
+.stage15c-copilot-stable .stage15a-card-header,
+.stage15c-copilot-stable .stage15b-card-header {
+  display: none !important;
 }
 
-/* Critical Stage 15B fix: known cards stay visible and expanded by default. */
-.stage15b-collapsible-card {
-  border-radius: 14px !important;
-  overflow: hidden;
-  border: 1px solid rgba(15,23,42,.12) !important;
-  background: rgba(255,255,255,.96);
-  margin-bottom: .65rem;
+.stage15c-copilot-stable .stage15a-card-body,
+.stage15c-copilot-stable .stage15b-card-body {
+  display: block !important;
 }
 
-.stage15b-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .6rem;
-  padding: .62rem .72rem;
-  background: rgba(248,250,252,.98);
-  border-bottom: 1px solid rgba(15,23,42,.08);
+.stage15c-copilot-stable .stage15a-collapsible-card,
+.stage15c-copilot-stable .stage15b-collapsible-card {
+  border: initial !important;
+  background: initial !important;
+  overflow: visible !important;
 }
 
-.stage15b-card-toggle {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: #0f172a;
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-  font: inherit;
-  font-size: .86rem;
-  font-weight: 900;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
+.stage15c-copilot-stable .stage15a-collapsed .stage15a-card-body,
+.stage15c-copilot-stable .stage15b-collapsed .stage15b-card-body {
+  display: block !important;
 }
 
-.stage15b-card-toggle:hover .stage15b-card-title {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.stage15b-card-caret {
-  flex: 0 0 auto;
-  width: 1em;
-  color: #2563eb;
-  font-weight: 900;
-}
-
-.stage15b-card-title {
-  display: inline-block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stage15b-card-meta {
-  flex: 0 0 auto;
-  color: #64748b;
-  font-size: .68rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-
-.stage15b-card-body {
-  padding: .75rem;
+/* Neutralize Stage 15A/15B body-level compact/focus effects if CSS is cached. */
+body:not(.stage15a-compact) .stage15a-card-body,
+body:not(.stage15b-compact) .stage15b-card-body {
   display: block;
 }
 
-.stage15b-card-body[hidden] {
-  display: none !important;
-}
-
-body.stage15b-compact .right-tab {
+body.stage15c-compact .right-tab {
   padding-inline: .55rem;
   font-size: .78rem;
 }
 
-body.stage15b-compact .right-tab-panel {
+body.stage15c-compact .right-tab-panel {
   padding: .6rem !important;
 }
 
-body.stage15b-compact .field,
-body.stage15b-compact .settings-note,
-body.stage15b-compact .presentation-export-help,
-body.stage15b-compact .citation-verifier-help {
+body.stage15c-compact .field,
+body.stage15c-compact .settings-note,
+body.stage15c-compact .presentation-export-help,
+body.stage15c-compact .citation-verifier-help {
   font-size: .72rem;
 }
 
-body.stage15b-compact textarea {
+body.stage15c-compact textarea {
   min-height: 56px;
 }
 
-body.stage15b-compact .presentation-export-actions,
-body.stage15b-compact .citation-verifier-actions,
-body.stage15b-compact .micro-actions {
+body.stage15c-compact .presentation-export-actions,
+body.stage15c-compact .citation-verifier-actions,
+body.stage15c-compact .micro-actions {
   gap: .3rem;
 }
 
-body.stage15b-compact .btn.mini {
+body.stage15c-compact .btn.mini {
   padding: .32rem .48rem;
 }
 
-/* If old Stage 15A CSS is cached, override its collapsed blank-bar behavior. */
-.stage15a-collapsible-card:not(.stage15b-collapsible-card) .stage15a-card-body {
-  display: block !important;
-}
-
 @media (max-width: 980px) {
-  body.stage15b-ui-cleanup .workspace {
+  body.stage15c-ui-cleanup .workspace {
     grid-template-columns: minmax(180px, .8fr) minmax(0, 1.4fr) minmax(260px, 1fr);
   }
 
-  .stage15b-card-body {
-    padding: .6rem;
-  }
-
-  .stage15b-ui-controls {
+  .stage15c-ui-controls {
     flex-wrap: wrap;
   }
 }
 
 @media (max-width: 760px) {
-  body.stage15b-ui-cleanup .workspace {
+  body.stage15c-ui-cleanup .workspace {
     display: flex;
     flex-direction: column;
   }
 
-  .stage15b-left-stable,
-  .stage15b-right-stable {
+  .stage15c-left-stable,
+  .stage15c-right-stable {
     max-height: none;
     overflow: visible;
   }
 
-  .stage15b-right-stable .right-tab-panel {
+  .stage15c-right-stable .right-tab-panel {
     max-height: 70vh;
   }
 }
