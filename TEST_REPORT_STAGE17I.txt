@@ -1,0 +1,8 @@
+Stage 17I checks
+================
+
+PASS node --check js/ai-routing-inspector-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage17i-ai-model-routing-inspector-preflight.test.cjs
+
+AI model routing inspector + preflight added.
