@@ -1,10 +1,13 @@
-/* Latexai Stage 17J6 RightPanelOrganizerService
- * Stage: stage17j6-right-panel-organizer-global-bulk-state-1
+/* Latexai Stage 17J7 RightPanelOrganizerService
+ * Stage: stage17j7-right-panel-organizer-button-shell-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
- * Organizes the growing Copilot and Settings panels into collapsible groups.
- * This service is layout-only: no AI calls, no compile jobs.
+ * Stage 17J7 deliberately stops using native <details> for these groups.
+ * iPad/Safari and delayed re-organize passes made the native toggle event fight
+ * our forced hidden/body state.  Each group is now a small controlled shell:
+ * a button header plus a body div.  Bulk buttons and individual group headers
+ * use the same setGroupOpen path, so reports, ARIA, and visible state cannot drift.
  */
 (function () {
   'use strict';
@@ -12,10 +15,10 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j6-right-panel-organizer-global-bulk-state-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v1';
-  const FORCE_STATE_KEY = 'latexai:right-panel-sections:forced-tab-state:v1';
-  let suppressToggleUntil = 0;
+  const STAGE = 'stage17j7-right-panel-organizer-button-shell-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v2';
+  const LEGACY_STORAGE_KEY = 'latexai:right-panel-sections:v1';
+  const LEGACY_FORCE_STATE_KEY = 'latexai:right-panel-sections:forced-tab-state:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('right-panel-organizer-service')) {
     NS.RightPanelOrganizerService = {
@@ -188,81 +191,54 @@
     return Boolean(node && node.nodeType === 1 && node.classList);
   }
 
-  function updateDetailsOpenState(details, open) {
-    if (!details) return false;
-    const desired = Boolean(open);
-    details.open = desired;
-    if (desired) details.setAttribute('open', '');
-    else details.removeAttribute('open');
-    details.dataset.rpoOpen = desired ? 'true' : 'false';
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
 
-    const summary = details.querySelector?.('.right-panel-group-summary');
-    if (summary) summary.setAttribute('aria-expanded', desired ? 'true' : 'false');
-
-    const body = details.querySelector?.('.right-panel-group-body');
-    if (body) {
-      body.hidden = !desired;
-      body.setAttribute('aria-hidden', desired ? 'false' : 'true');
-      body.style.display = desired ? '' : 'none';
+  function readJson(key) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_err) {
+      return {};
     }
-    return desired;
+  }
+
+  function writeJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value || {})); } catch (_err) {}
+  }
+
+  function clearLegacyForcedState() {
+    try { localStorage.removeItem(LEGACY_FORCE_STATE_KEY); } catch (_err) {}
+    try { delete W.__LATEXAI_RPO_FORCED_TAB_STATE; } catch (_err) { W.__LATEXAI_RPO_FORCED_TAB_STATE = {}; }
+    ['copilot', 'settings'].forEach((tab) => {
+      const panel = panelFor(tab);
+      if (panel) delete panel.dataset.rpoForcedOpen;
+    });
   }
 
   function readState() {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (_err) {
-      return {};
-    }
+    const fresh = readJson(STORAGE_KEY);
+    if (Object.keys(fresh).length) return fresh;
+    return readJson(LEGACY_STORAGE_KEY);
   }
 
   function writeState(state) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state || {})); } catch (_err) {}
-  }
-
-  function readForcedTabState() {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(FORCE_STATE_KEY) || '{}');
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (_err) {
-      return {};
-    }
-  }
-
-  function writeForcedTabState(tab, open) {
-    const state = readForcedTabState();
-    state[tab] = Boolean(open);
-    try { localStorage.setItem(FORCE_STATE_KEY, JSON.stringify(state)); } catch (_err) {}
-    W.__LATEXAI_RPO_FORCED_TAB_STATE = W.__LATEXAI_RPO_FORCED_TAB_STATE || {};
-    W.__LATEXAI_RPO_FORCED_TAB_STATE[tab] = Boolean(open);
-    const panel = panelFor(tab);
-    if (panel) panel.dataset.rpoForcedOpen = Boolean(open) ? 'true' : 'false';
-  }
-
-  function forcedTabOpenValue(tab) {
-    const runtime = W.__LATEXAI_RPO_FORCED_TAB_STATE && W.__LATEXAI_RPO_FORCED_TAB_STATE[tab];
-    if (typeof runtime === 'boolean') return runtime;
-    const persisted = readForcedTabState()[tab];
-    return typeof persisted === 'boolean' ? persisted : null;
-  }
-
-  function desiredGroupOpen(group, fallback = null) {
-    const forced = forcedTabOpenValue(group.tab);
-    if (typeof forced === 'boolean') return forced;
-    const state = readState();
-    const key = stateKey(group);
-    if (typeof state[key] === 'boolean') return state[key];
-    if (typeof fallback === 'boolean') return fallback;
-    return Boolean(group.defaultOpen);
+    writeJson(STORAGE_KEY, state || {});
   }
 
   function stateKey(group) {
     return `${group.tab}:${group.key}`;
   }
 
-  function isOpen(group) {
-    return desiredGroupOpen(group);
+  function desiredGroupOpen(group, fallback = null) {
+    const state = readState();
+    const key = stateKey(group);
+    if (typeof state[key] === 'boolean') return state[key];
+    if (typeof fallback === 'boolean') return fallback;
+    return Boolean(group.defaultOpen);
   }
 
   function rememberOpen(group, value) {
@@ -275,16 +251,25 @@
     return el(tab === 'settings' ? 'settingsTab' : 'copilotTab');
   }
 
+  function groupFor(tab, key) {
+    return GROUPS.find((group) => group.tab === tab && group.key === key) || null;
+  }
+
   function groupId(group) {
     return `rightPanelGroup-${group.tab}-${group.key}`;
+  }
+
+  function summaryId(group) {
+    return `rightPanelGroupSummary-${group.tab}-${group.key}`;
   }
 
   function bodyId(group) {
     return `rightPanelGroupBody-${group.tab}-${group.key}`;
   }
 
-  function directPanelChildFor(node, panel) {
+  function directPanelItemFor(node, panel) {
     if (!isElement(node) || !panel?.contains?.(node)) return null;
+    if (node.closest?.('.right-panel-group')) return null;
     let current = node;
     while (current && current.parentElement && current.parentElement !== panel) current = current.parentElement;
     if (!current || current.parentElement !== panel) return null;
@@ -302,26 +287,28 @@
   function findCards(group) {
     const seen = new Set();
     const cards = [];
-
-    // Direct id matches for optional feature cards.
-    for (const id of group.cardIds || []) {
-      const node = el(id);
-      addUniqueCard(cards, seen, node);
-    }
-
-    // Selector matches for the original static Copilot/Settings controls.
     const panel = panelFor(group.tab);
     if (!panel) return cards;
 
+    // Direct id matches for optional feature cards.  These may already be inside
+    // another group, so keep the exact card node and let organize() move it only
+    // when necessary.
+    for (const id of group.cardIds || []) {
+      addUniqueCard(cards, seen, el(id));
+    }
+
+    // Selector matches for the original static Copilot/Settings controls.  Only
+    // move the containing direct panel child.  If the selector already lives in a
+    // right-panel group, skip it; this prevents re-organize passes from yanking a
+    // select/input out of its label and making the UI look truncated.
     for (const selector of group.selectors || []) {
       try {
         panel.querySelectorAll(selector).forEach((node) => {
-          addUniqueCard(cards, seen, directPanelChildFor(node, panel) || node);
+          const item = directPanelItemFor(node, panel);
+          if (item) addUniqueCard(cards, seen, item);
         });
       } catch (_err) {}
     }
-
-    // Fallback semantic matching for older cards whose ids changed.
 
     const titleNeedles = {
       'core-copilot': ['latex copilot'],
@@ -341,68 +328,120 @@
         if (!isElement(node)) return;
         if (node.classList.contains('right-panel-group') || node.classList.contains('right-panel-organizer-toolbar')) return;
         const text = clean(node.querySelector('h2')?.textContent || node.textContent).toLowerCase();
-        if (titleNeedles.some((needle) => text.includes(needle)) && !seen.has(node)) {
-          seen.add(node);
-          cards.push(node);
-        }
+        if (titleNeedles.some((needle) => text.includes(needle))) addUniqueCard(cards, seen, node);
       });
     }
 
     return cards;
   }
 
+  function makeGroupShell(group, existingBody = null) {
+    const initialOpen = desiredGroupOpen(group);
+    const shell = D.createElement('div');
+    shell.id = groupId(group);
+    shell.className = 'right-panel-group';
+    shell.dataset.groupTab = group.tab;
+    shell.dataset.groupKey = group.key;
+    shell.setAttribute('role', 'group');
+    shell.setAttribute('aria-labelledby', summaryId(group));
+
+    const button = D.createElement('button');
+    button.id = summaryId(group);
+    button.className = 'right-panel-group-summary';
+    button.type = 'button';
+    button.dataset.rpoGroupToggle = `${group.tab}:${group.key}`;
+    button.setAttribute('aria-controls', bodyId(group));
+    button.innerHTML = [
+      `<span class="right-panel-group-title">${escapeHtml(group.title)}</span>`,
+      `<span class="right-panel-group-count" id="${groupId(group)}Count">0</span>`
+    ].join('');
+
+    const body = existingBody || D.createElement('div');
+    body.id = bodyId(group);
+    body.classList.add('right-panel-group-body');
+
+    shell.appendChild(button);
+    shell.appendChild(body);
+    button.addEventListener('click', handleGroupToggleEvent, false);
+    setGroupOpen(group, shell, initialOpen, { remember: false });
+    return shell;
+  }
+
   function ensureGroup(group) {
     const panel = panelFor(group.tab);
     if (!panel) return null;
 
-    let details = el(groupId(group));
-    if (!details) {
-      details = D.createElement('details');
-      details.id = groupId(group);
-      details.className = 'right-panel-group';
-      details.dataset.groupTab = group.tab;
-      details.dataset.groupKey = group.key;
-      const initialOpen = isOpen(group);
-      details.open = initialOpen;
-      if (initialOpen) details.setAttribute('open', '');
-      else details.removeAttribute('open');
-      details.dataset.rpoOpen = initialOpen ? 'true' : 'false';
+    let shell = el(groupId(group));
+    if (!shell) return makeGroupShell(group);
 
-      const summary = D.createElement('summary');
-      summary.className = 'right-panel-group-summary';
-      summary.setAttribute('aria-expanded', initialOpen ? 'true' : 'false');
-      summary.innerHTML = [
-        `<span class="right-panel-group-title">${escapeHtml(group.title)}</span>`,
-        `<span class="right-panel-group-count" id="${groupId(group)}Count">0</span>`
-      ].join('');
-
+    // Stage 17J4-J6 used native <details>.  If a stale copy exists during a
+    // hot reload/fallback double-load, replace it with the controlled shell and
+    // preserve the cards already moved into the body.
+    if (shell.tagName === 'DETAILS' || !shell.querySelector?.('.right-panel-group-summary[data-rpo-group-toggle]')) {
+      const oldBody = shell.querySelector?.('.right-panel-group-body') || null;
       const body = D.createElement('div');
       body.id = bodyId(group);
       body.className = 'right-panel-group-body';
-      body.hidden = !initialOpen;
-      body.setAttribute('aria-hidden', initialOpen ? 'false' : 'true');
-      body.style.display = initialOpen ? '' : 'none';
-
-      details.appendChild(summary);
-      details.appendChild(body);
-      details.addEventListener('toggle', () => {
-        if (Date.now() < suppressToggleUntil) {
-          updateDetailsOpenState(details, desiredGroupOpen(group, details.open));
-          return;
-        }
-        W.__LATEXAI_RPO_FORCED_TAB_STATE = W.__LATEXAI_RPO_FORCED_TAB_STATE || {};
-        delete W.__LATEXAI_RPO_FORCED_TAB_STATE[group.tab];
-        try {
-          const forced = readForcedTabState();
-          delete forced[group.tab];
-          localStorage.setItem(FORCE_STATE_KEY, JSON.stringify(forced));
-        } catch (_err) {}
-        rememberOpen(group, details.open);
-        updateDetailsOpenState(details, desiredGroupOpen(group, details.open));
-      }, true);
+      if (oldBody) {
+        while (oldBody.firstChild) body.appendChild(oldBody.firstChild);
+      }
+      const replacement = makeGroupShell(group, body);
+      shell.replaceWith(replacement);
+      return replacement;
     }
 
-    return details;
+    const button = shell.querySelector('.right-panel-group-summary[data-rpo-group-toggle]');
+    const body = shell.querySelector('.right-panel-group-body');
+    if (button) button.addEventListener('click', handleGroupToggleEvent, false);
+    if (body) body.id = bodyId(group);
+    setGroupOpen(group, shell, desiredGroupOpen(group, shell.dataset.rpoOpen !== 'false'), { remember: false });
+    return shell;
+  }
+
+  function groupFromShell(shell) {
+    if (!isElement(shell)) return null;
+    return groupFor(shell.dataset.groupTab, shell.dataset.groupKey);
+  }
+
+  function setGroupOpen(group, shell, open, options = {}) {
+    const target = shell || el(groupId(group));
+    if (!target) return false;
+    const desired = Boolean(open);
+    target.dataset.rpoOpen = desired ? 'true' : 'false';
+    target.classList.toggle('is-open', desired);
+    target.classList.toggle('is-collapsed', !desired);
+
+    const button = target.querySelector('.right-panel-group-summary');
+    if (button) button.setAttribute('aria-expanded', desired ? 'true' : 'false');
+
+    const body = target.querySelector('.right-panel-group-body');
+    if (body) {
+      body.hidden = !desired;
+      body.setAttribute('aria-hidden', desired ? 'false' : 'true');
+      body.style.display = desired ? '' : 'none';
+    }
+
+    if (options.remember !== false) rememberOpen(group, desired);
+    return desired;
+  }
+
+  function toggleGroup(shell) {
+    const group = groupFromShell(shell);
+    if (!group) return false;
+    const next = shell.dataset.rpoOpen !== 'true';
+    setGroupOpen(group, shell, next, { remember: true });
+    setStatus(`${group.title} ${next ? 'expanded' : 'collapsed'}.`, group.tab);
+    return true;
+  }
+
+  function handleGroupToggleEvent(event) {
+    const button = event?.target?.closest?.('[data-rpo-group-toggle]') || event?.currentTarget;
+    if (!button) return false;
+    const shell = button.closest?.('.right-panel-group');
+    if (!shell) return false;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    return toggleGroup(shell);
   }
 
   function ensureToolbar(tab) {
@@ -422,40 +461,43 @@
       `<strong>${tab === 'settings' ? 'Settings organization' : 'Copilot organization'}</strong>`,
       '</div>',
       '<div class="right-panel-organizer-actions">',
-      `<button class="btn mini" type="button" data-rpo-action="expand" data-rpo-tab="${tab}" data-rpo-expand="${tab}" onclick="window.LatexaiRightPanelExpandAll && window.LatexaiRightPanelExpandAll('${tab}'); return false;">Expand all</button>`,
-      `<button class="btn mini" type="button" data-rpo-action="collapse" data-rpo-tab="${tab}" data-rpo-collapse="${tab}" onclick="window.LatexaiRightPanelCollapseAll && window.LatexaiRightPanelCollapseAll('${tab}'); return false;">Collapse all</button>`,
-      `<button class="btn mini" type="button" data-rpo-action="refresh" data-rpo-tab="${tab}" data-rpo-refresh="${tab}" onclick="window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.organize && window.LuminaLatex.RightPanelOrganizerService.organize('${tab}'); return false;">Refresh sections</button>`,
+      `<button class="btn mini" type="button" data-rpo-action="expand" data-rpo-tab="${tab}" onclick="window.LatexaiRightPanelExpandAll && window.LatexaiRightPanelExpandAll('${tab}'); return false;">Expand all</button>`,
+      `<button class="btn mini" type="button" data-rpo-action="collapse" data-rpo-tab="${tab}" onclick="window.LatexaiRightPanelCollapseAll && window.LatexaiRightPanelCollapseAll('${tab}'); return false;">Collapse all</button>`,
+      `<button class="btn mini" type="button" data-rpo-action="refresh" data-rpo-tab="${tab}" onclick="window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.organize && window.LuminaLatex.RightPanelOrganizerService.organize('${tab}'); return false;">Refresh sections</button>`,
       '</div>'
     ].join('');
 
     panel.insertBefore(toolbar, panel.firstChild);
-
     toolbar.querySelectorAll('[data-rpo-action]').forEach((button) => {
-      button.addEventListener('click', handleOrganizerButtonEvent, true);
+      button.addEventListener('click', handleOrganizerButtonEvent, false);
     });
-
     return toolbar;
+  }
+
+  function placeGroupsInOrder(tab) {
+    const panel = panelFor(tab);
+    if (!panel) return;
+
+    const toolbar = ensureToolbar(tab);
+    let anchor = toolbar?.nextSibling || panel.firstChild;
+    GROUPS.filter((group) => group.tab === tab).forEach((group) => {
+      const shell = ensureGroup(group);
+      if (!shell) return;
+      if (shell.parentElement !== panel) panel.insertBefore(shell, anchor);
+      else panel.insertBefore(shell, anchor);
+      anchor = shell.nextSibling;
+    });
   }
 
   function allRenderedGroups(tab) {
     const panel = panelFor(tab);
     if (!panel) return [];
     GROUPS.filter((group) => group.tab === tab).forEach((group) => ensureGroup(group));
-    return Array.from(panel.querySelectorAll(`details.right-panel-group[data-group-tab="${tab}"]`));
-  }
-
-  function syncGroupStateToStorage(tab, open) {
-    const desired = Boolean(open);
-    GROUPS.filter((group) => group.tab === tab).forEach((group) => rememberOpen(group, desired));
+    return Array.from(panel.querySelectorAll(`.right-panel-group[data-group-tab="${tab}"]`));
   }
 
   function normalizeBulkTabs(tab = 'all') {
-    // Users read Expand all / Collapse all as a right-panel-wide command.
-    // Stage 17J5 only changed the tab inferred from the clicked toolbar, which
-    // made Settings remain open when the command was triggered from Copilot.
-    // Treat toolbar buttons and global fallbacks as all-tab commands; keep
-    // setAllGroupsOne below for internal/per-tab implementation.
-    if (tab === 'copilot' || tab === 'settings') return ['copilot', 'settings'];
+    if (tab === 'copilot' || tab === 'settings') return [tab];
     return ['copilot', 'settings'];
   }
 
@@ -464,33 +506,23 @@
     const panel = panelFor(tab);
     if (!panel) return false;
 
-    suppressToggleUntil = Date.now() + 750;
-    writeForcedTabState(tab, desired);
-    syncGroupStateToStorage(tab, desired);
-
-    // Ensure wrappers exist, even if this is called before delayed optional cards mount.
     ensureToolbar(tab);
     placeGroupsInOrder(tab);
 
     let changed = 0;
-    allRenderedGroups(tab).forEach((details) => {
-      updateDetailsOpenState(details, desired);
-      details.dataset.rpoBulkCommand = desired ? 'expand' : 'collapse';
+    GROUPS.filter((group) => group.tab === tab).forEach((group) => {
+      const shell = ensureGroup(group);
+      if (!shell) return;
+      setGroupOpen(group, shell, desired, { remember: true });
       changed += 1;
     });
 
-    // Defensive compatibility: if an older cleanup stage left native <details> in the panel,
-    // make Expand all / Collapse all control those too.
-    panel.querySelectorAll('details').forEach((details) => {
-      if (!details.classList.contains('right-panel-group')) updateDetailsOpenState(details, desired);
-    });
-
-    // One more microtask pass wins against delayed native <details> toggle events and late card moves.
+    // One delayed pass handles cards mounted right after optional feature scripts.
     setTimeout(() => {
-      allRenderedGroups(tab).forEach((details) => updateDetailsOpenState(details, desired));
-    }, 0);
-    setTimeout(() => {
-      allRenderedGroups(tab).forEach((details) => updateDetailsOpenState(details, desired));
+      GROUPS.filter((group) => group.tab === tab).forEach((group) => {
+        const shell = ensureGroup(group);
+        if (shell) setGroupOpen(group, shell, desired, { remember: true });
+      });
     }, 120);
 
     setStatus(`${tab === 'settings' ? 'Settings' : 'Copilot'} sections ${desired ? 'expanded' : 'collapsed'} (${changed} group${changed === 1 ? '' : 's'}).`, tab);
@@ -500,36 +532,13 @@
   function setAllGroups(tab = 'all', open) {
     const desired = Boolean(open);
     const tabs = normalizeBulkTabs(tab);
-    let touched = 0;
-    tabs.forEach((item) => {
-      const panel = panelFor(item);
-      if (!panel) return;
-      setAllGroupsOne(item, desired);
-      touched += 1;
-    });
-    const label = touched > 1 ? 'All right-panel' : (tabs[0] === 'settings' ? 'Settings' : 'Copilot');
-    setStatus(`${label} sections ${desired ? 'expanded' : 'collapsed'}.`, tab === 'settings' ? 'settings' : 'copilot');
+    tabs.forEach((item) => setAllGroupsOne(item, desired));
     return desired;
   }
 
-  function placeGroupsInOrder(tab) {
-    const panel = panelFor(tab);
-    if (!panel) return;
-
-    const toolbar = ensureToolbar(tab);
-    let anchor = toolbar?.nextSibling || panel.firstChild;
-
-    GROUPS.filter((group) => group.tab === tab).forEach((group) => {
-      const details = ensureGroup(group);
-      if (!details) return;
-      if (details.parentElement !== panel) panel.insertBefore(details, anchor);
-      else panel.insertBefore(details, anchor);
-      anchor = details.nextSibling;
-    });
-  }
-
   function organize(tab = null) {
-    const tabs = tab ? [tab] : ['copilot', 'settings'];
+    clearLegacyForcedState();
+    const tabs = tab ? normalizeBulkTabs(tab) : ['copilot', 'settings'];
 
     for (const t of tabs) {
       const panel = panelFor(t);
@@ -539,13 +548,13 @@
       placeGroupsInOrder(t);
 
       for (const group of GROUPS.filter((item) => item.tab === t)) {
-        const details = ensureGroup(group);
+        const shell = ensureGroup(group);
         const body = el(bodyId(group));
-        if (!details || !body) continue;
+        if (!shell || !body) continue;
 
         const cards = findCards(group).filter((node) => {
-          // Do not move a group into itself or duplicate the toolbar.
-          if (node === details || node.closest?.('.right-panel-group') === details) return false;
+          if (!isElement(node)) return false;
+          if (node === shell || node.closest?.('.right-panel-group') === shell) return false;
           if (node.classList.contains('right-panel-organizer-toolbar')) return false;
           return true;
         });
@@ -554,8 +563,8 @@
 
         const count = el(`${groupId(group)}Count`);
         if (count) count.textContent = String(body.children.length);
-        details.classList.toggle('empty', body.children.length === 0);
-        updateDetailsOpenState(details, desiredGroupOpen(group, details.open));
+        shell.classList.toggle('empty', body.children.length === 0);
+        setGroupOpen(group, shell, desiredGroupOpen(group, shell.dataset.rpoOpen !== 'false'), { remember: false });
       }
     }
 
@@ -575,9 +584,10 @@
 
     for (const group of GROUPS) {
       const body = el(bodyId(group));
-      const details = el(groupId(group));
+      const shell = el(groupId(group));
       const bodyHidden = body ? (body.hidden || getComputedStyle(body).display === 'none') : true;
-      lines.push(`- ${group.tab}/${group.title}: ${body?.children.length || 0} card(s), ${details?.open ? 'open' : 'collapsed'}${bodyHidden ? ', body hidden' : ''}`);
+      const open = shell?.dataset?.rpoOpen === 'true';
+      lines.push(`- ${group.tab}/${group.title}: ${body?.children.length || 0} card(s), ${open ? 'open' : 'collapsed'}${bodyHidden ? ', body hidden' : ''}`);
     }
 
     return lines.join('\n');
@@ -608,12 +618,6 @@
     node.textContent = message;
   }
 
-  function escapeHtml(value) {
-    return String(value || '').replace(/[&<>"']/g, (ch) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
-  }
-
   function installToolbarReportButton() {
     ['copilot', 'settings'].forEach((tab) => {
       const toolbar = ensureToolbar(tab);
@@ -627,7 +631,7 @@
       btn.dataset.rpoTab = tab;
       btn.setAttribute('onclick', 'window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.copyReport && window.LuminaLatex.RightPanelOrganizerService.copyReport(); return false;');
       btn.textContent = 'Copy report';
-      btn.addEventListener('click', handleOrganizerButtonEvent, true);
+      btn.addEventListener('click', handleOrganizerButtonEvent, false);
       actions?.appendChild(btn);
     });
   }
@@ -643,27 +647,19 @@
     return '';
   }
 
-  function getButtonTab(button, action = getButtonAction(button)) {
-    if (!button) return 'copilot';
+  function getButtonTab(button) {
+    if (!button) return 'all';
     const direct = button.getAttribute('data-rpo-tab');
     if (direct) return direct;
-    const attr = action === 'expand' ? 'data-rpo-expand'
-      : action === 'collapse' ? 'data-rpo-collapse'
-        : action === 'refresh' ? 'data-rpo-refresh'
-          : action === 'copy-report' ? 'data-rpo-copy-report'
-            : '';
-    const value = attr ? button.getAttribute(attr) : '';
-    if (value) return value;
     const toolbar = button.closest?.('.right-panel-organizer-toolbar');
     if (toolbar?.id?.includes('settings')) return 'settings';
-    return 'copilot';
+    if (toolbar?.id?.includes('copilot')) return 'copilot';
+    return 'all';
   }
 
   function handleOrganizerButton(button) {
     const action = getButtonAction(button);
-    const tab = getButtonTab(button, action);
-    if (!['copilot', 'settings'].includes(tab)) return false;
-
+    const tab = getButtonTab(button);
     if (action === 'expand') {
       setAllGroups(tab, true);
       return true;
@@ -688,35 +684,24 @@
     const target = event?.target || event?.currentTarget;
     const button = target?.closest?.('[data-rpo-action], [data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]') || (target?.matches?.('[data-rpo-action], [data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]') ? target : null);
     if (!button) return false;
-    const action = getButtonAction(button);
-
-    // Keep clipboard on the browser's normal click path. Pointer/touch capture is only
-    // for the bulk expand/collapse controls that were unreliable on iPad/Safari.
-    if (action === 'copy-report' && event && event.type && event.type !== 'click' && event.type !== 'keydown') return false;
-
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
     return handleOrganizerButton(button);
   }
 
-  function installDelegatedButtonHandlers() {
-    if (D.documentElement.dataset.stage17j4DelegatedOrganizerButtons === 'true') return;
-    D.documentElement.dataset.stage17j4DelegatedOrganizerButtons = 'true';
+  function installDelegatedHandlers() {
+    if (D.documentElement.dataset.stage17j7OrganizerButtonShell === 'true') return;
+    D.documentElement.dataset.stage17j7OrganizerButtonShell = 'true';
 
-    D.addEventListener('click', handleOrganizerButtonEvent, true);
-    D.addEventListener('pointerdown', handleOrganizerButtonEvent, true);
-    D.addEventListener('pointerup', handleOrganizerButtonEvent, true);
-    D.addEventListener('mousedown', handleOrganizerButtonEvent, true);
-    D.addEventListener('touchend', handleOrganizerButtonEvent, true);
-    D.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      handleOrganizerButtonEvent(event);
-    }, true);
+    D.addEventListener('click', (event) => {
+      if (event.target?.closest?.('[data-rpo-group-toggle]')) handleGroupToggleEvent(event);
+      else handleOrganizerButtonEvent(event);
+    }, false);
   }
 
   function init() {
-    installDelegatedButtonHandlers();
+    clearLegacyForcedState();
+    installDelegatedHandlers();
     organize();
     installToolbarReportButton();
   }
@@ -735,16 +720,16 @@
     init,
     organize,
     setAllGroups,
-    forcedTabOpenValue,
     currentReport,
     copyReport,
-    handleOrganizerButton
+    handleOrganizerButton,
+    toggleGroup,
+    setGroupOpen
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
   else init();
 
-  // A few delayed passes handle optional feature modules that mount after this one.
   setTimeout(init, 700);
   setTimeout(init, 1500);
   setTimeout(init, 2800);
