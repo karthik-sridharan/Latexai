@@ -1,9 +1,9 @@
-/* Latexai Stage 17J7 RightPanelOrganizerService
- * Stage: stage17j7-right-panel-organizer-button-shell-1
+/* Latexai Stage 17J8 RightPanelOrganizerService
+ * Stage: stage17j8-right-panel-organizer-browser-verified-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
- * Stage 17J7 deliberately stops using native <details> for these groups.
+ * Stage 17J8 deliberately stops using native <details> for these groups.
  * iPad/Safari and delayed re-organize passes made the native toggle event fight
  * our forced hidden/body state.  Each group is now a small controlled shell:
  * a button header plus a body div.  Bulk buttons and individual group headers
@@ -15,10 +15,13 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j7-right-panel-organizer-button-shell-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v2';
+  const STAGE = 'stage17j8-right-panel-organizer-browser-verified-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v3';
+  const STAGE17J7_STORAGE_KEY = 'latexai:right-panel-sections:v2';
   const LEGACY_STORAGE_KEY = 'latexai:right-panel-sections:v1';
   const LEGACY_FORCE_STATE_KEY = 'latexai:right-panel-sections:forced-tab-state:v1';
+  let lastHandledControl = { id: '', time: 0 };
+
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('right-panel-organizer-service')) {
     NS.RightPanelOrganizerService = {
@@ -222,6 +225,8 @@
   function readState() {
     const fresh = readJson(STORAGE_KEY);
     if (Object.keys(fresh).length) return fresh;
+    const legacyJ7 = readJson(STAGE17J7_STORAGE_KEY);
+    if (Object.keys(legacyJ7).length) return legacyJ7;
     return readJson(LEGACY_STORAGE_KEY);
   }
 
@@ -362,7 +367,7 @@
 
     shell.appendChild(button);
     shell.appendChild(body);
-    button.addEventListener('click', handleGroupToggleEvent, false);
+    bindControlEvents(button, handleGroupToggleEvent);
     setGroupOpen(group, shell, initialOpen, { remember: false });
     return shell;
   }
@@ -374,7 +379,7 @@
     let shell = el(groupId(group));
     if (!shell) return makeGroupShell(group);
 
-    // Stage 17J4-J6 used native <details>.  If a stale copy exists during a
+    // Stage 17J4-J7 used native <details>.  If a stale copy exists during a
     // hot reload/fallback double-load, replace it with the controlled shell and
     // preserve the cards already moved into the body.
     if (shell.tagName === 'DETAILS' || !shell.querySelector?.('.right-panel-group-summary[data-rpo-group-toggle]')) {
@@ -425,6 +430,47 @@
     return desired;
   }
 
+
+  function controlKeyFor(target, action = '') {
+    if (!target) return '';
+    return [
+      action || target.getAttribute?.('data-rpo-action') || target.getAttribute?.('data-rpo-group-toggle') || '',
+      target.id || '',
+      target.getAttribute?.('data-rpo-tab') || '',
+      target.getAttribute?.('data-rpo-group-toggle') || ''
+    ].join('|');
+  }
+
+  function shouldSkipDuplicateControl(target, action = '') {
+    const key = controlKeyFor(target, action);
+    const now = Date.now();
+    if (key && lastHandledControl.id === key && now - lastHandledControl.time < 220) return true;
+    lastHandledControl = { id: key, time: now };
+    return false;
+  }
+
+  function stopControlEvent(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (typeof event?.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+  }
+
+  function bindControlEvents(node, handler) {
+    if (!node || node.dataset.rpoBoundStage17j8 === 'true') return;
+    node.dataset.rpoBoundStage17j8 = 'true';
+    ['pointerdown', 'mousedown', 'touchend', 'click'].forEach((type) => {
+      node.addEventListener(type, (event) => {
+        stopControlEvent(event);
+        handler(event);
+      }, true);
+    });
+    node.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      stopControlEvent(event);
+      handler(event);
+    }, true);
+  }
+
   function toggleGroup(shell) {
     const group = groupFromShell(shell);
     if (!group) return false;
@@ -439,8 +485,8 @@
     if (!button) return false;
     const shell = button.closest?.('.right-panel-group');
     if (!shell) return false;
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
+    stopControlEvent(event);
+    if (shouldSkipDuplicateControl(button, 'group-toggle')) return true;
     return toggleGroup(shell);
   }
 
@@ -469,7 +515,7 @@
 
     panel.insertBefore(toolbar, panel.firstChild);
     toolbar.querySelectorAll('[data-rpo-action]').forEach((button) => {
-      button.addEventListener('click', handleOrganizerButtonEvent, false);
+      bindControlEvents(button, handleOrganizerButtonEvent);
     });
     return toolbar;
   }
@@ -507,6 +553,7 @@
     if (!panel) return false;
 
     ensureToolbar(tab);
+    organize(tab);
     placeGroupsInOrder(tab);
 
     let changed = 0;
@@ -631,7 +678,7 @@
       btn.dataset.rpoTab = tab;
       btn.setAttribute('onclick', 'window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.copyReport && window.LuminaLatex.RightPanelOrganizerService.copyReport(); return false;');
       btn.textContent = 'Copy report';
-      btn.addEventListener('click', handleOrganizerButtonEvent, false);
+      bindControlEvents(btn, handleOrganizerButtonEvent);
       actions?.appendChild(btn);
     });
   }
@@ -684,19 +731,28 @@
     const target = event?.target || event?.currentTarget;
     const button = target?.closest?.('[data-rpo-action], [data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]') || (target?.matches?.('[data-rpo-action], [data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]') ? target : null);
     if (!button) return false;
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
+    stopControlEvent(event);
+    const action = getButtonAction(button);
+    if (shouldSkipDuplicateControl(button, action)) return true;
     return handleOrganizerButton(button);
   }
 
   function installDelegatedHandlers() {
-    if (D.documentElement.dataset.stage17j7OrganizerButtonShell === 'true') return;
-    D.documentElement.dataset.stage17j7OrganizerButtonShell = 'true';
+    if (D.documentElement.dataset.stage17j8OrganizerButtonShell === 'true') return;
+    D.documentElement.dataset.stage17j8OrganizerButtonShell = 'true';
 
-    D.addEventListener('click', (event) => {
-      if (event.target?.closest?.('[data-rpo-group-toggle]')) handleGroupToggleEvent(event);
-      else handleOrganizerButtonEvent(event);
-    }, false);
+    const routePointerEvent = (event) => {
+      const groupButton = event.target?.closest?.('[data-rpo-group-toggle]');
+      if (groupButton) return handleGroupToggleEvent(event);
+      return handleOrganizerButtonEvent(event);
+    };
+    ['pointerdown', 'mousedown', 'touchend', 'click'].forEach((type) => {
+      D.addEventListener(type, routePointerEvent, true);
+    });
+    D.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      routePointerEvent(event);
+    }, true);
   }
 
   function init() {
