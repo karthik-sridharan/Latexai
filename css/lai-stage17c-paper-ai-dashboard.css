@@ -1,0 +1,124 @@
+/* Latexai Stage 17C: Paper AI dashboard */
+
+.paper-ai-dashboard-card {
+  margin: 0 0 .85rem;
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 16px;
+  padding: .8rem;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 10px 28px rgba(15,23,42,.08);
+}
+
+.paper-ai-dashboard-help {
+  margin: .35rem 0 .65rem;
+  color: #64748b;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.paper-ai-dashboard-summary {
+  border-radius: 12px;
+  padding: .52rem .6rem;
+  margin-bottom: .55rem;
+  font-size: .78rem;
+  font-weight: 850;
+  color: #14532d;
+  background: rgba(220,252,231,.72);
+  border: 1px solid rgba(22,163,74,.18);
+}
+
+.paper-ai-dashboard-summary.has-missing {
+  color: #78350f;
+  background: rgba(254,243,199,.72);
+  border-color: rgba(245,158,11,.24);
+}
+
+.paper-ai-dashboard-actions,
+.paper-ai-dashboard-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin: .45rem 0;
+}
+
+.paper-ai-dashboard-list {
+  display: grid;
+  gap: .55rem;
+  margin-top: .6rem;
+}
+
+.paper-ai-dashboard-workflow {
+  border: 1px solid rgba(15,23,42,.1);
+  border-radius: 14px;
+  padding: .65rem;
+  background: rgba(248,250,252,.86);
+}
+
+.paper-ai-dashboard-workflow.disabled {
+  opacity: .72;
+}
+
+.paper-ai-dashboard-workflow.missing {
+  border-color: rgba(220,38,38,.2);
+  background: rgba(254,242,242,.72);
+}
+
+.paper-ai-dashboard-workflow.visible.loaded.enabled {
+  border-color: rgba(22,163,74,.22);
+  background: rgba(240,253,244,.68);
+}
+
+.paper-ai-dashboard-workflow-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+  align-items: center;
+}
+
+.paper-ai-dashboard-workflow-head strong {
+  color: #0f172a;
+  font-size: .78rem;
+}
+
+.paper-ai-dashboard-workflow-head span {
+  color: #1d4ed8;
+  background: rgba(219,234,254,.84);
+  border-radius: 999px;
+  padding: .1rem .4rem;
+  font-size: .62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.paper-ai-dashboard-workflow-status,
+.paper-ai-dashboard-extra {
+  margin-top: .25rem;
+  color: #475569;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.paper-ai-dashboard-highlight {
+  outline: 3px solid rgba(37,99,235,.45);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(219,234,254,.7);
+}
+
+.paper-ai-dashboard-output {
+  display: none;
+  max-height: 440px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+  margin-top: .65rem;
+}
+
+.paper-ai-dashboard-output.active {
+  display: block;
+}
