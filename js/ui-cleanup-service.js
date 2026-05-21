@@ -1,13 +1,14 @@
-/* Latexai Stage 15A UiCleanupService
- * Stage: stage15a-ui-cleanup-panel-stabilization-1
+/* Latexai Stage 15B UiCleanupService
+ * Stage: stage15b-copilot-card-visibility-fix-1
  *
- * UI cleanup and panel stabilization:
- * - ensures only one right-panel tab is active at a time;
- * - prevents Preview/Logs/Copilot/Settings panels from being open together;
- * - makes Copilot-added tool cards collapsible;
- * - keeps only one major AI/export card expanded at once;
- * - adds compact mode for iPad/small screens;
- * - applies left/right panel scrolling/layout stabilization classes.
+ * Fixes Stage 15A over-aggressive Copilot card collapsing.
+ *
+ * Stage 15B keeps the useful layout stabilization but changes Copilot behavior:
+ * - only known major tool cards are made collapsible;
+ * - cards are expanded by default, so tools do not disappear into blank bars;
+ * - card headers always get a readable title;
+ * - "focus one tool" accordion behavior is optional and OFF by default;
+ * - right-panel tab stabilization remains, but inactive tabs are not made inert.
  */
 (function () {
   'use strict';
@@ -15,13 +16,42 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage15a-ui-cleanup-panel-stabilization-1';
+  const STAGE = 'stage15b-copilot-card-visibility-fix-1';
 
-  const STORAGE_COMPACT = 'latexai:stage15a:compact-mode';
-  const STORAGE_EXPANDED = 'latexai:stage15a:expanded-card';
+  const STORAGE_COMPACT = 'latexai:stage15b:compact-mode';
+  const STORAGE_FOCUS = 'latexai:stage15b:focus-mode';
+  const STORAGE_COLLAPSED = 'latexai:stage15b:collapsed-cards';
 
   let rightObserver = null;
   let copilotObserver = null;
+
+  const FRIENDLY_TITLES = {
+    presentationExportCard: 'Paper → Presentation exporter',
+    citationVerifierCard: 'Local citation verifier',
+    citationAiCard: 'Citation AI',
+    documentAiCard: 'Paper-level AI',
+    tikzFigureCard: 'TikZ figure maker',
+    imageToTikzCard: 'Image → TikZ',
+    figureToolsCard: 'Figure tools',
+    aiFigureCard: 'AI figure tools'
+  };
+
+  const KNOWN_CARD_SELECTORS = [
+    '#presentationExportCard',
+    '#citationVerifierCard',
+    '#citationAiCard',
+    '#documentAiCard',
+    '#tikzFigureCard',
+    '#imageToTikzCard',
+    '#figureToolsCard',
+    '#aiFigureCard',
+    '.presentation-export-card',
+    '.citation-verifier-card',
+    '.citation-ai-card',
+    '.document-ai-card',
+    '.tikz-figure-card',
+    '.image-to-tikz-card'
+  ].join(',');
 
   function el(id) { return D.getElementById(id); }
 
@@ -31,6 +61,15 @@
 
   function storageSet(key, value) {
     try { localStorage.setItem(key, value); } catch (_err) {}
+  }
+
+  function collapsedSet() {
+    const raw = storageGet(STORAGE_COLLAPSED, '');
+    return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+
+  function saveCollapsedSet(set) {
+    storageSet(STORAGE_COLLAPSED, [...set].join(','));
   }
 
   function tabPanelForName(name) {
@@ -59,14 +98,9 @@
     panels.forEach((panel) => {
       const active = panel === targetPanel;
       panel.classList.toggle('active', active);
-      panel.classList.toggle('stage15a-hidden-panel', !active);
-      if (!active) {
-        panel.setAttribute('aria-hidden', 'true');
-        try { panel.inert = true; } catch (_err) {}
-      } else {
-        panel.removeAttribute('aria-hidden');
-        try { panel.inert = false; } catch (_err) {}
-      }
+      panel.classList.toggle('stage15b-hidden-panel', !active);
+      if (!active) panel.setAttribute('aria-hidden', 'true');
+      else panel.removeAttribute('aria-hidden');
     });
 
     return targetName;
@@ -74,10 +108,9 @@
 
   function bindRightTabs() {
     D.querySelectorAll('.right-tab[data-right-tab]').forEach((tab) => {
-      if (tab.dataset.stage15aBound === '1') return;
-      tab.dataset.stage15aBound = '1';
+      if (tab.dataset.stage15bBound === '1') return;
+      tab.dataset.stage15bBound = '1';
       tab.addEventListener('click', () => {
-        // Run after legacy handlers too, so Stage 15A is the final arbiter.
         setTimeout(() => activateRightTab(tab.dataset.rightTab), 0);
       }, true);
     });
@@ -93,98 +126,120 @@
     rightObserver.observe(panel, { attributes: true, childList: true, subtree: true, attributeFilter: ['class'] });
   }
 
-  function cardTitle(card) {
-    const explicit = card.dataset.stage15aTitle;
-    if (explicit) return explicit;
+  function cardKey(card) {
+    return card.id || card.dataset.stage15bKey || '';
+  }
 
-    const heading = card.querySelector('h3, h2, .section-head h2, .smallcaps, strong');
+  function cardTitle(card) {
+    if (!card) return 'Tool';
+    if (card.id && FRIENDLY_TITLES[card.id]) return FRIENDLY_TITLES[card.id];
+
+    const heading = card.querySelector(':scope > h3, :scope > h2, :scope .section-head h2, :scope .smallcaps, :scope strong');
     const text = String(heading?.textContent || '').trim().replace(/\s+/g, ' ');
     if (text) return text;
 
     const id = card.id || '';
-    if (id) return id.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+    if (id) {
+      return id
+        .replace(/Card$/, '')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/[-_]/g, ' ')
+        .replace(/\b\w/g, (m) => m.toUpperCase());
+    }
 
-    return 'Tool';
+    const cls = String(card.className || '').split(/\s+/).find((c) => /card/i.test(c)) || 'Tool';
+    return cls.replace(/[-_]/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
   }
 
-  function isMajorCopilotCard(node) {
+  function isKnownCopilotCard(node) {
     if (!node || node.nodeType !== 1) return false;
-    if (!el('copilotTab')?.contains(node)) return false;
-    if (node.closest('.stage15a-card-body')) return false;
-    if (node.classList?.contains('section-head')) return false;
-    if (node.classList?.contains('field-grid')) return false;
-    if (node.matches?.('label.field, textarea, pre, select, input, button')) return false;
+    const panel = el('copilotTab');
+    if (!panel || !panel.contains(node)) return false;
+    if (node.closest('.stage15b-card-body')) return false;
+    if (!node.matches?.(KNOWN_CARD_SELECTORS)) return false;
+    return true;
+  }
 
-    const id = node.id || '';
-    const cls = node.className || '';
-    if (/Card$/.test(id)) return true;
-    if (/(document-ai-card|citation-ai-card|citation-verifier-card|presentation-export-card|tikz|figure|image-to-tikz|review|export-card)/i.test(cls)) return true;
-
-    return false;
+  function focusModeEnabled() {
+    const box = el('stage15bFocusModeToggle');
+    if (box) return box.checked;
+    return storageGet(STORAGE_FOCUS, '0') === '1';
   }
 
   function setCardExpanded(card, expanded, persist = true) {
-    const body = card.querySelector(':scope > .stage15a-card-body');
-    const button = card.querySelector(':scope > .stage15a-card-header .stage15a-card-toggle');
+    const body = card.querySelector(':scope > .stage15b-card-body');
+    const button = card.querySelector(':scope > .stage15b-card-header .stage15b-card-toggle');
+    const meta = card.querySelector(':scope > .stage15b-card-header .stage15b-card-meta');
     if (!body || !button) return;
 
-    card.classList.toggle('stage15a-expanded', expanded);
-    card.classList.toggle('stage15a-collapsed', !expanded);
+    card.classList.toggle('stage15b-expanded', expanded);
+    card.classList.toggle('stage15b-collapsed', !expanded);
     body.hidden = !expanded;
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    button.querySelector('.stage15a-card-caret').textContent = expanded ? '▾' : '▸';
+    const caret = button.querySelector('.stage15b-card-caret');
+    if (caret) caret.textContent = expanded ? '▾' : '▸';
+    if (meta) meta.textContent = expanded ? 'Open' : 'Collapsed';
 
-    if (expanded && persist) storageSet(STORAGE_EXPANDED, card.id || card.dataset.stage15aKey || '');
+    if (persist) {
+      const set = collapsedSet();
+      const key = cardKey(card);
+      if (key) {
+        if (expanded) set.delete(key);
+        else set.add(key);
+        saveCollapsedSet(set);
+      }
+    }
   }
 
   function collapseSiblingCards(card) {
+    if (!focusModeEnabled()) return;
     const panel = el('copilotTab');
     if (!panel) return;
-    panel.querySelectorAll(':scope > .stage15a-collapsible-card').forEach((other) => {
-      if (other !== card) setCardExpanded(other, false, false);
+    panel.querySelectorAll(':scope > .stage15b-collapsible-card').forEach((other) => {
+      if (other !== card) setCardExpanded(other, false, true);
     });
   }
 
   function makeCardCollapsible(card) {
-    if (!card || card.dataset.stage15aCollapsible === '1') return false;
-    if (!isMajorCopilotCard(card)) return false;
+    if (!card || card.dataset.stage15bCollapsible === '1') return false;
+    if (!isKnownCopilotCard(card)) return false;
 
-    card.dataset.stage15aCollapsible = '1';
-    card.classList.add('stage15a-collapsible-card');
+    card.dataset.stage15bCollapsible = '1';
+    card.classList.add('stage15b-collapsible-card');
 
     const title = cardTitle(card);
     const key = card.id || title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    card.dataset.stage15aKey = key;
+    card.dataset.stage15bKey = key;
 
     const header = D.createElement('div');
-    header.className = 'stage15a-card-header';
+    header.className = 'stage15b-card-header';
 
     const button = D.createElement('button');
     button.type = 'button';
-    button.className = 'stage15a-card-toggle';
-    button.innerHTML = `<span class="stage15a-card-caret" aria-hidden="true">▸</span><span class="stage15a-card-title"></span>`;
-    button.querySelector('.stage15a-card-title').textContent = title;
+    button.className = 'stage15b-card-toggle';
+    button.innerHTML = '<span class="stage15b-card-caret" aria-hidden="true">▾</span><span class="stage15b-card-title"></span>';
+    button.querySelector('.stage15b-card-title').textContent = title;
 
     const meta = D.createElement('span');
-    meta.className = 'stage15a-card-meta';
-    meta.textContent = 'Expand';
+    meta.className = 'stage15b-card-meta';
+    meta.textContent = 'Open';
 
     header.append(button, meta);
 
     const body = D.createElement('div');
-    body.className = 'stage15a-card-body';
+    body.className = 'stage15b-card-body';
 
     while (card.firstChild) body.appendChild(card.firstChild);
     card.append(header, body);
 
     button.addEventListener('click', () => {
-      const expanded = !card.classList.contains('stage15a-expanded');
+      const expanded = !card.classList.contains('stage15b-expanded');
       if (expanded) collapseSiblingCards(card);
       setCardExpanded(card, expanded);
     }, true);
 
-    const saved = storageGet(STORAGE_EXPANDED, '');
-    const shouldExpand = saved ? saved === key : false;
+    const collapsed = collapsedSet();
+    const shouldExpand = !collapsed.has(key); // expanded by default
     setCardExpanded(card, shouldExpand, false);
 
     return true;
@@ -193,19 +248,9 @@
   function processCopilotCards() {
     const panel = el('copilotTab');
     if (!panel) return false;
-
-    Array.from(panel.children).forEach((child) => makeCardCollapsible(child));
-
-    // If no saved card is open, keep everything collapsed to reduce clutter.
-    const saved = storageGet(STORAGE_EXPANDED, '');
-    if (saved) {
-      const savedCard = panel.querySelector(`:scope > .stage15a-collapsible-card[id="${CSS.escape(saved)}"], :scope > .stage15a-collapsible-card[data-stage15a-key="${CSS.escape(saved)}"]`);
-      if (savedCard) {
-        collapseSiblingCards(savedCard);
-        setCardExpanded(savedCard, true, false);
-      }
-    }
-
+    Array.from(panel.children).forEach((child) => {
+      if (child.matches?.(KNOWN_CARD_SELECTORS)) makeCardCollapsible(child);
+    });
     return true;
   }
 
@@ -219,44 +264,62 @@
     copilotObserver.observe(panel, { childList: true, subtree: false });
   }
 
-  function addCompactToggle() {
-    if (el('stage15aCompactToggle')) return true;
+  function addCleanupControls() {
+    if (el('stage15bUiControls')) return true;
 
     const tabs = D.querySelector('.right-tabs');
     if (!tabs) return false;
 
     const wrap = D.createElement('div');
-    wrap.className = 'stage15a-compact-toggle-wrap';
+    wrap.id = 'stage15bUiControls';
+    wrap.className = 'stage15b-ui-controls';
     wrap.innerHTML = [
-      '<label class="stage15a-compact-toggle">',
-      '  <input id="stage15aCompactToggle" type="checkbox" />',
+      '<label class="stage15b-toggle">',
+      '  <input id="stage15bCompactToggle" type="checkbox" />',
       '  Compact',
-      '</label>'
+      '</label>',
+      '<label class="stage15b-toggle">',
+      '  <input id="stage15bFocusModeToggle" type="checkbox" />',
+      '  Focus one tool',
+      '</label>',
+      '<button id="stage15bExpandToolsBtn" class="btn mini" type="button">Expand tools</button>'
     ].join('');
     tabs.insertAdjacentElement('afterend', wrap);
 
-    const checkbox = el('stage15aCompactToggle');
-    const stored = storageGet(STORAGE_COMPACT, '');
-    const enabled = stored ? stored === '1' : W.matchMedia?.('(max-width: 980px)')?.matches;
-    checkbox.checked = Boolean(enabled);
-    D.body.classList.toggle('stage15a-compact', Boolean(enabled));
-
-    checkbox.addEventListener('change', () => {
-      D.body.classList.toggle('stage15a-compact', checkbox.checked);
-      storageSet(STORAGE_COMPACT, checkbox.checked ? '1' : '0');
+    const compact = el('stage15bCompactToggle');
+    const storedCompact = storageGet(STORAGE_COMPACT, '');
+    const compactEnabled = storedCompact ? storedCompact === '1' : W.matchMedia?.('(max-width: 980px)')?.matches;
+    compact.checked = Boolean(compactEnabled);
+    D.body.classList.toggle('stage15b-compact', Boolean(compactEnabled));
+    compact.addEventListener('change', () => {
+      D.body.classList.toggle('stage15b-compact', compact.checked);
+      storageSet(STORAGE_COMPACT, compact.checked ? '1' : '0');
     }, true);
+
+    const focus = el('stage15bFocusModeToggle');
+    focus.checked = storageGet(STORAGE_FOCUS, '0') === '1';
+    D.body.classList.toggle('stage15b-focus-mode', focus.checked);
+    focus.addEventListener('change', () => {
+      storageSet(STORAGE_FOCUS, focus.checked ? '1' : '0');
+      D.body.classList.toggle('stage15b-focus-mode', focus.checked);
+    }, true);
+
+    el('stage15bExpandToolsBtn')?.addEventListener('click', expandAllCards, true);
 
     return true;
   }
 
   function addPanelClasses() {
-    D.body.classList.add('stage15a-ui-cleanup');
-    D.querySelector('.left-panel')?.classList.add('stage15a-left-stable');
-    D.querySelector('.right-panel')?.classList.add('stage15a-right-stable');
-    el('fileTree')?.classList.add('stage15a-scroll-region');
-    el('outlineList')?.classList.add('stage15a-scroll-region');
-    el('copilotTab')?.classList.add('stage15a-copilot-stable');
-    el('settingsTab')?.classList.add('stage15a-settings-stable');
+    D.body.classList.add('stage15b-ui-cleanup');
+    // Remove old Stage 15A class effects if both files are cached.
+    D.body.classList.remove('stage15a-ui-cleanup', 'stage15a-compact');
+
+    D.querySelector('.left-panel')?.classList.add('stage15b-left-stable');
+    D.querySelector('.right-panel')?.classList.add('stage15b-right-stable');
+    el('fileTree')?.classList.add('stage15b-scroll-region');
+    el('outlineList')?.classList.add('stage15b-scroll-region');
+    el('copilotTab')?.classList.add('stage15b-copilot-stable');
+    el('settingsTab')?.classList.add('stage15b-settings-stable');
   }
 
   function expandCardById(id) {
@@ -265,14 +328,19 @@
     makeCardCollapsible(card);
     collapseSiblingCards(card);
     setCardExpanded(card, true);
-    const copilotTab = D.querySelector('.right-tab[data-right-tab="copilot"]');
-    if (copilotTab) activateRightTab('copilot');
+    activateRightTab('copilot');
     return true;
   }
 
+  function expandAllCards() {
+    const panel = el('copilotTab');
+    panel?.querySelectorAll(':scope > .stage15b-collapsible-card').forEach((card) => setCardExpanded(card, true, true));
+    saveCollapsedSet(new Set());
+  }
+
   function collapseAllCards() {
-    el('copilotTab')?.querySelectorAll(':scope > .stage15a-collapsible-card').forEach((card) => setCardExpanded(card, false, false));
-    storageSet(STORAGE_EXPANDED, '');
+    const panel = el('copilotTab');
+    panel?.querySelectorAll(':scope > .stage15b-collapsible-card').forEach((card) => setCardExpanded(card, false, true));
   }
 
   function init() {
@@ -280,7 +348,7 @@
     bindRightTabs();
     activateRightTab(activeRightTabName());
     observeRightPanel();
-    addCompactToggle();
+    addCleanupControls();
     processCopilotCards();
     observeCopilotPanel();
   }
@@ -292,6 +360,7 @@
     processCopilotCards,
     makeCardCollapsible,
     expandCardById,
+    expandAllCards,
     collapseAllCards
   };
 
