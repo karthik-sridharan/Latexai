@@ -1,0 +1,6 @@
+Stage 17D checks
+================
+
+PASS node tests/stage17d-left-panel-layout-fix.test.cjs
+
+Left panel Source tree / Document map overlap fixed with CSS-only layout stabilization.
