@@ -1,5 +1,5 @@
-/* Latexai Stage 17J4 RightPanelOrganizerService
- * Stage: stage17j4-right-panel-organizer-click-hardening-1
+/* Latexai Stage 17J5 RightPanelOrganizerService
+ * Stage: stage17j5-right-panel-organizer-forced-state-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
@@ -12,8 +12,10 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j4-right-panel-organizer-click-hardening-1';
+  const STAGE = 'stage17j5-right-panel-organizer-forced-state-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v1';
+  const FORCE_STATE_KEY = 'latexai:right-panel-sections:forced-tab-state:v1';
+  let suppressToggleUntil = 0;
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('right-panel-organizer-service')) {
     NS.RightPanelOrganizerService = {
@@ -219,14 +221,48 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state || {})); } catch (_err) {}
   }
 
+  function readForcedTabState() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(FORCE_STATE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  function writeForcedTabState(tab, open) {
+    const state = readForcedTabState();
+    state[tab] = Boolean(open);
+    try { localStorage.setItem(FORCE_STATE_KEY, JSON.stringify(state)); } catch (_err) {}
+    W.__LATEXAI_RPO_FORCED_TAB_STATE = W.__LATEXAI_RPO_FORCED_TAB_STATE || {};
+    W.__LATEXAI_RPO_FORCED_TAB_STATE[tab] = Boolean(open);
+    const panel = panelFor(tab);
+    if (panel) panel.dataset.rpoForcedOpen = Boolean(open) ? 'true' : 'false';
+  }
+
+  function forcedTabOpenValue(tab) {
+    const runtime = W.__LATEXAI_RPO_FORCED_TAB_STATE && W.__LATEXAI_RPO_FORCED_TAB_STATE[tab];
+    if (typeof runtime === 'boolean') return runtime;
+    const persisted = readForcedTabState()[tab];
+    return typeof persisted === 'boolean' ? persisted : null;
+  }
+
+  function desiredGroupOpen(group, fallback = null) {
+    const forced = forcedTabOpenValue(group.tab);
+    if (typeof forced === 'boolean') return forced;
+    const state = readState();
+    const key = stateKey(group);
+    if (typeof state[key] === 'boolean') return state[key];
+    if (typeof fallback === 'boolean') return fallback;
+    return Boolean(group.defaultOpen);
+  }
+
   function stateKey(group) {
     return `${group.tab}:${group.key}`;
   }
 
   function isOpen(group) {
-    const state = readState();
-    const key = stateKey(group);
-    return typeof state[key] === 'boolean' ? state[key] : Boolean(group.defaultOpen);
+    return desiredGroupOpen(group);
   }
 
   function rememberOpen(group, value) {
@@ -350,8 +386,19 @@
       details.appendChild(summary);
       details.appendChild(body);
       details.addEventListener('toggle', () => {
+        if (Date.now() < suppressToggleUntil) {
+          updateDetailsOpenState(details, desiredGroupOpen(group, details.open));
+          return;
+        }
+        W.__LATEXAI_RPO_FORCED_TAB_STATE = W.__LATEXAI_RPO_FORCED_TAB_STATE || {};
+        delete W.__LATEXAI_RPO_FORCED_TAB_STATE[group.tab];
+        try {
+          const forced = readForcedTabState();
+          delete forced[group.tab];
+          localStorage.setItem(FORCE_STATE_KEY, JSON.stringify(forced));
+        } catch (_err) {}
         rememberOpen(group, details.open);
-        updateDetailsOpenState(details, details.open);
+        updateDetailsOpenState(details, desiredGroupOpen(group, details.open));
       }, true);
     }
 
@@ -375,9 +422,9 @@
       `<strong>${tab === 'settings' ? 'Settings organization' : 'Copilot organization'}</strong>`,
       '</div>',
       '<div class="right-panel-organizer-actions">',
-      `<button class="btn mini" type="button" data-rpo-action="expand" data-rpo-tab="${tab}" data-rpo-expand="${tab}">Expand all</button>`,
-      `<button class="btn mini" type="button" data-rpo-action="collapse" data-rpo-tab="${tab}" data-rpo-collapse="${tab}">Collapse all</button>`,
-      `<button class="btn mini" type="button" data-rpo-action="refresh" data-rpo-tab="${tab}" data-rpo-refresh="${tab}">Refresh sections</button>`,
+      `<button class="btn mini" type="button" data-rpo-action="expand" data-rpo-tab="${tab}" data-rpo-expand="${tab}" onclick="window.LatexaiRightPanelExpandAll && window.LatexaiRightPanelExpandAll('${tab}'); return false;">Expand all</button>`,
+      `<button class="btn mini" type="button" data-rpo-action="collapse" data-rpo-tab="${tab}" data-rpo-collapse="${tab}" onclick="window.LatexaiRightPanelCollapseAll && window.LatexaiRightPanelCollapseAll('${tab}'); return false;">Collapse all</button>`,
+      `<button class="btn mini" type="button" data-rpo-action="refresh" data-rpo-tab="${tab}" data-rpo-refresh="${tab}" onclick="window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.organize && window.LuminaLatex.RightPanelOrganizerService.organize('${tab}'); return false;">Refresh sections</button>`,
       '</div>'
     ].join('');
 
@@ -407,14 +454,18 @@
     const panel = panelFor(tab);
     if (!panel) return false;
 
+    suppressToggleUntil = Date.now() + 750;
+    writeForcedTabState(tab, desired);
+    syncGroupStateToStorage(tab, desired);
+
     // Ensure wrappers exist, even if this is called before delayed optional cards mount.
     ensureToolbar(tab);
     placeGroupsInOrder(tab);
-    syncGroupStateToStorage(tab, desired);
 
     let changed = 0;
     allRenderedGroups(tab).forEach((details) => {
       updateDetailsOpenState(details, desired);
+      details.dataset.rpoBulkCommand = desired ? 'expand' : 'collapse';
       changed += 1;
     });
 
@@ -423,6 +474,14 @@
     panel.querySelectorAll('details').forEach((details) => {
       if (!details.classList.contains('right-panel-group')) updateDetailsOpenState(details, desired);
     });
+
+    // One more microtask pass wins against delayed native <details> toggle events and late card moves.
+    setTimeout(() => {
+      allRenderedGroups(tab).forEach((details) => updateDetailsOpenState(details, desired));
+    }, 0);
+    setTimeout(() => {
+      allRenderedGroups(tab).forEach((details) => updateDetailsOpenState(details, desired));
+    }, 120);
 
     setStatus(`${tab === 'settings' ? 'Settings' : 'Copilot'} sections ${desired ? 'expanded' : 'collapsed'} (${changed} group${changed === 1 ? '' : 's'}).`, tab);
     return desired;
@@ -471,7 +530,7 @@
         const count = el(`${groupId(group)}Count`);
         if (count) count.textContent = String(body.children.length);
         details.classList.toggle('empty', body.children.length === 0);
-        updateDetailsOpenState(details, details.open);
+        updateDetailsOpenState(details, desiredGroupOpen(group, details.open));
       }
     }
 
@@ -491,7 +550,9 @@
 
     for (const group of GROUPS) {
       const body = el(bodyId(group));
-      lines.push(`- ${group.tab}/${group.title}: ${body?.children.length || 0} card(s), ${el(groupId(group))?.open ? 'open' : 'collapsed'}`);
+      const details = el(groupId(group));
+      const bodyHidden = body ? (body.hidden || getComputedStyle(body).display === 'none') : true;
+      lines.push(`- ${group.tab}/${group.title}: ${body?.children.length || 0} card(s), ${details?.open ? 'open' : 'collapsed'}${bodyHidden ? ', body hidden' : ''}`);
     }
 
     return lines.join('\n');
@@ -539,6 +600,7 @@
       btn.dataset.rpoCopyReport = tab;
       btn.dataset.rpoAction = 'copy-report';
       btn.dataset.rpoTab = tab;
+      btn.setAttribute('onclick', 'window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService && window.LuminaLatex.RightPanelOrganizerService.copyReport && window.LuminaLatex.RightPanelOrganizerService.copyReport(); return false;');
       btn.textContent = 'Copy report';
       btn.addEventListener('click', handleOrganizerButtonEvent, true);
       actions?.appendChild(btn);
@@ -598,8 +660,15 @@
   }
 
   function handleOrganizerButtonEvent(event) {
-    const button = event?.target?.closest?.('[data-rpo-action], [data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]');
+    const target = event?.target || event?.currentTarget;
+    const button = target?.closest?.('[data-rpo-action], [data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]') || (target?.matches?.('[data-rpo-action], [data-rpo-expand], [data-rpo-collapse], [data-rpo-refresh], [data-rpo-copy-report]') ? target : null);
     if (!button) return false;
+    const action = getButtonAction(button);
+
+    // Keep clipboard on the browser's normal click path. Pointer/touch capture is only
+    // for the bulk expand/collapse controls that were unreliable on iPad/Safari.
+    if (action === 'copy-report' && event && event.type && event.type !== 'click' && event.type !== 'keydown') return false;
+
     event.preventDefault?.();
     event.stopPropagation?.();
     if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
@@ -611,7 +680,10 @@
     D.documentElement.dataset.stage17j4DelegatedOrganizerButtons = 'true';
 
     D.addEventListener('click', handleOrganizerButtonEvent, true);
+    D.addEventListener('pointerdown', handleOrganizerButtonEvent, true);
     D.addEventListener('pointerup', handleOrganizerButtonEvent, true);
+    D.addEventListener('mousedown', handleOrganizerButtonEvent, true);
+    D.addEventListener('touchend', handleOrganizerButtonEvent, true);
     D.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       handleOrganizerButtonEvent(event);
@@ -624,12 +696,21 @@
     installToolbarReportButton();
   }
 
+  W.LatexaiRightPanelExpandAll = function LatexaiRightPanelExpandAll(tab = 'settings') {
+    return setAllGroups(tab, true);
+  };
+
+  W.LatexaiRightPanelCollapseAll = function LatexaiRightPanelCollapseAll(tab = 'settings') {
+    return setAllGroups(tab, false);
+  };
+
   NS.RightPanelOrganizerService = {
     STAGE,
     GROUPS,
     init,
     organize,
     setAllGroups,
+    forcedTabOpenValue,
     currentReport,
     copyReport,
     handleOrganizerButton
