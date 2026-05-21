@@ -439,6 +439,7 @@
 
   function init() {
     installed = true;
+    try { NS.AssetService?.ensureAssetTab?.(); } catch (_err) {}
     addEditorCard();
   }
 

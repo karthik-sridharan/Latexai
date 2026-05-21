@@ -740,6 +740,16 @@
     const panel = document.createElement('section');
     panel.className = 'right-tab-panel';
     panel.id = 'assetsTab';
+    // Stage 17L: the Figures tab contains tall drawing/TikZ tools.  Make it a
+    // real scrollport so the canvas and controls are reachable on iPad/Safari.
+    panel.style.minHeight = '0px';
+    panel.style.height = '0px';
+    panel.style.flex = '1 1 0px';
+    panel.style.overflowY = 'auto';
+    panel.style.overflowX = 'hidden';
+    panel.style.webkitOverflowScrolling = 'touch';
+    panel.style.overscrollBehavior = 'contain';
+    panel.style.touchAction = 'pan-y';
     panel.innerHTML = [
       '<div class="asset-panel">',
       '  <div class="asset-card">',
@@ -908,7 +918,8 @@
     inputFigureSnippet,
     insertInputFigureSnippet,
     setSelectedAsset,
-    renderAssetPanel
+    renderAssetPanel,
+    ensureAssetTab: createAssetTab
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });

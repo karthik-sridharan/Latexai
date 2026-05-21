@@ -1,9 +1,9 @@
-/* Latexai Stage 17K RightPanelOrganizerService
- * Stage: stage17k-right-panel-polish-regression-lock-1
+/* Latexai Stage 17L RightPanelOrganizerService
+ * Stage: stage17l-restore-figure-drawing-tab-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
- * Stage 17K keeps the J10 scroll fix and adds a polish/regression lock layer:
+ * Stage 17L keeps the J10/K scroll fix and restores the dedicated Figures tab:
  * persisted section state migration, compact toolbar markup, richer diagnostics,
  * and report data that makes click overlays/scroll clipping visible before users
  * have to debug by screenshot.
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17k-right-panel-polish-regression-lock-1';
+  const STAGE = 'stage17l-restore-figure-drawing-tab-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
   const STAGE17J9_STORAGE_KEY = 'latexai:right-panel-sections:v4';
@@ -357,11 +357,16 @@
       return cards;
     }
 
-    // Direct id matches for optional feature cards.  These may already be inside
-    // another group, so keep the exact card node and let organize() move it only
-    // when necessary.
+    // Direct id matches for optional feature cards.  Stage 17L is careful not
+    // to steal cards from another right-tab panel.  The previous organizer used
+    // document.getElementById(id) globally, so the dedicated Figures tab cards
+    // (Draw figure / AI TikZ maker / Image → TikZ) could be moved into the
+    // Copilot organizer's hidden Figures group.
     for (const id of group.cardIds || []) {
-      addUniqueCard(cards, seen, el(id));
+      const node = el(id);
+      if (!isElement(node)) continue;
+      if (!panel.contains(node)) continue;
+      addUniqueCard(cards, seen, node);
     }
 
     // Selector matches for the original static Copilot/Settings controls.  Only
