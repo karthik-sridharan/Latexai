@@ -1,0 +1,8 @@
+Stage 17EF checks
+=================
+
+PASS node --check js/ai-report-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage17ef-unified-ai-reports-browser.test.cjs
+
+Unified AI reports and reviews browser added. Reports are saved under reviews/ in the current project file tree.
