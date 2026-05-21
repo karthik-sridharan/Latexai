@@ -21,6 +21,19 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const STAGE = 'stage15d-freeze-hotfix-disable-ui-cleanup-1';
 
+  // Stage 15E safe-mode gate. Optional UI cleanup must not run in safe mode.
+  if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('ui-cleanup-service')) {
+    NS.UiCleanupService = {
+      STAGE,
+      disabledBySafeMode: true,
+      init: () => false,
+      activateRightTab: () => '',
+      restoreCopilotTools: () => 0
+    };
+    try { console.log('[Latexai]', STAGE, 'disabled by safe mode'); } catch (_err) {}
+    return;
+  }
+
   function el(id) { return D.getElementById(id); }
 
   function clearOldUiCleanupClasses() {
