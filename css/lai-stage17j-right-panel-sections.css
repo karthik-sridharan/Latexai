@@ -1,4 +1,4 @@
-/* Latexai Stage 17K: right panel collapsible sections + polish/regression lock */
+/* Latexai Stage 17L: right panel collapsible sections + polish/regression lock */
 
 .right-panel-organizer-toolbar {
   display: grid;
@@ -166,7 +166,7 @@
 }
 
 
-/* Stage 17K keeps the Stage 17J10 scroll containment fix.
+/* Stage 17L keeps the Stage 17J10 scroll containment fix and applies it to the dedicated Figures tab too.
    The Copilot/Settings tab panels are flex children of .right-panel.  When the
    active tab itself is a flex-column container, its section groups can shrink
    to fit the panel height.  Because group shells intentionally used
@@ -174,7 +174,8 @@
    of making the tab panel scroll.  Make organizer tabs block scrollports and
    keep every organizer card/group at its natural height. */
 #copilotTab.right-tab-panel.active,
-#settingsTab.right-tab-panel.active {
+#settingsTab.right-tab-panel.active,
+#assetsTab.right-tab-panel.active {
   display: block !important;
   flex: 1 1 0 !important;
   height: 0 !important;
@@ -191,7 +192,8 @@
 #copilotTab > .right-panel-organizer-toolbar,
 #settingsTab > .right-panel-organizer-toolbar,
 #copilotTab > .right-panel-group,
-#settingsTab > .right-panel-group {
+#settingsTab > .right-panel-group,
+#assetsTab > .asset-panel {
   flex: 0 0 auto !important;
   min-height: 0 !important;
   max-height: none !important;
@@ -226,4 +228,23 @@
 
 .right-tabs {
   flex: 0 0 auto !important;
+}
+
+
+/* Stage 17L: keep the dedicated Figures tab as the home for drawing/TikZ tools.
+   The organizer must not steal these cards into Copilot, and the Figures tab
+   should scroll like Settings/Copilot when the drawing canvas is visible. */
+#assetsTab > .asset-panel,
+#assetsTab .figure-editor-card,
+#assetsTab .tikz-maker-card,
+#assetsTab .image-tikz-card,
+#assetsTab .asset-card {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+#assetsTab .asset-panel {
+  overflow: visible !important;
+  padding-bottom: 2rem;
 }
