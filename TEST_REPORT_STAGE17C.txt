@@ -1,0 +1,8 @@
+Stage 17C checks
+================
+
+PASS node --check js/paper-ai-dashboard-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage17c-paper-ai-dashboard.test.cjs
+
+Paper AI dashboard added as a feature-gated local workflow launcher/status card.
