@@ -1,0 +1,7 @@
+Stage 15C checks
+================
+
+PASS node --check js/ui-cleanup-service.js
+PASS node tests/stage15c-disable-copilot-card-collapse.test.cjs
+
+Copilot card collapse is disabled; old Stage 15A/15B wrappers are unwrapped and hidden bodies are forced visible.
