@@ -1,0 +1,8 @@
+Stage 16D checks
+================
+
+PASS node --check js/devils-advocate-debate-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage16d-devils-advocate-paper-debate.test.cjs
+
+Devil's advocate paper debate added as a feature-gated Copilot workflow.
