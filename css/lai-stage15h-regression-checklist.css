@@ -1,0 +1,65 @@
+/* Latexai Stage 15H: in-app regression checklist */
+
+.regression-checklist-card {
+  margin-top: .85rem;
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 16px;
+  padding: .8rem;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+.regression-checklist-help {
+  margin: .35rem 0 .65rem;
+  color: #64748b;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.regression-checklist-summary {
+  border-radius: 12px;
+  padding: .52rem .6rem;
+  margin-bottom: .55rem;
+  font-size: .78rem;
+  font-weight: 850;
+  color: #14532d;
+  background: rgba(220,252,231,.72);
+  border: 1px solid rgba(22,163,74,.18);
+}
+
+.regression-checklist-summary.has-warnings {
+  color: #78350f;
+  background: rgba(254,243,199,.72);
+  border-color: rgba(245,158,11,.24);
+}
+
+.regression-checklist-summary.has-fails {
+  color: #7f1d1d;
+  background: rgba(254,226,226,.72);
+  border-color: rgba(220,38,38,.24);
+}
+
+.regression-checklist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-bottom: .5rem;
+}
+
+.regression-checklist-output {
+  display: none;
+  max-height: 420px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+}
+
+.regression-checklist-output.active {
+  display: block;
+}
