@@ -1,0 +1,7 @@
+Stage 15D checks
+================
+
+PASS node --check js/ui-cleanup-service.js
+PASS node tests/stage15d-freeze-hotfix-disable-ui-cleanup.test.cjs
+
+UI cleanup observers/card collapse are disabled to avoid Safari/iPad freeze loops.
