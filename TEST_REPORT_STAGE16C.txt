@@ -1,0 +1,10 @@
+Stage 16C checks
+================
+
+PASS node --check js/competitive-paper-review-service.js
+PASS node --check js/feature-flag-service.js
+PASS node --check server.mjs
+PASS node --check backend/server.mjs
+PASS node tests/stage16c-web-search-required-competitive-review.test.cjs
+
+Competitive review now requires web-search-capable AI. Backend reports webSearch capability and forwards OpenAI Responses API web_search tool when required.
