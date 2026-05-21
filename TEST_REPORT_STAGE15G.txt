@@ -1,0 +1,7 @@
+Stage 15G checks
+================
+
+PASS node --check js/model-provider-service.js
+PASS node tests/stage15g-model-provider-routing-cleanup.test.cjs
+
+Model/provider routing cleanup added with safe-mode gating.
