@@ -1,9 +1,9 @@
-/* Latexai Stage 17J9 RightPanelOrganizerService
- * Stage: stage17j9-right-panel-organizer-visible-catchall-1
+/* Latexai Stage 17J10 RightPanelOrganizerService
+ * Stage: stage17j10-right-panel-organizer-scroll-containment-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
- * Stage 17J9 keeps the controlled button shell and adds a visible catch-all group.
+ * Stage 17J10 keeps the controlled button shell and adds a visible catch-all group.
  * iPad/Safari and delayed re-organize passes made the native toggle event fight
  * our forced hidden/body state.  Each group is now a small controlled shell:
  * a button header plus a body div.  Bulk buttons and individual group headers
@@ -15,8 +15,9 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17j9-right-panel-organizer-visible-catchall-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v4';
+  const STAGE = 'stage17j10-right-panel-organizer-scroll-containment-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v5';
+  const STAGE17J9_STORAGE_KEY = 'latexai:right-panel-sections:v4';
   const STAGE17J8_STORAGE_KEY = 'latexai:right-panel-sections:v3';
   const STAGE17J7_STORAGE_KEY = 'latexai:right-panel-sections:v2';
   const LEGACY_STORAGE_KEY = 'latexai:right-panel-sections:v1';
@@ -246,6 +247,8 @@
   function readState() {
     const fresh = readJson(STORAGE_KEY);
     if (Object.keys(fresh).length) return fresh;
+    const legacyJ9 = readJson(STAGE17J9_STORAGE_KEY);
+    if (Object.keys(legacyJ9).length) return legacyJ9;
     const legacyJ8 = readJson(STAGE17J8_STORAGE_KEY);
     if (Object.keys(legacyJ8).length) return legacyJ8;
     const legacyJ7 = readJson(STAGE17J7_STORAGE_KEY);
@@ -436,6 +439,38 @@
     return shell;
   }
 
+
+  function ensurePanelScrollContainment(tab) {
+    const panel = panelFor(tab);
+    if (!panel) return false;
+    panel.classList.add('rpo-scroll-containment');
+    // Inline fallbacks make this survive stale CSS ordering/cache on iPad Safari.
+    panel.style.minHeight = '0px';
+    panel.style.height = '0px';
+    panel.style.flex = '1 1 0px';
+    panel.style.overflowY = 'auto';
+    panel.style.overflowX = 'hidden';
+    panel.style.webkitOverflowScrolling = 'touch';
+    panel.style.overscrollBehavior = 'contain';
+    panel.style.touchAction = 'pan-y';
+    return true;
+  }
+
+  function ensureGroupNaturalHeight(shell) {
+    if (!isElement(shell)) return false;
+    shell.style.flex = '0 0 auto';
+    shell.style.minHeight = '0px';
+    shell.style.maxHeight = 'none';
+    if (shell.dataset.rpoOpen === 'true') shell.style.overflow = 'visible';
+    const body = shell.querySelector?.('.right-panel-group-body');
+    if (body) {
+      body.style.maxHeight = 'none';
+      body.style.overflow = 'visible';
+      body.style.flex = '0 0 auto';
+    }
+    return true;
+  }
+
   function groupFromShell(shell) {
     if (!isElement(shell)) return null;
     return groupFor(shell.dataset.groupTab, shell.dataset.groupKey);
@@ -448,6 +483,9 @@
     target.dataset.rpoOpen = desired ? 'true' : 'false';
     target.classList.toggle('is-open', desired);
     target.classList.toggle('is-collapsed', !desired);
+    target.style.overflow = desired ? 'visible' : 'hidden';
+    ensurePanelScrollContainment(group.tab);
+    ensureGroupNaturalHeight(target);
 
     const button = target.querySelector('.right-panel-group-summary');
     if (button) button.setAttribute('aria-expanded', desired ? 'true' : 'false');
@@ -457,6 +495,11 @@
       body.hidden = !desired;
       body.setAttribute('aria-hidden', desired ? 'false' : 'true');
       body.style.display = desired ? '' : 'none';
+      if (desired) {
+        body.style.maxHeight = 'none';
+        body.style.overflow = 'visible';
+        body.style.flex = '0 0 auto';
+      }
     }
 
     if (options.remember !== false) rememberOpen(group, desired);
@@ -489,8 +532,8 @@
   }
 
   function bindControlEvents(node, handler) {
-    if (!node || node.dataset.rpoBoundStage17j9 === 'true') return;
-    node.dataset.rpoBoundStage17j9 = 'true';
+    if (!node || node.dataset.rpoBoundStage17j10 === 'true') return;
+    node.dataset.rpoBoundStage17j10 = 'true';
     ['pointerdown', 'mousedown', 'touchend', 'click'].forEach((type) => {
       node.addEventListener(type, (event) => {
         stopControlEvent(event);
@@ -505,8 +548,8 @@
   }
 
   function bindGroupToggleEvents(node) {
-    if (!node || node.dataset.rpoGroupBoundStage17j9 === 'true') return;
-    node.dataset.rpoGroupBoundStage17j9 = 'true';
+    if (!node || node.dataset.rpoGroupBoundStage17j10 === 'true') return;
+    node.dataset.rpoGroupBoundStage17j10 = 'true';
     // Group headers must toggle exactly once per user activation.  Earlier
     // versions listened to pointerdown, mousedown, touchend, and click; on real
     // browsers that can open on mousedown and close again on click, making
@@ -651,6 +694,7 @@
     for (const t of tabs) {
       const panel = panelFor(t);
       if (!panel) continue;
+      ensurePanelScrollContainment(t);
 
       ensureToolbar(t);
       placeGroupsInOrder(t);
@@ -799,8 +843,8 @@
   }
 
   function installDelegatedHandlers() {
-    if (D.documentElement.dataset.stage17j9OrganizerButtonShell === 'true') return;
-    D.documentElement.dataset.stage17j9OrganizerButtonShell = 'true';
+    if (D.documentElement.dataset.stage17j10OrganizerButtonShell === 'true') return;
+    D.documentElement.dataset.stage17j10OrganizerButtonShell = 'true';
 
     const routePointerEvent = (event) => {
       const groupButton = event.target?.closest?.('[data-rpo-group-toggle]');
