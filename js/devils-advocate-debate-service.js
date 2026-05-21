@@ -1,5 +1,5 @@
 /* Latexai Stage 16D DevilsAdvocateDebateService
- * Stage: stage16d-devils-advocate-paper-debate-1
+ * Stage: stage17h-debate-agent-model-routing-bypass-fix-1
  *
  * Devil's advocate paper debate workflow:
  * - one AI agent argues for the current draft;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage16d-devils-advocate-paper-debate-1';
+  const STAGE = 'stage17h-debate-agent-model-routing-bypass-fix-1';
   const PROMPT_PATH = 'prompt/ai-devils-advocate-debate.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('devils-advocate-debate-service')) {
@@ -181,12 +181,29 @@
     const before = currentProviderModel();
     try {
       setProviderModel(agent);
-      const response = await NS.AIProvider.ask(payload, {
+      const explicitPayload = {
+        ...(payload || {}),
+        provider: agent.provider,
+        model: agent.model,
+        agentProvider: agent.provider,
+        agentModel: agent.model,
+        modelRoutingBypass: true,
+        agentModelRoutingBypass: true,
+        modelRoutingBypassReason: 'Stage 17H devil debate uses the visible per-agent provider/model row.'
+      };
+      const response = await NS.AIProvider.ask(explicitPayload, {
         task: meta.task || 'latex-paper-debate',
+        provider: agent.provider,
+        model: agent.model,
+        modelRoutingBypass: true,
         context: {
           workflow: 'devils-advocate-paper-debate',
           agentRole: agent.role,
           promptFile: PROMPT_PATH,
+          provider: agent.provider,
+          model: agent.model,
+          modelRoutingBypass: true,
+          modelRoutingBypassReason: 'Stage 17H devil debate uses the visible per-agent provider/model row.',
           ...meta.context
         }
       });
@@ -336,7 +353,7 @@
       for (let round = 1; round <= payload.rounds; round += 1) {
         if (cancelled) throw new Error('Debate cancelled.');
 
-        setStatus(`Round ${round}/${payload.rounds}: advocate is arguing for the draft...`);
+        setStatus(`Round ${round}/${payload.rounds}: advocate is arguing for the draft using ${payload.agents.advocate.provider}/${payload.agents.advocate.model}...`);
         const advocateText = await askAsAgent(payload.agents.advocate, {
           instructions: [
             developerPrompt,
@@ -357,7 +374,7 @@
 
         if (cancelled) throw new Error('Debate cancelled.');
 
-        setStatus(`Round ${round}/${payload.rounds}: critic is challenging the draft...`);
+        setStatus(`Round ${round}/${payload.rounds}: critic is challenging the draft using ${payload.agents.critic.provider}/${payload.agents.critic.model}...`);
         const criticText = await askAsAgent(payload.agents.critic, {
           instructions: [
             developerPrompt,
@@ -379,7 +396,7 @@
 
       if (cancelled) throw new Error('Debate cancelled.');
 
-      setStatus('Synthesizer is producing the balanced improvement plan...');
+      setStatus(`Synthesizer is producing the balanced improvement plan using ${payload.agents.synthesizer.provider}/${payload.agents.synthesizer.model}...`);
       lastSynthesis = await askAsAgent(payload.agents.synthesizer, {
         instructions: [
           developerPrompt,

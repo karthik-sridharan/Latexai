@@ -1,5 +1,5 @@
 /* Latexai Stage 15G ModelRoutingService
- * Stage: stage15g-model-provider-routing-cleanup-1
+ * Stage: stage17h-debate-agent-model-routing-bypass-fix-1
  *
  * Central model/provider routing cleanup.
  *
@@ -15,7 +15,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage15g-model-provider-routing-cleanup-1';
+  const STAGE = 'stage17h-debate-agent-model-routing-bypass-fix-1';
   const STORAGE_KEY = 'latexai:model-routing:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('model-provider-service')) {
@@ -155,6 +155,37 @@
   }
 
   async function askWithRoute(payload, options) {
+    // Stage 17H: allow workflow code to explicitly opt out of route override.
+    // This is needed for multi-agent workflows where each visible agent row has
+    // its own provider/model. Without this, the generic "paper" route can
+    // override all agents to gpt-4.1 even when the row shows gpt-4.1-mini.
+    const bypass = Boolean(
+      payload?.modelRoutingBypass ||
+      payload?.modelRouting?.bypass ||
+      payload?.agentModelRoutingBypass ||
+      options?.modelRoutingBypass ||
+      options?.context?.modelRoutingBypass
+    );
+    if (bypass) {
+      if (payload && typeof payload === 'object') {
+        payload.modelRouting = {
+          ...(payload.modelRouting || {}),
+          stage: STAGE,
+          bypass: true,
+          reason: payload.modelRoutingBypassReason || options?.context?.modelRoutingBypassReason || 'explicit-workflow-agent-model'
+        };
+      }
+      if (options && typeof options === 'object') {
+        options.modelRouting = {
+          ...(options.modelRouting || {}),
+          stage: STAGE,
+          bypass: true,
+          reason: options?.context?.modelRoutingBypassReason || payload?.modelRoutingBypassReason || 'explicit-workflow-agent-model'
+        };
+      }
+      return await originalAsk.call(NS.AIProvider, payload, options);
+    }
+
     const decision = routeForAsk(payload || {}, options || {});
     const before = currentProviderModel();
 
