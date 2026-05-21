@@ -1,4 +1,4 @@
-/* Latexai Stage 17J9: right panel collapsible workflow sections */
+/* Latexai Stage 17J10: right panel collapsible workflow sections + scroll containment */
 
 .right-panel-organizer-toolbar {
   display: flex;
@@ -152,4 +152,67 @@
   .right-panel-organizer-actions {
     justify-content: flex-start;
   }
+}
+
+
+/* Stage 17J10 scroll containment fix.
+   The Copilot/Settings tab panels are flex children of .right-panel.  When the
+   active tab itself is a flex-column container, its section groups can shrink
+   to fit the panel height.  Because group shells intentionally used
+   overflow:hidden for rounded cards, expanded content became clipped instead
+   of making the tab panel scroll.  Make organizer tabs block scrollports and
+   keep every organizer card/group at its natural height. */
+#copilotTab.right-tab-panel.active,
+#settingsTab.right-tab-panel.active {
+  display: block !important;
+  flex: 1 1 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding-bottom: 2rem;
+}
+
+#copilotTab > .right-panel-organizer-toolbar,
+#settingsTab > .right-panel-organizer-toolbar,
+#copilotTab > .right-panel-group,
+#settingsTab > .right-panel-group {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+#copilotTab > .right-panel-group[data-rpo-open="true"],
+#settingsTab > .right-panel-group[data-rpo-open="true"],
+#copilotTab > .right-panel-group.is-open,
+#settingsTab > .right-panel-group.is-open {
+  overflow: visible !important;
+}
+
+#copilotTab .right-panel-group-body,
+#settingsTab .right-panel-group-body {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#copilotTab .right-panel-group-body > *,
+#settingsTab .right-panel-group-body > * {
+  flex: 0 0 auto !important;
+  min-height: 0;
+  max-height: none;
+}
+
+.right-panel {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.right-tabs {
+  flex: 0 0 auto !important;
 }
