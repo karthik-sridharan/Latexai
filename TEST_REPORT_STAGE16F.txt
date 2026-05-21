@@ -1,0 +1,8 @@
+Stage 16F checks
+================
+
+PASS node --check js/ai-suggestion-comments-service.js
+PASS node --check js/feature-flag-service.js
+PASS node tests/stage16f-ai-suggestion-comments.test.cjs
+
+AI suggestion comments added as a feature-gated local annotation and JSON exchange workflow.
