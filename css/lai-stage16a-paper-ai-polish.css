@@ -1,0 +1,182 @@
+/* Latexai Stage 16A: paper-level AI workflow polish */
+
+.paper-ai-polish-card {
+  margin-top: .85rem;
+  border: 1px solid rgba(15,23,42,.12);
+  border-radius: 16px;
+  padding: .8rem;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+.paper-ai-help {
+  margin: .35rem 0 .65rem;
+  color: #64748b;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.paper-ai-summary {
+  border-radius: 12px;
+  padding: .52rem .6rem;
+  margin-bottom: .55rem;
+  font-size: .78rem;
+  font-weight: 850;
+  color: #475569;
+  background: rgba(226,232,240,.65);
+  border: 1px solid rgba(100,116,139,.14);
+}
+
+.paper-ai-summary.has-edits {
+  color: #14532d;
+  background: rgba(220,252,231,.72);
+  border-color: rgba(22,163,74,.18);
+}
+
+.paper-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-bottom: .45rem;
+}
+
+.paper-ai-check {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  margin: .15rem 0 .5rem;
+  color: #475569;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.paper-ai-edit-list {
+  display: grid;
+  gap: .55rem;
+  margin-top: .55rem;
+}
+
+.paper-ai-empty {
+  color: #64748b;
+  background: rgba(248,250,252,.85);
+  border: 1px dashed rgba(100,116,139,.24);
+  border-radius: 12px;
+  padding: .7rem;
+  font-size: .78rem;
+}
+
+.paper-ai-edit-row {
+  border: 1px solid rgba(15,23,42,.1);
+  border-radius: 14px;
+  padding: .65rem;
+  background: rgba(248,250,252,.86);
+}
+
+.paper-ai-edit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+  align-items: center;
+  font-size: .78rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.paper-ai-edit-head label {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.paper-ai-edit-head span {
+  color: #1d4ed8;
+  background: rgba(219,234,254,.8);
+  border-radius: 999px;
+  padding: .08rem .35rem;
+  font-size: .62rem;
+  text-transform: uppercase;
+}
+
+.paper-ai-edit-section {
+  margin-top: .28rem;
+  color: #64748b;
+  font-size: .68rem;
+  font-weight: 800;
+}
+
+.paper-ai-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .7rem;
+  margin: .5rem 0;
+  color: #475569;
+  font-size: .72rem;
+  font-weight: 850;
+}
+
+.paper-ai-choice-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: .28rem;
+}
+
+.paper-ai-preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .45rem;
+}
+
+.paper-ai-preview-grid strong {
+  display: block;
+  margin-bottom: .25rem;
+  color: #334155;
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.paper-ai-preview-grid pre {
+  max-height: 130px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 10px;
+  padding: .5rem;
+}
+
+.paper-ai-cites {
+  margin-top: .45rem;
+  color: #78350f;
+  background: rgba(254,243,199,.55);
+  border-radius: 10px;
+  padding: .35rem .45rem;
+  font-size: .68rem;
+  font-weight: 800;
+}
+
+.paper-ai-output {
+  display: none;
+  max-height: 420px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e5e7eb;
+  background: #0f172a;
+  border-radius: 12px;
+  padding: .65rem;
+  border: 1px solid rgba(15,23,42,.22);
+  margin-top: .65rem;
+}
+
+.paper-ai-output.active {
+  display: block;
+}
+
+@media (max-width: 980px) {
+  .paper-ai-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
