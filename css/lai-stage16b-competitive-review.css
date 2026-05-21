@@ -1,4 +1,4 @@
-/* Latexai Stage 16B: competitive paper review */
+/* Latexai Stage 16C: competitive paper review */
 
 .competitive-review-card {
   margin-top: .85rem;
@@ -69,4 +69,39 @@
 
 .competitive-review-output.active {
   display: block;
+}
+
+
+/* Stage 16C: web-search required competitive review */
+.competitive-web-required {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  margin: .2rem 0 .4rem;
+  color: #0f172a;
+  font-size: .74rem;
+  font-weight: 900;
+}
+
+.competitive-web-status {
+  border-radius: 12px;
+  padding: .48rem .6rem;
+  margin: .25rem 0 .6rem;
+  font-size: .74rem;
+  font-weight: 850;
+  color: #78350f;
+  background: rgba(254,243,199,.72);
+  border: 1px solid rgba(245,158,11,.22);
+}
+
+.competitive-web-status.ok {
+  color: #14532d;
+  background: rgba(220,252,231,.72);
+  border-color: rgba(22,163,74,.2);
+}
+
+.competitive-web-status.bad {
+  color: #7f1d1d;
+  background: rgba(254,226,226,.75);
+  border-color: rgba(220,38,38,.24);
 }
