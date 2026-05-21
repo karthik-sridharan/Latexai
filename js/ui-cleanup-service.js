@@ -1,14 +1,12 @@
-/* Latexai Stage 15B UiCleanupService
- * Stage: stage15b-copilot-card-visibility-fix-1
+/* Latexai Stage 15C UiCleanupService
+ * Stage: stage15c-disable-copilot-card-collapse-1
  *
- * Fixes Stage 15A over-aggressive Copilot card collapsing.
- *
- * Stage 15B keeps the useful layout stabilization but changes Copilot behavior:
- * - only known major tool cards are made collapsible;
- * - cards are expanded by default, so tools do not disappear into blank bars;
- * - card headers always get a readable title;
- * - "focus one tool" accordion behavior is optional and OFF by default;
- * - right-panel tab stabilization remains, but inactive tabs are not made inert.
+ * Emergency fix for Stage 15A/15B Copilot blank bars:
+ * - completely disables Copilot card collapsing/wrapping;
+ * - unwraps any old Stage 15A/15B collapsible card wrappers already in the DOM;
+ * - forces all Copilot tool content visible;
+ * - keeps only safe parts of UI cleanup: right-tab stabilization, compact mode,
+ *   left/right panel scrolling.
  */
 (function () {
   'use strict';
@@ -16,42 +14,11 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage15b-copilot-card-visibility-fix-1';
+  const STAGE = 'stage15c-disable-copilot-card-collapse-1';
 
-  const STORAGE_COMPACT = 'latexai:stage15b:compact-mode';
-  const STORAGE_FOCUS = 'latexai:stage15b:focus-mode';
-  const STORAGE_COLLAPSED = 'latexai:stage15b:collapsed-cards';
-
+  const STORAGE_COMPACT = 'latexai:stage15c:compact-mode';
   let rightObserver = null;
   let copilotObserver = null;
-
-  const FRIENDLY_TITLES = {
-    presentationExportCard: 'Paper → Presentation exporter',
-    citationVerifierCard: 'Local citation verifier',
-    citationAiCard: 'Citation AI',
-    documentAiCard: 'Paper-level AI',
-    tikzFigureCard: 'TikZ figure maker',
-    imageToTikzCard: 'Image → TikZ',
-    figureToolsCard: 'Figure tools',
-    aiFigureCard: 'AI figure tools'
-  };
-
-  const KNOWN_CARD_SELECTORS = [
-    '#presentationExportCard',
-    '#citationVerifierCard',
-    '#citationAiCard',
-    '#documentAiCard',
-    '#tikzFigureCard',
-    '#imageToTikzCard',
-    '#figureToolsCard',
-    '#aiFigureCard',
-    '.presentation-export-card',
-    '.citation-verifier-card',
-    '.citation-ai-card',
-    '.document-ai-card',
-    '.tikz-figure-card',
-    '.image-to-tikz-card'
-  ].join(',');
 
   function el(id) { return D.getElementById(id); }
 
@@ -61,15 +28,6 @@
 
   function storageSet(key, value) {
     try { localStorage.setItem(key, value); } catch (_err) {}
-  }
-
-  function collapsedSet() {
-    const raw = storageGet(STORAGE_COLLAPSED, '');
-    return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
-  }
-
-  function saveCollapsedSet(set) {
-    storageSet(STORAGE_COLLAPSED, [...set].join(','));
   }
 
   function tabPanelForName(name) {
@@ -98,7 +56,7 @@
     panels.forEach((panel) => {
       const active = panel === targetPanel;
       panel.classList.toggle('active', active);
-      panel.classList.toggle('stage15b-hidden-panel', !active);
+      panel.classList.toggle('stage15c-hidden-panel', !active);
       if (!active) panel.setAttribute('aria-hidden', 'true');
       else panel.removeAttribute('aria-hidden');
     });
@@ -108,8 +66,8 @@
 
   function bindRightTabs() {
     D.querySelectorAll('.right-tab[data-right-tab]').forEach((tab) => {
-      if (tab.dataset.stage15bBound === '1') return;
-      tab.dataset.stage15bBound = '1';
+      if (tab.dataset.stage15cBound === '1') return;
+      tab.dataset.stage15cBound = '1';
       tab.addEventListener('click', () => {
         setTimeout(() => activateRightTab(tab.dataset.rightTab), 0);
       }, true);
@@ -126,131 +84,85 @@
     rightObserver.observe(panel, { attributes: true, childList: true, subtree: true, attributeFilter: ['class'] });
   }
 
-  function cardKey(card) {
-    return card.id || card.dataset.stage15bKey || '';
-  }
+  function unwrapOneCard(card) {
+    if (!card || card.dataset.stage15cUnwrapped === '1') return false;
 
-  function cardTitle(card) {
-    if (!card) return 'Tool';
-    if (card.id && FRIENDLY_TITLES[card.id]) return FRIENDLY_TITLES[card.id];
+    const header = card.querySelector(':scope > .stage15a-card-header, :scope > .stage15b-card-header');
+    const body = card.querySelector(':scope > .stage15a-card-body, :scope > .stage15b-card-body');
 
-    const heading = card.querySelector(':scope > h3, :scope > h2, :scope .section-head h2, :scope .smallcaps, :scope strong');
-    const text = String(heading?.textContent || '').trim().replace(/\s+/g, ' ');
-    if (text) return text;
-
-    const id = card.id || '';
-    if (id) {
-      return id
-        .replace(/Card$/, '')
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .replace(/[-_]/g, ' ')
-        .replace(/\b\w/g, (m) => m.toUpperCase());
+    if (!header && !body && !card.classList.contains('stage15a-collapsible-card') && !card.classList.contains('stage15b-collapsible-card')) {
+      return false;
     }
 
-    const cls = String(card.className || '').split(/\s+/).find((c) => /card/i.test(c)) || 'Tool';
-    return cls.replace(/[-_]/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
-  }
-
-  function isKnownCopilotCard(node) {
-    if (!node || node.nodeType !== 1) return false;
-    const panel = el('copilotTab');
-    if (!panel || !panel.contains(node)) return false;
-    if (node.closest('.stage15b-card-body')) return false;
-    if (!node.matches?.(KNOWN_CARD_SELECTORS)) return false;
-    return true;
-  }
-
-  function focusModeEnabled() {
-    const box = el('stage15bFocusModeToggle');
-    if (box) return box.checked;
-    return storageGet(STORAGE_FOCUS, '0') === '1';
-  }
-
-  function setCardExpanded(card, expanded, persist = true) {
-    const body = card.querySelector(':scope > .stage15b-card-body');
-    const button = card.querySelector(':scope > .stage15b-card-header .stage15b-card-toggle');
-    const meta = card.querySelector(':scope > .stage15b-card-header .stage15b-card-meta');
-    if (!body || !button) return;
-
-    card.classList.toggle('stage15b-expanded', expanded);
-    card.classList.toggle('stage15b-collapsed', !expanded);
-    body.hidden = !expanded;
-    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    const caret = button.querySelector('.stage15b-card-caret');
-    if (caret) caret.textContent = expanded ? '▾' : '▸';
-    if (meta) meta.textContent = expanded ? 'Open' : 'Collapsed';
-
-    if (persist) {
-      const set = collapsedSet();
-      const key = cardKey(card);
-      if (key) {
-        if (expanded) set.delete(key);
-        else set.add(key);
-        saveCollapsedSet(set);
+    if (body) {
+      body.hidden = false;
+      body.style.display = '';
+      while (body.firstChild) {
+        card.insertBefore(body.firstChild, body);
       }
+      body.remove();
     }
-  }
 
-  function collapseSiblingCards(card) {
-    if (!focusModeEnabled()) return;
-    const panel = el('copilotTab');
-    if (!panel) return;
-    panel.querySelectorAll(':scope > .stage15b-collapsible-card').forEach((other) => {
-      if (other !== card) setCardExpanded(other, false, true);
-    });
-  }
+    if (header) header.remove();
 
-  function makeCardCollapsible(card) {
-    if (!card || card.dataset.stage15bCollapsible === '1') return false;
-    if (!isKnownCopilotCard(card)) return false;
-
-    card.dataset.stage15bCollapsible = '1';
-    card.classList.add('stage15b-collapsible-card');
-
-    const title = cardTitle(card);
-    const key = card.id || title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    card.dataset.stage15bKey = key;
-
-    const header = D.createElement('div');
-    header.className = 'stage15b-card-header';
-
-    const button = D.createElement('button');
-    button.type = 'button';
-    button.className = 'stage15b-card-toggle';
-    button.innerHTML = '<span class="stage15b-card-caret" aria-hidden="true">▾</span><span class="stage15b-card-title"></span>';
-    button.querySelector('.stage15b-card-title').textContent = title;
-
-    const meta = D.createElement('span');
-    meta.className = 'stage15b-card-meta';
-    meta.textContent = 'Open';
-
-    header.append(button, meta);
-
-    const body = D.createElement('div');
-    body.className = 'stage15b-card-body';
-
-    while (card.firstChild) body.appendChild(card.firstChild);
-    card.append(header, body);
-
-    button.addEventListener('click', () => {
-      const expanded = !card.classList.contains('stage15b-expanded');
-      if (expanded) collapseSiblingCards(card);
-      setCardExpanded(card, expanded);
-    }, true);
-
-    const collapsed = collapsedSet();
-    const shouldExpand = !collapsed.has(key); // expanded by default
-    setCardExpanded(card, shouldExpand, false);
+    card.classList.remove(
+      'stage15a-collapsible-card',
+      'stage15a-expanded',
+      'stage15a-collapsed',
+      'stage15b-collapsible-card',
+      'stage15b-expanded',
+      'stage15b-collapsed'
+    );
+    card.removeAttribute('data-stage15a-collapsible');
+    card.removeAttribute('data-stage15b-collapsible');
+    card.removeAttribute('data-stage15a-key');
+    card.removeAttribute('data-stage15b-key');
+    card.dataset.stage15cUnwrapped = '1';
 
     return true;
   }
 
-  function processCopilotCards() {
+  function unwrapLegacyCopilotCards() {
+    const panel = el('copilotTab');
+    if (!panel) return 0;
+
+    let changed = 0;
+    panel.querySelectorAll('.stage15a-collapsible-card, .stage15b-collapsible-card').forEach((card) => {
+      if (unwrapOneCard(card)) changed += 1;
+    });
+
+    // Also recover orphaned card bodies if an older wrapper left them hidden.
+    panel.querySelectorAll('.stage15a-card-body, .stage15b-card-body').forEach((body) => {
+      body.hidden = false;
+      body.style.display = '';
+      body.classList.remove('stage15a-card-body', 'stage15b-card-body');
+    });
+
+    // Hide any leftover blank card headers from old stages.
+    panel.querySelectorAll('.stage15a-card-header, .stage15b-card-header').forEach((header) => {
+      header.remove();
+      changed += 1;
+    });
+
+    return changed;
+  }
+
+  function forceCopilotContentVisible() {
     const panel = el('copilotTab');
     if (!panel) return false;
-    Array.from(panel.children).forEach((child) => {
-      if (child.matches?.(KNOWN_CARD_SELECTORS)) makeCardCollapsible(child);
+
+    panel.classList.add('stage15c-copilot-stable');
+
+    // Do not collapse anything inside Copilot in Stage 15C.
+    panel.querySelectorAll('[hidden]').forEach((node) => {
+      if (node.id === 'patchReview' && node.classList.contains('hidden')) return;
+      node.hidden = false;
     });
+
+    panel.querySelectorAll('.stage15a-collapsed, .stage15b-collapsed').forEach((node) => {
+      node.classList.remove('stage15a-collapsed', 'stage15b-collapsed');
+    });
+
     return true;
   }
 
@@ -259,88 +171,74 @@
     if (!panel || copilotObserver) return;
 
     copilotObserver = new MutationObserver(() => {
-      processCopilotCards();
+      unwrapLegacyCopilotCards();
+      forceCopilotContentVisible();
     });
-    copilotObserver.observe(panel, { childList: true, subtree: false });
+    copilotObserver.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
   }
 
   function addCleanupControls() {
-    if (el('stage15bUiControls')) return true;
+    if (el('stage15cUiControls')) return true;
 
     const tabs = D.querySelector('.right-tabs');
     if (!tabs) return false;
 
+    // Remove Stage 15A/15B controls if they exist.
+    el('stage15aCompactToggle')?.closest?.('.stage15a-compact-toggle-wrap')?.remove();
+    el('stage15bUiControls')?.remove();
+
     const wrap = D.createElement('div');
-    wrap.id = 'stage15bUiControls';
-    wrap.className = 'stage15b-ui-controls';
+    wrap.id = 'stage15cUiControls';
+    wrap.className = 'stage15c-ui-controls';
     wrap.innerHTML = [
-      '<label class="stage15b-toggle">',
-      '  <input id="stage15bCompactToggle" type="checkbox" />',
+      '<label class="stage15c-toggle">',
+      '  <input id="stage15cCompactToggle" type="checkbox" />',
       '  Compact',
       '</label>',
-      '<label class="stage15b-toggle">',
-      '  <input id="stage15bFocusModeToggle" type="checkbox" />',
-      '  Focus one tool',
-      '</label>',
-      '<button id="stage15bExpandToolsBtn" class="btn mini" type="button">Expand tools</button>'
+      '<button id="stage15cRestoreCopilotBtn" class="btn mini" type="button">Restore Copilot tools</button>'
     ].join('');
     tabs.insertAdjacentElement('afterend', wrap);
 
-    const compact = el('stage15bCompactToggle');
+    const compact = el('stage15cCompactToggle');
     const storedCompact = storageGet(STORAGE_COMPACT, '');
     const compactEnabled = storedCompact ? storedCompact === '1' : W.matchMedia?.('(max-width: 980px)')?.matches;
     compact.checked = Boolean(compactEnabled);
-    D.body.classList.toggle('stage15b-compact', Boolean(compactEnabled));
+    D.body.classList.toggle('stage15c-compact', Boolean(compactEnabled));
     compact.addEventListener('change', () => {
-      D.body.classList.toggle('stage15b-compact', compact.checked);
+      D.body.classList.toggle('stage15c-compact', compact.checked);
       storageSet(STORAGE_COMPACT, compact.checked ? '1' : '0');
     }, true);
 
-    const focus = el('stage15bFocusModeToggle');
-    focus.checked = storageGet(STORAGE_FOCUS, '0') === '1';
-    D.body.classList.toggle('stage15b-focus-mode', focus.checked);
-    focus.addEventListener('change', () => {
-      storageSet(STORAGE_FOCUS, focus.checked ? '1' : '0');
-      D.body.classList.toggle('stage15b-focus-mode', focus.checked);
+    el('stage15cRestoreCopilotBtn')?.addEventListener('click', () => {
+      unwrapLegacyCopilotCards();
+      forceCopilotContentVisible();
     }, true);
-
-    el('stage15bExpandToolsBtn')?.addEventListener('click', expandAllCards, true);
 
     return true;
   }
 
   function addPanelClasses() {
-    D.body.classList.add('stage15b-ui-cleanup');
-    // Remove old Stage 15A class effects if both files are cached.
-    D.body.classList.remove('stage15a-ui-cleanup', 'stage15a-compact');
+    D.body.classList.add('stage15c-ui-cleanup');
+    D.body.classList.remove(
+      'stage15a-ui-cleanup',
+      'stage15a-compact',
+      'stage15b-ui-cleanup',
+      'stage15b-compact',
+      'stage15b-focus-mode'
+    );
 
-    D.querySelector('.left-panel')?.classList.add('stage15b-left-stable');
-    D.querySelector('.right-panel')?.classList.add('stage15b-right-stable');
-    el('fileTree')?.classList.add('stage15b-scroll-region');
-    el('outlineList')?.classList.add('stage15b-scroll-region');
-    el('copilotTab')?.classList.add('stage15b-copilot-stable');
-    el('settingsTab')?.classList.add('stage15b-settings-stable');
+    D.querySelector('.left-panel')?.classList.add('stage15c-left-stable');
+    D.querySelector('.right-panel')?.classList.add('stage15c-right-stable');
+    el('fileTree')?.classList.add('stage15c-scroll-region');
+    el('outlineList')?.classList.add('stage15c-scroll-region');
+    el('copilotTab')?.classList.add('stage15c-copilot-stable');
+    el('settingsTab')?.classList.add('stage15c-settings-stable');
   }
 
-  function expandCardById(id) {
-    const card = el(id);
-    if (!card) return false;
-    makeCardCollapsible(card);
-    collapseSiblingCards(card);
-    setCardExpanded(card, true);
-    activateRightTab('copilot');
-    return true;
-  }
-
-  function expandAllCards() {
-    const panel = el('copilotTab');
-    panel?.querySelectorAll(':scope > .stage15b-collapsible-card').forEach((card) => setCardExpanded(card, true, true));
-    saveCollapsedSet(new Set());
-  }
-
-  function collapseAllCards() {
-    const panel = el('copilotTab');
-    panel?.querySelectorAll(':scope > .stage15b-collapsible-card').forEach((card) => setCardExpanded(card, false, true));
+  function restoreCopilotTools() {
+    const changed = unwrapLegacyCopilotCards();
+    forceCopilotContentVisible();
+    return changed;
   }
 
   function init() {
@@ -349,7 +247,7 @@
     activateRightTab(activeRightTabName());
     observeRightPanel();
     addCleanupControls();
-    processCopilotCards();
+    restoreCopilotTools();
     observeCopilotPanel();
   }
 
@@ -357,11 +255,9 @@
     STAGE,
     init,
     activateRightTab,
-    processCopilotCards,
-    makeCardCollapsible,
-    expandCardById,
-    expandAllCards,
-    collapseAllCards
+    unwrapLegacyCopilotCards,
+    forceCopilotContentVisible,
+    restoreCopilotTools
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
@@ -371,8 +267,8 @@
   const interval = setInterval(() => {
     init();
     tries += 1;
-    if (tries > 60) clearInterval(interval);
-  }, 500);
+    if (tries > 80) clearInterval(interval);
+  }, 350);
 
   try { console.log('[Latexai]', STAGE, 'active'); } catch (_err) {}
 })();
