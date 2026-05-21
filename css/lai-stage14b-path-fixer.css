@@ -1,0 +1,11 @@
+/* Latexai Stage 14B: standalone path fixer */
+.stage14b-path-fixer-box {
+  margin-top: .55rem;
+  border: 1px dashed rgba(245,158,11,.36);
+  border-radius: 12px;
+  padding: .55rem;
+  background: rgba(255,251,235,.72);
+}
+.stage14b-path-check { margin: .35rem 0; }
+.stage14b-path-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0; }
+.stage14b-path-status { margin-top: .25rem; color: #78350f; }
