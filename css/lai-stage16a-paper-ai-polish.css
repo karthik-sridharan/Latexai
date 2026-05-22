@@ -180,3 +180,82 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Stage 17U: Paper-level edit review horizontal scroll containment.
+   The side-by-side OLD/NEW comparison is intentionally wider than the narrow
+   right panel on iPad/Safari.  Keep it side-by-side, but provide a local
+   horizontal scrollport so the NEW column is reachable instead of being clipped. */
+.paper-ai-polish-card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.paper-ai-polish-card *,
+.paper-ai-polish-card *::before,
+.paper-ai-polish-card *::after {
+  box-sizing: border-box;
+}
+
+.paper-ai-edit-list,
+.paper-ai-edit-row,
+.paper-ai-edit-head,
+.paper-ai-edit-section,
+.paper-ai-actions,
+.paper-ai-choice-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.paper-ai-edit-row {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.paper-ai-edit-head {
+  min-width: 0;
+}
+
+.paper-ai-edit-head label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.paper-ai-preview-grid {
+  grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
+  min-width: 640px;
+  width: max(100%, 640px);
+  overflow: visible;
+}
+
+.paper-ai-preview-grid > div {
+  min-width: 0;
+}
+
+.paper-ai-preview-grid pre {
+  min-width: 0;
+  max-width: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  -webkit-overflow-scrolling: touch;
+}
+
+.paper-ai-output {
+  overflow-x: auto;
+  white-space: pre;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 980px) {
+  .paper-ai-preview-grid {
+    grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
+  }
+}

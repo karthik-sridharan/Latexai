@@ -269,3 +269,29 @@
   width: 100%;
   overflow-x: hidden !important;
 }
+
+/* Stage 17U: allow deliberate horizontal scrolling for review widgets.
+   Earlier containment fixes used overflow-x:hidden to prevent long action rows
+   from pushing buttons off-screen.  The Paper-level edit review has a legitimate
+   side-by-side diff that can be wider than the right column, so the active tab
+   and group body must become horizontal scrollports when needed. */
+#copilotTab.right-tab-panel.active,
+#settingsTab.right-tab-panel.active,
+#assetsTab.right-tab-panel.active {
+  overflow-x: auto !important;
+  touch-action: pan-x pan-y;
+}
+
+#copilotTab .right-panel-group-body,
+#settingsTab .right-panel-group-body {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+#paperAiPolishCard,
+#paperAiPolishCard .paper-ai-edit-row,
+#paperAiPolishCard .paper-ai-preview-grid {
+  max-width: none;
+}
