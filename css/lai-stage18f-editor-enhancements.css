@@ -292,3 +292,210 @@
   border-radius: 10px;
   padding: .4rem .5rem;
 }
+
+/* Latexai Stage 18L: shortcut manager full-width responsive layout
+   The generic .backend-status-card is a two-column flex row. That squeezed the
+   shortcut manager table into the left column while action buttons occupied the
+   right, making the row look like it ended halfway across the right panel. Keep
+   this card one-column and make each custom shortcut row use the full panel
+   width, with no horizontal cutoff. */
+#editorShortcutSettingsCard.editor-shortcut-settings-card {
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-card-main,
+#editorShortcutSettingsCard .editor-shortcut-manager,
+#editorShortcutSettingsCard .editor-shortcut-table-scroll,
+#editorShortcutSettingsCard .editor-shortcut-status,
+#editorShortcutSettingsCard .editor-builtins-details {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-actions {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: .45rem;
+  justify-content: stretch;
+  margin-top: .7rem;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-actions .btn {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table-scroll {
+  overflow-x: visible;
+  overflow-y: visible;
+  max-height: none;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table th,
+#editorShortcutSettingsCard .editor-shortcut-table td {
+  min-width: 0 !important;
+  max-width: none;
+  overflow: visible;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table th:nth-child(1),
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(1) { width: 2.4rem; }
+#editorShortcutSettingsCard .editor-shortcut-table th:nth-child(2),
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(2) { width: 8.8rem; }
+#editorShortcutSettingsCard .editor-shortcut-table th:nth-child(3),
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(3) { width: 7.4rem; }
+#editorShortcutSettingsCard .editor-shortcut-table th:nth-child(4),
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(4) { width: 7.2rem; }
+#editorShortcutSettingsCard .editor-shortcut-table th:nth-child(5),
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(5) { width: auto; }
+#editorShortcutSettingsCard .editor-shortcut-table th:nth-child(6),
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(6) { width: 5.8rem; }
+
+#editorShortcutSettingsCard .editor-shortcut-table input,
+#editorShortcutSettingsCard .editor-shortcut-table select,
+#editorShortcutSettingsCard .editor-shortcut-table textarea {
+  max-width: 100%;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table textarea.editor-shortcut-template {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  #editorShortcutSettingsCard .editor-shortcut-table,
+  #editorShortcutSettingsCard .editor-shortcut-table thead,
+  #editorShortcutSettingsCard .editor-shortcut-table tbody,
+  #editorShortcutSettingsCard .editor-shortcut-table tr,
+  #editorShortcutSettingsCard .editor-shortcut-table th,
+  #editorShortcutSettingsCard .editor-shortcut-table td {
+    display: block;
+    width: 100% !important;
+  }
+
+  #editorShortcutSettingsCard .editor-shortcut-table thead {
+    display: none;
+  }
+
+  #editorShortcutSettingsCard .editor-shortcut-table tr.editor-shortcut-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .45rem;
+    padding: .6rem;
+    margin-bottom: .7rem;
+    border: 1px solid rgba(148,163,184,.24);
+    border-radius: 14px;
+    background: rgba(255,255,255,.88);
+  }
+
+  #editorShortcutSettingsCard .editor-shortcut-table td {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding: 0;
+  }
+
+  #editorShortcutSettingsCard .editor-shortcut-table td::before {
+    display: block;
+    margin: 0 0 .16rem;
+    color: var(--muted);
+    font-size: .62rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  #editorShortcutSettingsCard .editor-shortcut-table td:nth-child(1)::before { content: 'On'; }
+  #editorShortcutSettingsCard .editor-shortcut-table td:nth-child(2)::before { content: 'Shortcut'; }
+  #editorShortcutSettingsCard .editor-shortcut-table td:nth-child(3)::before { content: 'Action'; }
+  #editorShortcutSettingsCard .editor-shortcut-table td:nth-child(4)::before { content: 'Label'; }
+  #editorShortcutSettingsCard .editor-shortcut-table td:nth-child(5)::before { content: 'Template / environment'; }
+  #editorShortcutSettingsCard .editor-shortcut-table td:nth-child(6)::before { content: 'Remove'; }
+
+  #editorShortcutSettingsCard .editor-shortcut-table td:nth-child(6) .btn {
+    width: 100%;
+  }
+}
+
+/* Stage 18L final override: the shortcut manager lives in the narrow right
+   settings panel, so use a stacked full-width form layout even on wide screens. */
+#editorShortcutSettingsCard .editor-shortcut-table,
+#editorShortcutSettingsCard .editor-shortcut-table thead,
+#editorShortcutSettingsCard .editor-shortcut-table tbody,
+#editorShortcutSettingsCard .editor-shortcut-table tr,
+#editorShortcutSettingsCard .editor-shortcut-table th,
+#editorShortcutSettingsCard .editor-shortcut-table td {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table thead {
+  display: none !important;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table tr.editor-shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .45rem;
+  width: 100%;
+  max-width: 100%;
+  padding: .62rem;
+  margin-bottom: .72rem;
+  border: 1px solid rgba(148,163,184,.24);
+  border-radius: 14px;
+  background: rgba(255,255,255,.9);
+  box-sizing: border-box;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table td {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table td::before {
+  display: block;
+  margin: 0 0 .16rem;
+  color: var(--muted);
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(1)::before { content: 'On'; }
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(2)::before { content: 'Shortcut'; }
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(3)::before { content: 'Action'; }
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(4)::before { content: 'Label'; }
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(5)::before { content: 'Template / environment'; }
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(6)::before { content: 'Remove'; }
+
+#editorShortcutSettingsCard .editor-shortcut-table td:nth-child(6) .btn {
+  width: 100%;
+}
