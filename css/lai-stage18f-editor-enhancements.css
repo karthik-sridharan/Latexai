@@ -154,3 +154,123 @@
     justify-content: flex-start;
   }
 }
+
+/* Latexai Stage 18J: shortcut manager polish */
+.editor-builtins-details {
+  margin: .55rem 0 .7rem;
+  border: 1px solid rgba(148,163,184,.28);
+  border-radius: 12px;
+  background: rgba(248,250,252,.72);
+  padding: .45rem .55rem;
+}
+
+.editor-builtins-details summary {
+  cursor: pointer;
+  font-weight: 750;
+  color: #1f2937;
+}
+
+.editor-shortcut-builtins,
+.editor-shortcut-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 .28rem;
+  font-size: .78rem;
+}
+
+.editor-shortcut-builtins th,
+.editor-shortcut-table th {
+  text-align: left;
+  color: var(--muted);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .25rem .35rem;
+}
+
+.editor-shortcut-builtins td,
+.editor-shortcut-table td {
+  vertical-align: top;
+  background: rgba(255,255,255,.84);
+  border-top: 1px solid rgba(148,163,184,.20);
+  border-bottom: 1px solid rgba(148,163,184,.20);
+  padding: .35rem;
+}
+
+.editor-shortcut-builtins td:first-child,
+.editor-shortcut-table td:first-child {
+  border-left: 1px solid rgba(148,163,184,.20);
+  border-radius: 10px 0 0 10px;
+}
+
+.editor-shortcut-builtins td:last-child,
+.editor-shortcut-table td:last-child {
+  border-right: 1px solid rgba(148,163,184,.20);
+  border-radius: 0 10px 10px 0;
+}
+
+.editor-shortcut-manager {
+  margin-top: .7rem;
+}
+
+.editor-shortcut-manager-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .35rem;
+}
+
+.editor-shortcut-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+}
+
+.editor-shortcut-table {
+  min-width: 720px;
+}
+
+.editor-shortcut-table input,
+.editor-shortcut-table select,
+.editor-shortcut-table textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(148,163,184,.42);
+  border-radius: 8px;
+  background: #fff;
+  padding: .38rem .45rem;
+  font: 12px/1.35 var(--mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+}
+
+.editor-shortcut-table select,
+.editor-shortcut-table .editor-shortcut-label {
+  font-family: inherit;
+}
+
+.editor-shortcut-table textarea.editor-shortcut-template {
+  min-height: 2.65rem;
+  resize: vertical;
+  white-space: pre;
+}
+
+.editor-shortcut-status.warning {
+  color: #92400e;
+  background: rgba(251,191,36,.16);
+  border: 1px solid rgba(251,191,36,.28);
+  border-radius: 10px;
+  padding: .4rem .5rem;
+}
+
+@media (max-width: 980px) {
+  .editor-shortcut-manager-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .editor-shortcut-table {
+    min-width: 640px;
+  }
+}
