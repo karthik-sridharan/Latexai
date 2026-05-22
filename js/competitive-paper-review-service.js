@@ -1,12 +1,12 @@
-/* Latexai Stage 18B CompetitivePaperReviewService
- * Stage: stage18b-competitive-review-url-ranking-roadmap-1
+/* Latexai Stage 18C CompetitivePaperReviewService
+ * Stage: stage18c-competitive-review-web-research-agent-1
  *
  * Competitive paper comparison workflow.
  *
- * Web-search-required version:
- * - competitor URLs are expected to be opened/searched by the selected AI backend;
- * - the workflow refuses to run unless /api/lumina/ai/status reports web search;
- * - no Latexai PDF downloader/extractor is used.
+ * Web-research-agent version:
+ * - competitor URLs are treated as web-research seeds, not PDFs to download/extract;
+ * - the selected AI backend must expose a web_search/open capability;
+ * - Latexai caches structured research profiles only, never raw PDF text.
  */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18b-competitive-review-url-ranking-roadmap-1';
+  const STAGE = 'stage18c-competitive-review-web-research-agent-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -34,7 +34,7 @@
   let lastRankingReport = '';
   let lastComparisonReport = '';
   let lastRoadmapReport = '';
-  const URL_CACHE_KEY = 'latexai:competitive-url-paper-cache:v1';
+  const URL_CACHE_KEY = 'latexai:competitive-web-research-profile-cache:v1';
 
   function State() { return NS.State; }
   function el(id) { return D.getElementById(id); }
@@ -214,7 +214,7 @@
     if (!node) return;
     const labels = {
       urls: '1. URLs',
-      fetch: '2. Fetch/extract',
+      fetch: '2. Web research',
       rank: '3. Rank competitors',
       compare: '4. Compare draft',
       roadmap: '5. Improvement roadmap',
@@ -377,7 +377,8 @@
     const instructions = clean(el('competitiveExtraInstructions')?.value);
 
     return {
-      schema: 'latexai-competitive-paper-review-request-v1',
+      schema: 'latexai-competitive-web-research-review-request-v1',
+      workflow: 'competitive-web-review',
       stage: STAGE,
       generatedAt: new Date().toISOString(),
       activePath: active.path,
@@ -393,11 +394,12 @@
       competitiveRoadmapReport: lastRoadmapReport,
       extraInstructions: instructions,
       requireWebSearch: requireWebSearch(),
+      researchMode: 'web-search-agent-no-pdf-extraction',
       webSearchPolicy: {
         required: true,
         provider: currentAiProvider(),
         model: currentAiModel(),
-        expectation: 'AI backend must use a web_search tool to inspect/search competitor URLs.'
+        expectation: 'AI backend must use web search/open tools to research competitor URLs as source-discovery seeds; do not require PDF web research.'
       },
       draftExcerpt: draftExcerpt(active.text)
     };
@@ -426,6 +428,7 @@
       strengths: Array.isArray(paper?.strengths) ? paper.strengths.map(clean).filter(Boolean) : readLines(paper?.strengths || ''),
       limitations: Array.isArray(paper?.limitations) ? paper.limitations.map(clean).filter(Boolean) : readLines(paper?.limitations || paper?.weaknesses || ''),
       evidence: clean(paper?.evidence || paper?.webSearchEvidence || paper?.sourceEvidence || ''),
+      sourcesConsulted: Array.isArray(paper?.sourcesConsulted) ? paper.sourcesConsulted.map(clean).filter(Boolean) : readLines(paper?.sourcesConsulted || paper?.sourceUrls || paper?.sources || ''),
       accessed: paper?.accessed === true || paper?.webSearchAccessed === true || paper?.accessStatus === 'accessed',
       cached: Boolean(paper?.cached),
       cachedAt: paper?.cachedAt || ''
@@ -446,7 +449,7 @@
         if (papers.length) return papers;
       } catch (_err) {}
     }
-    return wanted.map((url) => normalizePaperSummary({ url, evidence: 'No structured extraction JSON was returned; use the prose evidence in the report output.', accessed: false }, url)).filter(Boolean);
+    return wanted.map((url) => normalizePaperSummary({ url, evidence: 'No structured web-research JSON was returned; use the prose evidence in the report output.', accessed: false }, url)).filter(Boolean);
   }
 
   function summariesMarkdown(papers) {
@@ -464,6 +467,7 @@
         claims.length ? `Main claims: ${claims.map((x) => `- ${x}`).join(' ')}` : '',
         strengths.length ? `Strengths: ${strengths.map((x) => `- ${x}`).join(' ')}` : '',
         paper.evidence ? `Evidence: ${paper.evidence}` : '',
+        paper.sourcesConsulted?.length ? `Sources consulted: ${paper.sourcesConsulted.map((x) => `- ${x}`).join(' ')}` : '',
         paper.cached ? `Cache: reused from ${paper.cachedAt || 'local cache'}` : ''
       ].filter(Boolean).join('\n');
     }).join('\n\n');
@@ -531,58 +535,58 @@
     return { ok: true, capability };
   }
 
-  async function fetchCompetitorPapers() {
+  async function researchCompetitorPapers() {
     const payload = buildPayload();
     const errors = [];
-    if (!payload.competitorUrls.length) errors.push('Add at least one competitor URL to fetch/extract.');
+    if (!payload.competitorUrls.length) errors.push('Add at least one competitor URL to research.');
     if (errors.length) { setStatus(errors.join(' ')); setOutput(errors.join('\n')); return { ok: false, errors }; }
     const ready = await ensureWebSearchReadyForWorkflow();
     if (!ready.ok) return ready;
 
-    updateWorkflowStatus('fetch', 'fetching / extracting competitor paper evidence...');
-    setStatus('Fetching/extracting competitor paper evidence with web-search-capable AI...');
+    updateWorkflowStatus('fetch', 'researching competitor papers with web search...');
+    setStatus('Researching competitor papers with the AI web-search agent...');
 
     const { cached, missing } = mergedSummariesFromCache(payload.competitorUrls);
     if (!missing.length) {
       lastCompetitorSummaries = cached;
-      const report = ['# Competitor paper extraction', '', 'All competitor paper summaries were loaded from local cache.', '', summariesMarkdown(cached)].join('\n');
+      const report = ['# Competitor web research', '', 'All competitor research profiles were loaded from local cache.', '', summariesMarkdown(cached)].join('\n');
       setOutput(report);
-      setStatus(`Loaded ${cached.length} competitor paper summary/summaries from cache.`);
-      updateWorkflowStatus('fetch', `${cached.length} cached summary/summaries ready.`);
+      setStatus(`Loaded ${cached.length} competitor research profile(s) from cache.`);
+      updateWorkflowStatus('fetch', `${cached.length} cached research profile(s) ready.`);
       return { ok: true, papers: cached, cached: true, report };
     }
 
     const instructions = [
-      'Fetch/search/open the competitor paper URLs and extract concise paper metadata.',
-      'Return a short Markdown evidence report.',
-      'Also include exactly one fenced code block labelled latexai_competitor_papers containing JSON:',
-      '{"papers":[{"url":"...","title":"...","authors":["..."],"year":"...","venue":"...","abstract":"...","mainClaims":["..."],"strengths":["..."],"limitations":["..."],"evidence":"what source/snippet supported this","accessed":true}]}',
-      'If a URL cannot be accessed, include it with accessed=false and explain what evidence is missing.'
+      'Use web search/open tools to research each competitor URL as a seed and build concise paper metadata/profiles.',
+      'Return a short Markdown web-research evidence report with sources consulted.',
+      'Also include exactly one fenced code block labelled latexai_competitor_research_profiles containing JSON:',
+      '{"papers":[{"url":"...","title":"...","authors":["..."],"year":"...","venue":"...","abstract":"...","mainClaims":["..."],"strengths":["..."],"limitations":["..."],"sourcesConsulted":["source URL/title consulted"],"evidence":"what web source/snippet supported this","accessed":true}]}',
+      'If a URL or its related public sources cannot be accessed, include it with accessed=false and explain what evidence is missing.'
     ].join('\n');
     const input = [
-      '--- Competitor URLs to fetch/extract ---',
+      '--- Competitor URL seeds to research ---',
       missing.map((url, i) => `${i + 1}. ${url}`).join('\n'),
       '',
       payload.competitorNotes ? `--- User-provided notes/abstracts ---\n${payload.competitorNotes}` : '',
       '',
-      'Use web search/opening tools where available. Do not claim full-paper access unless the evidence supports it.'
+      'Use web search/opening tools where available. Treat URLs as seeds for source discovery; do not claim PDF/full-paper access unless the web evidence supports it.'
     ].filter(Boolean).join('\n');
 
     try {
-      const raw = (await askCompetitiveStep('competitive-url-extraction', instructions, input, 'competitive-ranking', 5000)).trim();
-      const extracted = parsePaperSummariesFromAi(raw, missing);
-      const merged = [...cached, ...extracted];
+      const raw = (await askCompetitiveStep('competitive-web-research', instructions, input, 'competitive-ranking', 5000)).trim();
+      const researched = parsePaperSummariesFromAi(raw, missing);
+      const merged = [...cached, ...researched];
       lastCompetitorSummaries = merged;
-      savePaperSummariesToCache(extracted);
-      const report = [raw || '# Competitor paper extraction', '', '--- Latexai parsed competitor summaries ---', summariesMarkdown(merged)].join('\n');
+      savePaperSummariesToCache(researched);
+      const report = [raw || '# Competitor web research', '', '--- Latexai parsed competitor research profiles ---', summariesMarkdown(merged)].join('\n');
       setOutput(report);
-      setStatus(`Fetched/extracted ${extracted.length} competitor paper summary/summaries; ${cached.length} reused from cache.`);
-      updateWorkflowStatus('fetch', `${merged.length} competitor summary/summaries ready.`);
+      setStatus(`Researched ${researched.length} competitor research profile(s); ${cached.length} reused from cache.`);
+      updateWorkflowStatus('fetch', `${merged.length} competitor research profile(s) ready.`);
       return { ok: true, papers: merged, report, cached: false };
     } catch (err) {
       const message = err?.message || String(err);
-      setStatus(`Competitor paper extraction failed: ${message}`);
-      setOutput(`Competitor paper extraction failed:\n\n${message}`);
+      setStatus(`Competitor web research failed: ${message}`);
+      setOutput(`Competitor web research failed:\n\n${message}`);
       return { ok: false, error: message };
     }
   }
@@ -590,14 +594,14 @@
   async function rankCompetitorPapers() {
     const payload = buildPayload();
     if (!lastCompetitorSummaries.length) {
-      const fetched = await fetchCompetitorPapers();
+      const fetched = await researchCompetitorPapers();
       if (!fetched.ok) return fetched;
     }
     updateWorkflowStatus('rank', 'ranking competitor set...');
     setStatus('Ranking competitor paper set...');
     const instructions = [
       'Rank the competitor papers against each other before considering the user draft.',
-      'Use the extracted evidence, target venue, target audience, and comparison modes.',
+      'Use the web-researched evidence, target venue, target audience, and comparison modes.',
       'Return a Markdown ranking table with #, title, URL, main strength, weakness/risk, and why it is above/below the next paper.',
       'End with a concise JSON block labelled latexai_competitor_ranking with {"ranking":[{"rank":1,"url":"...","title":"...","rationale":"..."}]}.'
     ].join('\n');
@@ -721,20 +725,20 @@
       JSON.stringify(payload, null, 2),
       '',
       '--- Important limitation ---',
-      'You only know competitor content from provided URLs, titles, abstracts, notes, or snippets in the request. Do not pretend that you downloaded/read URLs if no content is provided.'
+      'Use web search/open tools for competitor URLs whenever available. Treat URLs as source-discovery seeds. Do not use or request Latexai PDF extraction, and do not claim full-paper/PDF access unless the searched evidence supports it.'
     ].join('\n');
 
     try {
       const modelDecision = NS.AIProvider?.validateRequestModel?.(
         currentAiProvider(),
         currentAiModel(),
-        { workflow: 'competitive-review-improvement' },
-        { task: 'latex-competitive-paper-review', routeKey: 'competitive-improvement', context: { workflow: 'competitive-paper-review-web-search' } }
+        { workflow: 'competitive-web-review-improvement' },
+        { task: 'latex-competitive-paper-review', routeKey: 'competitive-improvement', context: { workflow: 'competitive-web-review', requireWebSearch: true } }
       );
       if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
 
       const response = await NS.AIProvider.ask({
-        workflow: 'competitive-review-improvement',
+        workflow: 'competitive-web-review-improvement',
         instructions: [
           'Return a structured Markdown competitive review report. Be critical, concrete, and action-oriented.',
           'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
@@ -760,7 +764,8 @@
         task: 'latex-competitive-paper-review',
         routeKey: 'competitive-improvement',
         context: {
-          workflow: 'competitive-paper-review-web-search',
+          workflow: 'competitive-web-review',
+          requireWebSearch: true,
           promptFile: PROMPT_PATH,
           targetVenue: payload.targetVenue,
           comparisonModes: payload.comparisonModes,
@@ -808,7 +813,7 @@
       '',
       ...(payload.competitorUrls.length ? payload.competitorUrls.map((url) => `- ${url}`) : ['- (none provided)']),
       '',
-      '## Extracted competitor summaries',
+      '## Competitor web research profiles',
       '',
       summariesMarkdown(payload.competitorSummaries || lastCompetitorSummaries),
       '',
@@ -1161,7 +1166,7 @@
   function parseJsonCandidates(text) {
     const s = String(text || '');
     const candidates = [];
-    const fenceRe = /```(?:json|latexai_actionable_edits|latexai_competitor_papers|latexai_competitor_ranking)?\s*([\s\S]*?)```/gi;
+    const fenceRe = /```(?:json|latexai_actionable_edits|latexai_competitor_research_profiles|latexai_competitor_ranking)?\s*([\s\S]*?)```/gi;
     let match;
     while ((match = fenceRe.exec(s))) candidates.push(match[1].trim());
     const first = s.indexOf('{');
@@ -1343,12 +1348,12 @@
       '    <h2>Competitive paper review</h2>',
       '  </div>',
       '</div>',
-      '<p class="competitive-review-help">Competitor-driven review workflow: add URLs, fetch/extract evidence with a web-search-capable AI backend, rank competitors, compare the draft, then generate a roadmap with actionable <code>\lai</code> edits.</p>',
+      '<p class="competitive-review-help">Competitor-driven review workflow: add URLs, research competitor papers with a web-search-capable AI backend, rank competitors, compare the draft, then generate a roadmap with actionable <code>\lai</code> edits.</p>',
       '<label class="competitive-web-required"><input id="competitiveRequireWebSearch" type="checkbox" checked disabled /> Require web-search-capable AI for this workflow</label>',
       '<div id="competitiveWebSearchStatus" class="competitive-web-status">Web search not checked yet.</div>',
       '<div id="competitiveWorkflowStatus" class="competitive-workflow-status">',
       '  <div class="competitive-step-row active" data-competitive-step="urls"><span class="competitive-step-label">1. URLs</span><span class="competitive-step-message">Add competitor papers</span></div>',
-      '  <div class="competitive-step-row" data-competitive-step="fetch"><span class="competitive-step-label">2. Fetch/extract</span><span class="competitive-step-message">pending</span></div>',
+      '  <div class="competitive-step-row" data-competitive-step="fetch"><span class="competitive-step-label">2. Web research</span><span class="competitive-step-message">pending</span></div>',
       '  <div class="competitive-step-row" data-competitive-step="rank"><span class="competitive-step-label">3. Rank competitors</span><span class="competitive-step-message">pending</span></div>',
       '  <div class="competitive-step-row" data-competitive-step="compare"><span class="competitive-step-label">4. Compare draft</span><span class="competitive-step-message">pending</span></div>',
       '  <div class="competitive-step-row" data-competitive-step="roadmap"><span class="competitive-step-label">5. Roadmap</span><span class="competitive-step-message">pending</span></div>',
@@ -1359,7 +1364,7 @@
       '  <button id="addCompetitiveUrlBtn" class="btn mini" type="button">+ Add URL</button>',
       '</div>',
       '<label class="field">Competitor paper URLs',
-      '  <textarea id="competitivePaperUrls" rows="4" placeholder="One URL per line. Fetch/extract will use the AI backend web-search/open tools and cache the result."></textarea>',
+      '  <textarea id="competitivePaperUrls" rows="4" placeholder="One URL per line. The AI backend will use web-search/open tools to build cached competitor research profiles; Latexai will not extract PDFs itself."></textarea>',
       '</label>',
       '<label class="field">Competitor notes / abstracts / titles',
       '  <textarea id="competitivePaperNotes" rows="5" placeholder="Optional but useful: paste titles, abstracts, claims, strengths, or notes for the competitor papers."></textarea>',
@@ -1386,7 +1391,7 @@
       '</label>',
       '<div class="competitive-review-actions competitive-step-actions">',
       '  <button id="checkCompetitiveWebSearchBtn" class="btn mini" type="button">Check web search</button>',
-      '  <button id="fetchCompetitivePapersBtn" class="btn mini" type="button">Fetch / extract papers</button>',
+      '  <button id="fetchCompetitivePapersBtn" class="btn mini" type="button">Research competitor papers</button>',
       '  <button id="rankCompetitivePapersBtn" class="btn mini" type="button">Rank competitors</button>',
       '  <button id="compareCompetitiveDraftBtn" class="btn mini" type="button">Compare my draft</button>',
       '  <button id="generateCompetitiveRoadmapBtn" class="btn mini primary" type="button">Generate roadmap</button>',
@@ -1396,7 +1401,7 @@
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18B separates the competitive workflow into URL extraction, competitor ranking, draft comparison, and roadmap generation. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
+      '<div class="settings-note">Stage 18C uses an AI web-research agent: URLs are research seeds, not PDFs to extract. The workflow builds competitor profiles, ranks competitors, compares the draft, and generates a roadmap. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');
@@ -1406,7 +1411,7 @@
     el('addCompetitiveUrlBtn')?.addEventListener('click', appendCompetitorUrlFromInput, true);
     el('competitiveAddUrlInput')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); appendCompetitorUrlFromInput(); } }, true);
     el('checkCompetitiveWebSearchBtn')?.addEventListener('click', checkWebSearchCapability, true);
-    el('fetchCompetitivePapersBtn')?.addEventListener('click', fetchCompetitorPapers, true);
+    el('fetchCompetitivePapersBtn')?.addEventListener('click', researchCompetitorPapers, true);
     el('rankCompetitivePapersBtn')?.addEventListener('click', rankCompetitorPapers, true);
     el('compareCompetitiveDraftBtn')?.addEventListener('click', compareDraftAgainstRankedSet, true);
     el('generateCompetitiveRoadmapBtn')?.addEventListener('click', generateImprovementRoadmap, true);
@@ -1430,7 +1435,7 @@
     validatePayload,
     checkWebSearchCapability,
     requireWebSearch,
-    fetchCompetitorPapers,
+    researchCompetitorPapers,
     rankCompetitorPapers,
     compareDraftAgainstRankedSet,
     generateImprovementRoadmap,
