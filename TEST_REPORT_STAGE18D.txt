@@ -1,0 +1,8 @@
+Stage 18D tests passed.
+
+Commands:
+node --check js/competitive-paper-review-service.js
+node --check js/model-registry-service.js
+node --check js/model-provider-service.js
+node --check js/ai-provider.js
+node tests/stage18d-competitive-review-source-cited-ranking-report.test.cjs
