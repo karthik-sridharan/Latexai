@@ -1,5 +1,5 @@
-/* Latexai Stage 18G EditorEnhancementService
- * Stage: stage18g-editor-stability-single-surface-1
+/* Latexai Stage 18H EditorEnhancementService
+ * Stage: stage18h-editor-direct-surface-stability-1
  *
  * Adds a lightweight Overleaf-like LaTeX source highlighter, smart indentation,
  * built-in LaTeX shortcuts, and an optional compact custom-shortcut editor.
@@ -10,9 +10,10 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18g-editor-stability-single-surface-1';
+  const STAGE = 'stage18h-editor-direct-surface-stability-1';
   const SHORTCUT_KEY = 'latexai:editor-shortcuts:v1';
   const HIGHLIGHT_KEY = 'latexai:editor-syntax-highlight:v1';
+  const EXPERIMENTAL_OVERLAY_KEY = 'latexai:editor-syntax-overlay-experimental:v1';
 
   let editor = null;
   let overlay = null;
@@ -56,8 +57,40 @@
   function lsRemove(key) {
     try { localStorage.removeItem(key); } catch (_err) {}
   }
+  function isSafariLike() {
+    const ua = String(navigator.userAgent || '');
+    const vendor = String(navigator.vendor || '');
+    const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg/i.test(ua);
+    const isIOS = /iPad|iPhone|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return isSafari || isIOS || /Apple/i.test(vendor);
+  }
+
   function isHighlightEnabled() {
-    return lsGet(HIGHLIGHT_KEY, '1') !== '0';
+    // Stage 18H intentionally disables the live textarea-under-overlay highlighter
+    // by default. On Safari/iPad it caused dark-on-dark text, a stale "old editor"
+    // overlay when focus moved to the right panel, and cursor/edit-position drift.
+    // Keep shortcuts/smart indentation stable on the real textarea. Users can opt
+    // into the experimental overlay on non-Safari browsers with the new key below.
+    if (isSafariLike()) return false;
+    return lsGet(EXPERIMENTAL_OVERLAY_KEY, '0') === '1';
+  }
+
+  function enforceDirectEditorSurface() {
+    const ed = D.getElementById('sourceEditor');
+    if (!ed) return false;
+    const shell = ed.closest('.source-shell');
+    ed.classList.remove('latexai-syntax-textarea', 'latexai-syntax-stable-single-surface');
+    ed.style.removeProperty('-webkit-text-fill-color');
+    ed.style.removeProperty('color');
+    ed.style.removeProperty('background');
+    ed.style.removeProperty('caret-color');
+    if (document.activeElement === ed && shell) {
+      const selOverlay = shell.querySelector('.lai-source-selection-overlay');
+      if (selOverlay) selOverlay.classList.add('hidden');
+      shell.classList.remove('lai-source-selection-active');
+      ed.classList.remove('lai-source-selection-hidden-text');
+    }
+    return true;
   }
 
   function escapeHtml(text) {
@@ -155,7 +188,7 @@
     const shell = editor.closest('.source-shell');
     if (!shell) return false;
 
-    shell.classList.add('latexai-enhanced-source-shell');
+    shell.classList.add('latexai-enhanced-source-shell', 'latexai-direct-editor-surface');
     overlay = removeDuplicateSyntaxOverlays(shell) || overlay;
     if (!overlay || !shell.contains(overlay)) {
       overlay = D.createElement('pre');
@@ -167,9 +200,11 @@
     }
 
     const enabled = isHighlightEnabled();
+    enforceDirectEditorSurface();
     editor.classList.toggle('latexai-syntax-textarea', enabled);
     editor.classList.toggle('latexai-syntax-stable-single-surface', enabled);
     overlay.hidden = !enabled;
+    overlay.setAttribute('data-stage18h-enabled', enabled ? '1' : '0');
     if (enabled) {
       renderHighlight({ force: true });
       syncOverlayScroll();
@@ -215,7 +250,7 @@
   function renderHighlight(options = {}) {
     renderTimer = 0;
     renderTimerType = '';
-    if (!editor || !overlay || !isHighlightEnabled()) return;
+    if (!editor || !overlay || !isHighlightEnabled()) { enforceDirectEditorSurface(); return; }
     const value = getEditorValue();
     if (!options.force && value === lastRenderedValue) {
       syncOverlayScroll();
@@ -460,9 +495,9 @@
     card.innerHTML = [
       '<div class="editor-shortcut-card-main">',
       '  <div class="smallcaps">Editor</div>',
-      '  <strong>Syntax color + shortcuts</strong>',
-      '  <p class="editor-shortcut-help">Built in: Cmd/Ctrl+B creates a <code>\\begin{selected}</code> block, Cmd/Ctrl+[ comments selected lines, Cmd/Ctrl+] uncomments one level.</p>',
-      '  <label class="field checkbox-field editor-highlight-toggle"><input id="editorSyntaxHighlightCheck" type="checkbox" /> Colorize LaTeX source</label>',
+      '  <strong>Stable editor shortcuts</strong>',
+      '  <p class="editor-shortcut-help">Built in: Cmd/Ctrl+B creates a <code>\\begin{selected}</code> block, Cmd/Ctrl+[ comments selected lines, Cmd/Ctrl+] uncomments one level. Live syntax overlay is experimental and disabled automatically on Safari/iPad to avoid cursor drift.</p>',
+      '  <label class="field checkbox-field editor-highlight-toggle"><input id="editorSyntaxHighlightCheck" type="checkbox" /> Experimental source color overlay</label>',
       '  <label class="field">Custom shortcuts JSON',
       `    <textarea id="editorShortcutJson" spellcheck="false">${escapeHtml(custom)}</textarea>`,
       '  </label>',
@@ -479,9 +514,15 @@
     const highlightCheck = D.getElementById('editorSyntaxHighlightCheck');
     if (highlightCheck) {
       highlightCheck.checked = isHighlightEnabled();
+      if (isSafariLike()) {
+        highlightCheck.disabled = true;
+        highlightCheck.title = 'Disabled on Safari/iPad because the textarea overlay caused unreadable text and cursor drift.';
+      }
       highlightCheck.addEventListener('change', () => {
+        lsSet(EXPERIMENTAL_OVERLAY_KEY, highlightCheck.checked ? '1' : '0');
         lsSet(HIGHLIGHT_KEY, highlightCheck.checked ? '1' : '0');
         installHighlighter();
+        enforceDirectEditorSurface();
       });
     }
 
@@ -535,8 +576,11 @@
     if (!editor) return false;
     initialized = true;
     installHighlighter();
-    editor.addEventListener('beforeinput', scheduleHighlightAfterEditorMutation);
-    editor.addEventListener('input', scheduleHighlightAfterEditorMutation);
+    editor.addEventListener('pointerdown', () => setTimeout(enforceDirectEditorSurface, 0), true);
+    editor.addEventListener('mousedown', () => setTimeout(enforceDirectEditorSurface, 0), true);
+    editor.addEventListener('touchstart', () => setTimeout(enforceDirectEditorSurface, 0), true);
+    editor.addEventListener('beforeinput', () => { enforceDirectEditorSurface(); scheduleHighlightAfterEditorMutation(); });
+    editor.addEventListener('input', () => { enforceDirectEditorSurface(); scheduleHighlightAfterEditorMutation(); });
     editor.addEventListener('paste', scheduleHighlightAfterEditorMutation);
     editor.addEventListener('cut', scheduleHighlightAfterEditorMutation);
     editor.addEventListener('compositionstart', () => { compositionActive = true; });
@@ -544,8 +588,8 @@
     editor.addEventListener('scroll', syncOverlayScroll, { passive: true });
     editor.addEventListener('keydown', handleKeydown, true);
     editor.addEventListener('keyup', scheduleHighlightAfterEditorMutation);
-    editor.addEventListener('focus', () => scheduleHighlight({ force: true, immediate: true }));
-    editor.addEventListener('blur', () => scheduleHighlight({ force: true, immediate: true }));
+    editor.addEventListener('focus', () => { enforceDirectEditorSurface(); scheduleHighlight({ force: true, immediate: true }); });
+    editor.addEventListener('blur', () => { enforceDirectEditorSurface(); scheduleHighlight({ force: true, immediate: true }); });
     D.addEventListener('visibilitychange', () => scheduleHighlight({ force: true, immediate: true }));
     bindStateSync();
     // Some modules update textarea.value directly and then emit input or a state change.
@@ -582,6 +626,8 @@
     uncommentSelection,
     insertEnvironmentFromSelection,
     installHighlighter,
+    enforceDirectEditorSurface,
+    isSafariLike,
     scheduleHighlight,
     renderHighlight
   };
