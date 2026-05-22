@@ -1,0 +1,8 @@
+Stage: stage17x-compile-log-diagnostics-surfacing-1
+
+Passed:
+- node --check js/compiler-provider.js
+- node --check js/compiler-provider-preload.js
+- node --check js/preview.js
+- node --check js/diagnostics.js
+- node tests/stage17x-compile-log-diagnostics-surfacing.test.cjs
