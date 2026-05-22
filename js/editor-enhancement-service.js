@@ -1,5 +1,5 @@
-/* Latexai Stage 18F EditorEnhancementService
- * Stage: stage18f-editor-syntax-shortcuts-recovery-token-1
+/* Latexai Stage 18G EditorEnhancementService
+ * Stage: stage18g-editor-stability-single-surface-1
  *
  * Adds a lightweight Overleaf-like LaTeX source highlighter, smart indentation,
  * built-in LaTeX shortcuts, and an optional compact custom-shortcut editor.
@@ -10,14 +10,18 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18f-editor-syntax-shortcuts-recovery-token-1';
+  const STAGE = 'stage18g-editor-stability-single-surface-1';
   const SHORTCUT_KEY = 'latexai:editor-shortcuts:v1';
   const HIGHLIGHT_KEY = 'latexai:editor-syntax-highlight:v1';
 
   let editor = null;
   let overlay = null;
   let renderTimer = 0;
+  let renderTimerType = '';
   let initialized = false;
+  let stateSyncBound = false;
+  let lastRenderedValue = null;
+  let compositionActive = false;
 
   const DEFAULT_SHORTCUTS = [
     {
@@ -135,6 +139,16 @@
     return out.join('\n');
   }
 
+  function removeDuplicateSyntaxOverlays(shell) {
+    const overlays = Array.from(shell.querySelectorAll('#latexSyntaxOverlay'));
+    overlays.slice(1).forEach((item) => item.remove());
+    return overlays[0] || null;
+  }
+
+  function getEditorValue() {
+    return String(editor?.value ?? '');
+  }
+
   function installHighlighter() {
     editor = D.getElementById('sourceEditor');
     if (!editor) return false;
@@ -142,17 +156,27 @@
     if (!shell) return false;
 
     shell.classList.add('latexai-enhanced-source-shell');
-    editor.classList.toggle('latexai-syntax-textarea', isHighlightEnabled());
-    if (!overlay) {
+    overlay = removeDuplicateSyntaxOverlays(shell) || overlay;
+    if (!overlay || !shell.contains(overlay)) {
       overlay = D.createElement('pre');
       overlay.id = 'latexSyntaxOverlay';
       overlay.className = 'latex-syntax-overlay';
       overlay.setAttribute('aria-hidden', 'true');
       shell.insertBefore(overlay, editor);
+      lastRenderedValue = null;
     }
-    overlay.hidden = !isHighlightEnabled();
-    scheduleHighlight();
-    syncOverlayScroll();
+
+    const enabled = isHighlightEnabled();
+    editor.classList.toggle('latexai-syntax-textarea', enabled);
+    editor.classList.toggle('latexai-syntax-stable-single-surface', enabled);
+    overlay.hidden = !enabled;
+    if (enabled) {
+      renderHighlight({ force: true });
+      syncOverlayScroll();
+    } else {
+      overlay.textContent = '';
+      lastRenderedValue = null;
+    }
     return true;
   }
 
@@ -162,16 +186,69 @@
     overlay.scrollLeft = editor.scrollLeft;
   }
 
-  function scheduleHighlight() {
-    if (!editor || !overlay || !isHighlightEnabled()) return;
-    W.cancelAnimationFrame?.(renderTimer);
-    renderTimer = W.requestAnimationFrame ? W.requestAnimationFrame(renderHighlight) : setTimeout(renderHighlight, 16);
+  function cancelPendingRender() {
+    if (!renderTimer) return;
+    if (renderTimerType === 'raf' && W.cancelAnimationFrame) W.cancelAnimationFrame(renderTimer);
+    else clearTimeout(renderTimer);
+    renderTimer = 0;
+    renderTimerType = '';
   }
 
-  function renderHighlight() {
+  function scheduleHighlight(options = {}) {
     if (!editor || !overlay || !isHighlightEnabled()) return;
-    overlay.innerHTML = renderHighlightedHtml(editor.value || '');
+    if (options.immediate) {
+      cancelPendingRender();
+      renderHighlight(options);
+      return;
+    }
+    cancelPendingRender();
+    const delay = compositionActive ? 80 : 0;
+    if (!delay && W.requestAnimationFrame) {
+      renderTimerType = 'raf';
+      renderTimer = W.requestAnimationFrame(() => renderHighlight(options));
+    } else {
+      renderTimerType = 'timeout';
+      renderTimer = setTimeout(() => renderHighlight(options), delay || 16);
+    }
+  }
+
+  function renderHighlight(options = {}) {
+    renderTimer = 0;
+    renderTimerType = '';
+    if (!editor || !overlay || !isHighlightEnabled()) return;
+    const value = getEditorValue();
+    if (!options.force && value === lastRenderedValue) {
+      syncOverlayScroll();
+      return;
+    }
+    // Keep the old overlay DOM visible until the new highlighted HTML is ready.
+    // This prevents the editor from flashing back to a plain textarea while typing.
+    const html = renderHighlightedHtml(value || '');
+    overlay.innerHTML = html;
+    lastRenderedValue = value;
     syncOverlayScroll();
+  }
+
+  function scheduleHighlightAfterEditorMutation() {
+    scheduleHighlight({ immediate: false });
+  }
+
+  function bindStateSync() {
+    if (stateSyncBound) return;
+    const state = NS.State;
+    if (!state || typeof state.subscribe !== 'function') return;
+    stateSyncBound = true;
+    try {
+      state.subscribe((_snapshot, reason) => {
+        if (['load', 'reset', 'active-file', 'file-create', 'file-remove', 'file-rename', 'file-import-overwrite', 'file-change'].includes(reason)) {
+          setTimeout(() => {
+            editor = D.getElementById('sourceEditor') || editor;
+            installHighlighter();
+            scheduleHighlight({ force: true, immediate: true });
+          }, reason === 'file-change' ? 0 : 30);
+        }
+      });
+    } catch (_err) {}
   }
 
   function normalizeKeyName(key) {
@@ -248,7 +325,7 @@
     editor.focus();
     try { editor.setSelectionRange(selectStart, selectEnd); } catch (_err) {}
     editor.dispatchEvent(new Event('input', { bubbles: true }));
-    scheduleHighlight();
+    scheduleHighlight({ force: true, immediate: true });
   }
 
   function envNameFromSelection(sel) {
@@ -458,11 +535,22 @@
     if (!editor) return false;
     initialized = true;
     installHighlighter();
-    editor.addEventListener('input', scheduleHighlight);
+    editor.addEventListener('beforeinput', scheduleHighlightAfterEditorMutation);
+    editor.addEventListener('input', scheduleHighlightAfterEditorMutation);
+    editor.addEventListener('paste', scheduleHighlightAfterEditorMutation);
+    editor.addEventListener('cut', scheduleHighlightAfterEditorMutation);
+    editor.addEventListener('compositionstart', () => { compositionActive = true; });
+    editor.addEventListener('compositionend', () => { compositionActive = false; scheduleHighlight({ force: true, immediate: true }); });
     editor.addEventListener('scroll', syncOverlayScroll, { passive: true });
     editor.addEventListener('keydown', handleKeydown, true);
-    editor.addEventListener('keyup', scheduleHighlight);
-    D.addEventListener('visibilitychange', scheduleHighlight);
+    editor.addEventListener('keyup', scheduleHighlightAfterEditorMutation);
+    editor.addEventListener('focus', () => scheduleHighlight({ force: true, immediate: true }));
+    editor.addEventListener('blur', () => scheduleHighlight({ force: true, immediate: true }));
+    D.addEventListener('visibilitychange', () => scheduleHighlight({ force: true, immediate: true }));
+    bindStateSync();
+    // Some modules update textarea.value directly and then emit input or a state change.
+    // A short startup sweep keeps the passive color layer synchronized without remounting the editor.
+    [50, 250, 750, 1500].forEach((ms) => setTimeout(() => scheduleHighlight({ force: true, immediate: true }), ms));
     renderSettingsCard();
     try { console.log('[Latexai]', STAGE, 'ready'); } catch (_err) {}
     return true;
@@ -492,6 +580,9 @@
     applyShortcut,
     commentSelection,
     uncommentSelection,
-    insertEnvironmentFromSelection
+    insertEnvironmentFromSelection,
+    installHighlighter,
+    scheduleHighlight,
+    renderHighlight
   };
 })();
