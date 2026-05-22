@@ -1,5 +1,5 @@
-/* Latexai Stage 18E CompetitivePaperReviewService
- * Stage: stage18e-competitive-review-evidence-ui-cache-controls-1
+/* Latexai Stage 18M CompetitivePaperReviewService
+ * Stage: stage18m-competitive-review-ranking-to-lai-edit-impact-map-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18e-competitive-review-evidence-ui-cache-controls-1';
+  const STAGE = 'stage18m-competitive-review-ranking-to-lai-edit-impact-map-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -36,6 +36,7 @@
   let lastRoadmapReport = '';
   let lastSourceLedger = [];
   let lastEvidenceCoverage = null;
+  let lastEditImpactMap = [];
   const URL_CACHE_KEY = 'latexai:competitive-web-research-profile-cache:v3';
   const LEGACY_URL_CACHE_KEYS = ['latexai:competitive-web-research-profile-cache:v2', 'latexai:competitive-web-research-profile-cache:v1'];
 
@@ -430,6 +431,7 @@
     const rows = parseRankingEntries(lastRankingReport);
     if (!rows.length) {
       node.innerHTML = '<div class="competitive-ranking-empty">Ranking table will appear here after <strong>Rank competitors</strong>.</div>';
+      renderEditImpactMap();
       return;
     }
     node.innerHTML = [
@@ -447,6 +449,137 @@
         '</tr>'
       ].join('')),
       '</tbody></table></div>'
+    ].join('');
+    renderEditImpactMap();
+  }
+
+  function splitValueList(value) {
+    if (Array.isArray(value)) return value.map(clean).filter(Boolean);
+    if (value && typeof value === 'object') return Object.values(value).flatMap(splitValueList).map(clean).filter(Boolean);
+    return String(value || '')
+      .split(/\r?\n|[,;]+/)
+      .map((x) => clean(x.replace(/^[-*•]\s*/, '')))
+      .filter(Boolean);
+  }
+
+  function sourceIdsFromAny(value) {
+    const out = [];
+    const push = (v) => {
+      const ids = String(v || '').match(/\bS\d+\b/gi) || [];
+      ids.forEach((id) => out.push(id.toUpperCase()));
+    };
+    if (Array.isArray(value)) value.forEach(push);
+    else if (value && typeof value === 'object') Object.values(value).forEach((v) => Array.isArray(v) ? v.forEach(push) : push(v));
+    else push(value);
+    return Array.from(new Set(out));
+  }
+
+  function normalizeRankingEffect(effect, edit = {}, index = 0) {
+    const e = effect && typeof effect === 'object' ? effect : { expectedImpact: String(effect || '') };
+    const before = clean(e.before || e.currentPosition || e.currentRank || e.rankBefore || edit.currentPosition || '');
+    const after = clean(e.after || e.projectedPosition || e.expectedPosition || e.rankAfter || edit.expectedPosition || '');
+    const expectedImpact = clean(e.expectedImpact || e.impact || e.rankingEffect || e.effect || (before || after ? `${before || '?'} → ${after || '?'}` : ''));
+    const competitors = splitValueList(e.competitors || e.addressesCompetitors || e.competitorGaps || e.against || edit.addressesCompetitors || edit.competitors);
+    const gap = clean(e.gap || e.competitiveGap || e.addressesGap || edit.gap || edit.reason || '');
+    const sourceIds = sourceIdsFromAny(e.sourceIds || e.evidence || e.evidenceIds || e.sources || edit.sourceIds || edit.evidence || edit.rankingEffect || expectedImpact);
+    const evidence = clean(e.evidence || e.evidenceSummary || e.sourceEvidence || '');
+    const insertionMode = clean(e.insertionMode || e.insertMode || edit.insertionMode || '') || (edit.mode === 'replace' ? 'inline \\laiold/\\lai' : 'inline \\lai insert');
+    return {
+      editIndex: index + 1,
+      competitors,
+      gap,
+      sourceIds,
+      evidence,
+      before,
+      after,
+      expectedImpact,
+      insertionMode
+    };
+  }
+
+  function insertionReadiness(edit) {
+    const path = normalizePath(edit?.path || activePath());
+    const file = getFile(path);
+    if (!file) return { label: 'file missing', ok: false, path };
+    const text = fileText(file);
+    const anchor = String(edit?.oldText || '');
+    if (!anchor.trim()) return { label: 'append/manual only', ok: false, path };
+    const at = text.indexOf(anchor);
+    if (at < 0) return { label: 'anchor not found; append/manual fallback', ok: false, path };
+    const issue = unsafeInsertionLocationReason(text, at);
+    if (issue) return { label: issue, ok: false, path };
+    return { label: edit.mode === 'replace' ? 'inline exact match' : 'inline anchor match', ok: true, path };
+  }
+
+  function buildEditImpactMap(report = lastReport) {
+    const parsed = extractActionableEdits(report || '');
+    const rows = (parsed.edits || []).map((edit, index) => {
+      const effect = normalizeRankingEffect(edit.rankingEffect || edit.impact || edit.rankImpact || edit.expectedRankingEffect || edit, edit, index);
+      const ready = insertionReadiness(edit);
+      return {
+        index: index + 1,
+        title: clean(edit.title || edit.label || edit.targetHint || `Edit ${index + 1}`),
+        targetHint: clean(edit.targetHint || ''),
+        path: normalizePath(edit.path || activePath()),
+        mode: edit.mode,
+        confidence: edit.confidence,
+        readiness: ready,
+        rankingEffect: effect,
+        sourceIds: Array.from(new Set([...(effect.sourceIds || []), ...sourceIdsFromAny(edit.sourceIds || edit.evidence || '')]))
+      };
+    });
+    lastEditImpactMap = rows;
+    return rows;
+  }
+
+  function editImpactMarkdown(rows = lastEditImpactMap) {
+    const list = rows && rows.length ? rows : buildEditImpactMap(lastReport);
+    if (!list.length) return '(no actionable edit impact map available yet)';
+    return list.map((row) => {
+      const effect = row.rankingEffect || {};
+      return [
+        `### Edit ${row.index}: ${row.title || row.targetHint || 'Untitled edit'}`,
+        `Target: ${row.path}${row.targetHint ? ` — ${row.targetHint}` : ''}`,
+        effect.competitors?.length ? `Addresses gap with: ${effect.competitors.join(', ')}` : '',
+        effect.gap ? `Gap addressed: ${effect.gap}` : '',
+        (row.sourceIds?.length || effect.sourceIds?.length) ? `Evidence: ${(row.sourceIds?.length ? row.sourceIds : effect.sourceIds).join(', ')}` : 'Evidence: not specified',
+        effect.expectedImpact ? `Expected ranking effect: ${effect.expectedImpact}` : (effect.before || effect.after ? `Expected ranking effect: ${effect.before || '?'} → ${effect.after || '?'}` : 'Expected ranking effect: not specified'),
+        `Insertion: ${effect.insertionMode || row.mode || 'not specified'}; readiness=${row.readiness?.label || 'unknown'}`
+      ].filter(Boolean).join('\n');
+    }).join('\n\n');
+  }
+
+  function renderEditImpactMap() {
+    const node = el('competitiveEditImpactMap');
+    if (!node) return;
+    const rows = buildEditImpactMap(lastReport);
+    if (!rows.length) {
+      node.innerHTML = '<div class="competitive-impact-empty">Edit impact map will appear after <strong>Generate source-cited roadmap</strong> or <strong>Run full cited review</strong>. Each row will connect a proposed <code>\\lai</code> edit to competitor gaps, evidence IDs, and expected rank movement.</div>';
+      return;
+    }
+    node.innerHTML = [
+      '<div class="competitive-ui-title">Edit impact map</div>',
+      '<div class="competitive-impact-list">',
+      ...rows.map((row) => {
+        const effect = row.rankingEffect || {};
+        const evidence = row.sourceIds?.length ? row.sourceIds : (effect.sourceIds || []);
+        const impact = effect.expectedImpact || (effect.before || effect.after ? `${effect.before || '?'} → ${effect.after || '?'}` : 'Not specified');
+        return [
+          '<article class="competitive-impact-card">',
+          '<div class="competitive-impact-head">',
+          `<strong>Edit ${escapeHtml(row.index)}: ${escapeHtml(row.title || row.targetHint || 'Untitled edit')}</strong>`,
+          `<span class="competitive-impact-badge ${row.readiness?.ok ? 'good' : 'weak'}">${escapeHtml(row.readiness?.ok ? 'inline ready' : 'needs fallback')}</span>`,
+          '</div>',
+          `<div class="competitive-impact-meta"><b>Target:</b> ${escapeHtml(row.path)}${row.targetHint ? ` · ${escapeHtml(row.targetHint)}` : ''}</div>`,
+          effect.competitors?.length ? `<div class="competitive-impact-meta"><b>Addresses gap with:</b> ${escapeHtml(effect.competitors.join(', '))}</div>` : '',
+          effect.gap ? `<div class="competitive-impact-meta"><b>Gap:</b> ${escapeHtml(effect.gap)}</div>` : '',
+          `<div class="competitive-impact-meta"><b>Evidence:</b> ${escapeHtml(evidence.join(', ') || 'not specified')}</div>`,
+          `<div class="competitive-impact-meta"><b>Expected effect:</b> ${escapeHtml(impact)}</div>`,
+          `<div class="competitive-impact-meta"><b>Insertion:</b> ${escapeHtml(effect.insertionMode || row.mode || 'not specified')} · ${escapeHtml(row.readiness?.label || 'unknown')}</div>`,
+          '</article>'
+        ].join('');
+      }),
+      '</div>'
     ].join('');
   }
 
@@ -512,7 +645,9 @@
     lastRankingReport = '';
     lastComparisonReport = '';
     lastRoadmapReport = '';
+    lastEditImpactMap = [];
     refreshEvidenceState([]);
+    renderEditImpactMap();
     setStatus('Cleared current competitor research cache; rerunning web research...');
     return researchCompetitorPapers();
   }
@@ -1116,8 +1251,8 @@
           'Include an Evidence-cited ranking table with source IDs, an evidence coverage summary, and a sources consulted ledger.',
           'Every substantive competitor claim must cite source IDs like [S1] when source evidence is available; if not, mark it as weak/uncited.',
           'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
-          'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
-          'For every edit, include a rankingEffect explaining which competitor gap the edit addresses. For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
+          'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0,\"rankingEffect\":{\"competitors\":[\"#1 Paper A\"],\"gap\":\"which competitor weakness this edit addresses\",\"sourceIds\":[\"S1\"],\"before\":\"draft estimated #4 of 5\",\"after\":\"likely #3 of 5 after this edit\",\"expectedImpact\":\"one-sentence ranking movement rationale\",\"insertionMode\":\"inline \\laiold/\\lai or append \\lai plan\"}}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
+          'For every edit, include a rankingEffect object with competitors, gap, sourceIds, before, after, expectedImpact, and insertionMode. This is used to render the Latexai Edit impact map. For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
           'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
           'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
         ].join('\n'),
@@ -1149,6 +1284,8 @@
 
       const raw = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
       lastReport = raw.trim();
+      buildEditImpactMap(lastReport);
+      renderEditImpactMap();
       setOutput(lastReport || '(AI returned empty report.)');
       setStatus(lastReport ? 'Competitive review complete.' : 'Competitive review returned an empty report.');
       return { ok: Boolean(lastReport), report: lastReport, payload };
@@ -1206,6 +1343,10 @@
       '## Draft comparison prepass',
       '',
       payload.draftComparisonReport || lastComparisonReport || '(not run separately)',
+      '',
+      '## Edit impact map',
+      '',
+      editImpactMarkdown(buildEditImpactMap(lastReport)),
       '',
       '## Report',
       '',
@@ -1568,7 +1709,10 @@
     if (!newText.trim()) return null;
     if (mode === 'replace' && !oldText.trim()) return null;
     if (mode !== 'replace' && !oldText.trim()) return null;
-    return { mode, path, oldText, newText, targetHint, confidence: Number.isFinite(confidence) ? confidence : null };
+    const rankingEffect = normalizeRankingEffect(edit?.rankingEffect || edit?.rankImpact || edit?.impact || edit?.expectedRankingEffect || '', edit || {}, index);
+    const sourceIds = Array.from(new Set([...(rankingEffect.sourceIds || []), ...sourceIdsFromAny(edit?.sourceIds || edit?.evidence || edit?.evidenceIds || '')]));
+    const title = String(edit?.title || edit?.label || '');
+    return { mode, path, oldText, newText, targetHint, confidence: Number.isFinite(confidence) ? confidence : null, rankingEffect, sourceIds, title }; 
   }
 
   function extractActionableEdits(text) {
@@ -1600,11 +1744,14 @@
     if (!prepared.ok) return prepared;
     const header = workflowBlockHeader(id, edit.path, `mode=${edit.mode}`);
     const hint = edit.targetHint ? `% LAI target: ${latexCommentText(edit.targetHint)}` : '';
+    const impact = edit.rankingEffect?.expectedImpact || edit.rankingEffect?.gap || '';
+    const impactLine = impact ? `% LAI ranking impact: ${latexCommentText(impact)}` : '';
+    const evidenceLine = edit.sourceIds?.length ? `% LAI evidence: ${latexCommentText(edit.sourceIds.join(', '))}` : '';
     const footer = workflowBlockFooter(id);
     if (edit.mode === 'replace') {
-      return { ok: true, reason: '', text: [header, hint, '\\laiold{', oldText, '}', '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
+      return { ok: true, reason: '', text: [header, hint, impactLine, evidenceLine, '\\laiold{', oldText, '}', '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
     }
-    return { ok: true, reason: '', text: [header, hint, '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
+    return { ok: true, reason: '', text: [header, hint, impactLine, evidenceLine, '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
   }
 
   function insertActionableEditsAtMatches() {
@@ -1659,6 +1806,8 @@
 
     const modifiedPaths = [...queued.keys()];
     refreshPaperAiReview(modifiedPaths, 'Competitive Review');
+    updateWorkflowStatus('insert', `inserted ${applied}; skipped ${skipped}.`);
+    renderEditImpactMap();
     setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}. Paper-level edit review refreshed.`);
     setOutput([lastReport, '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
     return { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()] };
@@ -1679,6 +1828,8 @@
     const next = insertBeforeEndDocument(active.text, insertion);
     updateProjectSource(active.path, next);
     refreshPaperAiReview([active.path], 'Competitive Review');
+    updateWorkflowStatus('insert', `appended visible \\lai plan to ${active.path}.`);
+    renderEditImpactMap();
     setStatus(`Appended competitive improvement plan as visible \\lai markup to ${active.path}. Paper-level edit review refreshed.`);
     return { ok: true, path: active.path, mode: 'append-lai-plan' };
   }
@@ -1730,7 +1881,7 @@
       '    <h2>Competitive paper review</h2>',
       '  </div>',
       '</div>',
-      '<p class="competitive-review-help">Competitor-driven review workflow: add URLs, research competitor papers with a web-search-capable AI backend, rank competitors, compare the draft, then generate a roadmap with actionable <code>\lai</code> edits.</p>',
+      '<p class="competitive-review-help">Competitor-driven review workflow: add URLs, research competitor papers with a web-search-capable AI backend, rank competitors, compare the draft, then generate a roadmap with actionable <code>\\lai</code> edits.</p>',
       '<label class="competitive-web-required"><input id="competitiveRequireWebSearch" type="checkbox" checked disabled /> Require web-search-capable AI for this workflow</label>',
       '<div id="competitiveWebSearchStatus" class="competitive-web-status">Web search not checked yet.</div>',
       '<div id="competitiveWorkflowStatus" class="competitive-workflow-status">',
@@ -1744,6 +1895,7 @@
       '<div id="competitiveEvidenceStatus" class="competitive-web-status">Evidence ledger not built yet. Research competitors to generate source IDs.</div>',
       '<div id="competitiveEvidenceDashboard" class="competitive-evidence-dashboard"><div class="competitive-evidence-empty">No competitor research profiles yet.</div></div>',
       '<div id="competitiveRankingPreview" class="competitive-ranking-preview"><div class="competitive-ranking-empty">Ranking table will appear here after <strong>Rank competitors</strong>.</div></div>',
+      '<div id="competitiveEditImpactMap" class="competitive-edit-impact-map"><div class="competitive-impact-empty">Edit impact map will appear after <strong>Generate source-cited roadmap</strong>.</div></div>',
       '<div class="competitive-url-add-row">',
       '  <input id="competitiveAddUrlInput" type="url" placeholder="Paste competitor paper URL" />',
       '  <button id="addCompetitiveUrlBtn" class="btn mini" type="button">+ Add URL</button>',
@@ -1788,7 +1940,7 @@
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18E uses a source-cited AI web-research agent: URLs are research seeds, not PDFs to extract. The UI now shows competitor evidence cards, cache hit/miss status, source IDs, rerun controls, and a compact ranking preview. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
+      '<div class="settings-note">Stage 18M uses a source-cited AI web-research agent and adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');
@@ -1812,6 +1964,7 @@
     el('insertCompetitiveRoadmapBtn')?.addEventListener('click', appendLaiImprovementPlan, true);
 
     renderEvidenceDashboard();
+    renderEditImpactMap();
     return true;
   }
 
@@ -1843,10 +1996,14 @@
     getLastComparisonReport: () => lastComparisonReport,
     getLastSourceLedger: () => lastSourceLedger,
     getLastEvidenceCoverage: () => lastEvidenceCoverage,
+    getLastEditImpactMap: () => lastEditImpactMap,
     sourcesMarkdown,
     evidenceCoverageMarkdown,
     renderEvidenceDashboard,
     renderRankingPreview,
+    renderEditImpactMap,
+    buildEditImpactMap,
+    editImpactMarkdown,
     parseRankingEntries,
     clearResearchCacheForCurrentUrls,
     rerunAllCompetitorResearch
