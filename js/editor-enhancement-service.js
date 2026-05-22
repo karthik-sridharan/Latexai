@@ -1,5 +1,5 @@
-/* Latexai Stage 18H EditorEnhancementService
- * Stage: stage18h-editor-direct-surface-stability-1
+/* Latexai Stage 18J EditorEnhancementService
+ * Stage: stage18j-editor-shortcut-manager-polish-1
  *
  * Adds a lightweight Overleaf-like LaTeX source highlighter, smart indentation,
  * built-in LaTeX shortcuts, and an optional compact custom-shortcut editor.
@@ -10,7 +10,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18h-editor-direct-surface-stability-1';
+  const STAGE = 'stage18j-editor-shortcut-manager-polish-1';
   const SHORTCUT_KEY = 'latexai:editor-shortcuts:v1';
   const HIGHLIGHT_KEY = 'latexai:editor-syntax-highlight:v1';
   const EXPERIMENTAL_OVERLAY_KEY = 'latexai:editor-syntax-overlay-experimental:v1';
@@ -315,6 +315,41 @@
       .join('+');
   }
 
+  const SHORTCUT_EXAMPLES = [
+    {
+      id: 'custom-bold-text',
+      key: 'mod+shift+t',
+      label: 'Bold text',
+      mode: 'template',
+      template: '\\textbf{ {{selection}} }'
+    },
+    {
+      id: 'custom-emphasis',
+      key: 'mod+shift+i',
+      label: 'Emphasize text',
+      mode: 'template',
+      template: '\\emph{ {{selection}} }'
+    },
+    {
+      id: 'custom-inline-math',
+      key: 'mod+shift+m',
+      label: 'Inline math',
+      mode: 'template',
+      template: '${{selection}}$'
+    },
+    {
+      id: 'custom-equation',
+      key: 'mod+shift+e',
+      label: 'Equation block',
+      mode: 'template',
+      template: '\\begin{equation}\n{{selection}}{{cursor}}\n\\end{equation}'
+    }
+  ];
+
+  const RISKY_SHORTCUTS = new Set([
+    'mod+s', 'mod+r', 'mod+shift+r', 'mod+w', 'mod+q', 'mod+t', 'mod+n', 'mod+l', 'mod+p', 'mod+f', 'mod+g', 'mod+shift+g'
+  ]);
+
   function safeParseShortcuts(raw) {
     const text = String(raw || '').trim();
     if (!text) return [];
@@ -331,7 +366,71 @@
   }
 
   function allShortcuts() {
-    return DEFAULT_SHORTCUTS.concat(loadCustomShortcuts()).map((item) => Object.assign({}, item, { key: normalizeShortcut(item.key) }));
+    return DEFAULT_SHORTCUTS
+      .concat(loadCustomShortcuts().filter((item) => item && item.enabled !== false))
+      .map((item) => Object.assign({}, item, { key: normalizeShortcut(item.key) }));
+  }
+
+  function shortcutToManagerRow(item) {
+    const row = Object.assign({}, item || {});
+    row.key = normalizeShortcut(row.key || '');
+    row.enabled = row.enabled !== false;
+    if (row.mode === 'environment' || row.mode === 'environmentFromSelection') {
+      row.action = 'environment';
+      row.value = row.environment || '';
+    } else if (row.mode === 'insert') {
+      row.action = 'insert';
+      row.value = row.text || '';
+    } else if (row.mode === 'wrap') {
+      row.action = 'template';
+      row.value = String(row.before ?? '') + '{{selection}}' + String(row.after ?? '');
+    } else {
+      row.action = 'template';
+      row.value = row.template || '{{selection}}';
+    }
+    row.label = row.label || '';
+    return row;
+  }
+
+  function managerRowToShortcut(row) {
+    const key = normalizeShortcut(row.key || '');
+    const action = row.action || 'template';
+    const value = String(row.value ?? '');
+    const label = String(row.label || '').trim();
+    const base = {
+      id: row.id || `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      key,
+      label: label || (action === 'environment' ? `Environment: ${value || 'theorem'}` : 'Custom shortcut'),
+      enabled: row.enabled !== false
+    };
+    if (!key) return null;
+    if (action === 'environment') return Object.assign(base, { mode: 'environment', environment: value.trim() || 'theorem' });
+    if (action === 'insert') return Object.assign(base, { mode: 'insert', text: value });
+    return Object.assign(base, { mode: 'template', template: value || '{{selection}}' });
+  }
+
+  function collectShortcutWarnings(customShortcuts) {
+    const warnings = [];
+    const seen = new Map();
+    const builtIn = new Set(DEFAULT_SHORTCUTS.map((item) => normalizeShortcut(item.key)));
+    for (const item of customShortcuts || []) {
+      const key = normalizeShortcut(item && item.key);
+      if (!key) continue;
+      if (RISKY_SHORTCUTS.has(key)) warnings.push(`${key} conflicts with a common browser/app shortcut.`);
+      if (builtIn.has(key)) warnings.push(`${key} conflicts with a built-in Latexai editor shortcut.`);
+      if (seen.has(key)) warnings.push(`${key} is assigned more than once.`);
+      seen.set(key, true);
+    }
+    return Array.from(new Set(warnings));
+  }
+
+  function shortcutDisplay(key) {
+    return String(key || '')
+      .replace(/^mod\+/, 'Cmd/Ctrl+')
+      .replace(/\+shift\+/g, '+Shift+')
+      .replace(/\+alt\+/g, '+Alt+')
+      .replace(/\[/g, '[')
+      .replace(/\]/g, ']');
   }
 
   function currentLineRange(el) {
@@ -426,6 +525,30 @@
     return true;
   }
 
+  function applyTemplate(binding) {
+    if (!editor || editor.readOnly) return false;
+    const text = editor.value || '';
+    const start = Number(editor.selectionStart || 0);
+    const end = Number(editor.selectionEnd || start);
+    const selected = text.slice(start, end);
+    const marker = '\uE000';
+    let template = String(binding.template ?? '{{selection}}');
+    let rendered;
+    if (!selected && template.includes('{{selection}}')) {
+      rendered = template.replace('{{selection}}', marker).replace(/\{\{selection\}\}/g, '');
+    } else {
+      rendered = template.replace(/\{\{selection\}\}/g, selected);
+    }
+    rendered = rendered.replace(/\{\{cursor\}\}/g, marker);
+    let cursorOffset = rendered.indexOf(marker);
+    rendered = rendered.replaceAll(marker, '');
+    if (cursorOffset < 0) cursorOffset = rendered.length;
+    editor.value = text.slice(0, start) + rendered + text.slice(end);
+    if (selected && !template.includes('{{cursor}}')) notifyEditorChanged(start, start + rendered.length);
+    else notifyEditorChanged(start + cursorOffset, start + cursorOffset);
+    return true;
+  }
+
   function applyInsert(binding) {
     if (!editor || editor.readOnly) return false;
     const text = editor.value || '';
@@ -445,6 +568,7 @@
       case 'commentSelection': return commentSelection();
       case 'uncommentSelection': return uncommentSelection();
       case 'wrap': return applyWrap(binding);
+      case 'template': return applyTemplate(binding);
       case 'insert': return applyInsert(binding);
       default: return false;
     }
@@ -485,27 +609,118 @@
     applyShortcut(match);
   }
 
+  function builtInShortcutTableHtml() {
+    return DEFAULT_SHORTCUTS.map((item) => [
+      '<tr>',
+      `  <td><code>${escapeHtml(shortcutDisplay(item.key))}</code></td>`,
+      `  <td>${escapeHtml(item.label || item.mode)}</td>`,
+      `  <td>${escapeHtml(item.description || '')}</td>`,
+      '</tr>'
+    ].join('')).join('');
+  }
+
+  function shortcutRowHtml(row, index) {
+    const checked = row.enabled === false ? '' : 'checked';
+    const action = row.action || 'template';
+    return [
+      `<tr class="editor-shortcut-row" data-shortcut-index="${index}">`,
+      `  <td><input class="editor-shortcut-enabled" type="checkbox" ${checked} aria-label="Enable shortcut" /></td>`,
+      `  <td><input class="editor-shortcut-key" type="text" value="${escapeHtml(row.key || '')}" placeholder="mod+shift+m" /></td>`,
+      '  <td><select class="editor-shortcut-action">',
+      `    <option value="template" ${action === 'template' ? 'selected' : ''}>Template</option>`,
+      `    <option value="environment" ${action === 'environment' ? 'selected' : ''}>Environment</option>`,
+      `    <option value="insert" ${action === 'insert' ? 'selected' : ''}>Insert text</option>`,
+      '  </select></td>',
+      `  <td><input class="editor-shortcut-label" type="text" value="${escapeHtml(row.label || '')}" placeholder="Label" /></td>`,
+      `  <td><textarea class="editor-shortcut-template" spellcheck="false" placeholder="\\textbf{ {{selection}} }">${escapeHtml(row.value || '')}</textarea></td>`,
+      '  <td><button class="btn mini editor-shortcut-delete" type="button">Remove</button></td>',
+      '</tr>'
+    ].join('');
+  }
+
+  function getManagerRowsFromDom() {
+    return Array.from(D.querySelectorAll('#editorShortcutRows tr')).map((tr) => ({
+      id: tr.getAttribute('data-shortcut-id') || '',
+      enabled: !!tr.querySelector('.editor-shortcut-enabled')?.checked,
+      key: tr.querySelector('.editor-shortcut-key')?.value || '',
+      action: tr.querySelector('.editor-shortcut-action')?.value || 'template',
+      label: tr.querySelector('.editor-shortcut-label')?.value || '',
+      value: tr.querySelector('.editor-shortcut-template')?.value || ''
+    }));
+  }
+
+  function shortcutsFromManagerDom() {
+    return getManagerRowsFromDom().map(managerRowToShortcut).filter(Boolean);
+  }
+
+  function renderManagerRows(shortcuts) {
+    const body = D.getElementById('editorShortcutRows');
+    if (!body) return;
+    const rows = (shortcuts || []).map(shortcutToManagerRow);
+    body.innerHTML = rows.map(shortcutRowHtml).join('');
+    body.querySelectorAll('tr').forEach((tr, index) => {
+      const src = shortcuts[index] || {};
+      tr.setAttribute('data-shortcut-id', src.id || '');
+    });
+    updateShortcutWarnings();
+  }
+
+  function updateShortcutWarnings() {
+    const status = D.getElementById('editorShortcutStatus');
+    if (!status) return;
+    const shortcuts = shortcutsFromManagerDom();
+    const warnings = collectShortcutWarnings(shortcuts);
+    status.textContent = warnings.length
+      ? `Warning: ${warnings.join(' ')}`
+      : `${shortcuts.filter((item) => item.enabled !== false).length} custom shortcut(s) ready. Built-in shortcuts remain active.`;
+    status.classList.toggle('warning', warnings.length > 0);
+  }
+
+  function setShortcutStatus(text, isWarning = false) {
+    const el = D.getElementById('editorShortcutStatus');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('warning', !!isWarning);
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+
   function renderSettingsCard() {
     const settings = D.getElementById('settingsTab');
     if (!settings || D.getElementById('editorShortcutSettingsCard')) return;
     const card = D.createElement('section');
     card.id = 'editorShortcutSettingsCard';
     card.className = 'editor-shortcut-settings-card backend-status-card';
-    const custom = lsGet(SHORTCUT_KEY, '[\n  { "key": "mod+shift+e", "mode": "environment", "environment": "equation" },\n  { "key": "mod+shift+i", "mode": "wrap", "before": "\\\\emph{", "after": "}" }\n]');
     card.innerHTML = [
       '<div class="editor-shortcut-card-main">',
       '  <div class="smallcaps">Editor</div>',
-      '  <strong>Stable editor shortcuts</strong>',
-      '  <p class="editor-shortcut-help">Built in: Cmd/Ctrl+B creates a <code>\\begin{selected}</code> block, Cmd/Ctrl+[ comments selected lines, Cmd/Ctrl+] uncomments one level. Live syntax overlay is experimental and disabled automatically on Safari/iPad to avoid cursor drift.</p>',
+      '  <strong>Editor shortcut manager</strong>',
+      '  <p class="editor-shortcut-help">Stable textarea editor from Stage 18H is preserved. Use this manager to add shortcut templates without editing JSON manually. Template placeholders: <code>{{selection}}</code> and <code>{{cursor}}</code>.</p>',
       '  <label class="field checkbox-field editor-highlight-toggle"><input id="editorSyntaxHighlightCheck" type="checkbox" /> Experimental source color overlay</label>',
-      '  <label class="field">Custom shortcuts JSON',
-      `    <textarea id="editorShortcutJson" spellcheck="false">${escapeHtml(custom)}</textarea>`,
-      '  </label>',
-      '  <div id="editorShortcutStatus" class="editor-shortcut-status">No custom shortcuts saved yet.</div>',
+      '  <details class="editor-builtins-details">',
+      '    <summary>Built-in shortcuts</summary>',
+      '    <table class="editor-shortcut-builtins"><thead><tr><th>Shortcut</th><th>Action</th><th>Description</th></tr></thead><tbody>',
+      builtInShortcutTableHtml(),
+      '    </tbody></table>',
+      '  </details>',
+      '  <div class="editor-shortcut-manager" role="region" aria-label="Custom editor shortcuts">',
+      '    <div class="editor-shortcut-manager-head"><strong>Custom shortcuts</strong><button id="addEditorShortcutBtn" class="btn mini" type="button">+ Add shortcut</button></div>',
+      '    <div class="editor-shortcut-table-scroll"><table class="editor-shortcut-table"><thead><tr><th>On</th><th>Shortcut</th><th>Action</th><th>Label</th><th>Template / environment</th><th></th></tr></thead><tbody id="editorShortcutRows"></tbody></table></div>',
+      '  </div>',
+      '  <div id="editorShortcutStatus" class="editor-shortcut-status">Built-in shortcuts active.</div>',
       '</div>',
       '<div class="editor-shortcut-actions">',
       '  <button id="saveEditorShortcutsBtn" class="btn mini primary" type="button">Save shortcuts</button>',
-      '  <button id="resetEditorShortcutsBtn" class="btn mini" type="button">Reset</button>',
+      '  <button id="resetEditorShortcutsBtn" class="btn mini" type="button">Reset custom</button>',
+      '  <button id="exportEditorShortcutsBtn" class="btn mini" type="button">Export JSON</button>',
+      '  <button id="importEditorShortcutsBtn" class="btn mini" type="button">Import JSON</button>',
       '  <button id="copyEditorShortcutHelpBtn" class="btn mini" type="button">Copy examples</button>',
       '</div>'
     ].join('');
@@ -526,48 +741,66 @@
       });
     }
 
-    const setStatus = (text) => {
-      const el = D.getElementById('editorShortcutStatus');
-      if (el) el.textContent = text;
-    };
+    renderManagerRows(loadCustomShortcuts());
+
+    D.getElementById('editorShortcutRows')?.addEventListener('input', updateShortcutWarnings, true);
+    D.getElementById('editorShortcutRows')?.addEventListener('change', updateShortcutWarnings, true);
+    D.getElementById('editorShortcutRows')?.addEventListener('click', (event) => {
+      const btn = event.target && event.target.closest && event.target.closest('.editor-shortcut-delete');
+      if (!btn) return;
+      btn.closest('tr')?.remove();
+      updateShortcutWarnings();
+    });
+
+    D.getElementById('addEditorShortcutBtn')?.addEventListener('click', () => {
+      const current = shortcutsFromManagerDom();
+      const next = current.concat([{ key: 'mod+shift+m', mode: 'template', label: 'Inline math', template: '${{selection}}$' }]);
+      renderManagerRows(next);
+      setShortcutStatus('Added a shortcut row. Edit it, then Save shortcuts.');
+    });
 
     D.getElementById('saveEditorShortcutsBtn')?.addEventListener('click', () => {
-      const raw = D.getElementById('editorShortcutJson')?.value || '';
-      try {
-        const parsed = JSON.parse(raw || '[]');
-        if (!Array.isArray(parsed)) throw new Error('Shortcut JSON must be an array.');
-        const valid = parsed.filter((item) => item && item.key && item.mode);
-        lsSet(SHORTCUT_KEY, JSON.stringify(valid, null, 2));
-        setStatus(`Saved ${valid.length} custom shortcut(s).`);
-      } catch (err) {
-        setStatus(`Could not save shortcuts: ${err && (err.message || err)}`);
-      }
+      const valid = shortcutsFromManagerDom();
+      const warnings = collectShortcutWarnings(valid);
+      lsSet(SHORTCUT_KEY, JSON.stringify(valid, null, 2));
+      setShortcutStatus(
+        warnings.length ? `Saved ${valid.length} shortcut(s), with warning: ${warnings.join(' ')}` : `Saved ${valid.length} custom shortcut(s).`,
+        warnings.length > 0
+      );
     });
 
     D.getElementById('resetEditorShortcutsBtn')?.addEventListener('click', () => {
       lsRemove(SHORTCUT_KEY);
-      const input = D.getElementById('editorShortcutJson');
-      if (input) input.value = '[]';
-      setStatus('Custom shortcuts reset. Built-in shortcuts remain active.');
+      renderManagerRows([]);
+      setShortcutStatus('Custom shortcuts reset. Built-in shortcuts remain active.');
+    });
+
+    D.getElementById('exportEditorShortcutsBtn')?.addEventListener('click', async () => {
+      const json = JSON.stringify(shortcutsFromManagerDom(), null, 2);
+      if (await copyText(json)) setShortcutStatus('Shortcut JSON copied.');
+      else setShortcutStatus(json);
+    });
+
+    D.getElementById('importEditorShortcutsBtn')?.addEventListener('click', () => {
+      const raw = W.prompt ? W.prompt('Paste Latexai shortcut JSON array:') : '';
+      if (raw == null) return;
+      const parsed = safeParseShortcuts(raw);
+      if (!parsed.length && String(raw || '').trim() && String(raw || '').trim() !== '[]') {
+        setShortcutStatus('Could not import shortcuts. Paste a JSON array of shortcut objects.', true);
+        return;
+      }
+      lsSet(SHORTCUT_KEY, JSON.stringify(parsed, null, 2));
+      renderManagerRows(parsed);
+      setShortcutStatus(`Imported ${parsed.length} shortcut(s).`);
     });
 
     D.getElementById('copyEditorShortcutHelpBtn')?.addEventListener('click', async () => {
-      const examples = JSON.stringify([
-        { key: 'mod+shift+t', mode: 'environment', environment: 'theorem' },
-        { key: 'mod+shift+p', mode: 'environment', environment: 'proof' },
-        { key: 'mod+shift+i', mode: 'wrap', before: '\\emph{', after: '}' },
-        { key: 'mod+shift+m', mode: 'wrap', before: '$', after: '$' }
-      ], null, 2);
-      try {
-        await navigator.clipboard.writeText(examples);
-        setStatus('Shortcut examples copied.');
-      } catch (_err) {
-        setStatus(examples);
-      }
+      const examples = JSON.stringify(SHORTCUT_EXAMPLES, null, 2);
+      if (await copyText(examples)) setShortcutStatus('Shortcut examples copied.');
+      else setShortcutStatus(examples);
     });
 
-    const count = loadCustomShortcuts().length;
-    setStatus(count ? `${count} custom shortcut(s) loaded.` : 'Built-in shortcuts active. Add custom JSON only if needed.');
+    updateShortcutWarnings();
   }
 
   function init() {
