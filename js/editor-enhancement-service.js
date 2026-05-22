@@ -1,5 +1,5 @@
-/* Latexai Stage 18J EditorEnhancementService
- * Stage: stage18j-editor-shortcut-manager-polish-1
+/* Latexai Stage 18K EditorEnhancementService
+ * Stage: stage18k-editor-shortcut-live-template-fix-1
  *
  * Adds a lightweight Overleaf-like LaTeX source highlighter, smart indentation,
  * built-in LaTeX shortcuts, and an optional compact custom-shortcut editor.
@@ -10,7 +10,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18j-editor-shortcut-manager-polish-1';
+  const STAGE = 'stage18k-editor-shortcut-live-template-fix-1';
   const SHORTCUT_KEY = 'latexai:editor-shortcuts:v1';
   const HIGHLIGHT_KEY = 'latexai:editor-syntax-highlight:v1';
   const EXPERIMENTAL_OVERLAY_KEY = 'latexai:editor-syntax-overlay-experimental:v1';
@@ -347,7 +347,7 @@
   ];
 
   const RISKY_SHORTCUTS = new Set([
-    'mod+s', 'mod+r', 'mod+shift+r', 'mod+w', 'mod+q', 'mod+t', 'mod+n', 'mod+l', 'mod+p', 'mod+f', 'mod+g', 'mod+shift+g'
+    'mod+s', 'mod+r', 'mod+shift+r', 'mod+w', 'mod+q', 'mod+t', 'mod+n', 'mod+l', 'mod+p', 'mod+f', 'mod+g', 'mod+shift+g', 'mod+c', 'mod+x', 'mod+v', 'mod+a', 'mod+z', 'mod+y'
   ]);
 
   function safeParseShortcuts(raw) {
@@ -365,9 +365,27 @@
     return safeParseShortcuts(lsGet(SHORTCUT_KEY, '[]'));
   }
 
+  function liveManagerShortcuts() {
+    const body = D.getElementById('editorShortcutRows');
+    if (!body || !body.querySelector('tr')) return null;
+    try {
+      return shortcutsFromManagerDom();
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function activeCustomShortcuts() {
+    // Stage 18K: rows edited in the shortcut manager should work immediately.
+    // Stage 18J only read localStorage, so a row could say "ready" while the
+    // key handler was still using the old saved shortcuts until Save was clicked.
+    const live = liveManagerShortcuts();
+    return Array.isArray(live) ? live : loadCustomShortcuts();
+  }
+
   function allShortcuts() {
     return DEFAULT_SHORTCUTS
-      .concat(loadCustomShortcuts().filter((item) => item && item.enabled !== false))
+      .concat(activeCustomShortcuts().filter((item) => item && item.enabled !== false))
       .map((item) => Object.assign({}, item, { key: normalizeShortcut(item.key) }));
   }
 
@@ -416,7 +434,7 @@
     for (const item of customShortcuts || []) {
       const key = normalizeShortcut(item && item.key);
       if (!key) continue;
-      if (RISKY_SHORTCUTS.has(key)) warnings.push(`${key} conflicts with a common browser/app shortcut.`);
+      if (RISKY_SHORTCUTS.has(key)) warnings.push(`${key} conflicts with a common browser/app shortcut; prefer mod+shift+${key.split('+').pop()} or mod+alt+${key.split('+').pop()}.`);
       if (builtIn.has(key)) warnings.push(`${key} conflicts with a built-in Latexai editor shortcut.`);
       if (seen.has(key)) warnings.push(`${key} is assigned more than once.`);
       seen.set(key, true);
@@ -525,6 +543,20 @@
     return true;
   }
 
+  function normalizeTemplatePlaceholders(template) {
+    let out = String(template ?? '{{selection}}');
+    // Accept a few natural variants users type in the manager. The canonical
+    // placeholders remain {{selection}} and {{cursor}}, but {selection} and
+    // [[selection]] should not silently fail. Triple-brace patterns such as
+    // \mathcal{{{selection}}} intentionally keep one outer brace pair around
+    // the selected text after {{selection}} is replaced.
+    out = out.replace(/\[\[\s*selection\s*\]\]/gi, '{{selection}}');
+    out = out.replace(/\[\[\s*cursor\s*\]\]/gi, '{{cursor}}');
+    out = out.replace(/(?<!\{)\{\s*selection\s*\}(?!\})/gi, '{{selection}}');
+    out = out.replace(/(?<!\{)\{\s*cursor\s*\}(?!\})/gi, '{{cursor}}');
+    return out;
+  }
+
   function applyTemplate(binding) {
     if (!editor || editor.readOnly) return false;
     const text = editor.value || '';
@@ -532,7 +564,7 @@
     const end = Number(editor.selectionEnd || start);
     const selected = text.slice(start, end);
     const marker = '\uE000';
-    let template = String(binding.template ?? '{{selection}}');
+    let template = normalizeTemplatePlaceholders(binding.template ?? '{{selection}}');
     let rendered;
     if (!selected && template.includes('{{selection}}')) {
       rendered = template.replace('{{selection}}', marker).replace(/\{\{selection\}\}/g, '');
@@ -672,7 +704,7 @@
     const warnings = collectShortcutWarnings(shortcuts);
     status.textContent = warnings.length
       ? `Warning: ${warnings.join(' ')}`
-      : `${shortcuts.filter((item) => item.enabled !== false).length} custom shortcut(s) ready. Built-in shortcuts remain active.`;
+      : `${shortcuts.filter((item) => item.enabled !== false).length} custom shortcut(s) active in this page. Click Save shortcuts to persist across reloads. Built-in shortcuts remain active.`;
     status.classList.toggle('warning', warnings.length > 0);
   }
 
@@ -702,7 +734,7 @@
       '<div class="editor-shortcut-card-main">',
       '  <div class="smallcaps">Editor</div>',
       '  <strong>Editor shortcut manager</strong>',
-      '  <p class="editor-shortcut-help">Stable textarea editor from Stage 18H is preserved. Use this manager to add shortcut templates without editing JSON manually. Template placeholders: <code>{{selection}}</code> and <code>{{cursor}}</code>.</p>',
+      '  <p class="editor-shortcut-help">Stable textarea editor from Stage 18H is preserved. Use this manager to add shortcut templates without editing JSON manually. Template placeholders: <code>{{selection}}</code> and <code>{{cursor}}</code>. Example: <code>\\mathcal{{{selection}}}</code>. Avoid browser-reserved shortcuts like <code>Cmd/Ctrl+C</code>; use <code>Cmd/Ctrl+Shift+C</code> instead.</p>',
       '  <label class="field checkbox-field editor-highlight-toggle"><input id="editorSyntaxHighlightCheck" type="checkbox" /> Experimental source color overlay</label>',
       '  <details class="editor-builtins-details">',
       '    <summary>Built-in shortcuts</summary>',
@@ -754,7 +786,7 @@
 
     D.getElementById('addEditorShortcutBtn')?.addEventListener('click', () => {
       const current = shortcutsFromManagerDom();
-      const next = current.concat([{ key: 'mod+shift+m', mode: 'template', label: 'Inline math', template: '${{selection}}$' }]);
+      const next = current.concat([{ key: 'mod+shift+c', mode: 'template', label: 'Mathcal', template: '\\mathcal{{{selection}}}' }]);
       renderManagerRows(next);
       setShortcutStatus('Added a shortcut row. Edit it, then Save shortcuts.');
     });
@@ -854,7 +886,10 @@
     normalizeShortcut,
     DEFAULT_SHORTCUTS,
     loadCustomShortcuts,
+    activeCustomShortcuts,
     applyShortcut,
+    applyTemplate,
+    normalizeTemplatePlaceholders,
     commentSelection,
     uncommentSelection,
     insertEnvironmentFromSelection,
