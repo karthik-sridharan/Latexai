@@ -1,5 +1,5 @@
-/* Latexai Stage 18M CompetitivePaperReviewService
- * Stage: stage18m-competitive-review-ranking-to-lai-edit-impact-map-1
+/* Latexai Stage 18N CompetitivePaperReviewService
+ * Stage: stage18n-competitive-review-stability-guards-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18m-competitive-review-ranking-to-lai-edit-impact-map-1';
+  const STAGE = 'stage18n-competitive-review-stability-guards-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -98,6 +98,16 @@
     const file = getFile(path);
     const text = editorText || fileText(file);
     return { path, file, text };
+  }
+
+  function sourceTextForPath(path) {
+    const normalized = normalizePath(path || activePath());
+    const file = getFile(normalized);
+    if (normalizePath(activePath()) === normalized) {
+      const editorValue = el('sourceEditor')?.value;
+      if (typeof editorValue === 'string' && editorValue.length) return editorValue;
+    }
+    return fileText(file);
   }
 
   function writeProjectFile(path, content) {
@@ -497,18 +507,32 @@
     };
   }
 
+  function findAllAnchorMatches(text, anchor) {
+    const source = String(text || '');
+    const needle = String(anchor || '');
+    if (!needle) return [];
+    const out = [];
+    let at = source.indexOf(needle);
+    while (at >= 0) {
+      out.push(at);
+      at = source.indexOf(needle, at + Math.max(1, needle.length));
+    }
+    return out;
+  }
+
   function insertionReadiness(edit) {
     const path = normalizePath(edit?.path || activePath());
     const file = getFile(path);
-    if (!file) return { label: 'file missing', ok: false, path };
-    const text = fileText(file);
+    if (!file) return { label: 'file missing', ok: false, path, matchCount: 0 };
+    const text = sourceTextForPath(path);
     const anchor = String(edit?.oldText || '');
-    if (!anchor.trim()) return { label: 'append/manual only', ok: false, path };
-    const at = text.indexOf(anchor);
-    if (at < 0) return { label: 'anchor not found; append/manual fallback', ok: false, path };
-    const issue = unsafeInsertionLocationReason(text, at);
-    if (issue) return { label: issue, ok: false, path };
-    return { label: edit.mode === 'replace' ? 'inline exact match' : 'inline anchor match', ok: true, path };
+    if (!anchor.trim()) return { label: 'append/manual only', ok: false, path, matchCount: 0 };
+    const positions = findAllAnchorMatches(text, anchor);
+    if (!positions.length) return { label: 'anchor not found; append/manual fallback', ok: false, path, matchCount: 0 };
+    const issue = unsafeInsertionLocationReason(text, positions[0]);
+    if (issue) return { label: issue, ok: false, path, matchCount: positions.length };
+    if (positions.length > 1) return { label: `ambiguous anchor (${positions.length} matches); skipped until oldText is more specific`, ok: false, path, matchCount: positions.length };
+    return { label: edit.mode === 'replace' ? 'inline exact match' : 'inline anchor match', ok: true, path, matchCount: 1 };
   }
 
   function buildEditImpactMap(report = lastReport) {
@@ -1754,6 +1778,70 @@
     return { ok: true, reason: '', text: [header, hint, impactLine, evidenceLine, '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
   }
 
+  function rangesOverlap(a, b) {
+    return Math.max(a.start, b.start) < Math.min(a.end, b.end);
+  }
+
+  function opsConflict(a, b) {
+    if (a.start === b.start || a.end === b.end) return true;
+    if (rangesOverlap(a, b)) return true;
+    const aPoint = a.start === a.end;
+    const bPoint = b.start === b.end;
+    if (aPoint && a.start >= b.start && a.start <= b.end) return true;
+    if (bPoint && b.start >= a.start && b.start <= a.end) return true;
+    return false;
+  }
+
+  function buildActionableInsertionPlan(edits) {
+    const queued = new Map();
+    const diagnostics = [];
+    let skipped = 0;
+
+    (edits || []).forEach((edit, index) => {
+      const path = normalizePath(edit.path || activePath());
+      const file = getFile(path);
+      const hint = edit.targetHint || `edit ${index + 1}`;
+      if (!file) { skipped += 1; diagnostics.push(`SKIP ${path}: file not found for ${hint}.`); return; }
+      const text = sourceTextForPath(path);
+      const anchor = String(edit.oldText || '');
+      if (!anchor.trim()) { skipped += 1; diagnostics.push(`SKIP ${path}: missing exact oldText/anchor for ${hint}.`); return; }
+      const matches = findAllAnchorMatches(text, anchor);
+      if (!matches.length) { skipped += 1; diagnostics.push(`SKIP ${path}: exact oldText/anchor not found for ${hint}.`); return; }
+      if (matches.length > 1) { skipped += 1; diagnostics.push(`SKIP ${path}: ambiguous oldText/anchor for ${hint}; found ${matches.length} matches. Ask AI to provide a longer exact anchor.`); return; }
+      const at = matches[0];
+      const locationIssue = unsafeInsertionLocationReason(text, at);
+      if (locationIssue) { skipped += 1; diagnostics.push(`SKIP ${path}: ${locationIssue} for ${hint}.`); return; }
+      const wrapped = wrapActionableReplacement({ ...edit, path }, index);
+      if (!wrapped.ok) { skipped += 1; diagnostics.push(`SKIP ${path}: unsafe LaTeX for ${hint}: ${wrapped.reason}.`); return; }
+
+      const start = edit.mode === 'insert_before' ? at : at;
+      const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
+      const insert = edit.mode === 'replace' ? wrapped.text : edit.mode === 'insert_after' ? `${anchor}\n\n${wrapped.text}` : `${wrapped.text}\n\n${anchor}`;
+      const op = { start, end, insert, targetHint: hint, anchorLength: anchor.length, mode: edit.mode, index };
+      const list = queued.get(path) || [];
+      const conflict = list.find((existing) => opsConflict(op, existing));
+      if (conflict) {
+        skipped += 1;
+        diagnostics.push(`SKIP ${path}: overlapping/duplicate anchor for ${hint}; conflicts with ${conflict.targetHint}.`);
+        return;
+      }
+      list.push(op);
+      queued.set(path, list);
+    });
+
+    return { queued, diagnostics, skipped, planned: Array.from(queued.values()).reduce((n, ops) => n + ops.length, 0) };
+  }
+
+  function insertionPlanMarkdown(plan) {
+    const rows = [];
+    for (const [path, ops] of (plan?.queued || new Map()).entries()) {
+      rows.push(`PLAN ${path}: ${ops.length} inline operation(s).`);
+      ops.slice().sort((a, b) => a.start - b.start).forEach((op) => rows.push(`  - ${op.mode} at ${op.start}: ${op.targetHint}`));
+    }
+    if (plan?.diagnostics?.length) rows.push(...plan.diagnostics);
+    return rows.length ? rows.join('\n') : 'No insertable exact-match edits planned.';
+  }
+
   function insertActionableEditsAtMatches() {
     if (!lastReport) {
       setStatus('Run competitive review first.');
@@ -1767,34 +1855,13 @@
       return { ok: false, applied: 0, skipped: 0, source: parsed.source };
     }
 
-    const queued = new Map();
-    const messages = [];
-    let skipped = 0;
-
-    parsed.edits.forEach((edit, index) => {
-      const path = normalizePath(edit.path || activePath());
-      const file = getFile(path);
-      if (!file) { skipped += 1; messages.push(`SKIP ${path}: file not found for ${edit.targetHint}.`); return; }
-      const text = fileText(file);
-      const anchor = String(edit.oldText || '');
-      const at = text.indexOf(anchor);
-      if (at < 0) { skipped += 1; messages.push(`SKIP ${path}: exact oldText/anchor not found for ${edit.targetHint}.`); return; }
-      const locationIssue = unsafeInsertionLocationReason(text, at);
-      if (locationIssue) { skipped += 1; messages.push(`SKIP ${path}: ${locationIssue} for ${edit.targetHint}.`); return; }
-      const wrapped = wrapActionableReplacement({ ...edit, path }, index);
-      if (!wrapped.ok) { skipped += 1; messages.push(`SKIP ${path}: unsafe LaTeX for ${edit.targetHint}: ${wrapped.reason}.`); return; }
-      const replacement = wrapped.text;
-      const start = edit.mode === 'insert_before' ? at : at;
-      const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
-      const insert = edit.mode === 'replace' ? replacement : edit.mode === 'insert_after' ? `${anchor}\n\n${replacement}` : `${replacement}\n\n${anchor}`;
-      if (!queued.has(path)) queued.set(path, []);
-      queued.get(path).push({ start, end, insert, targetHint: edit.targetHint });
-    });
-
+    const plan = buildActionableInsertionPlan(parsed.edits);
+    const messages = [...(plan.diagnostics || [])];
     let applied = 0;
-    for (const [path, ops] of queued.entries()) {
+
+    for (const [path, ops] of plan.queued.entries()) {
       const file = getFile(path);
-      let text = fileText(file);
+      let text = sourceTextForPath(path) || fileText(file);
       ops.sort((a, b) => b.start - a.start);
       for (const op of ops) {
         text = text.slice(0, op.start) + op.insert + text.slice(op.end);
@@ -1804,13 +1871,13 @@
       updateProjectSource(path, text);
     }
 
-    const modifiedPaths = [...queued.keys()];
+    const modifiedPaths = [...plan.queued.keys()];
     refreshPaperAiReview(modifiedPaths, 'Competitive Review');
-    updateWorkflowStatus('insert', `inserted ${applied}; skipped ${skipped}.`);
+    updateWorkflowStatus('insert', `inserted ${applied}; skipped ${plan.skipped}.`);
     renderEditImpactMap();
-    setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}. Paper-level edit review refreshed.`);
-    setOutput([lastReport, '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
-    return { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()] };
+    setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact non-overlapping matches; skipped ${plan.skipped}. Paper-level edit review refreshed.`);
+    setOutput([lastReport, '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Planned: ${plan.planned}`, `Applied: ${applied}`, `Skipped: ${plan.skipped}`, insertionPlanMarkdown(plan), ...messages].join('\n'));
+    return { ok: applied > 0, applied, skipped: plan.skipped, planned: plan.planned, messages, source: parsed.source, paths: modifiedPaths };
   }
 
   function appendLaiImprovementPlan() {
@@ -1864,6 +1931,49 @@
     if (out) {
       out.classList.add('active');
       out.textContent = String(text || '');
+    }
+  }
+
+  const COMPETITIVE_ACTION_BUTTON_IDS = [
+    'checkCompetitiveWebSearchBtn',
+    'fetchCompetitivePapersBtn',
+    'rankCompetitivePapersBtn',
+    'rerunCompetitiveResearchBtn',
+    'clearCompetitiveResearchCacheBtn',
+    'compareCompetitiveDraftBtn',
+    'generateCompetitiveRoadmapBtn',
+    'runCompetitiveReviewBtn',
+    'copyCompetitiveReviewBtn',
+    'addCompetitiveReviewBtn',
+    'insertCompetitiveInlineLaiBtn',
+    'insertCompetitiveRoadmapBtn'
+  ];
+  let busyTask = '';
+
+  function setCompetitiveBusy(label) {
+    busyTask = clean(label);
+    const busy = Boolean(busyTask);
+    COMPETITIVE_ACTION_BUTTON_IDS.forEach((id) => {
+      const button = el(id);
+      if (!button) return;
+      if (busy) button.setAttribute('disabled', 'disabled');
+      else button.removeAttribute('disabled');
+      button.classList.toggle('busy', busy);
+    });
+    const card = el('competitiveReviewCard');
+    if (card) card.setAttribute('data-competitive-busy', busy ? 'true' : 'false');
+  }
+
+  async function runWithCompetitiveBusy(label, fn) {
+    if (busyTask) {
+      setStatus(`Competitive review is already running: ${busyTask}.`);
+      return { ok: false, busy: true, task: busyTask };
+    }
+    setCompetitiveBusy(label);
+    try {
+      return await fn();
+    } finally {
+      setCompetitiveBusy('');
     }
   }
 
@@ -1937,11 +2047,11 @@
       '  <button id="runCompetitiveReviewBtn" class="btn mini" type="button">Run full cited review</button>',
       '  <button id="copyCompetitiveReviewBtn" class="btn mini" type="button">Copy report</button>',
       '  <button id="addCompetitiveReviewBtn" class="btn mini" type="button">Add report to /reviews</button>',
-      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
-      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
+      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \\lai edits at matches</button>',
+      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \\lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18M uses a source-cited AI web-research agent and adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
-      '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
+      '<div class="settings-note">Stage 18N uses a source-cited AI web-research agent with stability guards: one workflow step runs at a time, ambiguous anchors are skipped, and overlapping <code>\\lai</code> insertions are blocked. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
+      '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready. Stage 18N adds double-click guards and non-overlapping exact-match insertion planning.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');
 
@@ -1949,19 +2059,19 @@
 
     el('addCompetitiveUrlBtn')?.addEventListener('click', appendCompetitorUrlFromInput, true);
     el('competitiveAddUrlInput')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); appendCompetitorUrlFromInput(); } }, true);
-    el('checkCompetitiveWebSearchBtn')?.addEventListener('click', checkWebSearchCapability, true);
-    el('fetchCompetitivePapersBtn')?.addEventListener('click', researchCompetitorPapers, true);
-    el('rankCompetitivePapersBtn')?.addEventListener('click', rankCompetitorPapers, true);
-    el('rerunCompetitiveResearchBtn')?.addEventListener('click', rerunAllCompetitorResearch, true);
-    el('clearCompetitiveResearchCacheBtn')?.addEventListener('click', clearResearchCacheForCurrentUrls, true);
+    el('checkCompetitiveWebSearchBtn')?.addEventListener('click', () => runWithCompetitiveBusy('checking web search', checkWebSearchCapability), true);
+    el('fetchCompetitivePapersBtn')?.addEventListener('click', () => runWithCompetitiveBusy('researching competitor papers', researchCompetitorPapers), true);
+    el('rankCompetitivePapersBtn')?.addEventListener('click', () => runWithCompetitiveBusy('ranking competitors', rankCompetitorPapers), true);
+    el('rerunCompetitiveResearchBtn')?.addEventListener('click', () => runWithCompetitiveBusy('rerunning competitor research', rerunAllCompetitorResearch), true);
+    el('clearCompetitiveResearchCacheBtn')?.addEventListener('click', () => runWithCompetitiveBusy('clearing competitor cache', clearResearchCacheForCurrentUrls), true);
     el('competitiveEvidenceDashboard')?.addEventListener('click', handleEvidenceDashboardClick, true);
-    el('compareCompetitiveDraftBtn')?.addEventListener('click', compareDraftAgainstRankedSet, true);
-    el('generateCompetitiveRoadmapBtn')?.addEventListener('click', generateImprovementRoadmap, true);
-    el('runCompetitiveReviewBtn')?.addEventListener('click', runCompetitiveReview, true);
-    el('copyCompetitiveReviewBtn')?.addEventListener('click', copyReport, true);
-    el('addCompetitiveReviewBtn')?.addEventListener('click', addReportToProject, true);
-    el('insertCompetitiveInlineLaiBtn')?.addEventListener('click', insertActionableEditsAtMatches, true);
-    el('insertCompetitiveRoadmapBtn')?.addEventListener('click', appendLaiImprovementPlan, true);
+    el('compareCompetitiveDraftBtn')?.addEventListener('click', () => runWithCompetitiveBusy('comparing draft', compareDraftAgainstRankedSet), true);
+    el('generateCompetitiveRoadmapBtn')?.addEventListener('click', () => runWithCompetitiveBusy('generating roadmap', generateImprovementRoadmap), true);
+    el('runCompetitiveReviewBtn')?.addEventListener('click', () => runWithCompetitiveBusy('running full competitive review', runCompetitiveReview), true);
+    el('copyCompetitiveReviewBtn')?.addEventListener('click', () => runWithCompetitiveBusy('copying report', copyReport), true);
+    el('addCompetitiveReviewBtn')?.addEventListener('click', () => runWithCompetitiveBusy('saving report', addReportToProject), true);
+    el('insertCompetitiveInlineLaiBtn')?.addEventListener('click', () => runWithCompetitiveBusy('inserting inline lai edits', insertActionableEditsAtMatches), true);
+    el('insertCompetitiveRoadmapBtn')?.addEventListener('click', () => runWithCompetitiveBusy('appending lai plan', appendLaiImprovementPlan), true);
 
     renderEvidenceDashboard();
     renderEditImpactMap();
@@ -2004,6 +2114,10 @@
     renderEditImpactMap,
     buildEditImpactMap,
     editImpactMarkdown,
+    buildActionableInsertionPlan,
+    insertionPlanMarkdown,
+    findAllAnchorMatches,
+    opsConflict,
     parseRankingEntries,
     clearResearchCacheForCurrentUrls,
     rerunAllCompetitorResearch
