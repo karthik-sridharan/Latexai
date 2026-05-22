@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage17t-compile-endpoint-repair-1';
+  var STAGE = 'stage17v-compile-job-pdf-endpoint-hydration-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
   var DEFAULT_COMPILE_URL = BACKEND_BASE + '/api/lumina/latex/compile';
   var DEFAULT_JOBS_URL = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
@@ -403,35 +403,127 @@
     };
   }
 
-  function tryMakePdfUrls(result) {
-    var b64 = result.pdfBase64 || result.pdfBytesBase64 || null;
+  function arrayBufferToBase64(buffer) {
+    try {
+      if (typeof Buffer !== 'undefined') return Buffer.from(buffer).toString('base64');
+    } catch (err) {}
+    var bytes = new Uint8Array(buffer || []);
+    var chunkSize = 0x8000;
+    var binary = '';
+    for (var i = 0; i < bytes.length; i += chunkSize) {
+      var chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.prototype.slice.call(chunk));
+    }
+    if (typeof btoa === 'function') return btoa(binary);
+    return '';
+  }
+
+  function normalizeMaybePdfUrl(url, baseUrl) {
+    if (typeof url !== 'string' || !url.trim()) return '';
+    var raw = url.trim();
+    if (raw.indexOf('data:application/pdf;base64,') === 0) return raw;
+    try {
+      return new URL(raw, baseUrl || (root.location && root.location.href) || BACKEND_BASE + '/').href;
+    } catch (err) {
+      return raw;
+    }
+  }
+
+  function mergePdfHint(target, key, value, baseUrl) {
+    if (typeof value !== 'string' || !value) return;
+    var lower = String(key || '').toLowerCase();
+    if (/^(jobpdfendpointurl|jobpdfendpointerror|compileendpointurl|compilestatusurl|backendstatusurl)$/i.test(String(key || ''))) return;
+    var v = value.trim();
+    if (!v) return;
+    if (v.indexOf('data:application/pdf;base64,') === 0) {
+      target.dataUrl = target.dataUrl || v;
+      target.b64 = target.b64 || v.split(',', 2)[1];
+      return;
+    }
+    if (/^(pdfbase64|pdfbytesbase64|pdfb64|base64|bytesbase64|dataBase64)$/i.test(String(key || '')) || /pdf.*base64/i.test(lower)) {
+      if (/^[A-Za-z0-9+/=\s]+$/.test(v) && v.length > 20) target.b64 = target.b64 || v.replace(/\s+/g, '');
+      return;
+    }
+    if (/^(pdfurl|pdfbloburl|outputurl|downloadurl|artifacturl|url)$/i.test(String(key || '')) || /pdf.*url/i.test(lower)) {
+      if (/\.pdf(?:[?#]|$)/i.test(v) || /\/pdf(?:[?#]|$)/i.test(v) || /^blob:/i.test(v) || /^https?:/i.test(v) || v.charAt(0) === '/') {
+        target.url = target.url || normalizeMaybePdfUrl(v, baseUrl);
+      }
+    }
+  }
+
+  function collectPdfHints(obj, baseUrl, depth, seen) {
+    var out = { b64: '', dataUrl: '', url: '' };
+    if (!isObject(obj) || depth > 5) return out;
+    seen = seen || [];
+    if (seen.indexOf(obj) >= 0) return out;
+    seen.push(obj);
+    Object.keys(obj).forEach(function (key) {
+      var value = obj[key];
+      if (typeof value === 'string') mergePdfHint(out, key, value, baseUrl);
+      else if (isObject(value)) {
+        var nested = collectPdfHints(value, baseUrl, depth + 1, seen);
+        out.b64 = out.b64 || nested.b64;
+        out.dataUrl = out.dataUrl || nested.dataUrl;
+        out.url = out.url || nested.url;
+      }
+    });
+    return out;
+  }
+
+  function tryMakePdfUrls(result, baseUrl) {
+    result = isObject(result) ? result : {};
+    var hints = collectPdfHints(result, baseUrl || result.compileEndpointUrl || result.compileStatusUrl || result.pdfBaseUrl || '', 0);
+    var b64 = result.pdfBase64 || result.pdfBytesBase64 || hints.b64 || null;
     if (!b64 && typeof result.pdf === 'string' && result.pdf.indexOf('data:application/pdf;base64,') === 0) {
       b64 = result.pdf.split(',', 2)[1];
     }
-    if (!b64) return result;
-    result.pdfBase64 = result.pdfBase64 || b64;
-    result.pdfBytesBase64 = result.pdfBytesBase64 || b64;
-    result.pdf = result.pdf || ('data:application/pdf;base64,' + b64);
-    result.pdfDataUrl = result.pdfDataUrl || result.pdf;
-    if (!result.pdfUrl && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof atob === 'function') {
-      try {
-        var binary = atob(b64);
-        var bytes = new Uint8Array(binary.length);
-        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        result.pdfUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-        result.pdfBlobUrl = result.pdfUrl;
-      } catch (err) {}
+    if (!b64 && typeof result.pdfDataUrl === 'string' && result.pdfDataUrl.indexOf('data:application/pdf;base64,') === 0) {
+      b64 = result.pdfDataUrl.split(',', 2)[1];
+    }
+    if (b64) {
+      result.pdfBase64 = result.pdfBase64 || b64;
+      result.pdfBytesBase64 = result.pdfBytesBase64 || b64;
+      result.pdf = result.pdf || ('data:application/pdf;base64,' + b64);
+      result.pdfDataUrl = result.pdfDataUrl || result.pdf;
+      result.pdfExtracted = result.pdfExtracted !== false;
+      if (!result.pdfUrl && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof atob === 'function') {
+        try {
+          var binary = atob(b64);
+          var bytes = new Uint8Array(binary.length);
+          for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          result.pdfUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+          result.pdfBlobUrl = result.pdfUrl;
+        } catch (err) {}
+      }
+    }
+    var hintedUrl = result.pdfUrl || result.pdfBlobUrl || result.outputUrl || hints.url || '';
+    if (hintedUrl) {
+      var normalized = normalizeMaybePdfUrl(hintedUrl, baseUrl || result.compileEndpointUrl || result.compileStatusUrl || '');
+      if (normalized.indexOf('data:application/pdf;base64,') === 0) {
+        var hintedB64 = normalized.split(',', 2)[1];
+        result.pdfBase64 = result.pdfBase64 || hintedB64;
+        result.pdfBytesBase64 = result.pdfBytesBase64 || hintedB64;
+        result.pdf = result.pdf || normalized;
+        result.pdfDataUrl = result.pdfDataUrl || normalized;
+      } else {
+        result.pdfUrl = result.pdfUrl || normalized;
+        result.pdfBlobUrl = result.pdfBlobUrl || (/^blob:/i.test(normalized) ? normalized : result.pdfBlobUrl);
+        result.outputUrl = result.outputUrl || normalized;
+      }
+      result.pdfExtracted = result.pdfExtracted !== false;
     }
     return result;
   }
 
   function hasPdfPayload(result) {
     if (!result) return false;
+    result = tryMakePdfUrls(result);
     if (result.pdfBase64 || result.pdfBytesBase64) return true;
     if (typeof result.pdf === 'string' && result.pdf.indexOf('data:application/pdf;base64,') === 0) return true;
     if (typeof result.pdfDataUrl === 'string' && result.pdfDataUrl.indexOf('data:application/pdf;base64,') === 0) return true;
     if (typeof result.pdfUrl === 'string' && result.pdfUrl) return true;
-    if (typeof result.outputUrl === 'string' && /\.pdf(\?|#|$)/i.test(result.outputUrl)) return true;
+    if (typeof result.pdfBlobUrl === 'string' && result.pdfBlobUrl) return true;
+    if (typeof result.outputUrl === 'string' && result.outputUrl) return true;
     return false;
   }
 
@@ -473,7 +565,7 @@
     result.stage = result.stage || STAGE;
     result.message = result.message || (result.success ? 'Compile succeeded.' : 'Compile failed.');
     result.compileInputSummary = result.compileInputSummary || (payload && payload.compileInputSummary);
-    return tryMakePdfUrls(result);
+    return tryMakePdfUrls(result, result.compileEndpointUrl || result.compileStatusUrl || result.pdfBaseUrl || '');
   }
 
   async function fetchJson(url, init) {
@@ -493,6 +585,76 @@
       throw httpErr;
     }
     return data;
+  }
+
+
+  function buildJobPdfUrl(settings, jobId) {
+    if (!jobId) return '';
+    var jobsUrl = (settings && settings.compileStatusUrl) || DEFAULT_JOBS_URL;
+    return String(jobsUrl || DEFAULT_JOBS_URL).replace(/\/+$/, '') + '/' + encodeURIComponent(String(jobId)) + '/pdf';
+  }
+
+  async function fetchPdfBlobResult(url, payload, baseResult, label) {
+    var response = await root.fetch(url, { method: 'GET' });
+    if (!response.ok) {
+      var text = '';
+      try { text = await response.text(); } catch (err) {}
+      throw new Error('HTTP ' + (response.status || 0) + (text ? ': ' + text.slice(0, 1000) : ''));
+    }
+    var contentType = String(response.headers && response.headers.get && response.headers.get('content-type') || '').toLowerCase();
+    var buffer = await response.arrayBuffer();
+    if (!buffer || !buffer.byteLength) throw new Error('PDF endpoint returned an empty response.');
+    var result = Object.assign({}, isObject(baseResult) ? baseResult : {});
+    result.ok = true;
+    result.success = true;
+    result.status = 'success';
+    result.stage = result.stage || STAGE;
+    result.provider = result.provider || 'cloudrun-texlive-latexmk';
+    result.message = label || 'Compile succeeded; PDF was loaded from the job PDF endpoint.';
+    result.pdfExtracted = true;
+    result.pdfBytesLength = buffer.byteLength;
+    result.pdfEndpointUrl = url;
+    result.compileInputSummary = result.compileInputSummary || (payload && payload.compileInputSummary);
+    try {
+      if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        result.pdfUrl = URL.createObjectURL(new Blob([buffer], { type: contentType || 'application/pdf' }));
+        result.pdfBlobUrl = result.pdfUrl;
+      }
+    } catch (blobErr) {}
+    if (!result.pdfUrl) {
+      var b64 = arrayBufferToBase64(buffer);
+      if (b64) {
+        result.pdfBase64 = b64;
+        result.pdfBytesBase64 = b64;
+        result.pdf = 'data:application/pdf;base64,' + b64;
+        result.pdfDataUrl = result.pdf;
+      }
+    }
+    return tryMakePdfUrls(result, url);
+  }
+
+  async function tryHydratePdfFromJobEndpoint(result, payload, settings) {
+    result = normalizeCompileResult(result, payload);
+    if (hasPdfPayload(result)) return result;
+    var jobId = result.jobId || result.id || result.compileJobId;
+    if (!jobId) return result;
+    var pdfUrl = buildJobPdfUrl(settings, jobId);
+    if (!pdfUrl) return result;
+    try {
+      return await fetchPdfBlobResult(pdfUrl, payload, result, 'Compile succeeded; PDF was retrieved from /compile/jobs/' + jobId + '/pdf.');
+    } catch (err) {
+      result.jobPdfEndpointUrl = pdfUrl;
+      result.jobPdfEndpointError = (err && err.message) || String(err);
+      // If browser fetch is blocked by CORS/network policy, the iframe may still
+      // be able to display the PDF URL directly. Do not expose known HTTP errors
+      // such as 404 as successful PDF payloads.
+      if (!/^HTTP\s+\d+/i.test(result.jobPdfEndpointError)) {
+        result.pdfUrl = result.pdfUrl || pdfUrl;
+        result.outputUrl = result.outputUrl || pdfUrl;
+        result.pdfEndpointFallbackExposed = true;
+      }
+      return tryMakePdfUrls(result, pdfUrl);
+    }
   }
 
   function isJobEndpointFailure(err) {
@@ -566,19 +728,21 @@
 
   async function requirePdfOrFallback(result, payload, settings, source) {
     result = normalizeCompileResult(result, payload);
+    result = await tryHydratePdfFromJobEndpoint(result, payload, settings || {});
     if (hasPdfPayload(result) || result.mode === 'static-draft-fallback' || result.mode === 'mock-draft') return result;
     if (result.ok && settings && settings.useCompileJobs && source !== 'direct') {
       try {
         var directResult = await tryDirectCompileCandidates(payload, settings);
         directResult.jobCompileFallbackReason = 'job result had status success but no PDF payload';
+        directResult = await tryHydratePdfFromJobEndpoint(directResult, payload, settings || {});
         if (hasPdfPayload(directResult)) return directResult;
-        return markMissingPdf(directResult, payload, 'Compile job and direct compile endpoint completed without returning a PDF payload. Check that the configured backend returns pdfBase64/pdfBytesBase64/pdf data URL.');
+        return markMissingPdf(directResult, payload, 'Compile job and direct compile endpoint completed without returning or exposing a PDF. The frontend tried pdfBase64/pdfBytesBase64/pdf data URL, nested PDF fields, pdfUrl/outputUrl, and /compile/jobs/{jobId}/pdf.');
       } catch (err) {
         return markMissingPdf(result, payload, 'Compile job completed without a PDF, and direct compile fallback failed: ' + (err && err.message ? err.message : String(err)));
       }
     }
     if (result.ok && !hasPdfPayload(result)) {
-      return markMissingPdf(result, payload, 'Compile backend reported success but did not return a PDF payload.');
+      return markMissingPdf(result, payload, 'Compile backend reported success but did not return or expose a PDF payload. The frontend checked direct PDF fields, nested PDF fields, URL fields, and the job PDF endpoint.');
     }
     return result;
   }
