@@ -1,12 +1,12 @@
-/* Latexai Stage 18C CompetitivePaperReviewService
- * Stage: stage18c-competitive-review-web-research-agent-1
+/* Latexai Stage 18D CompetitivePaperReviewService
+ * Stage: stage18d-competitive-review-source-cited-ranking-report-1
  *
  * Competitive paper comparison workflow.
  *
- * Web-research-agent version:
+ * Source-cited web-research-agent version:
  * - competitor URLs are treated as web-research seeds, not PDFs to download/extract;
  * - the selected AI backend must expose a web_search/open capability;
- * - Latexai caches structured research profiles only, never raw PDF text.
+ * - Latexai caches structured research profiles and source ledgers only, never raw PDF text.
  */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18c-competitive-review-web-research-agent-1';
+  const STAGE = 'stage18d-competitive-review-source-cited-ranking-report-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -34,7 +34,9 @@
   let lastRankingReport = '';
   let lastComparisonReport = '';
   let lastRoadmapReport = '';
-  const URL_CACHE_KEY = 'latexai:competitive-web-research-profile-cache:v1';
+  let lastSourceLedger = [];
+  let lastEvidenceCoverage = null;
+  const URL_CACHE_KEY = 'latexai:competitive-web-research-profile-cache:v2';
 
   function State() { return NS.State; }
   function el(id) { return D.getElementById(id); }
@@ -207,6 +209,111 @@
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>\"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  }
+
+  function sourceLabel(value, fallback = '') {
+    const raw = clean(value || fallback);
+    return raw.replace(/\s+/g, ' ').slice(0, 260);
+  }
+
+  function normalizeSourceRecord(source, competitorUrl = '', paperTitle = '') {
+    if (!source) return null;
+    if (typeof source === 'string') {
+      const label = sourceLabel(source);
+      if (!label) return null;
+      return { url: /^https?:\/\//i.test(label) ? label : '', title: label, kind: 'web-source', competitorUrl, paperTitle };
+    }
+    const url = clean(source.url || source.href || source.link || source.sourceUrl || '');
+    const title = sourceLabel(source.title || source.name || source.label || source.description || url || competitorUrl);
+    const kind = sourceLabel(source.kind || source.type || source.sourceType || 'web-source');
+    const evidence = sourceLabel(source.evidence || source.snippet || source.quote || source.summary || source.rationale || '');
+    if (!url && !title && !evidence) return null;
+    return { url, title, kind, evidence, competitorUrl, paperTitle };
+  }
+
+  function sourceRecordsFromPaper(paper) {
+    const sources = [];
+    const url = clean(paper?.url || paper?.sourceUrl || '');
+    const title = clean(paper?.title || '');
+    const push = (src) => {
+      const rec = normalizeSourceRecord(src, url, title);
+      if (rec) sources.push(rec);
+    };
+    const raw = paper?.sourceRecords || paper?.sources || paper?.sourcesConsulted || paper?.evidenceSources || [];
+    if (Array.isArray(raw)) raw.forEach(push);
+    else readLines(raw).forEach(push);
+    if (url) push({ url, title: title || url, kind: 'seed-url', evidence: 'User-provided competitor URL seed.' });
+    return sources;
+  }
+
+  function buildSourceLedger(papers) {
+    const seen = new Set();
+    const ledger = [];
+    for (const paper of papers || []) {
+      for (const source of sourceRecordsFromPaper(paper)) {
+        const key = `${(source.url || '').toLowerCase()}|${(source.title || '').toLowerCase()}|${(source.evidence || '').toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        ledger.push({ ...source, id: `S${ledger.length + 1}` });
+      }
+    }
+    return ledger;
+  }
+
+  function sourceCoverage(papers, ledger) {
+    const list = papers || [];
+    const perPaper = list.map((paper) => {
+      const url = clean(paper?.url || paper?.sourceUrl || '');
+      const title = clean(paper?.title || url || 'competitor');
+      const sourceCount = (ledger || []).filter((src) => clean(src.competitorUrl) === url || clean(src.paperTitle) === clean(paper?.title || '')).length;
+      const accessed = paper?.accessed === true || sourceCount > 1;
+      const evidenceStrength = sourceCount >= 3 ? 'strong' : sourceCount >= 2 ? 'moderate' : sourceCount >= 1 ? 'seed-only/limited' : 'missing';
+      return { url, title, sourceCount, accessed, evidenceStrength };
+    });
+    return {
+      competitorCount: list.length,
+      sourceCount: (ledger || []).length,
+      competitorsWithEvidence: perPaper.filter((x) => x.sourceCount > 1 || x.accessed).length,
+      perPaper
+    };
+  }
+
+  function sourcesMarkdown(ledger = lastSourceLedger) {
+    const list = ledger && ledger.length ? ledger : buildSourceLedger(lastCompetitorSummaries);
+    if (!list.length) return '(no source ledger available yet)';
+    return list.map((src) => {
+      const bits = [`[${src.id || 'S?'}] ${src.title || src.url || 'Untitled source'}`];
+      if (src.url) bits.push(`URL: ${src.url}`);
+      if (src.kind) bits.push(`Type: ${src.kind}`);
+      if (src.paperTitle || src.competitorUrl) bits.push(`For: ${src.paperTitle || src.competitorUrl}`);
+      if (src.evidence) bits.push(`Evidence: ${src.evidence}`);
+      return `- ${bits.join(' | ')}`;
+    }).join('\n');
+  }
+
+  function evidenceCoverageMarkdown(coverage = lastEvidenceCoverage) {
+    const c = coverage || sourceCoverage(lastCompetitorSummaries, lastSourceLedger);
+    const rows = [`Competitors: ${c.competitorCount || 0}`, `Sources: ${c.sourceCount || 0}`, `Competitors with non-seed evidence: ${c.competitorsWithEvidence || 0}`];
+    for (const paper of c.perPaper || []) {
+      rows.push(`- ${paper.title || paper.url}: ${paper.sourceCount} source(s), evidence=${paper.evidenceStrength}`);
+    }
+    return rows.join('\n');
+  }
+
+  function refreshEvidenceState(papers = lastCompetitorSummaries) {
+    lastSourceLedger = buildSourceLedger(papers || []);
+    lastEvidenceCoverage = sourceCoverage(papers || [], lastSourceLedger);
+    const node = el('competitiveEvidenceStatus');
+    if (node) {
+      const c = lastEvidenceCoverage;
+      node.innerHTML = [
+        '<strong>Evidence ledger:</strong> ',
+        `${c.sourceCount || 0} source(s) for ${c.competitorCount || 0} competitor(s); `,
+        `${c.competitorsWithEvidence || 0} competitor(s) have non-seed evidence.`,
+        '<br><span class="muted">Reports and ranking prompts should cite source IDs like [S1], [S2].</span>'
+      ].join('');
+    }
+    return { ledger: lastSourceLedger, coverage: lastEvidenceCoverage };
   }
 
   function updateWorkflowStatus(step, message) {
@@ -389,6 +496,8 @@
       competitorUrls: competitors.urls,
       competitorNotes: competitors.notes,
       competitorSummaries: lastCompetitorSummaries,
+      competitorSourceLedger: lastSourceLedger,
+      evidenceCoverage: lastEvidenceCoverage,
       competitorRankingReport: lastRankingReport,
       draftComparisonReport: lastComparisonReport,
       competitiveRoadmapReport: lastRoadmapReport,
@@ -399,7 +508,7 @@
         required: true,
         provider: currentAiProvider(),
         model: currentAiModel(),
-        expectation: 'AI backend must use web search/open tools to research competitor URLs as source-discovery seeds; do not require PDF web research.'
+        expectation: 'AI backend must use web search/open tools to research competitor URLs as source-discovery seeds; do not require PDF web research; every substantive ranking claim must be tied to source IDs from the source ledger.'
       },
       draftExcerpt: draftExcerpt(active.text)
     };
@@ -428,7 +537,8 @@
       strengths: Array.isArray(paper?.strengths) ? paper.strengths.map(clean).filter(Boolean) : readLines(paper?.strengths || ''),
       limitations: Array.isArray(paper?.limitations) ? paper.limitations.map(clean).filter(Boolean) : readLines(paper?.limitations || paper?.weaknesses || ''),
       evidence: clean(paper?.evidence || paper?.webSearchEvidence || paper?.sourceEvidence || ''),
-      sourcesConsulted: Array.isArray(paper?.sourcesConsulted) ? paper.sourcesConsulted.map(clean).filter(Boolean) : readLines(paper?.sourcesConsulted || paper?.sourceUrls || paper?.sources || ''),
+      sourceRecords: Array.isArray(paper?.sourceRecords || paper?.sources || paper?.sourcesConsulted) ? (paper.sourceRecords || paper.sources || paper.sourcesConsulted).map((src) => normalizeSourceRecord(src, url, clean(paper?.title || ''))).filter(Boolean) : readLines(paper?.sourceRecords || paper?.sourcesConsulted || paper?.sourceUrls || paper?.sources || '').map((src) => normalizeSourceRecord(src, url, clean(paper?.title || ''))).filter(Boolean),
+      sourcesConsulted: Array.isArray(paper?.sourcesConsulted) ? paper.sourcesConsulted.map((src) => typeof src === 'string' ? clean(src) : clean(src?.url || src?.title || src?.evidence || '')).filter(Boolean) : readLines(paper?.sourcesConsulted || paper?.sourceUrls || paper?.sources || ''),
       accessed: paper?.accessed === true || paper?.webSearchAccessed === true || paper?.accessStatus === 'accessed',
       cached: Boolean(paper?.cached),
       cachedAt: paper?.cachedAt || ''
@@ -549,6 +659,7 @@
     const { cached, missing } = mergedSummariesFromCache(payload.competitorUrls);
     if (!missing.length) {
       lastCompetitorSummaries = cached;
+      refreshEvidenceState(cached);
       const report = ['# Competitor web research', '', 'All competitor research profiles were loaded from local cache.', '', summariesMarkdown(cached)].join('\n');
       setOutput(report);
       setStatus(`Loaded ${cached.length} competitor research profile(s) from cache.`);
@@ -560,7 +671,7 @@
       'Use web search/open tools to research each competitor URL as a seed and build concise paper metadata/profiles.',
       'Return a short Markdown web-research evidence report with sources consulted.',
       'Also include exactly one fenced code block labelled latexai_competitor_research_profiles containing JSON:',
-      '{"papers":[{"url":"...","title":"...","authors":["..."],"year":"...","venue":"...","abstract":"...","mainClaims":["..."],"strengths":["..."],"limitations":["..."],"sourcesConsulted":["source URL/title consulted"],"evidence":"what web source/snippet supported this","accessed":true}]}',
+      '{"papers":[{"url":"...","title":"...","authors":["..."],"year":"...","venue":"...","abstract":"...","mainClaims":["..."],"strengths":["..."],"limitations":["..."],"sourceRecords":[{"url":"...","title":"...","kind":"arxiv/openreview/project/semantic-scholar/other","evidence":"short snippet or fact supported by this source"}],"sourcesConsulted":["source URL/title consulted"],"evidence":"what web source/snippet supported this","accessed":true}]}',
       'If a URL or its related public sources cannot be accessed, include it with accessed=false and explain what evidence is missing.'
     ].join('\n');
     const input = [
@@ -577,6 +688,7 @@
       const researched = parsePaperSummariesFromAi(raw, missing);
       const merged = [...cached, ...researched];
       lastCompetitorSummaries = merged;
+      refreshEvidenceState(merged);
       savePaperSummariesToCache(researched);
       const report = [raw || '# Competitor web research', '', '--- Latexai parsed competitor research profiles ---', summariesMarkdown(merged)].join('\n');
       setOutput(report);
@@ -601,9 +713,10 @@
     setStatus('Ranking competitor paper set...');
     const instructions = [
       'Rank the competitor papers against each other before considering the user draft.',
-      'Use the web-researched evidence, target venue, target audience, and comparison modes.',
-      'Return a Markdown ranking table with #, title, URL, main strength, weakness/risk, and why it is above/below the next paper.',
-      'End with a concise JSON block labelled latexai_competitor_ranking with {"ranking":[{"rank":1,"url":"...","title":"...","rationale":"..."}]}.'
+      'Use the web-researched evidence, target venue, target audience, comparison modes, and the numbered source ledger.',
+      'Return a Markdown ranking table with #, title, URL, main strength, weakness/risk, evidence/source IDs, and why it is above/below the next paper.',
+      'Every substantive claim in the ranking rationale must cite one or more source IDs like [S1] from the source ledger. If evidence is seed-only or weak, say so.',
+      'End with a concise JSON block labelled latexai_competitor_ranking with {"ranking":[{"rank":1,"url":"...","title":"...","sourceIds":["S1"],"rationale":"..."}]}.'
     ].join('\n');
     const input = [
       '--- Target venue/audience ---',
@@ -613,6 +726,12 @@
       '',
       '--- Competitor paper summaries ---',
       summariesMarkdown(lastCompetitorSummaries),
+      '',
+      '--- Numbered source ledger; cite these IDs in the ranking ---',
+      sourcesMarkdown(lastSourceLedger),
+      '',
+      '--- Evidence coverage summary ---',
+      evidenceCoverageMarkdown(lastEvidenceCoverage),
       '',
       payload.competitorNotes ? `--- User notes ---\n${payload.competitorNotes}` : ''
     ].filter(Boolean).join('\n');
@@ -645,6 +764,7 @@
       'Compare the current draft against the already-ranked competitor set.',
       'Estimate the current draft position relative to the competitor papers.',
       'For each competitor, list exactly what the current draft does worse, what it does better, and what must change to move up.',
+      'Cite source IDs like [S1] for claims about competitor papers and explicitly mark weak/uncited evidence.',
       'Return Markdown only; do not produce actionable edit JSON in this step.'
     ].join('\n');
     const input = [
@@ -653,6 +773,12 @@
       '',
       '--- Competitor summaries ---',
       summariesMarkdown(lastCompetitorSummaries),
+      '',
+      '--- Source ledger for competitor claims ---',
+      sourcesMarkdown(lastSourceLedger),
+      '',
+      '--- Evidence coverage summary ---',
+      evidenceCoverageMarkdown(lastEvidenceCoverage),
       '',
       '--- Current draft excerpt ---',
       payload.draftExcerpt,
@@ -724,8 +850,15 @@
       '--- Request JSON ---',
       JSON.stringify(payload, null, 2),
       '',
+      '--- Source-citation requirement ---',
+      'For competitor claims and rankings, cite source IDs from this source ledger whenever available:',
+      sourcesMarkdown(lastSourceLedger),
+      '',
+      '--- Evidence coverage summary ---',
+      evidenceCoverageMarkdown(lastEvidenceCoverage),
+      '',
       '--- Important limitation ---',
-      'Use web search/open tools for competitor URLs whenever available. Treat URLs as source-discovery seeds. Do not use or request Latexai PDF extraction, and do not claim full-paper/PDF access unless the searched evidence supports it.'
+      'Use web search/open tools for competitor URLs whenever available. Treat URLs as source-discovery seeds. Do not use or request Latexai PDF extraction, and do not claim full-paper/PDF access unless the searched evidence supports it. Ranking claims must be evidence-cited; mark weak evidence explicitly.'
     ].join('\n');
 
     try {
@@ -740,7 +873,9 @@
       const response = await NS.AIProvider.ask({
         workflow: 'competitive-web-review-improvement',
         instructions: [
-          'Return a structured Markdown competitive review report. Be critical, concrete, and action-oriented.',
+          'Return a structured Markdown competitive review report. Be critical, concrete, source-cited, and action-oriented.',
+          'Include an Evidence-cited ranking table with source IDs, an evidence coverage summary, and a sources consulted ledger.',
+          'Every substantive competitor claim must cite source IDs like [S1] when source evidence is available; if not, mark it as weak/uncited.',
           'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
           'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
           'For every edit, include a rankingEffect explaining which competitor gap the edit addresses. For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
@@ -816,6 +951,14 @@
       '## Competitor web research profiles',
       '',
       summariesMarkdown(payload.competitorSummaries || lastCompetitorSummaries),
+      '',
+      '## Source evidence ledger',
+      '',
+      sourcesMarkdown(payload.competitorSourceLedger || lastSourceLedger),
+      '',
+      '## Evidence coverage',
+      '',
+      evidenceCoverageMarkdown(payload.evidenceCoverage || lastEvidenceCoverage),
       '',
       '## Competitor ranking prepass',
       '',
@@ -1359,6 +1502,7 @@
       '  <div class="competitive-step-row" data-competitive-step="roadmap"><span class="competitive-step-label">5. Roadmap</span><span class="competitive-step-message">pending</span></div>',
       '  <div class="competitive-step-row" data-competitive-step="insert"><span class="competitive-step-label">6. Insert edits</span><span class="competitive-step-message">pending</span></div>',
       '</div>',
+      '<div id="competitiveEvidenceStatus" class="competitive-web-status">Evidence ledger not built yet. Research competitors to generate source IDs.</div>',
       '<div class="competitive-url-add-row">',
       '  <input id="competitiveAddUrlInput" type="url" placeholder="Paste competitor paper URL" />',
       '  <button id="addCompetitiveUrlBtn" class="btn mini" type="button">+ Add URL</button>',
@@ -1394,14 +1538,14 @@
       '  <button id="fetchCompetitivePapersBtn" class="btn mini" type="button">Research competitor papers</button>',
       '  <button id="rankCompetitivePapersBtn" class="btn mini" type="button">Rank competitors</button>',
       '  <button id="compareCompetitiveDraftBtn" class="btn mini" type="button">Compare my draft</button>',
-      '  <button id="generateCompetitiveRoadmapBtn" class="btn mini primary" type="button">Generate roadmap</button>',
-      '  <button id="runCompetitiveReviewBtn" class="btn mini" type="button">Run full review</button>',
+      '  <button id="generateCompetitiveRoadmapBtn" class="btn mini primary" type="button">Generate source-cited roadmap</button>',
+      '  <button id="runCompetitiveReviewBtn" class="btn mini" type="button">Run full cited review</button>',
       '  <button id="copyCompetitiveReviewBtn" class="btn mini" type="button">Copy report</button>',
       '  <button id="addCompetitiveReviewBtn" class="btn mini" type="button">Add report to /reviews</button>',
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18C uses an AI web-research agent: URLs are research seeds, not PDFs to extract. The workflow builds competitor profiles, ranks competitors, compares the draft, and generates a roadmap. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
+      '<div class="settings-note">Stage 18D uses a source-cited AI web-research agent: URLs are research seeds, not PDFs to extract. The workflow builds competitor profiles plus a source ledger, ranks competitors with source IDs, compares the draft, and generates a cited roadmap. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');
@@ -1449,7 +1593,11 @@
     getLastPayload: () => lastPayload,
     getLastCompetitorSummaries: () => lastCompetitorSummaries,
     getLastRankingReport: () => lastRankingReport,
-    getLastComparisonReport: () => lastComparisonReport
+    getLastComparisonReport: () => lastComparisonReport,
+    getLastSourceLedger: () => lastSourceLedger,
+    getLastEvidenceCoverage: () => lastEvidenceCoverage,
+    sourcesMarkdown,
+    evidenceCoverageMarkdown
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
