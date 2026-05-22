@@ -14,8 +14,11 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage17s-lai-insertion-safety-1';
+  var STAGE = 'stage17t-compile-endpoint-repair-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
+  var DEFAULT_COMPILE_URL = BACKEND_BASE + '/api/lumina/latex/compile';
+  var DEFAULT_JOBS_URL = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
+  var DEFAULT_STATUS_URL = BACKEND_BASE + '/api/lumina/latex/status';
 
   function isObject(x) {
     return x !== null && typeof x === 'object';
@@ -48,6 +51,80 @@
     } catch (err) {
       return fallback;
     }
+  }
+
+  function stringifyHttpDetail(detail) {
+    if (detail == null) return '';
+    if (typeof detail === 'string') return detail;
+    try { return JSON.stringify(detail); } catch (err) { return String(detail); }
+  }
+
+  function looksLikeGenericLuminaBackend(url) {
+    try {
+      var u = new URL(String(url || ''), (root.location && root.location.href) || BACKEND_BASE + '/');
+      var host = String(u.hostname || '').toLowerCase();
+      return /^lumina-backend-[a-z0-9-]+\.us-east1\.run\.app$/.test(host) && host.indexOf('latex') === -1;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function deriveCompileUrlFromStatusUrl(statusUrl) {
+    try {
+      var u = new URL(String(statusUrl || ''), (root.location && root.location.href) || BACKEND_BASE + '/');
+      u.hash = '';
+      u.search = '';
+      if (/\/api\/lumina\/latex\/status\/?$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/status\/?$/i, '/compile');
+        return u.href;
+      }
+    } catch (err) {}
+    return '';
+  }
+
+  function deriveCompileUrlFromJobsUrl(jobsUrl) {
+    try {
+      var u = new URL(String(jobsUrl || ''), (root.location && root.location.href) || BACKEND_BASE + '/');
+      u.hash = '';
+      u.search = '';
+      if (/\/api\/lumina\/latex\/compile\/jobs\/?$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/compile\/jobs\/?$/i, '/compile');
+        return u.href;
+      }
+    } catch (err) {}
+    return '';
+  }
+
+  function uniqueUrls(urls) {
+    var seen = {};
+    var out = [];
+    (urls || []).forEach(function (url) {
+      if (!url) return;
+      var key = String(url).replace(/\/+$/, '');
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(String(url));
+    });
+    return out;
+  }
+
+  function buildDirectCompileUrlCandidates(settings) {
+    settings = settings || {};
+    return uniqueUrls([
+      settings.compileUrl,
+      deriveCompileUrlFromJobsUrl(settings.compileStatusUrl),
+      deriveCompileUrlFromStatusUrl(settings.backendStatusUrl),
+      DEFAULT_COMPILE_URL
+    ]);
+  }
+
+  function buildJobCompileUrlCandidates(settings) {
+    settings = settings || {};
+    var directCandidates = buildDirectCompileUrlCandidates(settings);
+    return uniqueUrls([
+      settings.compileStatusUrl,
+      deriveCompileJobsUrl(settings.compileUrl)
+    ].concat(directCandidates.map(deriveCompileJobsUrl)).concat([DEFAULT_JOBS_URL]));
   }
 
   function shouldSyncJobsUrlWithCompileUrl(compileUrl, jobsUrl) {
@@ -107,12 +184,27 @@
     next.compilerMode = 'backend-texlive';
     next.compileUrl = absoluteBackendUrl(next.compileUrl, '/api/lumina/latex/compile');
     next.compileStatusUrl = absoluteBackendUrl(next.compileStatusUrl, '/api/lumina/latex/compile/jobs');
-    var derivedJobsUrl = deriveCompileJobsUrl(next.compileUrl);
-    if (shouldSyncJobsUrlWithCompileUrl(next.compileUrl, next.compileStatusUrl)) {
-      next.compileStatusUrl = derivedJobsUrl;
-      next.compileStatusUrlAutoDerived = true;
-    }
     next.backendStatusUrl = absoluteBackendUrl(next.backendStatusUrl, '/api/lumina/latex/status');
+
+    // Stage 17T: repair stale settings created by the Stage 17Q auto-sync.
+    // Some browsers had compileUrl pointing at the generic Lumina backend
+    // (lumina-backend-*.run.app) while backendStatusUrl still pointed at the
+    // real LaTeX compiler. Sending LaTeX compile payloads to the generic backend
+    // causes HTTP 400 before TeX even runs. Prefer the status-derived LaTeX
+    // compiler endpoint in that case, and keep the direct/jobs endpoints paired.
+    var statusDerivedCompileUrl = deriveCompileUrlFromStatusUrl(next.backendStatusUrl);
+    if (looksLikeGenericLuminaBackend(next.compileUrl) && statusDerivedCompileUrl) {
+      next.compileUrl = statusDerivedCompileUrl;
+      next.compileStatusUrl = deriveCompileJobsUrl(statusDerivedCompileUrl);
+      next.compileEndpointRepair = 'stage17t-repaired-generic-backend-compile-url-from-backendStatusUrl';
+      next.compileStatusUrlAutoDerived = false;
+    } else {
+      var derivedJobsUrl = deriveCompileJobsUrl(next.compileUrl);
+      if (shouldSyncJobsUrlWithCompileUrl(next.compileUrl, next.compileStatusUrl)) {
+        next.compileStatusUrl = derivedJobsUrl;
+        next.compileStatusUrlAutoDerived = true;
+      }
+    }
     next.useCompileJobs = next.useCompileJobs !== false;
     next.engine = next.engine || 'pdflatex';
     next.bibliography = next.bibliography || 'bibtex';
@@ -391,7 +483,8 @@
     try { data = text ? JSON.parse(text) : {}; } catch (err) { data = { rawText: text }; }
     if (!response.ok) {
       var detail = data && (data.detail || data.message || data.error || data.rawText);
-      var msg = detail ? ('HTTP ' + response.status + ': ' + String(detail).slice(0, 800)) : ('HTTP ' + response.status);
+      var detailText = stringifyHttpDetail(detail);
+      var msg = detailText ? ('HTTP ' + response.status + ': ' + detailText.slice(0, 1600)) : ('HTTP ' + response.status);
       var httpErr = new Error(msg);
       httpErr.httpStatus = response.status;
       httpErr.url = String(url || '');
@@ -412,7 +505,7 @@
   async function fallbackToDirectAfterJobError(err, payload, settings, phase) {
     var reason = (phase || 'compile job endpoint') + ' failed: ' + ((err && err.message) || String(err));
     try {
-      var directResult = await compileDirect(payload, settings);
+      var directResult = await tryDirectCompileCandidates(payload, settings);
       directResult.jobCompileFallbackReason = reason;
       return requirePdfOrFallback(directResult, payload, settings, 'direct');
     } catch (directErr) {
@@ -438,15 +531,37 @@
     return { project: project || getGlobalProject(), settings: normalizeSettings(settings || getGlobalSettings()) };
   }
 
-  async function compileDirect(payload, settings) {
-    var directRaw = await fetchJson(settings.compileUrl, {
+  async function compileDirectToUrl(payload, url) {
+    var directRaw = await fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     var directResult = normalizeCompileResult(directRaw, payload);
     directResult.usedDirectCompileEndpoint = true;
+    directResult.compileEndpointUrl = url;
     return directResult;
+  }
+
+  async function compileDirect(payload, settings) {
+    return compileDirectToUrl(payload, settings.compileUrl);
+  }
+
+  async function tryDirectCompileCandidates(payload, settings) {
+    var urls = buildDirectCompileUrlCandidates(settings);
+    var errors = [];
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        var result = await compileDirectToUrl(payload, urls[i]);
+        result.compileEndpointAttempts = urls.slice(0, i + 1);
+        return result;
+      } catch (err) {
+        errors.push(urls[i] + ' -> ' + ((err && err.message) || String(err)));
+      }
+    }
+    var finalErr = new Error(errors.join(' | ') || 'No direct compile endpoints were available.');
+    finalErr.compileEndpointErrors = errors;
+    throw finalErr;
   }
 
   async function requirePdfOrFallback(result, payload, settings, source) {
@@ -454,7 +569,7 @@
     if (hasPdfPayload(result) || result.mode === 'static-draft-fallback' || result.mode === 'mock-draft') return result;
     if (result.ok && settings && settings.useCompileJobs && source !== 'direct') {
       try {
-        var directResult = await compileDirect(payload, settings);
+        var directResult = await tryDirectCompileCandidates(payload, settings);
         directResult.jobCompileFallbackReason = 'job result had status success but no PDF payload';
         if (hasPdfPayload(directResult)) return directResult;
         return markMissingPdf(directResult, payload, 'Compile job and direct compile endpoint completed without returning a PDF payload. Check that the configured backend returns pdfBase64/pdfBytesBase64/pdf data URL.');
@@ -476,17 +591,24 @@
 
     var raw;
     if (settings.useCompileJobs) {
-      try {
-        raw = await fetchJson(settings.compileStatusUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } catch (jobCreateErr) {
-        if (isJobEndpointFailure(jobCreateErr)) {
-          return fallbackToDirectAfterJobError(jobCreateErr, payload, settings, 'compile job creation endpoint');
+      var jobUrls = buildJobCompileUrlCandidates(settings);
+      var jobCreateErrors = [];
+      for (var jobUrlIndex = 0; jobUrlIndex < jobUrls.length; jobUrlIndex++) {
+        try {
+          raw = await fetchJson(jobUrls[jobUrlIndex], {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          settings.compileStatusUrl = jobUrls[jobUrlIndex];
+          break;
+        } catch (jobCreateErr) {
+          jobCreateErrors.push(jobUrls[jobUrlIndex] + ' -> ' + ((jobCreateErr && jobCreateErr.message) || String(jobCreateErr)));
+          if (!isJobEndpointFailure(jobCreateErr)) throw jobCreateErr;
         }
-        throw jobCreateErr;
+      }
+      if (!raw) {
+        return fallbackToDirectAfterJobError(new Error(jobCreateErrors.join(' | ')), payload, settings, 'compile job creation endpoint');
       }
       // The current Cloud Run backend may return the result directly in the create-job response.
       if (raw && raw.result) return requirePdfOrFallback(raw, payload, settings, 'job-create');
@@ -514,11 +636,7 @@
       return requirePdfOrFallback(raw, payload, settings, 'job-create');
     }
 
-    raw = await fetchJson(settings.compileUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    raw = await tryDirectCompileCandidates(payload, settings);
     return requirePdfOrFallback(raw, payload, settings, 'direct');
   }
 
