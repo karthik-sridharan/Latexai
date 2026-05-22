@@ -1,0 +1,21 @@
+Latexai test report
+===================
+
+Stage: stage17p-right-panel-action-row-containment-1
+
+Commands run:
+- node --check js/competitive-paper-review-service.js
+- node --check js/devils-advocate-debate-service.js
+- node --check js/right-panel-organizer-service.js
+- node tests/stage17p-action-row-containment.test.cjs
+- python3 tests/stage17p-chromium-action-row-containment.py
+
+Chromium harness checks:
+- Devil's Advocate action row uses contained CSS grid.
+- Competitive Review action row uses contained CSS grid.
+- All long action buttons remain horizontally visible inside the card.
+- Card scrollWidth does not exceed card clientWidth.
+- Copilot tab scrollWidth does not exceed clientWidth.
+- Long output text does not widen the right panel.
+
+Result: PASS
