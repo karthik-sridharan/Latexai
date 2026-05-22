@@ -1,7 +1,32 @@
-/* Latexai Stage 18G: stable editor syntax overlay, indentation guides, and shortcut settings */
+/* Latexai Stage 18H: direct editor surface stability, shortcut settings, and opt-in syntax overlay */
 
 .source-shell.latexai-enhanced-source-shell {
   position: relative;
+}
+
+.source-shell.latexai-direct-editor-surface #sourceEditor {
+  color: #e5e7eb !important;
+  -webkit-text-fill-color: #e5e7eb !important;
+  background: #0f172a !important;
+  caret-color: #f8fafc !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+.source-shell.latexai-direct-editor-surface #sourceEditor:focus {
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
+}
+
+.source-shell.latexai-direct-editor-surface #sourceEditor.lai-source-selection-hidden-text:focus {
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
+  background: #0f172a !important;
+}
+
+.source-shell.latexai-direct-editor-surface .latex-syntax-overlay[data-stage18h-enabled="0"],
+.source-shell.latexai-direct-editor-surface .latex-syntax-overlay[hidden] {
+  display: none !important;
 }
 
 .latex-syntax-overlay {
@@ -32,15 +57,13 @@
   grid-row: 1;
   position: relative;
   z-index: 2;
-  background: transparent !important;
-  /* Do not make the live editing surface fully transparent. Safari can repaint
-     transparent textarea text as opaque during Return/input, which made the
-     editor appear to switch between the old and highlighted surfaces. Keeping
-     the real textarea nearly transparent preserves one stable input surface
-     while the passive overlay provides the visible color layer. */
-  color: rgba(229, 231, 235, .018) !important;
-  -webkit-text-fill-color: rgba(229, 231, 235, .018);
-  caret-color: #f8fafc;
+  /* Stage 18H: keep the real textarea readable. The previous transparent-text
+     overlay approach caused Safari/iPad to show black-on-dark text and stale
+     alternate editor surfaces when focus moved to the right panel. */
+  color: #e5e7eb !important;
+  -webkit-text-fill-color: #e5e7eb !important;
+  background: #0f172a !important;
+  caret-color: #f8fafc !important;
   text-shadow: none;
   -webkit-background-clip: padding-box;
 }
@@ -51,8 +74,8 @@
 
 #sourceEditor.latexai-syntax-textarea::selection {
   background: rgba(96,165,250,.45);
-  color: rgba(229, 231, 235, .018);
-  -webkit-text-fill-color: rgba(229, 231, 235, .018);
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
 }
 
 .latex-syntax-line {
