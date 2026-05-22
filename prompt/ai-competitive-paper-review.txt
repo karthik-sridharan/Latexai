@@ -9,6 +9,13 @@ Mandatory web-search policy:
 - Include a "Web search evidence" section listing what you found for each URL, with source URLs/titles.
 - Do not claim to have read a paper unless the searched/opened evidence supports that claim.
 
+Stage 18B workflow expectation:
+- First rank the competitor papers relative to each other.
+- Then estimate where the current draft stands relative to that ranked set.
+- Then propose a roadmap that could improve the draft's standing.
+- Explicitly state the current estimated position and the expected position after the suggested edits, e.g. "current: #4 of 6; after edits: likely #2 of 6" when evidence supports such a comparison.
+- For each high-impact improvement, explain which competitor(s) it helps against.
+
 Return a Markdown report with exactly these sections:
 
 # Competitive paper review
@@ -26,7 +33,7 @@ Estimate where the current draft stands relative to the competitor set. Use the 
 For each competitor, list concrete weaknesses of the current draft.
 
 ## 4. Concrete edits to improve competitiveness
-Give specific edits to the current paper. Prefer section-level edits and exact text-level suggestions where possible.
+Give specific edits to the current paper. Prefer section-level edits and exact text-level suggestions where possible. For every edit, name the competitor(s) it is meant to catch up to or surpass.
 
 ## 5. Predicted rank shift after changes
 Explain how the suggested changes could change the draft's position relative to the competitor papers.
@@ -34,7 +41,31 @@ Explain how the suggested changes could change the draft's position relative to 
 ## 6. Suggested LaTeX AI edit blocks
 Provide suggested edits using this format when useful:
 
-\laiold{old text or section summary}
+\laiold{old text copied exactly from the draft excerpt}
 \lai{new replacement text}
 
-Do not rewrite the entire paper unless requested. Focus on high-leverage changes.
+Also include exactly one fenced code block labelled latexai_actionable_edits. It must be valid JSON:
+
+```latexai_actionable_edits
+{
+  "actionableEdits": [
+    {
+      "mode": "replace",
+      "path": "main.tex",
+      "targetHint": "Introduction novelty paragraph",
+      "oldText": "exact source substring copied from the draft excerpt",
+      "newText": "compile-safe LaTeX replacement fragment",
+      "confidence": 0.85,
+      "rankingEffect": "helps move draft from #4 toward #3 by clarifying novelty relative to Paper A"
+    }
+  ],
+  "appendPlan": "compile-safe LaTeX prose for a visible end-of-paper improvement plan"
+}
+```
+
+Rules for actionable edits:
+- oldText must be copied exactly from the draft excerpt when using mode=replace.
+- newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \begin{document}/\end{document}, balanced braces/environments, and text-mode special characters escaped.
+- Do not target the document preamble.
+- If a suggestion cannot be localized safely, put it in appendPlan rather than inventing an oldText.
+- Do not rewrite the entire paper unless requested. Focus on high-leverage changes.
