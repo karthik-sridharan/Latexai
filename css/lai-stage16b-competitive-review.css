@@ -412,3 +412,88 @@
   font-weight: 950;
   background: rgba(239,246,255,.92);
 }
+
+/* Stage 18M: ranking-to-lai edit impact map */
+.competitive-edit-impact-map {
+  margin: .55rem 0 .65rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.competitive-impact-empty {
+  border: 1px dashed rgba(100,116,139,.35);
+  border-radius: 12px;
+  padding: .55rem .6rem;
+  color: #64748b;
+  background: rgba(248,250,252,.78);
+  font-size: .74rem;
+  line-height: 1.32;
+}
+
+.competitive-impact-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .52rem;
+}
+
+.competitive-impact-card {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(37,99,235,.14);
+  border-radius: 14px;
+  padding: .62rem;
+  background: linear-gradient(180deg, rgba(239,246,255,.72), rgba(255,255,255,.95));
+  box-shadow: 0 4px 14px rgba(15,23,42,.045);
+}
+
+.competitive-impact-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .55rem;
+  min-width: 0;
+}
+
+.competitive-impact-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-size: .82rem;
+  line-height: 1.2;
+}
+
+.competitive-impact-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: .16rem .42rem;
+  font-size: .62rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .025em;
+  border: 1px solid rgba(100,116,139,.2);
+}
+
+.competitive-impact-badge.good {
+  color: #14532d;
+  background: rgba(220,252,231,.86);
+  border-color: rgba(22,163,74,.22);
+}
+
+.competitive-impact-badge.weak {
+  color: #713f12;
+  background: rgba(254,243,199,.88);
+  border-color: rgba(245,158,11,.22);
+}
+
+.competitive-impact-meta {
+  margin-top: .34rem;
+  color: #334155;
+  font-size: .7rem;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.competitive-impact-meta b {
+  color: #0f172a;
+}
