@@ -413,7 +413,7 @@
   background: rgba(239,246,255,.92);
 }
 
-/* Stage 18M: ranking-to-lai edit impact map */
+/* Stage 18M/18N: ranking-to-lai edit impact map and stability guards */
 .competitive-edit-impact-map {
   margin: .55rem 0 .65rem;
   max-width: 100%;
@@ -496,4 +496,16 @@
 
 .competitive-impact-meta b {
   color: #0f172a;
+}
+
+
+/* Stage 18N: competitive review stability guards */
+#competitiveReviewCard[data-competitive-busy="true"] .competitive-review-actions .btn.busy,
+.competitive-review-actions .btn.busy {
+  opacity: .62;
+  cursor: progress;
+}
+
+#competitiveReviewCard[data-competitive-busy="true"] {
+  position: relative;
 }
