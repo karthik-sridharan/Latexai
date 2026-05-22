@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage17v-compile-job-pdf-endpoint-hydration-1';
+  var STAGE = 'stage17w-compile-result-shape-preserve-errors-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
   var DEFAULT_COMPILE_URL = BACKEND_BASE + '/api/lumina/latex/compile';
   var DEFAULT_JOBS_URL = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
@@ -545,34 +545,75 @@
     return result;
   }
 
+  function isCompileSuccessStatus(status) {
+    return /^(success|completed|succeeded|ok|done)$/i.test(String(status || '').trim());
+  }
+
+  function isCompileFailureStatus(status) {
+    return /^(failed|failure|error|errored|timeout|timedout|timed_out|cancelled|canceled)$/i.test(String(status || '').trim());
+  }
+
   function normalizeCompileResult(raw, payload) {
     raw = isObject(raw) ? raw : {};
-    var result = Object.assign({}, isObject(raw.result) ? raw.result : {}, raw);
-    if (raw.result && isObject(raw.result)) {
+
+    // Stage 17W: a job-create response is a wrapper: { ok:true, status:"completed", result:{...} }.
+    // The wrapper's ok/status only means the job API request completed; it does
+    // NOT mean TeX succeeded. The nested result must own success/failure, logs,
+    // and PDF fields. Previous stages let wrapper ok:true overwrite result.ok:false,
+    // causing real LaTeX errors to be misreported as "success without PDF".
+    var hasNestedResult = raw.result && isObject(raw.result);
+    var wrapper = Object.assign({}, raw);
+    if (hasNestedResult) delete wrapper.result;
+    var result = hasNestedResult ? Object.assign({}, wrapper, raw.result) : Object.assign({}, raw);
+
+    if (hasNestedResult) {
       result.jobId = result.jobId || raw.jobId;
+      result.compileJobId = result.compileJobId || raw.jobId;
       result.progress = result.progress == null ? raw.progress : result.progress;
+      result.jobStatus = raw.status || result.jobStatus;
+      result.jobOk = raw.ok;
+      result.jobMessage = raw.message || result.jobMessage;
     }
-    result.success = Boolean(
-      result.success ||
-      result.ok ||
-      result.status === 'success' ||
-      result.status === 'completed' ||
-      result.status === 'succeeded'
-    );
+
+    var status = String(result.status || '').toLowerCase();
+    var explicitFailure = result.success === false || result.ok === false || isCompileFailureStatus(status) || Number(result.exitCode) > 0 || result.timedOut === true;
+    var explicitSuccess = result.success === true || result.ok === true || isCompileSuccessStatus(status) || Number(result.exitCode) === 0 || result.pdfExtracted === true;
+
+    result.success = Boolean(!explicitFailure && explicitSuccess);
     result.ok = result.success;
     result.status = result.success ? 'success' : (result.status || 'failed');
     result.provider = result.provider || 'cloudrun-texlive-latexmk';
     result.stage = result.stage || STAGE;
-    result.message = result.message || (result.success ? 'Compile succeeded.' : 'Compile failed.');
+    result.message = result.message || (result.success ? 'Compile succeeded.' : 'Compile failed. See log/stderr for details.');
     result.compileInputSummary = result.compileInputSummary || (payload && payload.compileInputSummary);
     return tryMakePdfUrls(result, result.compileEndpointUrl || result.compileStatusUrl || result.pdfBaseUrl || '');
   }
 
   async function fetchJson(url, init) {
     var response = await root.fetch(url, init || {});
+    var contentType = String(response.headers && response.headers.get && response.headers.get('content-type') || '').toLowerCase();
+    if (response.ok && /application\/pdf|application\/octet-stream/.test(contentType) && typeof response.arrayBuffer === 'function') {
+      var buffer = await response.arrayBuffer();
+      var b64 = arrayBufferToBase64(buffer);
+      return {
+        ok: true,
+        success: true,
+        status: 'success',
+        pdfExtracted: Boolean(b64),
+        pdfBytesLength: buffer && buffer.byteLength || 0,
+        pdfBase64: b64,
+        pdfBytesBase64: b64,
+        pdf: b64 ? ('data:application/pdf;base64,' + b64) : null,
+        message: 'Compile succeeded; endpoint returned raw PDF bytes.'
+      };
+    }
     var text = await response.text();
     var data = {};
     try { data = text ? JSON.parse(text) : {}; } catch (err) { data = { rawText: text }; }
+    if (response.ok && typeof text === 'string' && /^%PDF-/i.test(text.slice(0, 16))) {
+      var rawB64 = arrayBufferToBase64(new TextEncoder().encode(text).buffer);
+      data = { ok: true, success: true, status: 'success', pdfBase64: rawB64, pdfBytesBase64: rawB64, pdf: 'data:application/pdf;base64,' + rawB64, message: 'Compile succeeded; endpoint returned raw PDF text.' };
+    }
     if (!response.ok) {
       var detail = data && (data.detail || data.message || data.error || data.rawText);
       var detailText = stringifyHttpDetail(detail);
@@ -635,6 +676,7 @@
 
   async function tryHydratePdfFromJobEndpoint(result, payload, settings) {
     result = normalizeCompileResult(result, payload);
+    if (!result.ok) return result;
     if (hasPdfPayload(result)) return result;
     var jobId = result.jobId || result.id || result.compileJobId;
     if (!jobId) return result;
@@ -735,6 +777,7 @@
         var directResult = await tryDirectCompileCandidates(payload, settings);
         directResult.jobCompileFallbackReason = 'job result had status success but no PDF payload';
         directResult = await tryHydratePdfFromJobEndpoint(directResult, payload, settings || {});
+        if (!directResult.ok) return directResult;
         if (hasPdfPayload(directResult)) return directResult;
         return markMissingPdf(directResult, payload, 'Compile job and direct compile endpoint completed without returning or exposing a PDF. The frontend tried pdfBase64/pdfBytesBase64/pdf data URL, nested PDF fields, pdfUrl/outputUrl, and /compile/jobs/{jobId}/pdf.');
       } catch (err) {
@@ -751,7 +794,7 @@
     var picked = pickProjectSettings(arguments);
     var settings = picked.settings;
     var payload = buildCompileRequest(picked.project, settings);
-    if (root.console && console.log) console.log('[Latexai Stage17R] compile payload', payload.compileInputSummary);
+    if (root.console && console.log) console.log('[Latexai Stage17W] compile payload', payload.compileInputSummary);
 
     var raw;
     if (settings.useCompileJobs) {
