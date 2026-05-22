@@ -1,5 +1,5 @@
 /* Latexai Stage 17O CompetitivePaperReviewService
- * Stage: stage17p-right-panel-action-row-containment-1
+ * Stage: stage17s-lai-insertion-safety-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17p-right-panel-action-row-containment-1';
+  const STAGE = 'stage17s-lai-insertion-safety-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -342,7 +342,8 @@
           'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
           'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
           'For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
-          'If you cannot localize a suggestion safely, put it in appendPlan rather than inventing an oldText.'
+          'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
+          'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
         ].join('\n'),
         input,
         temperature: 0.2,
@@ -547,7 +548,7 @@
   }
 
   function workflowBlockHeader(id, path, extra = '') {
-    return `% BEGIN LAI-ACTIONABLE-EDIT id=${id} workflow=competitive-review path=${path}${extra ? ` ${extra}` : ''}`;
+    return `% BEGIN LAI-ACTIONABLE-EDIT id=${safeMetaValue(id)} workflow=competitive-review path=${safeMetaValue(path)}${extra ? ` ${latexCommentText(extra, 120)}` : ''}`;
   }
 
   function workflowBlockFooter(id) {
@@ -589,6 +590,161 @@
     closeItems();
     out.push('}');
     return out.join('\n');
+  }
+
+
+  function isEscapedAt(text, index) {
+    let n = 0;
+    for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) n += 1;
+    return n % 2 === 1;
+  }
+
+  function stripLatexCommentsForBalance(value) {
+    return String(value || '').split(/\r?\n/).map((line) => {
+      for (let i = 0; i < line.length; i += 1) {
+        if (line[i] === '%' && !isEscapedAt(line, i)) return line.slice(0, i);
+      }
+      return line;
+    }).join('\n');
+  }
+
+  function latexCommentText(value, max = 220) {
+    return String(value || '')
+      .replace(/\r?\n+/g, ' ')
+      .replace(/%/g, ' percent ')
+      .replace(/[{}]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, max);
+  }
+
+  function safeMetaValue(value) {
+    return encodeURIComponent(String(value || '').replace(/\s+/g, '_')).slice(0, 220);
+  }
+
+  function bracesAreBalanced(value) {
+    const s = stripLatexCommentsForBalance(value);
+    let depth = 0;
+    for (let i = 0; i < s.length; i += 1) {
+      const ch = s[i];
+      if ((ch === '{' || ch === '}') && isEscapedAt(s, i)) continue;
+      if (ch === '{') depth += 1;
+      if (ch === '}') {
+        depth -= 1;
+        if (depth < 0) return false;
+      }
+    }
+    return depth === 0;
+  }
+
+  function environmentBalanceIssue(value) {
+    const s = stripLatexCommentsForBalance(value);
+    const stack = [];
+    const re = /\\(begin|end)\s*\{([^}]+)\}/g;
+    let match;
+    while ((match = re.exec(s))) {
+      const kind = match[1];
+      const env = String(match[2] || '').trim();
+      if (!env || env === 'document') continue;
+      if (kind === 'begin') stack.push(env);
+      else {
+        const top = stack.pop();
+        if (top !== env) return `environment mismatch: expected ${top || 'none'}, saw ${env}`;
+      }
+    }
+    if (stack.length) return `unclosed environment: ${stack[stack.length - 1]}`;
+    return '';
+  }
+
+  function unwrapSingleMacroArgument(text, macroName) {
+    const s = String(text || '').trim();
+    const prefix = `\\${macroName}`;
+    if (!s.startsWith(prefix)) return null;
+    let i = prefix.length;
+    while (/\s/.test(s[i] || '')) i += 1;
+    if (s[i] !== '{') return null;
+    let depth = 0;
+    for (let j = i; j < s.length; j += 1) {
+      const ch = s[j];
+      if ((ch === '{' || ch === '}') && isEscapedAt(s, j)) continue;
+      if (ch === '{') depth += 1;
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          const tail = s.slice(j + 1).trim();
+          if (!tail) return s.slice(i + 1, j);
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  function stripActionableWrappers(value) {
+    let s = String(value || '').trim();
+    const fence = s.match(/^```(?:latex|tex|latexai_actionable_edits)?\s*([\s\S]*?)\s*```$/i);
+    if (fence) s = fence[1].trim();
+    const asLai = unwrapSingleMacroArgument(s, 'lai');
+    if (asLai !== null) s = asLai.trim();
+    return s;
+  }
+
+  function escapeRiskyTextModeSpecials(value) {
+    const s = String(value || '');
+    const hasAlignmentEnv = /\\begin\s*\{(?:tabular\*?|array|align\*?|aligned|cases|matrix|pmatrix|bmatrix|smallmatrix)\}/.test(s);
+    let out = '';
+    let math = false;
+    for (let i = 0; i < s.length; i += 1) {
+      const ch = s[i];
+      const next = s[i + 1] || '';
+      if (ch === '\\' && (next === '(' || next === '[')) { math = true; out += ch + next; i += 1; continue; }
+      if (ch === '\\' && (next === ')' || next === ']')) { math = false; out += ch + next; i += 1; continue; }
+      if (ch === '$' && !isEscapedAt(s, i)) { math = !math; out += ch; continue; }
+      if (!math && !isEscapedAt(s, i)) {
+        if (ch === '%') { out += '\\%'; continue; }
+        if (ch === '_') { out += '\\_'; continue; }
+        if (ch === '#') { out += '\\#'; continue; }
+        if (ch === '&' && !hasAlignmentEnv) { out += '\\&'; continue; }
+        if (ch === '^') { out += '\\textasciicircum{}'; continue; }
+      }
+      out += ch;
+    }
+    return out;
+  }
+
+  function validateMacroArgument(value, label) {
+    const s = String(value || '');
+    if (/\\verb\b|\\begin\s*\{verbatim\}|\\end\s*\{verbatim\}/.test(s)) {
+      return `${label} contains verbatim/\\verb, which is unsafe inside \\lai`;
+    }
+    if (!bracesAreBalanced(s)) return `${label} has unbalanced braces`;
+    const envIssue = environmentBalanceIssue(s);
+    if (envIssue) return `${label} has ${envIssue}`;
+    return '';
+  }
+
+  function prepareActionableNewLatex(value) {
+    let s = stripActionableWrappers(value);
+    s = s.replace(/\r\n?/g, '\n').trim();
+    if (!s) return { ok: false, reason: 'empty newText', text: '' };
+    if (/```/.test(s)) return { ok: false, reason: 'newText still contains Markdown code fences', text: '' };
+    if (/\\(?:documentclass|usepackage)\b|\\begin\s*\{document\}|\\end\s*\{document\}/.test(s)) {
+      return { ok: false, reason: 'newText contains document-level LaTeX commands', text: '' };
+    }
+    s = escapeRiskyTextModeSpecials(s);
+    const issue = validateMacroArgument(s, 'newText');
+    if (issue) return { ok: false, reason: issue, text: '' };
+    return { ok: true, reason: '', text: s };
+  }
+
+  function unsafeInsertionLocationReason(sourceText, at) {
+    const s = String(sourceText || '');
+    const beginDoc = s.indexOf('\\begin{document}');
+    if (beginDoc >= 0 && at >= 0 && at < beginDoc) return 'match is in the preamble; visible \\lai edits are only inserted in document body';
+    const begin = s.lastIndexOf('% BEGIN LAI-ACTIONABLE-EDIT', at);
+    const end = s.lastIndexOf('% END LAI-ACTIONABLE-EDIT', at);
+    if (begin > end) return 'match is already inside an existing Latexai actionable edit block';
+    return '';
   }
 
   function parseJsonCandidates(text) {
@@ -639,13 +795,18 @@
 
   function wrapActionableReplacement(edit, index) {
     const id = `lai-competitive-${Date.now().toString(36)}-${index}`;
+    const oldText = String(edit.oldText || '').trim();
+    const oldIssue = edit.mode === 'replace' ? validateMacroArgument(oldText, 'oldText') : '';
+    if (oldIssue) return { ok: false, reason: oldIssue, text: '' };
+    const prepared = prepareActionableNewLatex(edit.newText || '');
+    if (!prepared.ok) return prepared;
     const header = workflowBlockHeader(id, edit.path, `mode=${edit.mode}`);
-    const hint = edit.targetHint ? `% LAI target: ${edit.targetHint}` : '';
+    const hint = edit.targetHint ? `% LAI target: ${latexCommentText(edit.targetHint)}` : '';
     const footer = workflowBlockFooter(id);
     if (edit.mode === 'replace') {
-      return [header, hint, '\\laiold{', String(edit.oldText || '').trim(), '}', '\\lai{', String(edit.newText || '').trim(), '}', footer].filter(Boolean).join('\n');
+      return { ok: true, reason: '', text: [header, hint, '\\laiold{', oldText, '}', '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
     }
-    return [header, hint, '\\lai{', String(edit.newText || '').trim(), '}', footer].filter(Boolean).join('\n');
+    return { ok: true, reason: '', text: [header, hint, '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
   }
 
   function insertActionableEditsAtMatches() {
@@ -673,7 +834,11 @@
       const anchor = String(edit.oldText || '');
       const at = text.indexOf(anchor);
       if (at < 0) { skipped += 1; messages.push(`SKIP ${path}: exact oldText/anchor not found for ${edit.targetHint}.`); return; }
-      const replacement = wrapActionableReplacement({ ...edit, path }, index);
+      const locationIssue = unsafeInsertionLocationReason(text, at);
+      if (locationIssue) { skipped += 1; messages.push(`SKIP ${path}: ${locationIssue} for ${edit.targetHint}.`); return; }
+      const wrapped = wrapActionableReplacement({ ...edit, path }, index);
+      if (!wrapped.ok) { skipped += 1; messages.push(`SKIP ${path}: unsafe LaTeX for ${edit.targetHint}: ${wrapped.reason}.`); return; }
+      const replacement = wrapped.text;
       const start = edit.mode === 'insert_before' ? at : at;
       const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
       const insert = edit.mode === 'replace' ? replacement : edit.mode === 'insert_after' ? `${anchor}\n\n${replacement}` : `${replacement}\n\n${anchor}`;
@@ -804,7 +969,7 @@
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \\lai edits at matches</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \\lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 17P writes review artifacts to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
+      '<div class="settings-note">Stage 17S writes review artifacts to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');

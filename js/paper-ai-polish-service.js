@@ -1,5 +1,5 @@
 /* Latexai Stage 17O PaperAiPolishService
- * Stage: stage17o-lai-review-integration-for-devils-competitive-1
+ * Stage: stage17s-lai-insertion-safety-1
  *
  * Paper-level AI workflow polish:
  * - scans \lai{...} and \laiold{...} markup;
@@ -18,7 +18,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17o-lai-review-integration-for-devils-competitive-1';
+  const STAGE = 'stage17s-lai-insertion-safety-1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('paper-ai-polish-service')) {
     NS.PaperAiPolishService = {
@@ -283,6 +283,99 @@
     try { NS.Editor?.render?.(); } catch (_err) {}
     setStatus(`Opened ${normalized}.`);
     return true;
+  }
+
+
+  function isEscapedAt(text, index) {
+    let n = 0;
+    for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) n += 1;
+    return n % 2 === 1;
+  }
+
+  function textModeLatexRisk(value) {
+    const s = String(value || '');
+    if (/```/.test(s)) return 'contains Markdown code fences';
+    if (/\\(?:documentclass|usepackage)\b|\\begin\s*\{document\}|\\end\s*\{document\}/.test(s)) return 'contains document-level LaTeX commands';
+    if (/\\verb\b|\\begin\s*\{verbatim\}/.test(s)) return 'contains verbatim/\\verb inside an AI edit';
+    let math = false;
+    for (let i = 0; i < s.length; i += 1) {
+      const ch = s[i];
+      const next = s[i + 1] || '';
+      if (ch === '\\' && (next === '(' || next === '[')) { math = true; i += 1; continue; }
+      if (ch === '\\' && (next === ')' || next === ']')) { math = false; i += 1; continue; }
+      if (ch === '$' && !isEscapedAt(s, i)) { math = !math; continue; }
+      if (!math && !isEscapedAt(s, i) && /[_&#^]/.test(ch)) return `contains raw text-mode special character ${ch}`;
+    }
+    return '';
+  }
+
+  function oneLine(value, max = 180) {
+    return String(value || '').replace(/\r?\n+/g, ' ').replace(/%/g, ' percent ').replace(/\s+/g, ' ').trim().slice(0, max);
+  }
+
+  function commentBlock(block, reason) {
+    const header = `% LATEXAI quarantined unsafe AI edit block: ${oneLine(reason)}`;
+    return [header, ...String(block || '').split(/\r?\n/).map((line) => `% ${line}`)].join('\n');
+  }
+
+  function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+    return aStart < bEnd && bStart < aEnd;
+  }
+
+  function repairUnsafeAiEditBlocks(options = {}) {
+    const only = Array.isArray(options.paths) && options.paths.length
+      ? new Set(options.paths.map(normalizePath))
+      : null;
+    const texFiles = files()
+      .filter((file) => file?.path && isTexPath(file.path))
+      .filter((file) => !only || only.has(normalizePath(file.path)));
+
+    let changed = 0;
+    const changedPaths = [];
+    const report = [];
+
+    for (const file of texFiles) {
+      const path = normalizePath(file.path);
+      let text = fileText(file);
+      const edits = scanText(text, path, slugPath(path));
+      const replacements = [];
+
+      for (const edit of edits) {
+        const risk = textModeLatexRisk(edit.newText || '');
+        if (!risk) continue;
+        const replacement = edit.oldText ? edit.oldText : commentBlock(edit.raw, risk);
+        replacements.push({ start: edit.start, end: edit.end, replacement, reason: risk });
+      }
+
+      const knownRanges = edits.map((edit) => [edit.start, edit.end]);
+      const blockRe = /%\s*BEGIN\s+LAI-ACTIONABLE-EDIT[^\n]*(?:\n|$)[\s\S]*?%\s*END\s+LAI-ACTIONABLE-EDIT[^\n]*/gi;
+      let match;
+      while ((match = blockRe.exec(text))) {
+        const start = match.index;
+        const end = start + match[0].length;
+        if (knownRanges.some(([a, b]) => rangesOverlap(start, end, a, b))) continue;
+        if (!/\\lai(?:old)?\s*\{/.test(match[0])) continue;
+        const oldAt = match[0].indexOf('\\laiold');
+        const oldMacro = oldAt >= 0 ? parseMacroAt(match[0], oldAt, 'laiold') : null;
+        const replacement = oldMacro?.content ? oldMacro.content : commentBlock(match[0], 'malformed actionable \\lai block could not be parsed');
+        replacements.push({ start, end, replacement, reason: 'malformed actionable \\lai block' });
+      }
+
+      if (!replacements.length) continue;
+      replacements.sort((a, b) => b.start - a.start);
+      for (const rep of replacements) {
+        text = text.slice(0, rep.start) + rep.replacement + text.slice(rep.end);
+        changed += 1;
+        report.push(`${path}: ${rep.reason}`);
+      }
+      updateProjectSource(path, text);
+      changedPaths.push(path);
+    }
+
+    const scanResult = scanProject({ paths: changedPaths.length ? changedPaths : undefined });
+    setOutput(['Unsafe AI edit repair report', '============================', '', `Changed blocks: ${changed}`, '', ...report].join('\n'));
+    setStatus(changed ? `Repaired/quarantined ${changed} unsafe AI edit block(s). Try compiling again.` : 'No unsafe AI edit blocks found.');
+    return { ok: true, changed, paths: changedPaths, remaining: scanResult?.edits?.length || 0, report };
   }
 
   function scanText(text, path = activePath(), idPrefix = '') {
@@ -744,6 +837,7 @@
       '<div class="paper-ai-actions">',
       '  <button id="paperAiAcceptAllNewBtn" class="btn mini primary" type="button">Accept all new \\lai</button>',
       '  <button id="paperAiRejectAllBtn" class="btn mini" type="button">Reject all; keep \\laiold</button>',
+      '  <button id="paperAiRepairUnsafeBtn" class="btn mini" type="button">Repair unsafe AI edits</button>',
       '  <button id="paperAiCopyReportBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
       '<label class="paper-ai-check"><input id="paperAiRunRegressionAfterApply" type="checkbox" checked /> Run regression checklist after applying</label>',
@@ -765,6 +859,7 @@
     el('paperAiRejectSelectedBtn')?.addEventListener('click', rejectSelected, true);
     el('paperAiAcceptAllNewBtn')?.addEventListener('click', acceptAllNew, true);
     el('paperAiRejectAllBtn')?.addEventListener('click', rejectAllKeepOld, true);
+    el('paperAiRepairUnsafeBtn')?.addEventListener('click', () => repairUnsafeAiEditBlocks(), true);
     el('paperAiCopyReportBtn')?.addEventListener('click', copyReport, true);
 
     return true;
@@ -787,6 +882,7 @@
     applyChoices,
     acceptAllNew,
     rejectAllKeepOld,
+    repairUnsafeAiEditBlocks,
     getLastScan: () => lastScan,
     getLastReport: () => lastReport
   };

@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage17q-compile-pdf-result-guard-1';
+  var STAGE = 'stage17s-lai-insertion-safety-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
 
   function isObject(x) {
@@ -390,9 +390,38 @@
     var data = {};
     try { data = text ? JSON.parse(text) : {}; } catch (err) { data = { rawText: text }; }
     if (!response.ok) {
-      throw new Error((data && (data.detail || data.message)) || ('HTTP ' + response.status));
+      var detail = data && (data.detail || data.message || data.error || data.rawText);
+      var msg = detail ? ('HTTP ' + response.status + ': ' + String(detail).slice(0, 800)) : ('HTTP ' + response.status);
+      var httpErr = new Error(msg);
+      httpErr.httpStatus = response.status;
+      httpErr.url = String(url || '');
+      httpErr.responseBody = data;
+      httpErr.responseText = text;
+      throw httpErr;
     }
     return data;
+  }
+
+  function isJobEndpointFailure(err) {
+    var status = Number(err && err.httpStatus);
+    if (status === 400 || status === 404 || status === 405 || status === 501) return true;
+    var msg = String((err && err.message) || err || '');
+    return /HTTP\s+(400|404|405|501)\b/i.test(msg) || /compile\/jobs/i.test(String(err && err.url || '')) && /not found|unsupported|bad request|method/i.test(msg);
+  }
+
+  async function fallbackToDirectAfterJobError(err, payload, settings, phase) {
+    var reason = (phase || 'compile job endpoint') + ' failed: ' + ((err && err.message) || String(err));
+    try {
+      var directResult = await compileDirect(payload, settings);
+      directResult.jobCompileFallbackReason = reason;
+      return requirePdfOrFallback(directResult, payload, settings, 'direct');
+    } catch (directErr) {
+      var directMsg = (directErr && directErr.message) || String(directErr);
+      var out = markMissingPdf({}, payload, reason + '; direct compile fallback failed: ' + directMsg);
+      out.originalJobError = reason;
+      out.directFallbackError = directMsg;
+      return out;
+    }
   }
 
   function pickProjectSettings(args) {
@@ -443,15 +472,22 @@
     var picked = pickProjectSettings(arguments);
     var settings = picked.settings;
     var payload = buildCompileRequest(picked.project, settings);
-    if (root.console && console.log) console.log('[Latexai Stage17Q] compile payload', payload.compileInputSummary);
+    if (root.console && console.log) console.log('[Latexai Stage17R] compile payload', payload.compileInputSummary);
 
     var raw;
     if (settings.useCompileJobs) {
-      raw = await fetchJson(settings.compileStatusUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      try {
+        raw = await fetchJson(settings.compileStatusUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (jobCreateErr) {
+        if (isJobEndpointFailure(jobCreateErr)) {
+          return fallbackToDirectAfterJobError(jobCreateErr, payload, settings, 'compile job creation endpoint');
+        }
+        throw jobCreateErr;
+      }
       // The current Cloud Run backend may return the result directly in the create-job response.
       if (raw && raw.result) return requirePdfOrFallback(raw, payload, settings, 'job-create');
       // Fallback for a backend that returns only a job id.
@@ -459,13 +495,21 @@
         var statusUrl = settings.compileStatusUrl.replace(/\/+$/, '') + '/' + encodeURIComponent(raw.jobId);
         var deadline = Date.now() + Number(settings.compileTimeoutMs || 90000);
         while (Date.now() < deadline) {
-          var job = await fetchJson(statusUrl, { method: 'GET' });
+          var job;
+          try {
+            job = await fetchJson(statusUrl, { method: 'GET' });
+          } catch (jobPollErr) {
+            if (isJobEndpointFailure(jobPollErr)) {
+              return fallbackToDirectAfterJobError(jobPollErr, payload, settings, 'compile job polling endpoint');
+            }
+            throw jobPollErr;
+          }
           if (job && (job.result || job.status === 'completed' || job.status === 'succeeded' || job.status === 'failed')) {
             return requirePdfOrFallback(job, payload, settings, 'job-poll');
           }
           await new Promise(function (resolve) { setTimeout(resolve, Number(settings.compilePollMs || 1000)); });
         }
-        throw new Error('Compile job timed out while polling backend.');
+        return fallbackToDirectAfterJobError(new Error('Compile job timed out while polling backend.'), payload, settings, 'compile job polling endpoint');
       }
       return requirePdfOrFallback(raw, payload, settings, 'job-create');
     }
