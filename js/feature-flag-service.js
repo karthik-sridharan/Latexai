@@ -27,6 +27,7 @@
   const REGISTRY = [
     { key: 'presentation-export', title: 'Presentation/talk export', tier: 'stable', defaultEnabled: true, description: 'Paper → presentation JSON/HTML/Beamer and talk package export.' },
     { key: 'paper-ai-polish', title: 'Paper AI edit review', tier: 'stable', defaultEnabled: true, description: 'Review and resolve \\lai / \\laiold paper-level AI edits before compile or commit.' },
+    { key: 'model-registry', title: 'Backend model registry', tier: 'stable', defaultEnabled: true, description: 'Central provider/model registry with backend validation and safe fallback repair.' },
     { key: 'competitive-review', title: 'Competitive paper review', tier: 'experimental', defaultEnabled: true, description: 'Requires a web-search-capable AI backend; compares the current draft against competitor URLs and produces an improvement roadmap.' },
     { key: 'devils-advocate-debate', title: 'Devil’s advocate debate', tier: 'experimental', defaultEnabled: true, description: 'Runs advocate, critic, and synthesizer AI agents to produce a balanced paper improvement plan.' },
     { key: 'ai-revision-history', title: 'AI revision history', tier: 'stable', defaultEnabled: true, description: 'Create snapshots, compare AI changes, and restore/revert if needed.' },

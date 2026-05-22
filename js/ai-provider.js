@@ -50,6 +50,10 @@
   }
 
   function modelsFor(provider) {
+    const fromRegistry = NS.ModelRegistryService?.modelsFor?.(provider);
+    if (Array.isArray(fromRegistry) && fromRegistry.length) {
+      return fromRegistry.map((item) => ({ value: item.value, label: item.label || `${provider} · ${item.value}` }));
+    }
     return (remoteModels && remoteModels[provider]) || FALLBACK_MODELS[provider] || [];
   }
 
@@ -65,6 +69,7 @@
         mapped[provider] = (list || []).map((item) => ({ value: item.model, label: `${provider} · ${item.model}` }));
       }
       remoteModels = mapped;
+      try { NS.ModelRegistryService?.refreshFromBackend?.(); } catch (_err) {}
       return true;
     } catch (_err) {
       return false;
@@ -94,22 +99,72 @@
     return data;
   }
 
+  function routeKeyForAsk(payload = {}, meta = {}) {
+    const haystack = [
+      meta.routeKey,
+      meta.task,
+      meta.context?.workflow,
+      meta.context?.agentRole,
+      payload?.workflow,
+      payload?.task,
+      payload?.citationWorkflow,
+      payload?.documentWorkflow
+    ].map((v) => String(v || '').toLowerCase()).join(' ');
+    if (/synthesizer|synthesis/.test(haystack)) return 'debate-synthesizer';
+    if (/critic/.test(haystack)) return 'debate-critic';
+    if (/advocate|supporter|defender/.test(haystack)) return 'debate-advocate';
+    if (/competitive.*rank|ranking.*competitive/.test(haystack)) return 'competitive-ranking';
+    if (/competitive|competitor/.test(haystack)) return 'competitive-improvement';
+    if (/slide-repair|slide repair|math repair/.test(haystack)) return 'slide-repair';
+    if (/citation|bibtex|cite/.test(haystack)) return 'citation';
+    if (/presentation|beamer|talk/.test(haystack)) return 'presentation';
+    if (/tikz|figure|image/.test(haystack)) return 'figure';
+    if (/diagnostic|compile-log|backend|fix-error/.test(haystack)) return 'diagnostic';
+    if (/paper|document|review|rewrite|debate/.test(haystack)) return 'paper';
+    return 'default';
+  }
+
+  function validateRequestModel(provider, model, payload = {}, meta = {}) {
+    const routeKey = routeKeyForAsk(payload, meta);
+    const explicitProvider = meta.provider || payload?.provider || provider;
+    const explicitModel = meta.model || payload?.model || model;
+    const validation = NS.ModelRegistryService?.validateProviderModel?.(explicitProvider, explicitModel, { routeKey }) || { ok: true, provider: explicitProvider, model: explicitModel, repaired: false, reason: '' };
+    return { ...validation, routeKey, requestedProvider: explicitProvider, requestedModel: explicitModel };
+  }
+
   async function ask(payload, meta = {}) {
+    if (NS.ModelRegistryService?.syncVisibleProviderModel && !meta.modelRoutingBypass && !payload?.modelRoutingBypass) {
+      try { NS.ModelRegistryService.syncVisibleProviderModel({ repair: true }); } catch (_err) {}
+    }
     const config = persistConfig();
+    const modelDecision = validateRequestModel(config.provider, config.model, payload || {}, meta || {});
     const headers = { 'Content-Type': 'application/json' };
     if (config.proxyToken) headers.Authorization = `Bearer ${config.proxyToken}`;
     const body = {
       schema: 'lumina-latex-ai-request-v1',
-      provider: config.provider,
-      model: config.model,
+      provider: modelDecision.provider || config.provider,
+      model: modelDecision.model || config.model,
       task: meta.task || 'latex-copilot',
       payload,
-      context: meta.context || {},
+      context: {
+        ...(meta.context || {}),
+        modelRoutingAudit: {
+          stage: 'stage18a-model-routing-audit-validation-lock-1',
+          routeKey: modelDecision.routeKey,
+          requestedProvider: modelDecision.requestedProvider,
+          requestedModel: modelDecision.requestedModel,
+          provider: modelDecision.provider || config.provider,
+          model: modelDecision.model || config.model,
+          repaired: Boolean(modelDecision.repaired),
+          reason: modelDecision.reason || ''
+        }
+      },
       client: { app: 'lumina-latex-editor', stage: W.LUMINA_LATEX_STAGE || 'stage1e', sentAt: new Date().toISOString() }
     };
     const response = await fetch(config.proxyUrl, { method: 'POST', headers, body: JSON.stringify(body) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.ok === false) throw new Error(data?.error?.message || data?.message || `AI proxy failed with HTTP ${response.status}.`);
+    if (modelDecision.repaired) data.modelRoutingAudit = body.context.modelRoutingAudit;
     return data;
   }
 
@@ -132,6 +187,7 @@
     loadModelsFromProxy,
     getStatus,
     getWorkflows,
+    validateRequestModel,
     ask,
     extractText
   };

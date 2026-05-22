@@ -1,5 +1,5 @@
-/* Latexai Stage 15G ModelRoutingService
- * Stage: stage17h-debate-agent-model-routing-bypass-fix-1
+/* Latexai Stage 18A ModelRoutingService
+ * Stage: stage18a-model-routing-audit-validation-lock-1
  *
  * Central model/provider routing cleanup.
  *
@@ -15,7 +15,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17h-debate-agent-model-routing-bypass-fix-1';
+  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
   const STORAGE_KEY = 'latexai:model-routing:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('model-provider-service')) {
@@ -38,16 +38,28 @@
     { key: 'citation', title: 'Citation AI', hint: 'Citation filler, missing BibTeX, citation audit' },
     { key: 'presentation', title: 'Presentation export', hint: 'Paper → presentation JSON/HTML/Beamer' },
     { key: 'figure', title: 'Figure/TikZ generation', hint: 'Image/TikZ and presentation figure assets' },
-    { key: 'diagnostic', title: 'Diagnostics / logs', hint: 'Compile-log explanations and lightweight checks' }
+    { key: 'slide-repair', title: 'Slide repair', hint: 'Imported slide math/text cleanup' },
+    { key: 'diagnostic', title: 'Diagnostics / logs', hint: 'Compile-log explanations and lightweight checks' },
+    { key: 'competitive-ranking', title: 'Competitive review · ranking', hint: 'Ranks competitor papers and estimates draft position' },
+    { key: 'competitive-improvement', title: 'Competitive review · improvement', hint: 'Produces ranking-aware improvement edits' },
+    { key: 'debate-advocate', title: 'Devil’s advocate · supporter', hint: 'Argues for the current draft' },
+    { key: 'debate-critic', title: 'Devil’s advocate · critic', hint: 'Attacks weaknesses in the draft' },
+    { key: 'debate-synthesizer', title: 'Devil’s advocate · synthesis', hint: 'Produces the balanced improvement plan' }
   ];
 
   const DEFAULTS = {
     default: { provider: 'openai', model: 'gpt-4.1-mini' },
-    paper: { provider: 'openai', model: 'gpt-4.1' },
+    paper: { provider: 'openai', model: 'gpt-4.1-mini' },
     citation: { provider: 'openai', model: 'gpt-4.1-mini' },
     presentation: { provider: 'openai', model: 'gpt-4.1-mini' },
     figure: { provider: 'openai', model: 'gpt-4.1-mini' },
-    diagnostic: { provider: 'openai', model: 'gpt-4.1-mini' }
+    'slide-repair': { provider: 'openai', model: 'gpt-4.1-mini' },
+    diagnostic: { provider: 'openai', model: 'gpt-4.1-mini' },
+    'competitive-ranking': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'competitive-improvement': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'debate-advocate': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'debate-critic': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'debate-synthesizer': { provider: 'openai', model: 'gpt-4.1-mini' }
   };
 
   function el(id) { return D.getElementById(id); }
@@ -83,15 +95,11 @@
     }
 
     if (m && model) {
-      let option = Array.from(m.options || []).find((opt) => opt.value === model);
-      if (!option && m.tagName === 'SELECT') {
-        option = D.createElement('option');
-        option.value = model;
-        option.textContent = model;
-        option.dataset.stage15g = 'custom-model';
-        m.appendChild(option);
+      if (m.tagName === 'SELECT' && NS.ModelRegistryService?.modelOptions) {
+        m.innerHTML = NS.ModelRegistryService.modelOptions(provider || p?.value || 'openai', model, 'default');
       }
-      m.value = model;
+      const option = Array.from(m.options || []).find((opt) => opt.value === model);
+      if (option || m.tagName !== 'SELECT') m.value = model;
       try { m.dispatchEvent(new Event('change', { bubbles: true })); } catch (_err) {}
     }
   }
@@ -136,10 +144,16 @@
       payload?.task
     ].map(clean).join(' ').toLowerCase();
 
+    if (/debate.*synth|synthesis|synthesizer/.test(haystack)) return 'debate-synthesizer';
+    if (/debate.*critic|critical agent|devils?.*critic/.test(haystack)) return 'debate-critic';
+    if (/debate.*advocate|supporter|defender|devils?.*advocate/.test(haystack)) return 'debate-advocate';
+    if (/competitive.*rank|ranking.*competitive|competitor.*rank/.test(haystack)) return 'competitive-ranking';
+    if (/competitive|competitor|ranking-aware|improvement roadmap/.test(haystack)) return 'competitive-improvement';
+    if (/slide-repair|slide repair|math repair|pdf slide import|presentation repair/.test(haystack)) return 'slide-repair';
     if (/presentation-figure|figure-asset|image-to-tikz|tikz|diagram|figure/.test(haystack)) return 'figure';
     if (/paper-to-presentation|presentation-export|talk export|beamer/.test(haystack)) return 'presentation';
     if (/citation|bibtex|bibliography|missing-bib|cite/.test(haystack)) return 'citation';
-    if (/paper|document|review|remake|ranking|acceptance|competitive|rewrite-paper/.test(haystack)) return 'paper';
+    if (/paper|document|review|remake|ranking|acceptance|rewrite-paper/.test(haystack)) return 'paper';
     if (/diagnostic|compile-log|explain-log|fix-error|backend/.test(haystack)) return 'diagnostic';
     return 'default';
   }
@@ -187,6 +201,8 @@
     }
 
     const decision = routeForAsk(payload || {}, options || {});
+    const validation = NS.ModelRegistryService?.validateProviderModel?.(decision.route.provider, decision.route.model, { routeKey: decision.routeKey });
+    if (validation?.repaired) decision.route = { provider: validation.provider, model: validation.model };
     const before = currentProviderModel();
 
     try {
@@ -227,10 +243,19 @@
   }
 
   function providerOptionsHtml(selected) {
+    if (NS.ModelRegistryService?.providerOptions) return NS.ModelRegistryService.providerOptions(selected);
     const p = providerSelect();
     const values = Array.from(p?.options || []).map((opt) => opt.value).filter(Boolean);
     const fallback = values.length ? values : ['openai', 'anthropic', 'gemini'];
     return fallback.map((value) => `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(labelProvider(value))}</option>`).join('');
+  }
+
+  function modelOptionsHtml(provider, selected, routeKey) {
+    if (NS.ModelRegistryService?.modelOptions) return NS.ModelRegistryService.modelOptions(provider, selected, routeKey);
+    const source = modelSelect();
+    const values = Array.from(source?.options || []).map((opt) => ({ value: opt.value, label: opt.textContent || opt.value })).filter((item) => item.value);
+    const fallback = values.length ? values : [{ value: selected || DEFAULTS[routeKey]?.model || DEFAULTS.default.model, label: selected || DEFAULTS[routeKey]?.model || DEFAULTS.default.model }];
+    return fallback.map((item) => `<option value="${escapeHtml(item.value)}"${item.value === selected ? ' selected' : ''}>${escapeHtml(item.label || item.value)}</option>`).join('');
   }
 
   function labelProvider(value) {
@@ -259,7 +284,7 @@
         `    <select class="model-routing-provider" data-route-provider="${escapeHtml(item.key)}">${providerOptionsHtml(route.provider)}</select>`,
         '  </label>',
         '  <label>Model',
-        `    <input class="model-routing-model" data-route-model="${escapeHtml(item.key)}" type="text" value="${escapeHtml(route.model)}" placeholder="model name" />`,
+        `    <select class="model-routing-model" data-route-model="${escapeHtml(item.key)}">${modelOptionsHtml(route.provider, route.model, item.key)}</select>`,
         '  </label>',
         '</div>'
       ].join('');
@@ -305,10 +330,10 @@
   function routesFromUi() {
     const routes = {};
     for (const item of ROUTES) {
-      routes[item.key] = {
-        provider: clean(D.querySelector(`[data-route-provider="${CSS.escape(item.key)}"]`)?.value || DEFAULTS[item.key]?.provider),
-        model: clean(D.querySelector(`[data-route-model="${CSS.escape(item.key)}"]`)?.value || DEFAULTS[item.key]?.model)
-      };
+      const provider = clean(D.querySelector(`[data-route-provider="${CSS.escape(item.key)}"]`)?.value || DEFAULTS[item.key]?.provider);
+      const model = clean(D.querySelector(`[data-route-model="${CSS.escape(item.key)}"]`)?.value || DEFAULTS[item.key]?.model);
+      const validation = NS.ModelRegistryService?.validateProviderModel?.(provider, model, { routeKey: item.key });
+      routes[item.key] = validation ? { provider: validation.provider, model: validation.model } : { provider, model };
     }
     return normalizeRoutes(routes);
   }
@@ -320,7 +345,10 @@
       const p = D.querySelector(`[data-route-provider="${CSS.escape(item.key)}"]`);
       const m = D.querySelector(`[data-route-model="${CSS.escape(item.key)}"]`);
       if (p) p.value = route.provider;
-      if (m) m.value = route.model;
+      if (m) {
+        if (m.tagName === 'SELECT') m.innerHTML = modelOptionsHtml(route.provider, route.model, item.key);
+        m.value = route.model;
+      }
     }
   }
 
@@ -355,13 +383,14 @@
 
   function routingReport() {
     return {
-      schema: 'latexai-model-routing-report-v1',
+      schema: 'latexai-model-routing-audit-validation-lock-report-v1',
       stage: STAGE,
       generatedAt: new Date().toISOString(),
       wrapped,
       current: currentProviderModel(),
       routes: readRoutes(),
       routeKeys: ROUTES.map((r) => r.key),
+      modelRegistry: NS.ModelRegistryService?.registryReport?.() || null,
       safeMode: Boolean(W.LatexaiSafeMode?.isSafeMode?.())
     };
   }
@@ -381,6 +410,18 @@
     el('useCurrentModelForAllBtn')?.addEventListener('click', useCurrentForAll, true);
     el('resetModelRoutingBtn')?.addEventListener('click', resetDefaults, true);
     el('copyModelRoutingReportBtn')?.addEventListener('click', copyReport, true);
+    D.querySelectorAll('[data-route-provider]').forEach((node) => {
+      if (node.dataset.stage18aRouteBound === 'true') return;
+      node.dataset.stage18aRouteBound = 'true';
+      node.addEventListener('change', () => {
+        const key = node.getAttribute('data-route-provider');
+        const modelNode = D.querySelector(`[data-route-model="${CSS.escape(key)}"]`);
+        const recommendation = NS.ModelRegistryService?.recommendedForRoute?.(key, node.value) || DEFAULTS[key] || DEFAULTS.default;
+        if (modelNode?.tagName === 'SELECT') modelNode.innerHTML = modelOptionsHtml(node.value, recommendation.model, key);
+        if (modelNode) modelNode.value = recommendation.model;
+      }, true);
+    });
+    D.addEventListener('latexai:model-registry-updated', () => updateUiFromRoutes(readRoutes()), { passive: true });
   }
 
   function init() {

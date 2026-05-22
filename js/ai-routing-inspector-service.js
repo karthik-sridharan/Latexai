@@ -1,5 +1,5 @@
-/* Latexai Stage 17I AiRoutingInspectorService
- * Stage: stage17i-ai-model-routing-inspector-preflight-1
+/* Latexai Stage 18A AiRoutingInspectorService
+ * Stage: stage18a-model-routing-audit-validation-lock-1
  * AI model routing inspector + preflight.
  * Local-only except explicit backend status checks.
  */
@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17i-ai-model-routing-inspector-preflight-1';
+  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
   const ROUTES_KEY = 'latexai:model-routing:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('ai-routing-inspector-service')) {
@@ -23,18 +23,26 @@
     citation: { provider: 'openai', model: 'gpt-4.1-mini' },
     presentation: { provider: 'openai', model: 'gpt-4.1-mini' },
     figure: { provider: 'openai', model: 'gpt-4.1-mini' },
-    diagnostic: { provider: 'openai', model: 'gpt-4.1-mini' }
+    'slide-repair': { provider: 'openai', model: 'gpt-4.1-mini' },
+    diagnostic: { provider: 'openai', model: 'gpt-4.1-mini' },
+    'competitive-ranking': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'competitive-improvement': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'debate-advocate': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'debate-critic': { provider: 'openai', model: 'gpt-4.1-mini' },
+    'debate-synthesizer': { provider: 'openai', model: 'gpt-4.1-mini' }
   };
 
   const WORKFLOWS = [
     { key: 'default', title: 'Default Copilot', routeKey: 'default', task: 'latex-copilot', webSearch: false },
     { key: 'paper-ai-polish', title: 'Paper-level edit review', routeKey: 'paper', task: 'latex-paper-ai', webSearch: false },
-    { key: 'competitive-review', title: 'Competitive paper review', routeKey: 'paper', task: 'latex-competitive-paper-review', webSearch: true },
+    { key: 'competitive-review-ranking', title: 'Competitive review · ranking', routeKey: 'competitive-ranking', task: 'latex-competitive-paper-review-ranking', webSearch: true },
+    { key: 'competitive-review-improvement', title: 'Competitive review · improvement', routeKey: 'competitive-improvement', task: 'latex-competitive-paper-review', webSearch: true },
     { key: 'devils-advocate-debate', title: 'Devil’s advocate debate', routeKey: 'paper', task: 'latex-paper-debate', webSearch: false, explicitAgents: true },
     { key: 'citation-ai', title: 'Citation filler', routeKey: 'citation', task: 'latex-citation-ai', webSearch: false },
     { key: 'citation-verifier', title: 'Citation verifier', routeKey: 'citation', task: 'latex-citation-verifier', webSearch: false },
     { key: 'presentation-export', title: 'Presentation export', routeKey: 'presentation', task: 'paper-to-presentation-export', webSearch: false },
     { key: 'image-to-tikz', title: 'Image-to-TikZ / figure AI', routeKey: 'figure', task: 'image-to-tikz', webSearch: false },
+    { key: 'slide-repair', title: 'Slide repair', routeKey: 'slide-repair', task: 'slide-repair', webSearch: false },
     { key: 'backend-diagnostics', title: 'Backend diagnostics', routeKey: 'diagnostic', task: 'backend-diagnostic', webSearch: false }
   ];
 
@@ -68,6 +76,7 @@
     } catch (_err) {}
     setStatus('Model routes reset to safe defaults: OpenAI gpt-4.1-mini.');
     renderInspector();
+    D.addEventListener('latexai:model-registry-updated', renderInspector, { passive: true });
   }
 
   function agentRows() {
@@ -127,8 +136,10 @@
 
   function allowedModelsFor(provider, status = lastBackendStatus) {
     const p = clean(provider || 'openai');
-    const models = status?.allowedModels?.[p] || status?.providers?.[p]?.allowedModels || [];
-    return Array.isArray(models) ? models : [];
+    const fromStatus = status?.allowedModels?.[p] || status?.providers?.[p]?.allowedModels || status?.modelRegistry?.providers?.[p]?.allowedModels || [];
+    if (Array.isArray(fromStatus) && fromStatus.length) return fromStatus;
+    const fromRegistry = NS.ModelRegistryService?.modelsFor?.(p) || [];
+    return Array.isArray(fromRegistry) ? fromRegistry.map((m) => m.value || m.model || m).filter(Boolean) : [];
   }
 
   function backendHasModel(provider, model, status = lastBackendStatus) {
@@ -163,6 +174,8 @@
       notes.push(`${final.provider}/${final.model} is not allowed`);
     }
 
+    const validation = final.agents ? null : NS.ModelRegistryService?.validateProviderModel?.(final.provider, final.model, { routeKey: workflow.routeKey });
+    if (validation?.repaired) notes.push(`registry repair: ${validation.reason}`);
     const webSearchOk = workflow.webSearch ? backendHasWebSearch(final.agents ? final.agents[0].provider : final.provider, status) : true;
     if (workflow.webSearch && !webSearchOk) notes.push('web search required but backend did not report availability');
 
@@ -178,6 +191,7 @@
       finalModel: final.model,
       finalSource: final.source,
       agents: final.agents || [],
+      registryValidation: validation || null,
       backendSupported,
       webSearchRequired: Boolean(workflow.webSearch),
       webSearchOk,
@@ -191,6 +205,7 @@
     return {
       schema: 'latexai-ai-routing-inspector-report-v1',
       stage: STAGE,
+      modelRegistry: NS.ModelRegistryService?.registryReport?.() || null,
       generatedAt: new Date().toISOString(),
       appStage: W.LUMINA_LATEX_STAGE || '',
       backendStage: status?.stage || '(not checked)',
@@ -365,7 +380,7 @@
     card.className = 'ai-routing-card';
     card.innerHTML = [
       '<div class="section-head compact"><div><div class="smallcaps">AI routing</div><h2>AI model routing inspector</h2></div></div>',
-      '<p class="ai-routing-help">Check visible provider/model, route-selected provider/model, final provider/model, backend allowed models, and web-search support before expensive AI calls.</p>',
+      '<p class="ai-routing-help">Check visible provider/model, route-selected provider/model, final provider/model, backend allowed models, registry repair/fallback status, and web-search support before expensive AI calls.</p>',
       '<div class="ai-routing-grid"><label class="field">Workflow',
       `<select id="aiRoutingWorkflowSelect">${workflowOptionsHtml()}</select>`,
       '</label><label class="ai-routing-check"><input id="aiRoutingHardBlock" type="checkbox" /> Hard-block unsupported preflight calls</label></div>',
@@ -398,6 +413,7 @@
     createCard();
     wrapAiProviderPreflight();
     renderInspector();
+    D.addEventListener('latexai:model-registry-updated', renderInspector, { passive: true });
   }
 
   NS.AiRoutingInspectorService = {

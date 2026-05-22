@@ -57,6 +57,7 @@
     releaseVerifyCard: ['settings'],
     featureVisibilityCard: ['settings'],
     featureFlagCard: ['settings'],
+    modelRegistryCard: ['settings'],
     modelRoutingCard: ['settings'],
     aiSettingsCard: ['settings'],
     aiProviderCard: ['settings'],
@@ -247,6 +248,7 @@
       title: 'AI / Model configuration',
       defaultOpen: true,
       cardIds: [
+        'modelRegistryCard',
         'modelRoutingCard',
         'aiSettingsCard',
         'aiProviderCard',

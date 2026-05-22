@@ -1,5 +1,5 @@
 /* Latexai Stage 17O CompetitivePaperReviewService
- * Stage: stage17s-lai-insertion-safety-1
+ * Stage: stage18a-model-routing-audit-validation-lock-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17s-lai-insertion-safety-1';
+  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -336,7 +336,15 @@
     ].join('\n');
 
     try {
+      const modelDecision = NS.AIProvider?.validateRequestModel?.({
+        workflow: 'competitive-review-improvement',
+        provider: currentAiProvider(),
+        model: currentAiModel()
+      }, { task: 'latex-competitive-paper-review', routeKey: 'competitive-improvement', context: { workflow: 'competitive-paper-review-web-search' } });
+      if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
+
       const response = await NS.AIProvider.ask({
+        workflow: 'competitive-review-improvement',
         instructions: [
           'Return a structured Markdown competitive review report. Be critical, concrete, and action-oriented.',
           'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
@@ -360,6 +368,7 @@
         }
       }, {
         task: 'latex-competitive-paper-review',
+        routeKey: 'competitive-improvement',
         context: {
           workflow: 'competitive-paper-review-web-search',
           promptFile: PROMPT_PATH,

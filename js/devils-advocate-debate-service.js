@@ -1,5 +1,5 @@
 /* Latexai Stage 17O DevilsAdvocateDebateService
- * Stage: stage17s-lai-insertion-safety-1
+ * Stage: stage18a-model-routing-audit-validation-lock-1
  *
  * Devil's advocate paper debate workflow:
  * - one AI agent argues for the current draft;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17s-lai-insertion-safety-1';
+  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
   const PROMPT_PATH = 'prompt/ai-devils-advocate-debate.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('devils-advocate-debate-service')) {
@@ -150,6 +150,13 @@
     };
   }
 
+  function routeKeyForRole(role) {
+    if (role === 'advocate') return 'debate-advocate';
+    if (role === 'critic') return 'debate-critic';
+    if (role === 'synthesizer') return 'debate-synthesizer';
+    return 'paper';
+  }
+
   function setProviderModel(route) {
     const provider = clean(route?.provider);
     const model = clean(route?.model);
@@ -193,6 +200,7 @@
       };
       const response = await NS.AIProvider.ask(explicitPayload, {
         task: meta.task || 'latex-paper-debate',
+        routeKey: routeKeyForRole(agent.role),
         provider: agent.provider,
         model: agent.model,
         modelRoutingBypass: true,
@@ -228,10 +236,15 @@
   }
 
   function agentFromUi(prefix, role) {
+    const provider = clean(el(`${prefix}Provider`)?.value || currentProviderModel().provider);
+    const model = clean(el(`${prefix}Model`)?.value || currentProviderModel().model);
+    const validation = NS.ModelRegistryService?.validateProviderModel?.(provider, model, { routeKey: routeKeyForRole(role) });
     return {
       role,
-      provider: clean(el(`${prefix}Provider`)?.value || currentProviderModel().provider),
-      model: clean(el(`${prefix}Model`)?.value || currentProviderModel().model)
+      provider: validation?.provider || provider,
+      model: validation?.model || model,
+      modelRegistryRepaired: Boolean(validation?.repaired),
+      modelRegistryReason: validation?.reason || ''
     };
   }
 
@@ -982,10 +995,19 @@
   }
 
   function providerOptions(selected) {
+    if (NS.ModelRegistryService?.providerOptions) return NS.ModelRegistryService.providerOptions(selected);
     const source = el('aiProvider');
     const values = Array.from(source?.options || []).map((opt) => opt.value).filter(Boolean);
     const fallback = values.length ? values : ['openai', 'anthropic', 'gemini'];
     return fallback.map((value) => `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(value)}</option>`).join('');
+  }
+
+  function modelOptions(provider, selected, routeKey) {
+    if (NS.ModelRegistryService?.modelOptions) return NS.ModelRegistryService.modelOptions(provider, selected, routeKey);
+    const source = el('aiModel');
+    const values = Array.from(source?.options || []).map((opt) => ({ value: opt.value, label: opt.textContent || opt.value })).filter((item) => item.value);
+    const fallback = values.length ? values : [{ value: selected || 'gpt-4.1-mini', label: selected || 'gpt-4.1-mini' }];
+    return fallback.map((item) => `<option value="${escapeHtml(item.value)}"${item.value === selected ? ' selected' : ''}>${escapeHtml(item.label || item.value)}</option>`).join('');
   }
 
   function escapeHtml(value) {
@@ -995,17 +1017,50 @@
   }
 
   function agentRow(prefix, title, current) {
+    const role = prefix === 'advocateAgent' ? 'advocate' : prefix === 'criticAgent' ? 'critic' : 'synthesizer';
+    const routeKey = routeKeyForRole(role);
+    const validation = NS.ModelRegistryService?.validateProviderModel?.(current.provider, current.model, { routeKey });
+    const provider = validation?.provider || current.provider;
+    const model = validation?.model || current.model;
     return [
-      `<div class="devils-agent-row">`,
+      `<div class="devils-agent-row" data-agent-role="${escapeHtml(role)}" data-agent-route-key="${escapeHtml(routeKey)}">`,
       `  <div class="devils-agent-title">${escapeHtml(title)}</div>`,
       '  <label>Provider',
-      `    <select id="${prefix}Provider">${providerOptions(current.provider)}</select>`,
+      `    <select id="${prefix}Provider" data-agent-provider="${escapeHtml(role)}">${providerOptions(provider)}</select>`,
       '  </label>',
       '  <label>Model',
-      `    <input id="${prefix}Model" type="text" value="${escapeHtml(current.model)}" placeholder="model name" />`,
+      `    <select id="${prefix}Model" data-agent-model="${escapeHtml(role)}">${modelOptions(provider, model, routeKey)}</select>`,
       '  </label>',
+      validation?.repaired ? `  <div class="settings-note">Model repaired: ${escapeHtml(validation.reason)}</div>` : '',
       '</div>'
     ].join('');
+  }
+
+
+  function bindAgentModelControls() {
+    D.querySelectorAll('[data-agent-provider]').forEach((node) => {
+      if (node.dataset.stage18aAgentBound === 'true') return;
+      node.dataset.stage18aAgentBound = 'true';
+      node.addEventListener('change', () => {
+        const role = node.getAttribute('data-agent-provider') || '';
+        const routeKey = routeKeyForRole(role);
+        const modelNode = D.querySelector(`[data-agent-model="${role}"]`);
+        const recommendation = NS.ModelRegistryService?.recommendedForRoute?.(routeKey, node.value) || { provider: node.value, model: currentProviderModel().model };
+        if (modelNode?.tagName === 'SELECT') modelNode.innerHTML = modelOptions(node.value, recommendation.model, routeKey);
+        if (modelNode) modelNode.value = recommendation.model;
+      }, true);
+    });
+    D.addEventListener('latexai:model-registry-updated', () => {
+      D.querySelectorAll('[data-agent-provider]').forEach((node) => {
+        const role = node.getAttribute('data-agent-provider') || '';
+        const routeKey = routeKeyForRole(role);
+        const modelNode = D.querySelector(`[data-agent-model="${role}"]`);
+        const model = modelNode?.value || currentProviderModel().model;
+        const validation = NS.ModelRegistryService?.validateProviderModel?.(node.value, model, { routeKey });
+        if (modelNode?.tagName === 'SELECT') modelNode.innerHTML = modelOptions(validation?.provider || node.value, validation?.model || model, routeKey);
+        if (modelNode && validation?.model) modelNode.value = validation.model;
+      });
+    }, { passive: true });
   }
 
   function createCard() {
@@ -1067,6 +1122,7 @@
     el('addDevilsDebateBtn')?.addEventListener('click', addReportToProject, true);
     el('insertDevilsInlineLaiBtn')?.addEventListener('click', insertActionableEditsAtMatches, true);
     el('insertDevilsPlanBtn')?.addEventListener('click', appendLaiImprovementPlan, true);
+    bindAgentModelControls();
 
     return true;
   }

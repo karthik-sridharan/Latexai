@@ -32,6 +32,7 @@
     document.getElementById('replaceCopilotBtn')?.addEventListener('click', replaceWithCopilotResult);
     document.getElementById('copilotTask')?.addEventListener('change', renderContextChips);
     document.getElementById('copilotPrompt')?.addEventListener('input', renderContextChips);
+    document.addEventListener('latexai:model-registry-updated', renderModels);
     State().subscribe((_snapshot, reason) => {
       if (['load','active-file','file-change','logs','compile-status'].includes(reason)) renderContextChips();
     });
@@ -65,6 +66,8 @@
   }
 
   function modelsFor(provider) {
+    const fromRegistry = NS.ModelRegistryService?.modelsFor?.(provider, { routeKey: 'default' });
+    if (Array.isArray(fromRegistry) && fromRegistry.length) return fromRegistry;
     return NS.AIProvider?.modelsFor?.(provider) || FALLBACK_MODELS[provider] || [];
   }
 
@@ -76,7 +79,10 @@
     const models = modelsFor(provider);
     modelEl.innerHTML = models.map((m) => `<option value="${escapeHtml(m.value)}">${escapeHtml(m.label || m.value)}</option>`).join('');
     const saved = localStorage.getItem(`${LS_MODEL_PREFIX}${provider}`);
-    if (saved && models.some((m) => m.value === saved)) modelEl.value = saved;
+    const validation = NS.ModelRegistryService?.validateProviderModel?.(provider, saved || modelEl.value || '', { routeKey: 'default' });
+    if (validation?.repaired && models.some((m) => m.value === validation.model)) modelEl.value = validation.model;
+    else if (saved && models.some((m) => m.value === saved)) modelEl.value = saved;
+    if (modelEl.value) localStorage.setItem(`${LS_MODEL_PREFIX}${provider}`, modelEl.value);
   }
 
   async function loadModelsFromProxy() {
