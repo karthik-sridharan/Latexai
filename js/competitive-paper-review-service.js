@@ -336,11 +336,12 @@
     ].join('\n');
 
     try {
-      const modelDecision = NS.AIProvider?.validateRequestModel?.({
-        workflow: 'competitive-review-improvement',
-        provider: currentAiProvider(),
-        model: currentAiModel()
-      }, { task: 'latex-competitive-paper-review', routeKey: 'competitive-improvement', context: { workflow: 'competitive-paper-review-web-search' } });
+      const modelDecision = NS.AIProvider?.validateRequestModel?.(
+        currentAiProvider(),
+        currentAiModel(),
+        { workflow: 'competitive-review-improvement' },
+        { task: 'latex-competitive-paper-review', routeKey: 'competitive-improvement', context: { workflow: 'competitive-paper-review-web-search' } }
+      );
       if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
 
       const response = await NS.AIProvider.ask({
