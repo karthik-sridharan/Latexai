@@ -304,12 +304,12 @@
       const displayedPdf = showPdfResult(result);
       const missingPdf = result?.ok && !displayedPdf && result?.mode !== 'static-draft-fallback' && result?.mode !== 'mock-draft';
       const effectiveOk = !!result.ok && !missingPdf;
-      const message = missingPdf
+      const logText = compileLogText(result, missingPdf
         ? 'Compile backend reported success but did not return a PDF payload.'
-        : (result.log || 'Compile completed.');
-      const problems = Array.isArray(result.problems) ? result.problems.slice() : [];
-      if (missingPdf) problems.unshift({ level: 'error', message, line: null });
-      State().setLog(message, problems);
+        : 'Compile completed.');
+      const problems = normalizeCompileProblems(result, logText);
+      if (missingPdf) problems.unshift({ level: 'error', message: logText, line: null });
+      State().setLog(logText, problems);
       setPreviewMode(displayedPdf ? 'pdf' : 'draft');
       const finalMessage = missingPdf ? message : compileResultMessage(result);
       State().setCompileStatus({ status: effectiveOk ? 'succeeded' : 'failed', jobId: result.jobId || State().state.compile?.jobId || null, progress: 100, message: finalMessage });
@@ -365,7 +365,32 @@
     }
   }
 
+  function compileLogText(result, fallback) {
+    if (!result) return fallback || '';
+    const parts = [];
+    const add = (label, value) => {
+      const text = Array.isArray(value) ? value.join('\n') : String(value || '');
+      if (!text || /^data:application\/pdf;base64,/i.test(text)) return;
+      if (text.length > 2000 && /^[A-Za-z0-9+/=\r\n]+$/.test(text.slice(0, 2000))) return;
+      if (!parts.includes(text)) parts.push(label ? `${label}:\n${text}` : text);
+    };
+    add('', result.log);
+    add('stderr', result.stderr);
+    add('stdout', result.stdout);
+    add('', result.message && !result.log ? result.message : '');
+    return (parts.join('\n\n') || fallback || '').slice(-220000);
+  }
+
+  function normalizeCompileProblems(result, logText) {
+    const out = Array.isArray(result?.problems) ? result.problems.slice() : [];
+    if (out.length || !logText) return out;
+    return parseCompileLog(logText);
+  }
+
   function compileResultMessage(result) {
+    if (!result?.ok && result?.message && !/^Compile finished with diagnostics\.?$/i.test(result.message)) {
+      return result.message;
+    }
     if (result?.mode === 'static-draft-fallback') {
       return result.ok
         ? 'Draft preview ready; configure a backend URL for real PDF compilation.'

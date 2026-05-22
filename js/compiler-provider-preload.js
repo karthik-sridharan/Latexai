@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage17w-compile-result-shape-preserve-errors-1';
+  var STAGE = 'stage17x-compile-log-diagnostics-surfacing-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
   var DEFAULT_COMPILE_URL = BACKEND_BASE + '/api/lumina/latex/compile';
   var DEFAULT_JOBS_URL = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
@@ -527,6 +527,155 @@
     return false;
   }
 
+
+  function stage17xIsBase64ish(value) {
+    value = String(value || '');
+    return value.length > 2000 && /^[A-Za-z0-9+/=\r\n]+$/.test(value.slice(0, 2000));
+  }
+
+  function stage17xStringValue(value) {
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.map(stage17xStringValue).filter(Boolean).join('\n');
+    if (isObject(value)) {
+      if (typeof value.message === 'string') return value.message;
+      if (typeof value.text === 'string') return value.text;
+      if (typeof value.value === 'string') return value.value;
+    }
+    return '';
+  }
+
+  function stage17xCollectLogText() {
+    var chunks = [];
+    var seen = [];
+    var keys = {
+      log: true,
+      logs: true,
+      logText: true,
+      latexLog: true,
+      texLog: true,
+      compileLog: true,
+      buildLog: true,
+      output: true,
+      stdout: true,
+      stderr: true,
+      error: true,
+      detail: true
+    };
+    function add(label, value) {
+      var text = stage17xStringValue(value);
+      if (!text || stage17xIsBase64ish(text) || text.indexOf('data:application/pdf;base64,') === 0) return;
+      if (seen.indexOf(text) >= 0) return;
+      seen.push(text);
+      chunks.push(label ? (label + ':\n' + text) : text);
+    }
+    function walk(obj, depth) {
+      if (!isObject(obj) || depth > 4) return;
+      Object.keys(obj).forEach(function (key) {
+        if (/pdf|synctex|base64|bytes/i.test(key)) return;
+        var value = obj[key];
+        if (keys[key] || /(?:^|_)(?:log|stderr|stdout|output|error|detail|message)$/i.test(key)) add(key, value);
+        else if (isObject(value)) walk(value, depth + 1);
+      });
+    }
+    for (var i = 0; i < arguments.length; i++) walk(arguments[i], 0);
+    return chunks.join('\n\n').slice(-220000);
+  }
+
+  function stage17xNormalizeProblemMessage(message) {
+    return String(message || '').replace(/^!\s*/, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function stage17xProblemKey(problem) {
+    return [problem.file || '', problem.line || '', problem.level || '', stage17xNormalizeProblemMessage(problem.message)].join('|');
+  }
+
+  function stage17xParseLatexProblems(logText) {
+    var problems = [];
+    var lines = String(logText || '').split(/\r?\n/);
+    var lastFile = '';
+    function add(problem) {
+      if (!problem || !problem.message) return;
+      problem.level = problem.level || 'error';
+      problem.message = stage17xNormalizeProblemMessage(problem.message);
+      if (!problem.message) return;
+      var key = stage17xProblemKey(problem);
+      for (var i = 0; i < problems.length; i++) {
+        if (stage17xProblemKey(problems[i]) === key) return;
+      }
+      problems.push(problem);
+    }
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i] || '';
+      var fileLine = line.match(/(?:^|\s)([^\s:()]+\.tex):(\d+):\s*(.+)$/i);
+      if (fileLine) {
+        lastFile = fileLine[1].replace(/^\.\//, '');
+        add({ level: /^warning/i.test(fileLine[3]) ? 'warn' : 'error', file: lastFile, line: Number(fileLine[2]) || null, message: fileLine[3] });
+        continue;
+      }
+      var bang = line.match(/^!\s*(.+)$/);
+      if (bang) {
+        var msg = bang[1];
+        var texLine = null;
+        var nearFile = lastFile || '';
+        for (var j = i + 1; j < Math.min(lines.length, i + 8); j++) {
+          var l = String(lines[j] || '').match(/^l\.(\d+)\s*(.*)$/);
+          if (l) {
+            texLine = Number(l[1]) || null;
+            if (l[2]) msg += ' near: ' + l[2].trim();
+            break;
+          }
+          var fl = String(lines[j] || '').match(/(?:^|\s)([^\s:()]+\.tex):(\d+):/i);
+          if (fl) {
+            nearFile = fl[1].replace(/^\.\//, '');
+            texLine = Number(fl[2]) || texLine;
+          }
+        }
+        add({ level: 'error', file: nearFile || null, line: texLine, message: msg });
+        continue;
+      }
+      var latexErr = line.match(/(?:LaTeX|Package\s+[^\s]+)\s+(Error|Warning):\s*(.+)$/i);
+      if (latexErr) {
+        add({ level: /warning/i.test(latexErr[1]) ? 'warn' : 'error', file: lastFile || null, line: null, message: latexErr[2] });
+        continue;
+      }
+      var warn = line.match(/(?:LaTeX|Package\s+[^\s]+)\s+Warning:\s*(.+)$/i);
+      if (warn) add({ level: 'warn', file: lastFile || null, line: null, message: warn[1] });
+    }
+    return problems.slice(0, 40);
+  }
+
+  function stage17xMergeProblems(existing, parsed) {
+    var out = Array.isArray(existing) ? existing.slice() : [];
+    var seen = {};
+    out.forEach(function (p) { if (p) seen[stage17xProblemKey(p)] = true; });
+    (parsed || []).forEach(function (p) {
+      var key = stage17xProblemKey(p);
+      if (!seen[key]) {
+        seen[key] = true;
+        out.push(p);
+      }
+    });
+    return out;
+  }
+
+  function stage17xIsGenericCompileMessage(message) {
+    return /^(Compile failed\.? See log|Compile finished with diagnostics\.?|Compile completed\.?|Compile failed\.?$)/i.test(String(message || '').trim());
+  }
+
+  function stage17xShortFailureMessage(result) {
+    var problems = Array.isArray(result && result.problems) ? result.problems : [];
+    var first = problems.filter(function (p) { return p && p.level !== 'warn'; })[0] || problems[0];
+    if (first && first.message) {
+      var loc = first.file ? (first.file + (first.line ? ':' + first.line : '')) : (first.line ? ('line ' + first.line) : '');
+      return 'LaTeX error' + (loc ? ' at ' + loc : '') + ': ' + first.message;
+    }
+    var log = String(result && result.log || '');
+    var bang = log.match(/^!\s*(.+)$/m);
+    if (bang) return 'LaTeX error: ' + stage17xNormalizeProblemMessage(bang[1]);
+    if (result && result.exitCode != null) return 'Compile failed with exit code ' + result.exitCode + '. See Logs for details.';
+    return 'Compile failed. See Logs for details.';
+  }
+
   function markMissingPdf(result, payload, note) {
     result = isObject(result) ? Object.assign({}, result) : {};
     result.success = false;
@@ -556,7 +705,7 @@
   function normalizeCompileResult(raw, payload) {
     raw = isObject(raw) ? raw : {};
 
-    // Stage 17W: a job-create response is a wrapper: { ok:true, status:"completed", result:{...} }.
+    // Stage 17X: a job-create response is a wrapper: { ok:true, status:"completed", result:{...} }.
     // The wrapper's ok/status only means the job API request completed; it does
     // NOT mean TeX succeeded. The nested result must own success/failure, logs,
     // and PDF fields. Previous stages let wrapper ok:true overwrite result.ok:false,
@@ -575,6 +724,11 @@
       result.jobMessage = raw.message || result.jobMessage;
     }
 
+    var consolidatedLog = stage17xCollectLogText(result, raw);
+    if (consolidatedLog) result.log = consolidatedLog;
+    var parsedProblems = stage17xParseLatexProblems(result.log || result.stderr || result.stdout || result.message || '');
+    result.problems = stage17xMergeProblems(result.problems, parsedProblems);
+
     var status = String(result.status || '').toLowerCase();
     var explicitFailure = result.success === false || result.ok === false || isCompileFailureStatus(status) || Number(result.exitCode) > 0 || result.timedOut === true;
     var explicitSuccess = result.success === true || result.ok === true || isCompileSuccessStatus(status) || Number(result.exitCode) === 0 || result.pdfExtracted === true;
@@ -585,6 +739,9 @@
     result.provider = result.provider || 'cloudrun-texlive-latexmk';
     result.stage = result.stage || STAGE;
     result.message = result.message || (result.success ? 'Compile succeeded.' : 'Compile failed. See log/stderr for details.');
+    if (!result.success && stage17xIsGenericCompileMessage(result.message)) {
+      result.message = stage17xShortFailureMessage(result);
+    }
     result.compileInputSummary = result.compileInputSummary || (payload && payload.compileInputSummary);
     return tryMakePdfUrls(result, result.compileEndpointUrl || result.compileStatusUrl || result.pdfBaseUrl || '');
   }
@@ -902,6 +1059,8 @@
     collectFiles: collectFiles,
     summarizePayload: summarizePayload,
     normalizeSettings: normalizeSettings,
+    parseLatexProblemsForDiagnostics: stage17xParseLatexProblems,
+    collectCompileLogForDiagnostics: stage17xCollectLogText,
     checkAvailability: checkAvailability,
     getBackendAvailability: checkAvailability,
     testBackend: checkAvailability,

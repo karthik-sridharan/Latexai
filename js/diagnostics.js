@@ -55,6 +55,8 @@
       staticBackendFallbackActive: !!compilerAvailability?.staticDraftFallbackActive,
       compileStatus: state?.compile || null,
       lastProblemCount: state?.lastProblems?.length || 0,
+      lastProblems: Array.isArray(state?.lastProblems) ? state.lastProblems.slice(0, 12) : [],
+      compileLogTail: String(state?.lastLog || '').slice(-8000),
       architecture: NS.Kernel?.getArchitectureReport?.() || null,
       pass: missingDomIds.length === 0 && missingModules.length === 0 && localStorageWorks && !!state?.project?.files?.length
     };
