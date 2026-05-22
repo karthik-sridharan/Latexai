@@ -1,0 +1,10 @@
+Latexai Stage 17T test report
+==============================
+Stage: stage17t-compile-endpoint-repair-1
+
+Checks run:
+- node --check js/compiler-provider.js
+- node --check js/compiler-provider-preload.js
+- node tests/stage17t-compile-endpoint-repair.test.cjs
+
+Result: passed
