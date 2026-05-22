@@ -1,0 +1,6 @@
+Stage 18L shortcut manager full-width layout
+
+Passed:
+- node --check js/editor-enhancement-service.js
+- node --check js/safe-mode-service.js
+- node tests/stage18l-shortcut-manager-full-width-layout.test.cjs
