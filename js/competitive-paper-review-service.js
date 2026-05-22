@@ -1,5 +1,5 @@
 /* Latexai Stage 17O CompetitivePaperReviewService
- * Stage: stage17o-lai-review-integration-for-devils-competitive-1
+ * Stage: stage17p-right-panel-action-row-containment-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17o-lai-review-integration-for-devils-competitive-1';
+  const STAGE = 'stage17p-right-panel-action-row-containment-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -804,7 +804,7 @@
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \\lai edits at matches</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \\lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 17O writes review artifacts to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
+      '<div class="settings-note">Stage 17P writes review artifacts to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');

@@ -1,5 +1,5 @@
 /* Latexai Stage 17O DevilsAdvocateDebateService
- * Stage: stage17o-lai-review-integration-for-devils-competitive-1
+ * Stage: stage17p-right-panel-action-row-containment-1
  *
  * Devil's advocate paper debate workflow:
  * - one AI agent argues for the current draft;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17o-lai-review-integration-for-devils-competitive-1';
+  const STAGE = 'stage17p-right-panel-action-row-containment-1';
   const PROMPT_PATH = 'prompt/ai-devils-advocate-debate.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('devils-advocate-debate-service')) {
@@ -889,7 +889,7 @@
       '  <button id="insertDevilsInlineLaiBtn" class="btn mini" type="button">Insert \\lai edits at matches</button>',
       '  <button id="insertDevilsPlanBtn" class="btn mini" type="button">Append \\lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 17O saves the debate report to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
+      '<div class="settings-note">Stage 17P saves the debate report to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
       '<div id="devilsDebateStatus" class="settings-note">Devil’s advocate debate ready.</div>',
       '<pre id="devilsDebateOutput" class="devils-output"></pre>'
     ].join('');
