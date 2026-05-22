@@ -1,5 +1,5 @@
-/* Latexai Stage 17O CompetitivePaperReviewService
- * Stage: stage18a-model-routing-audit-validation-lock-1
+/* Latexai Stage 18B CompetitivePaperReviewService
+ * Stage: stage18b-competitive-review-url-ranking-roadmap-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
+  const STAGE = 'stage18b-competitive-review-url-ranking-roadmap-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -30,6 +30,11 @@
   let promptCache = '';
   let lastReport = '';
   let lastPayload = null;
+  let lastCompetitorSummaries = [];
+  let lastRankingReport = '';
+  let lastComparisonReport = '';
+  let lastRoadmapReport = '';
+  const URL_CACHE_KEY = 'latexai:competitive-url-paper-cache:v1';
 
   function State() { return NS.State; }
   function el(id) { return D.getElementById(id); }
@@ -123,8 +128,120 @@
       .filter(Boolean);
   }
 
+  function uniqueLines(lines) {
+    const seen = new Set();
+    const out = [];
+    for (const line of lines || []) {
+      const value = clean(line);
+      const key = value.toLowerCase();
+      if (!value || seen.has(key)) continue;
+      seen.add(key);
+      out.push(value);
+    }
+    return out;
+  }
+
+  function normalizeUrlForCache(url) {
+    const raw = clean(url);
+    if (!raw) return '';
+    try {
+      const u = new URL(raw, W.location.href);
+      u.hash = '';
+      return u.href.replace(/\/$/, '');
+    } catch (_err) {
+      return raw.replace(/\s+/g, '').replace(/\/$/, '');
+    }
+  }
+
+  function readUrlCache() {
+    try {
+      const raw = W.localStorage?.getItem?.(URL_CACHE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  function writeUrlCache(cache) {
+    try { W.localStorage?.setItem?.(URL_CACHE_KEY, JSON.stringify(cache || {})); return true; }
+    catch (_err) { return false; }
+  }
+
+  function cachedPaperForUrl(url) {
+    const key = normalizeUrlForCache(url);
+    const entry = readUrlCache()[key];
+    return entry && typeof entry === 'object' ? { ...entry, url: entry.url || url, cacheKey: key, cached: true } : null;
+  }
+
+  function savePaperSummariesToCache(papers) {
+    const cache = readUrlCache();
+    for (const paper of papers || []) {
+      const key = normalizeUrlForCache(paper?.url || paper?.sourceUrl || '');
+      if (!key) continue;
+      cache[key] = {
+        ...paper,
+        url: paper.url || key,
+        cachedAt: new Date().toISOString(),
+        stage: STAGE
+      };
+    }
+    writeUrlCache(cache);
+    return cache;
+  }
+
+  function appendCompetitorUrlFromInput() {
+    const input = el('competitiveAddUrlInput');
+    const area = el('competitivePaperUrls');
+    if (!input || !area) return false;
+    const value = clean(input.value);
+    if (!value) { setStatus('Enter a competitor URL first.'); return false; }
+    const lines = uniqueLines([...readLines(area.value), value]);
+    area.value = lines.join('\n');
+    input.value = '';
+    try { area.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+    updateWorkflowStatus('urls', `Added ${lines.length} competitor URL(s).`);
+    setStatus(`Added competitor URL. Total URLs: ${lines.length}.`);
+    return true;
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>\"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  }
+
+  function updateWorkflowStatus(step, message) {
+    const node = el('competitiveWorkflowStatus');
+    if (!node) return;
+    const labels = {
+      urls: '1. URLs',
+      fetch: '2. Fetch/extract',
+      rank: '3. Rank competitors',
+      compare: '4. Compare draft',
+      roadmap: '5. Improvement roadmap',
+      insert: '6. Insert edits'
+    };
+    const rows = Array.from(node.querySelectorAll('[data-competitive-step]'));
+    if (!rows.length) {
+      node.innerHTML = Object.keys(labels).map((key) => [
+        `<div class="competitive-step-row${key === step ? ' active' : ''}" data-competitive-step="${key}">`,
+        `<span class="competitive-step-label">${labels[key]}</span>`,
+        `<span class="competitive-step-message">${key === step ? escapeHtml(message || 'ready') : 'pending'}</span>`,
+        '</div>'
+      ].join('')).join('');
+      return;
+    }
+    for (const row of rows) {
+      const key = row.dataset.competitiveStep;
+      if (key === step) {
+        row.classList.add('active');
+        const msg = row.querySelector('.competitive-step-message');
+        if (msg) msg.textContent = message || 'done';
+      }
+    }
+  }
+
   function parseCompetitorInputs() {
-    const urls = readLines(el('competitivePaperUrls')?.value);
+    const urls = uniqueLines(readLines(el('competitivePaperUrls')?.value));
     const notesRaw = String(el('competitivePaperNotes')?.value || '');
     const notes = notesRaw.trim();
     return { urls, notes };
@@ -270,6 +387,10 @@
       comparisonModes: modes.length ? modes : ['overall competitiveness'],
       competitorUrls: competitors.urls,
       competitorNotes: competitors.notes,
+      competitorSummaries: lastCompetitorSummaries,
+      competitorRankingReport: lastRankingReport,
+      draftComparisonReport: lastComparisonReport,
+      competitiveRoadmapReport: lastRoadmapReport,
       extraInstructions: instructions,
       requireWebSearch: requireWebSearch(),
       webSearchPolicy: {
@@ -291,7 +412,275 @@
     return errors;
   }
 
-  async function runCompetitiveReview() {
+  function normalizePaperSummary(paper, fallbackUrl = '') {
+    const url = clean(paper?.url || paper?.sourceUrl || paper?.link || fallbackUrl);
+    if (!url) return null;
+    return {
+      url,
+      title: clean(paper?.title || paper?.name || ''),
+      authors: Array.isArray(paper?.authors) ? paper.authors.map(clean).filter(Boolean) : clean(paper?.authors || ''),
+      year: clean(paper?.year || paper?.date || ''),
+      venue: clean(paper?.venue || paper?.conference || ''),
+      abstract: clean(paper?.abstract || paper?.summary || ''),
+      mainClaims: Array.isArray(paper?.mainClaims) ? paper.mainClaims.map(clean).filter(Boolean) : readLines(paper?.mainClaims || paper?.claims || ''),
+      strengths: Array.isArray(paper?.strengths) ? paper.strengths.map(clean).filter(Boolean) : readLines(paper?.strengths || ''),
+      limitations: Array.isArray(paper?.limitations) ? paper.limitations.map(clean).filter(Boolean) : readLines(paper?.limitations || paper?.weaknesses || ''),
+      evidence: clean(paper?.evidence || paper?.webSearchEvidence || paper?.sourceEvidence || ''),
+      accessed: paper?.accessed === true || paper?.webSearchAccessed === true || paper?.accessStatus === 'accessed',
+      cached: Boolean(paper?.cached),
+      cachedAt: paper?.cachedAt || ''
+    };
+  }
+
+  function parsePaperSummariesFromAi(text, urls) {
+    const wanted = uniqueLines(urls || []);
+    for (const candidate of parseJsonCandidates(text)) {
+      try {
+        const data = JSON.parse(candidate);
+        const list = Array.isArray(data) ? data
+          : Array.isArray(data?.papers) ? data.papers
+          : Array.isArray(data?.competitorPapers) ? data.competitorPapers
+          : Array.isArray(data?.competitors) ? data.competitors
+          : [];
+        const papers = list.map((paper, i) => normalizePaperSummary(paper, wanted[i] || '')).filter(Boolean);
+        if (papers.length) return papers;
+      } catch (_err) {}
+    }
+    return wanted.map((url) => normalizePaperSummary({ url, evidence: 'No structured extraction JSON was returned; use the prose evidence in the report output.', accessed: false }, url)).filter(Boolean);
+  }
+
+  function summariesMarkdown(papers) {
+    const list = papers && papers.length ? papers : lastCompetitorSummaries;
+    if (!list?.length) return '(no competitor summaries available yet)';
+    return list.map((paper, index) => {
+      const claims = Array.isArray(paper.mainClaims) ? paper.mainClaims : readLines(paper.mainClaims || '');
+      const strengths = Array.isArray(paper.strengths) ? paper.strengths : readLines(paper.strengths || '');
+      return [
+        `### Competitor ${index + 1}: ${paper.title || paper.url}`,
+        `URL: ${paper.url}`,
+        paper.authors ? `Authors: ${Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors}` : '',
+        paper.venue || paper.year ? `Venue/year: ${[paper.venue, paper.year].filter(Boolean).join(', ')}` : '',
+        paper.abstract ? `Abstract/summary: ${paper.abstract}` : '',
+        claims.length ? `Main claims: ${claims.map((x) => `- ${x}`).join(' ')}` : '',
+        strengths.length ? `Strengths: ${strengths.map((x) => `- ${x}`).join(' ')}` : '',
+        paper.evidence ? `Evidence: ${paper.evidence}` : '',
+        paper.cached ? `Cache: reused from ${paper.cachedAt || 'local cache'}` : ''
+      ].filter(Boolean).join('\n');
+    }).join('\n\n');
+  }
+
+  function mergedSummariesFromCache(urls) {
+    const out = [];
+    const missing = [];
+    for (const url of urls || []) {
+      const cached = cachedPaperForUrl(url);
+      if (cached) out.push(normalizePaperSummary(cached, url));
+      else missing.push(url);
+    }
+    return { cached: out.filter(Boolean), missing };
+  }
+
+  async function askCompetitiveStep(stepName, instructions, input, routeKey = 'competitive-improvement', maxOutputTokens = 6000) {
+    if (!NS.AIProvider?.ask) throw new Error('AIProvider missing');
+    const provider = currentAiProvider();
+    const model = currentAiModel();
+    const modelDecision = NS.AIProvider?.validateRequestModel?.(
+      provider,
+      model,
+      { workflow: stepName },
+      { task: 'latex-competitive-paper-review', routeKey, context: { workflow: stepName } }
+    );
+    if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
+    const response = await NS.AIProvider.ask({
+      workflow: stepName,
+      instructions,
+      input,
+      temperature: 0.2,
+      maxOutputTokens,
+      webSearchRequired: true,
+      requireWebSearch: true,
+      requiredTools: ['web_search'],
+      competitiveReview: {
+        step: stepName,
+        requireWebSearch: true,
+        webSearchEvidenceRequired: true
+      }
+    }, {
+      task: 'latex-competitive-paper-review',
+      routeKey,
+      context: { workflow: stepName, requireWebSearch: true }
+    });
+    return NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
+  }
+
+  async function ensureWebSearchReadyForWorkflow() {
+    if (!requireWebSearch()) return { ok: true };
+    const capability = await checkWebSearchCapability();
+    if (!capability.ok) {
+      const message = capability.message || capability.error || 'Choose a web-search-capable AI backend/model.';
+      setStatus(message);
+      setOutput([
+        'Competitive review requires web search.',
+        '',
+        message,
+        '',
+        'Use an AI backend that reports webSearch.available=true from /api/lumina/ai/status.'
+      ].join('\n'));
+      return { ok: false, message, capability };
+    }
+    return { ok: true, capability };
+  }
+
+  async function fetchCompetitorPapers() {
+    const payload = buildPayload();
+    const errors = [];
+    if (!payload.competitorUrls.length) errors.push('Add at least one competitor URL to fetch/extract.');
+    if (errors.length) { setStatus(errors.join(' ')); setOutput(errors.join('\n')); return { ok: false, errors }; }
+    const ready = await ensureWebSearchReadyForWorkflow();
+    if (!ready.ok) return ready;
+
+    updateWorkflowStatus('fetch', 'fetching / extracting competitor paper evidence...');
+    setStatus('Fetching/extracting competitor paper evidence with web-search-capable AI...');
+
+    const { cached, missing } = mergedSummariesFromCache(payload.competitorUrls);
+    if (!missing.length) {
+      lastCompetitorSummaries = cached;
+      const report = ['# Competitor paper extraction', '', 'All competitor paper summaries were loaded from local cache.', '', summariesMarkdown(cached)].join('\n');
+      setOutput(report);
+      setStatus(`Loaded ${cached.length} competitor paper summary/summaries from cache.`);
+      updateWorkflowStatus('fetch', `${cached.length} cached summary/summaries ready.`);
+      return { ok: true, papers: cached, cached: true, report };
+    }
+
+    const instructions = [
+      'Fetch/search/open the competitor paper URLs and extract concise paper metadata.',
+      'Return a short Markdown evidence report.',
+      'Also include exactly one fenced code block labelled latexai_competitor_papers containing JSON:',
+      '{"papers":[{"url":"...","title":"...","authors":["..."],"year":"...","venue":"...","abstract":"...","mainClaims":["..."],"strengths":["..."],"limitations":["..."],"evidence":"what source/snippet supported this","accessed":true}]}',
+      'If a URL cannot be accessed, include it with accessed=false and explain what evidence is missing.'
+    ].join('\n');
+    const input = [
+      '--- Competitor URLs to fetch/extract ---',
+      missing.map((url, i) => `${i + 1}. ${url}`).join('\n'),
+      '',
+      payload.competitorNotes ? `--- User-provided notes/abstracts ---\n${payload.competitorNotes}` : '',
+      '',
+      'Use web search/opening tools where available. Do not claim full-paper access unless the evidence supports it.'
+    ].filter(Boolean).join('\n');
+
+    try {
+      const raw = (await askCompetitiveStep('competitive-url-extraction', instructions, input, 'competitive-ranking', 5000)).trim();
+      const extracted = parsePaperSummariesFromAi(raw, missing);
+      const merged = [...cached, ...extracted];
+      lastCompetitorSummaries = merged;
+      savePaperSummariesToCache(extracted);
+      const report = [raw || '# Competitor paper extraction', '', '--- Latexai parsed competitor summaries ---', summariesMarkdown(merged)].join('\n');
+      setOutput(report);
+      setStatus(`Fetched/extracted ${extracted.length} competitor paper summary/summaries; ${cached.length} reused from cache.`);
+      updateWorkflowStatus('fetch', `${merged.length} competitor summary/summaries ready.`);
+      return { ok: true, papers: merged, report, cached: false };
+    } catch (err) {
+      const message = err?.message || String(err);
+      setStatus(`Competitor paper extraction failed: ${message}`);
+      setOutput(`Competitor paper extraction failed:\n\n${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  async function rankCompetitorPapers() {
+    const payload = buildPayload();
+    if (!lastCompetitorSummaries.length) {
+      const fetched = await fetchCompetitorPapers();
+      if (!fetched.ok) return fetched;
+    }
+    updateWorkflowStatus('rank', 'ranking competitor set...');
+    setStatus('Ranking competitor paper set...');
+    const instructions = [
+      'Rank the competitor papers against each other before considering the user draft.',
+      'Use the extracted evidence, target venue, target audience, and comparison modes.',
+      'Return a Markdown ranking table with #, title, URL, main strength, weakness/risk, and why it is above/below the next paper.',
+      'End with a concise JSON block labelled latexai_competitor_ranking with {"ranking":[{"rank":1,"url":"...","title":"...","rationale":"..."}]}.'
+    ].join('\n');
+    const input = [
+      '--- Target venue/audience ---',
+      `Venue: ${payload.targetVenue || '(not specified)'}`,
+      `Audience: ${payload.targetAudience || '(not specified)'}`,
+      `Modes: ${payload.comparisonModes.join(', ')}`,
+      '',
+      '--- Competitor paper summaries ---',
+      summariesMarkdown(lastCompetitorSummaries),
+      '',
+      payload.competitorNotes ? `--- User notes ---\n${payload.competitorNotes}` : ''
+    ].filter(Boolean).join('\n');
+    try {
+      lastRankingReport = (await askCompetitiveStep('competitive-competitor-ranking', instructions, input, 'competitive-ranking', 5000)).trim();
+      lastReport = lastRankingReport;
+      setOutput(lastRankingReport || '(AI returned empty competitor ranking.)');
+      setStatus(lastRankingReport ? 'Competitor ranking complete.' : 'Competitor ranking returned an empty report.');
+      updateWorkflowStatus('rank', lastRankingReport ? 'ranking ready.' : 'ranking empty.');
+      return { ok: Boolean(lastRankingReport), report: lastRankingReport, papers: lastCompetitorSummaries };
+    } catch (err) {
+      const message = err?.message || String(err);
+      setStatus(`Competitor ranking failed: ${message}`);
+      setOutput(`Competitor ranking failed:\n\n${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  async function compareDraftAgainstRankedSet() {
+    const payload = buildPayload();
+    const errors = validatePayload(payload);
+    if (errors.length) { setStatus(errors.join(' ')); setOutput(errors.join('\n')); return { ok: false, errors }; }
+    if (!lastRankingReport) {
+      const ranked = await rankCompetitorPapers();
+      if (!ranked.ok) return ranked;
+    }
+    updateWorkflowStatus('compare', 'comparing draft against ranked set...');
+    setStatus('Comparing current draft against ranked competitor set...');
+    const instructions = [
+      'Compare the current draft against the already-ranked competitor set.',
+      'Estimate the current draft position relative to the competitor papers.',
+      'For each competitor, list exactly what the current draft does worse, what it does better, and what must change to move up.',
+      'Return Markdown only; do not produce actionable edit JSON in this step.'
+    ].join('\n');
+    const input = [
+      '--- Competitor ranking report ---',
+      lastRankingReport,
+      '',
+      '--- Competitor summaries ---',
+      summariesMarkdown(lastCompetitorSummaries),
+      '',
+      '--- Current draft excerpt ---',
+      payload.draftExcerpt,
+      '',
+      payload.extraInstructions ? `--- User extra instructions ---\n${payload.extraInstructions}` : ''
+    ].filter(Boolean).join('\n');
+    try {
+      lastComparisonReport = (await askCompetitiveStep('competitive-draft-comparison', instructions, input, 'competitive-improvement', 6000)).trim();
+      lastReport = lastComparisonReport;
+      setOutput(lastComparisonReport || '(AI returned empty draft comparison.)');
+      setStatus(lastComparisonReport ? 'Draft comparison complete.' : 'Draft comparison returned an empty report.');
+      updateWorkflowStatus('compare', lastComparisonReport ? 'comparison ready.' : 'comparison empty.');
+      return { ok: Boolean(lastComparisonReport), report: lastComparisonReport };
+    } catch (err) {
+      const message = err?.message || String(err);
+      setStatus(`Draft comparison failed: ${message}`);
+      setOutput(`Draft comparison failed:\n\n${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  async function generateImprovementRoadmap() {
+    updateWorkflowStatus('roadmap', 'generating improvement roadmap and actionable edits...');
+    const result = await runCompetitiveReview({ useExistingRoadmapContext: true });
+    if (result?.ok) {
+      lastRoadmapReport = result.report || lastReport;
+      updateWorkflowStatus('roadmap', 'roadmap ready; insert or save report next.');
+    }
+    return result;
+  }
+
+  async function runCompetitiveReview(options = {}) {
     if (!NS.AIProvider?.ask) {
       setStatus('AIProvider is not loaded. Check feature flags and safe mode.');
       return { ok: false, error: 'AIProvider missing' };
@@ -350,7 +739,7 @@
           'Return a structured Markdown competitive review report. Be critical, concrete, and action-oriented.',
           'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
           'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
-          'For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
+          'For every edit, include a rankingEffect explaining which competitor gap the edit addresses. For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
           'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
           'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
         ].join('\n'),
@@ -418,6 +807,18 @@
       '## Competitor URLs',
       '',
       ...(payload.competitorUrls.length ? payload.competitorUrls.map((url) => `- ${url}`) : ['- (none provided)']),
+      '',
+      '## Extracted competitor summaries',
+      '',
+      summariesMarkdown(payload.competitorSummaries || lastCompetitorSummaries),
+      '',
+      '## Competitor ranking prepass',
+      '',
+      payload.competitorRankingReport || lastRankingReport || '(not run separately)',
+      '',
+      '## Draft comparison prepass',
+      '',
+      payload.draftComparisonReport || lastComparisonReport || '(not run separately)',
       '',
       '## Report',
       '',
@@ -760,7 +1161,7 @@
   function parseJsonCandidates(text) {
     const s = String(text || '');
     const candidates = [];
-    const fenceRe = /```(?:json|latexai_actionable_edits)?\s*([\s\S]*?)```/gi;
+    const fenceRe = /```(?:json|latexai_actionable_edits|latexai_competitor_papers|latexai_competitor_ranking)?\s*([\s\S]*?)```/gi;
     let match;
     while ((match = fenceRe.exec(s))) candidates.push(match[1].trim());
     const first = s.indexOf('{');
@@ -942,14 +1343,26 @@
       '    <h2>Competitive paper review</h2>',
       '  </div>',
       '</div>',
-      '<p class="competitive-review-help">Compare the current draft against competitor paper URLs using a web-search-capable AI backend. Latexai does not download papers itself; the selected AI/backend must report web search support.</p>',
+      '<p class="competitive-review-help">Competitor-driven review workflow: add URLs, fetch/extract evidence with a web-search-capable AI backend, rank competitors, compare the draft, then generate a roadmap with actionable <code>\lai</code> edits.</p>',
       '<label class="competitive-web-required"><input id="competitiveRequireWebSearch" type="checkbox" checked disabled /> Require web-search-capable AI for this workflow</label>',
       '<div id="competitiveWebSearchStatus" class="competitive-web-status">Web search not checked yet.</div>',
+      '<div id="competitiveWorkflowStatus" class="competitive-workflow-status">',
+      '  <div class="competitive-step-row active" data-competitive-step="urls"><span class="competitive-step-label">1. URLs</span><span class="competitive-step-message">Add competitor papers</span></div>',
+      '  <div class="competitive-step-row" data-competitive-step="fetch"><span class="competitive-step-label">2. Fetch/extract</span><span class="competitive-step-message">pending</span></div>',
+      '  <div class="competitive-step-row" data-competitive-step="rank"><span class="competitive-step-label">3. Rank competitors</span><span class="competitive-step-message">pending</span></div>',
+      '  <div class="competitive-step-row" data-competitive-step="compare"><span class="competitive-step-label">4. Compare draft</span><span class="competitive-step-message">pending</span></div>',
+      '  <div class="competitive-step-row" data-competitive-step="roadmap"><span class="competitive-step-label">5. Roadmap</span><span class="competitive-step-message">pending</span></div>',
+      '  <div class="competitive-step-row" data-competitive-step="insert"><span class="competitive-step-label">6. Insert edits</span><span class="competitive-step-message">pending</span></div>',
+      '</div>',
+      '<div class="competitive-url-add-row">',
+      '  <input id="competitiveAddUrlInput" type="url" placeholder="Paste competitor paper URL" />',
+      '  <button id="addCompetitiveUrlBtn" class="btn mini" type="button">+ Add URL</button>',
+      '</div>',
       '<label class="field">Competitor paper URLs',
-      '  <textarea id="competitivePaperUrls" rows="4" placeholder="One URL per line. The AI backend must search/open these URLs."></textarea>',
+      '  <textarea id="competitivePaperUrls" rows="4" placeholder="One URL per line. Fetch/extract will use the AI backend web-search/open tools and cache the result."></textarea>',
       '</label>',
       '<label class="field">Competitor notes / abstracts / titles',
-      '  <textarea id="competitivePaperNotes" rows="5" placeholder="Paste titles, abstracts, claims, strengths, or notes for the competitor papers."></textarea>',
+      '  <textarea id="competitivePaperNotes" rows="5" placeholder="Optional but useful: paste titles, abstracts, claims, strengths, or notes for the competitor papers."></textarea>',
       '</label>',
       '<div class="field-grid two">',
       '  <label class="field">Target venue',
@@ -971,22 +1384,32 @@
       '<label class="field">Extra instructions',
       '  <textarea id="competitiveExtraInstructions" rows="3" placeholder="Optional: be extremely critical, focus on theorem statement, improve intro, etc."></textarea>',
       '</label>',
-      '<div class="competitive-review-actions">',
+      '<div class="competitive-review-actions competitive-step-actions">',
       '  <button id="checkCompetitiveWebSearchBtn" class="btn mini" type="button">Check web search</button>',
-      '  <button id="runCompetitiveReviewBtn" class="btn mini primary" type="button">Run competitive review</button>',
+      '  <button id="fetchCompetitivePapersBtn" class="btn mini" type="button">Fetch / extract papers</button>',
+      '  <button id="rankCompetitivePapersBtn" class="btn mini" type="button">Rank competitors</button>',
+      '  <button id="compareCompetitiveDraftBtn" class="btn mini" type="button">Compare my draft</button>',
+      '  <button id="generateCompetitiveRoadmapBtn" class="btn mini primary" type="button">Generate roadmap</button>',
+      '  <button id="runCompetitiveReviewBtn" class="btn mini" type="button">Run full review</button>',
       '  <button id="copyCompetitiveReviewBtn" class="btn mini" type="button">Copy report</button>',
       '  <button id="addCompetitiveReviewBtn" class="btn mini" type="button">Add report to /reviews</button>',
-      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \\lai edits at matches</button>',
-      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \\lai plan</button>',
+      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
+      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 17S writes review artifacts to <code>/reviews</code>, and inserted <code>\\lai</code>/<code>\\laiold</code> blocks are automatically scanned by Paper-level edit review.</div>',
+      '<div class="settings-note">Stage 18B separates the competitive workflow into URL extraction, competitor ranking, draft comparison, and roadmap generation. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');
 
     panel.appendChild(card);
 
+    el('addCompetitiveUrlBtn')?.addEventListener('click', appendCompetitorUrlFromInput, true);
+    el('competitiveAddUrlInput')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); appendCompetitorUrlFromInput(); } }, true);
     el('checkCompetitiveWebSearchBtn')?.addEventListener('click', checkWebSearchCapability, true);
+    el('fetchCompetitivePapersBtn')?.addEventListener('click', fetchCompetitorPapers, true);
+    el('rankCompetitivePapersBtn')?.addEventListener('click', rankCompetitorPapers, true);
+    el('compareCompetitiveDraftBtn')?.addEventListener('click', compareDraftAgainstRankedSet, true);
+    el('generateCompetitiveRoadmapBtn')?.addEventListener('click', generateImprovementRoadmap, true);
     el('runCompetitiveReviewBtn')?.addEventListener('click', runCompetitiveReview, true);
     el('copyCompetitiveReviewBtn')?.addEventListener('click', copyReport, true);
     el('addCompetitiveReviewBtn')?.addEventListener('click', addReportToProject, true);
@@ -1007,6 +1430,10 @@
     validatePayload,
     checkWebSearchCapability,
     requireWebSearch,
+    fetchCompetitorPapers,
+    rankCompetitorPapers,
+    compareDraftAgainstRankedSet,
+    generateImprovementRoadmap,
     runCompetitiveReview,
     addReportToProject,
     insertRoadmapComment,
@@ -1014,7 +1441,10 @@
     insertActionableEditsAtMatches,
     extractActionableEdits,
     getLastReport: () => lastReport,
-    getLastPayload: () => lastPayload
+    getLastPayload: () => lastPayload,
+    getLastCompetitorSummaries: () => lastCompetitorSummaries,
+    getLastRankingReport: () => lastRankingReport,
+    getLastComparisonReport: () => lastComparisonReport
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
