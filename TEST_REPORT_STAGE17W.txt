@@ -1,0 +1,14 @@
+Stage: stage17w-compile-result-shape-preserve-errors-1
+
+Checks run:
+- node --check js/compiler-provider.js
+- node --check js/compiler-provider-preload.js
+- node tests/stage17w-compile-result-shape-preserve-errors.test.cjs
+
+Result: PASS
+
+Verified:
+- job wrapper ok:true no longer overrides nested result.ok:false
+- LaTeX logs and problems are preserved for failed TeX compiles
+- direct fallback failed compiles are not mislabeled as missing-PDF successes
+- raw application/pdf endpoint responses are recognized as PDF payloads
