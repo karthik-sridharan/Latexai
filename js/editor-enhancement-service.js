@@ -1,5 +1,5 @@
 /* Latexai Stage 18K EditorEnhancementService
- * Stage: stage18k-editor-shortcut-live-template-fix-1
+ * Stage: stage18l-shortcut-manager-full-width-layout-1
  *
  * Adds a lightweight Overleaf-like LaTeX source highlighter, smart indentation,
  * built-in LaTeX shortcuts, and an optional compact custom-shortcut editor.
@@ -10,7 +10,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18k-editor-shortcut-live-template-fix-1';
+  const STAGE = 'stage18l-shortcut-manager-full-width-layout-1';
   const SHORTCUT_KEY = 'latexai:editor-shortcuts:v1';
   const HIGHLIGHT_KEY = 'latexai:editor-syntax-highlight:v1';
   const EXPERIMENTAL_OVERLAY_KEY = 'latexai:editor-syntax-overlay-experimental:v1';
