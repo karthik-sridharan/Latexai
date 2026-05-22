@@ -105,3 +105,66 @@
   background: rgba(254,226,226,.75);
   border-color: rgba(220,38,38,.24);
 }
+
+
+/* Stage 17P: right-panel action-row containment.
+   On iPad/Safari the Copilot column is narrow and button rows with long labels
+   could expand the card's intrinsic width, placing later buttons outside the
+   visible scrollport.  Keep the card and all controls inside the right-panel
+   width and lay actions out as wrapping, equal-width grid buttons. */
+.competitive-review-card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.competitive-review-card *,
+.competitive-review-card *::before,
+.competitive-review-card *::after {
+  box-sizing: border-box;
+}
+
+.competitive-review-card input,
+.competitive-review-card textarea,
+.competitive-review-card select,
+.competitive-review-card pre,
+.competitive-review-card code {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.competitive-review-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.4rem), 1fr));
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
+  gap: .4rem;
+}
+
+.competitive-review-actions .btn {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.12;
+  text-align: center;
+}
+
+.competitive-review-output {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.right-panel-group-body > .competitive-review-card {
+  max-width: 100%;
+  min-width: 0;
+}

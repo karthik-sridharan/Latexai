@@ -248,3 +248,24 @@
   overflow: visible !important;
   padding-bottom: 2rem;
 }
+
+
+/* Stage 17P: containment guard for cards inside organized right-panel groups.
+   Individual feature cards should never make the Copilot/Settings panel wider
+   than its scrollport. */
+#copilotTab,
+#settingsTab,
+#assetsTab,
+.right-panel-group,
+.right-panel-group-body,
+.right-panel-group-body > * {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0 !important;
+}
+
+#copilotTab .right-panel-group-body,
+#settingsTab .right-panel-group-body {
+  width: 100%;
+  overflow-x: hidden !important;
+}

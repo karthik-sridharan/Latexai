@@ -84,3 +84,65 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Stage 17P: right-panel action-row containment.
+   After a debate finishes, the new report/edit buttons have longer labels.
+   In the narrow right panel they must wrap into visible rows instead of
+   expanding the card horizontally and becoming unreachable. */
+.devils-debate-card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.devils-debate-card *,
+.devils-debate-card *::before,
+.devils-debate-card *::after {
+  box-sizing: border-box;
+}
+
+.devils-debate-card input,
+.devils-debate-card textarea,
+.devils-debate-card select,
+.devils-debate-card pre,
+.devils-debate-card code {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.devils-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.6rem), 1fr));
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
+  gap: .4rem;
+}
+
+.devils-actions .btn {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.12;
+  text-align: center;
+}
+
+.devils-output {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.right-panel-group-body > .devils-debate-card {
+  max-width: 100%;
+  min-width: 0;
+}
