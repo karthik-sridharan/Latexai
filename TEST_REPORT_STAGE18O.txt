@@ -1,0 +1,18 @@
+Stage 18O test report
+=====================
+
+Stage: stage18o-competitive-review-ai-remake-lai-workflow-1
+
+Checks run:
+- node --check js/competitive-paper-review-service.js
+- node --check js/model-registry-service.js
+- node --check js/model-provider-service.js
+- node --check js/ai-provider.js
+- node --check js/editor-enhancement-service.js
+- node tests/stage18o-competitive-review-ai-remake-lai-workflow.test.cjs
+
+Result: PASS
+
+Notes:
+- The Stage 18O test checks cachebusters, prompt contracts, UI labels, busy-guard preservation, and the new AI-remake extraction/validation helpers.
+- Runtime harness verifies extraction and validation for both `latexai_remade_source` and `latexai_append_remake_block` fenced outputs.
