@@ -168,3 +168,70 @@
   max-width: 100%;
   min-width: 0;
 }
+
+/* Stage 18B: competitor URL ranking roadmap workflow */
+.competitive-workflow-status {
+  display: grid;
+  gap: .32rem;
+  padding: .55rem;
+  margin: .5rem 0 .65rem;
+  border: 1px solid rgba(37,99,235,.14);
+  border-radius: 14px;
+  background: rgba(239,246,255,.72);
+}
+
+.competitive-step-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, .8fr) minmax(0, 1fr);
+  gap: .45rem;
+  align-items: start;
+  color: #64748b;
+  font-size: .72rem;
+  line-height: 1.25;
+}
+
+.competitive-step-row.active {
+  color: #1e3a8a;
+  font-weight: 850;
+}
+
+.competitive-step-label {
+  text-transform: uppercase;
+  letter-spacing: .035em;
+  font-size: .64rem;
+  font-weight: 950;
+}
+
+.competitive-step-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.competitive-url-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, auto);
+  gap: .45rem;
+  align-items: stretch;
+  margin: .55rem 0 .45rem;
+}
+
+.competitive-url-add-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(15,23,42,.13);
+  border-radius: 12px;
+  padding: .54rem .6rem;
+  font: inherit;
+  background: #fff;
+}
+
+.competitive-step-actions {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.6rem), 1fr));
+}
+
+@media (max-width: 460px) {
+  .competitive-step-row,
+  .competitive-url-add-row {
+    grid-template-columns: 1fr;
+  }
+}
