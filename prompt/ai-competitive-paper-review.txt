@@ -11,14 +11,14 @@ Mandatory web-research policy:
 - If a URL cannot be accessed or public evidence is limited, say so explicitly and explain what evidence is missing.
 - Include a source ledger with stable source IDs such as [S1], [S2], one-line source descriptions, and URL/title when available. Use those source IDs in ranking and gap-analysis claims.
 
-Stage 18E workflow expectation:
+Stage 18M workflow expectation:
 - First build a structured web-research profile for every competitor paper.
 - Then build a source ledger assigning stable source IDs.
 - Then rank the competitor papers relative to each other with source-cited rationales.
 - Then estimate where the current draft stands relative to that ranked set.
-- Then propose a roadmap that could improve the draft's standing. The frontend will show competitor evidence cards, source IDs, cache status, and a ranking preview, so keep paper titles, URLs, source IDs, and evidence coverage explicit and structured.
+- Then propose a roadmap that could improve the draft's standing. The frontend will show competitor evidence cards, source IDs, cache status, a ranking preview, and an edit impact map, so keep paper titles, URLs, source IDs, evidence coverage, and per-edit ranking effects explicit and structured.
 - Explicitly state the current estimated position and the expected position after the suggested edits, e.g. "current: #4 of 6; after edits: likely #2 of 6" when evidence supports such a comparison.
-- For each high-impact improvement, explain which competitor(s) it helps against.
+- For each high-impact improvement, explain which competitor(s) it helps against, which source IDs support the gap, and what ranking movement the edit is expected to produce.
 
 Return a Markdown report with exactly these sections:
 
@@ -63,7 +63,15 @@ Also include exactly one fenced code block labelled latexai_actionable_edits. It
       "oldText": "exact source substring copied from the draft excerpt",
       "newText": "compile-safe LaTeX replacement fragment",
       "confidence": 0.85,
-      "rankingEffect": "helps move draft from #4 toward #3 by clarifying novelty relative to Paper A"
+      "rankingEffect": {
+        "competitors": ["#1 Paper A"],
+        "gap": "clarifies novelty relative to Paper A's framing",
+        "sourceIds": ["S1", "S4"],
+        "before": "draft estimated #4 of 6",
+        "after": "likely #3 of 6 after this edit",
+        "expectedImpact": "helps move the draft from #4 toward #3 by clarifying novelty relative to Paper A",
+        "insertionMode": "inline \\laiold/\\lai"
+      }
     }
   ],
   "appendPlan": "compile-safe LaTeX prose for a visible end-of-paper improvement plan"
@@ -74,5 +82,5 @@ Rules for actionable edits:
 - oldText must be copied exactly from the draft excerpt when using mode=replace.
 - newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \begin{document}/\end{document}, balanced braces/environments, and text-mode special characters escaped.
 - Do not target the document preamble.
-- If a suggestion cannot be localized safely, put it in appendPlan rather than inventing an oldText.
+- If a suggestion cannot be localized safely, put it in appendPlan rather than inventing an oldText, but still explain its rankingEffect in the prose roadmap.
 - Do not rewrite the entire paper unless requested. Focus on high-leverage changes.
