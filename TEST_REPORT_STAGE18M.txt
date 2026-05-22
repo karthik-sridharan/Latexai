@@ -1,0 +1,14 @@
+Stage 18M test report
+=====================
+
+Stage: stage18m-competitive-review-ranking-to-lai-edit-impact-map-1
+
+Checks run:
+- node --check js/competitive-paper-review-service.js
+- node --check js/model-registry-service.js
+- node --check js/model-provider-service.js
+- node --check js/ai-provider.js
+- node --check js/editor-enhancement-service.js
+- node tests/stage18m-competitive-review-ranking-to-lai-edit-impact-map.test.cjs
+
+Result: PASS
