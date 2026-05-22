@@ -235,3 +235,180 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Stage 18E: evidence UI cards, ranking preview, and cache controls */
+.competitive-evidence-dashboard,
+.competitive-ranking-preview {
+  margin: .55rem 0 .65rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.competitive-ui-title {
+  margin: .15rem 0 .4rem;
+  color: #0f172a;
+  font-size: .72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.competitive-evidence-empty,
+.competitive-ranking-empty {
+  border: 1px dashed rgba(100,116,139,.35);
+  border-radius: 12px;
+  padding: .55rem .6rem;
+  color: #64748b;
+  background: rgba(248,250,252,.78);
+  font-size: .74rem;
+  line-height: 1.32;
+}
+
+.competitive-evidence-card-grid {
+  display: grid;
+  gap: .52rem;
+  grid-template-columns: 1fr;
+}
+
+.competitive-evidence-card {
+  border: 1px solid rgba(15,23,42,.11);
+  border-radius: 14px;
+  padding: .62rem;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 4px 14px rgba(15,23,42,.045);
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.competitive-evidence-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .55rem;
+  min-width: 0;
+}
+
+.competitive-evidence-card-head strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-size: .82rem;
+  line-height: 1.18;
+}
+
+.competitive-card-kicker {
+  color: #64748b;
+  font-size: .62rem;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  margin-bottom: .12rem;
+}
+
+.competitive-evidence-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: .16rem .42rem;
+  font-size: .62rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .025em;
+  border: 1px solid rgba(100,116,139,.2);
+}
+
+.competitive-evidence-badge.good {
+  color: #14532d;
+  background: rgba(220,252,231,.86);
+  border-color: rgba(22,163,74,.22);
+}
+
+.competitive-evidence-badge.moderate {
+  color: #713f12;
+  background: rgba(254,243,199,.88);
+  border-color: rgba(245,158,11,.22);
+}
+
+.competitive-evidence-badge.weak {
+  color: #7f1d1d;
+  background: rgba(254,226,226,.86);
+  border-color: rgba(220,38,38,.22);
+}
+
+.competitive-card-url,
+.competitive-card-meta,
+.competitive-card-warning,
+.competitive-card-ok,
+.competitive-card-sources {
+  margin-top: .35rem;
+  font-size: .7rem;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.competitive-card-url,
+.competitive-card-meta {
+  color: #64748b;
+}
+
+.competitive-card-warning {
+  color: #7f1d1d;
+  font-weight: 800;
+}
+
+.competitive-card-ok {
+  color: #14532d;
+  font-weight: 800;
+}
+
+.competitive-card-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.8rem), 1fr));
+  gap: .35rem;
+  margin-top: .5rem;
+}
+
+.competitive-card-actions .btn {
+  min-width: 0;
+  width: 100%;
+  white-space: normal;
+}
+
+.competitive-card-sources {
+  border-top: 1px solid rgba(15,23,42,.09);
+  padding-top: .45rem;
+  color: #334155;
+}
+
+.competitive-ranking-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(37,99,235,.12);
+  border-radius: 12px;
+  background: rgba(248,250,252,.85);
+}
+
+.competitive-ranking-table {
+  width: 100%;
+  min-width: 36rem;
+  border-collapse: collapse;
+  font-size: .68rem;
+  line-height: 1.25;
+}
+
+.competitive-ranking-table th,
+.competitive-ranking-table td {
+  padding: .42rem .48rem;
+  border-bottom: 1px solid rgba(15,23,42,.08);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.competitive-ranking-table th {
+  color: #1e3a8a;
+  font-weight: 950;
+  background: rgba(239,246,255,.92);
+}
