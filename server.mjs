@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const STAGE = 'latex-stage16c-web-search-required-competitive-review-backend-20260521-1';
+const STAGE = 'latex-stage18a-model-routing-audit-validation-lock-backend-20260521-1';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
@@ -50,6 +50,86 @@ const ALLOWED_MODELS = {
 };
 for (const provider of Object.keys(DEFAULT_MODELS)) ALLOWED_MODELS[provider].add(DEFAULT_MODELS[provider]);
 
+const MODEL_CAPABILITY_HINTS = {
+  openai: {
+    'gpt-4.1-mini': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'competitive-ranking', 'competitive-improvement', 'debate-advocate', 'debate-critic', 'debate-synthesizer'] },
+    'gpt-4.1': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
+  },
+  anthropic: {
+    'claude-haiku-4-5': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic', 'debate-advocate'] },
+    'claude-sonnet-4-5': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
+  },
+  gemini: {
+    'gemini-2.5-flash': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic'] },
+    'gemini-2.5-pro': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
+  }
+};
+
+const TASK_MODEL_ROUTES = {
+  default: { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  paper: { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  citation: { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  presentation: { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  figure: { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  'slide-repair': { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  diagnostic: { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  'competitive-ranking': { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  'competitive-improvement': { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  'debate-advocate': { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  'debate-critic': { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' },
+  'debate-synthesizer': { provider: 'openai', model: DEFAULT_MODELS.openai, preferredTier: 'fast' }
+};
+
+const MODEL_ALIASES = {
+  openai: {
+    'gpt-4.1 mini': 'gpt-4.1-mini',
+    'gpt 4.1 mini': 'gpt-4.1-mini',
+    'gpt-4o-mini': 'gpt-4.1-mini',
+    'gpt-4.1-nano': 'gpt-4.1-mini'
+  },
+  anthropic: {
+    'claude-sonnet': 'claude-sonnet-4-5',
+    'claude-haiku': 'claude-haiku-4-5'
+  },
+  gemini: {
+    'gemini-flash': 'gemini-2.5-flash',
+    'gemini-pro': 'gemini-2.5-pro'
+  }
+};
+
+function modelRegistryForProvider(provider) {
+  return Array.from(ALLOWED_MODELS[provider] || []).map((model) => ({
+    model,
+    ...(MODEL_CAPABILITY_HINTS[provider]?.[model] || { tier: /mini|flash|haiku|small|lite/i.test(model) ? 'fast' : 'standard', structuredJson: true, longContext: null, recommendedFor: [] })
+  }));
+}
+
+function modelRegistryStatus() {
+  return {
+    stage: 'stage18a-model-routing-audit-validation-lock-1',
+    taskModelRoutes: TASK_MODEL_ROUTES,
+    providerDefaults: DEFAULT_MODELS,
+    providers: Object.fromEntries([...PROVIDERS].map((provider) => [provider, {
+      configured: hasProviderKey(provider),
+      defaultModel: DEFAULT_MODELS[provider],
+      allowedModels: Array.from(ALLOWED_MODELS[provider] || []),
+      models: modelRegistryForProvider(provider)
+    }]))
+  };
+}
+
+function normalizeAllowedModel(provider, model) {
+  const allowed = ALLOWED_MODELS[provider] || new Set();
+  const raw = String(model || DEFAULT_MODELS[provider] || '').trim();
+  const alias = MODEL_ALIASES[provider]?.[raw.toLowerCase()];
+  const candidate = alias || raw;
+  if (candidate && allowed.has(candidate)) return { model: candidate, repaired: candidate !== raw, requestedModel: raw, reason: candidate !== raw ? `Alias ${raw} mapped to ${candidate}.` : '' };
+  const fallback = allowed.has(DEFAULT_MODELS[provider]) ? DEFAULT_MODELS[provider] : Array.from(allowed)[0];
+  if (!fallback) throw httpError(400, `No allowed models configured for ${provider}.`);
+  if (raw && !allowed.has(raw)) return { model: fallback, repaired: true, requestedModel: raw, reason: `Unsupported model for ${provider}: ${raw}; using ${fallback}.` };
+  return { model: fallback, repaired: Boolean(raw !== fallback), requestedModel: raw, reason: raw ? `Using ${fallback}.` : `No model supplied; using ${fallback}.` };
+}
+
 const ALLOWED_ORIGINS = envList('ALLOWED_ORIGINS', '');
 
 app.use(cors({
@@ -90,7 +170,7 @@ app.get('/health', (_req, res) => {
 app.get('/api/lumina/models', (_req, res) => {
   res.json({
     ok: true,
-    providers: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set).map((model) => ({ model }))]))
+    providers: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set).map((model) => ({ model, ...(MODEL_CAPABILITY_HINTS[provider]?.[model] || {}) }))]))
   });
 });
 
@@ -99,6 +179,9 @@ app.get('/api/lumina/ai/status', requireProxyToken, (_req, res) => {
     ok: true,
     stage: STAGE,
     providerDefaults: DEFAULT_MODELS,
+    taskModelRoutes: TASK_MODEL_ROUTES,
+    modelRegistry: modelRegistryStatus(),
+    allowedModels: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set)])),
     providers: Object.fromEntries([...PROVIDERS].map((p) => [p, hasProviderKey(p)])),
     imageInputsForwarded: true,
     openaiVisionForwarding: true,
@@ -215,7 +298,7 @@ app.get('/ws/lumina/projects/:projectId', (_req, res) => {
 app.post('/api/lumina/ai', requireProxyToken, async (req, res) => {
   try {
     const requestBody = req.body || {};
-    const { provider, model } = pickProviderAndModel(requestBody);
+    const { provider, model, modelFallback } = pickProviderAndModel(requestBody);
     const payload = (requestBody.task === 'latex-document-ai' || requestBody.payload?.documentAi)
       ? await normalizeDocumentAiPayload(requestBody)
       : normalizeAiPayload(requestBody);
@@ -240,6 +323,7 @@ app.post('/api/lumina/ai', requireProxyToken, async (req, res) => {
       text: result.text,
       webSearchRequired: payload.webSearchRequired,
       webSearchEnabled: !!result.webSearchEnabled,
+      modelFallback,
       raw: RETURN_RAW ? result.raw : undefined
     });
   } catch (err) {
@@ -574,9 +658,8 @@ function httpError(status, message) {
 function pickProviderAndModel(body) {
   const provider = String(body.provider || 'openai').trim().toLowerCase();
   if (!PROVIDERS.has(provider)) throw httpError(400, `Unsupported provider: ${provider}`);
-  const model = String(body.model || DEFAULT_MODELS[provider]).trim();
-  if (!ALLOWED_MODELS[provider].has(model)) throw httpError(400, `Unsupported model for ${provider}: ${model}`);
-  return { provider, model };
+  const decision = normalizeAllowedModel(provider, body.model || DEFAULT_MODELS[provider]);
+  return { provider, model: decision.model, modelFallback: decision.repaired ? decision : null };
 }
 
 function hasImageContent(value) {
