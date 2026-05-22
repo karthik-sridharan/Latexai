@@ -1,0 +1,17 @@
+Latexai Stage 17Q test report
+==============================
+
+Stage: stage17q-compile-pdf-result-guard-1
+
+Passed:
+- node --check js/compiler-provider.js
+- node --check js/compiler-provider-preload.js
+- node --check js/preview.js
+- node tests/stage17q-compile-pdf-result-guard.test.cjs
+
+Coverage:
+- stale compileStatusUrl origin is synced to compileUrl origin
+- status=succeeded is handled
+- successful job response without PDF falls back to direct compile
+- successful response without PDF is marked as failure if fallback also has no PDF
+- preview does not report a no-PDF compile as succeeded
