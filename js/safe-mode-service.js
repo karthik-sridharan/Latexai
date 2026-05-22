@@ -1,5 +1,5 @@
 /* Latexai Stage 15E SafeModeService
- * Stage: stage15e-safe-mode-recovery-1
+ * Stage: stage18f-editor-syntax-shortcuts-recovery-token-1
  *
  * Recovery layer:
  * - ?safe=1 starts in safe mode;
@@ -15,7 +15,7 @@
 
   const W = window;
   const D = document;
-  const STAGE = 'stage15e-safe-mode-recovery-1';
+  const STAGE = 'stage18f-editor-syntax-shortcuts-recovery-token-1';
   const DISABLE_KEY = 'latexai:safe:disableExperimentalUi';
   const RESET_DONE_KEY = 'latexai:safe:lastResetAt';
 
@@ -23,6 +23,17 @@
   const requestedSafe = params.get('safe') === '1' || params.get('safe') === 'true';
   const requestedReset = params.get('resetUi') === '1' || params.get('resetUi') === 'true';
   const disableParam = params.get('disableExperimentalUi');
+  const hash = String(W.location.hash || '').toLowerCase();
+  const recoveryTokenRequested = () => (
+    params.has('safe') ||
+    params.has('resetUi') ||
+    params.has('disableExperimentalUi') ||
+    params.get('recovery') === '1' ||
+    params.get('recovery') === 'true' ||
+    params.get('debug') === '1' ||
+    params.get('debug') === 'true' ||
+    /safe|recovery|diagnostic|debug/.test(hash)
+  );
 
   function lsGet(key, fallback = '') {
     try { return localStorage.getItem(key) || fallback; } catch (_err) { return fallback; }
@@ -74,12 +85,18 @@
     return /ui-cleanup|collapsible|panel-stabil|experimental-ui|stage15/.test(n);
   }
 
+  function shouldShowRecoveryBar() {
+    return recoveryTokenRequested() || isSafeMode();
+  }
+
   function bootReport() {
     return {
       stage: STAGE,
       safeMode: isSafeMode(),
       requestedSafe,
       requestedReset,
+      recoveryTokenRequested: recoveryTokenRequested(),
+      recoveryBarVisible: shouldShowRecoveryBar(),
       experimentalUiDisabled: experimentalDisabled(),
       resetKeysRemoved,
       url: W.location.href,
@@ -99,6 +116,7 @@
   }
 
   function injectRecoveryBar() {
+    if (!shouldShowRecoveryBar()) return;
     if (D.getElementById('safeModeRecoveryBar')) return;
     const bar = D.createElement('div');
     bar.id = 'safeModeRecoveryBar';
@@ -156,6 +174,8 @@
     experimentalDisabled,
     shouldDisableOptionalScript,
     resetUiState,
+    recoveryTokenRequested,
+    shouldShowRecoveryBar,
     bootReport
   };
 
