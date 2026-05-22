@@ -1,5 +1,5 @@
-/* Latexai Stage 18D CompetitivePaperReviewService
- * Stage: stage18d-competitive-review-source-cited-ranking-report-1
+/* Latexai Stage 18E CompetitivePaperReviewService
+ * Stage: stage18e-competitive-review-evidence-ui-cache-controls-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18d-competitive-review-source-cited-ranking-report-1';
+  const STAGE = 'stage18e-competitive-review-evidence-ui-cache-controls-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -36,7 +36,8 @@
   let lastRoadmapReport = '';
   let lastSourceLedger = [];
   let lastEvidenceCoverage = null;
-  const URL_CACHE_KEY = 'latexai:competitive-web-research-profile-cache:v2';
+  const URL_CACHE_KEY = 'latexai:competitive-web-research-profile-cache:v3';
+  const LEGACY_URL_CACHE_KEYS = ['latexai:competitive-web-research-profile-cache:v2', 'latexai:competitive-web-research-profile-cache:v1'];
 
   function State() { return NS.State; }
   function el(id) { return D.getElementById(id); }
@@ -155,19 +156,59 @@
     }
   }
 
-  function readUrlCache() {
+  function readJsonStorageObject(key) {
     try {
-      const raw = W.localStorage?.getItem?.(URL_CACHE_KEY);
+      const raw = W.localStorage?.getItem?.(key);
       const parsed = raw ? JSON.parse(raw) : {};
-      return parsed && typeof parsed === 'object' ? parsed : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (_err) {
       return {};
     }
   }
 
+  function readUrlCache() {
+    const current = readJsonStorageObject(URL_CACHE_KEY);
+    const out = { ...current };
+    for (const legacyKey of LEGACY_URL_CACHE_KEYS || []) {
+      const legacy = readJsonStorageObject(legacyKey);
+      for (const [key, value] of Object.entries(legacy || {})) {
+        if (!out[key]) out[key] = { ...value, migratedFrom: legacyKey };
+      }
+    }
+    return out;
+  }
+
   function writeUrlCache(cache) {
     try { W.localStorage?.setItem?.(URL_CACHE_KEY, JSON.stringify(cache || {})); return true; }
     catch (_err) { return false; }
+  }
+
+  function removeUrlCacheEntries(urls) {
+    const keys = (urls || []).map(normalizeUrlForCache).filter(Boolean);
+    if (!keys.length) return 0;
+    let removed = 0;
+    const cache = readUrlCache();
+    for (const key of keys) {
+      if (cache[key]) { delete cache[key]; removed += 1; }
+    }
+    writeUrlCache(cache);
+    try {
+      for (const legacyKey of LEGACY_URL_CACHE_KEYS || []) {
+        const legacy = readJsonStorageObject(legacyKey);
+        let changed = false;
+        for (const key of keys) {
+          if (legacy[key]) { delete legacy[key]; changed = true; }
+        }
+        if (changed) W.localStorage?.setItem?.(legacyKey, JSON.stringify(legacy));
+      }
+    } catch (_err) {}
+    return removed;
+  }
+
+  function clearAllUrlCache() {
+    try { W.localStorage?.removeItem?.(URL_CACHE_KEY); } catch (_err) {}
+    try { (LEGACY_URL_CACHE_KEYS || []).forEach((key) => W.localStorage?.removeItem?.(key)); } catch (_err) {}
+    return true;
   }
 
   function cachedPaperForUrl(url) {
@@ -313,7 +354,204 @@
         '<br><span class="muted">Reports and ranking prompts should cite source IDs like [S1], [S2].</span>'
       ].join('');
     }
+    renderEvidenceDashboard();
     return { ledger: lastSourceLedger, coverage: lastEvidenceCoverage };
+  }
+
+  function cacheAgeLabel(value) {
+    const raw = clean(value);
+    if (!raw) return '';
+    const t = Date.parse(raw);
+    if (!Number.isFinite(t)) return raw;
+    const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (mins < 2) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return `${hours} hr ago`;
+    return `${Math.round(hours / 24)} day(s) ago`;
+  }
+
+  function sourceIdsForPaper(paper, ledger = lastSourceLedger) {
+    const url = clean(paper?.url || paper?.sourceUrl || '');
+    const title = clean(paper?.title || '');
+    return (ledger || [])
+      .filter((src) => (url && clean(src.competitorUrl) === url) || (title && clean(src.paperTitle) === title))
+      .map((src) => src.id)
+      .filter(Boolean);
+  }
+
+  function paperCoverageInfo(paper) {
+    const url = clean(paper?.url || paper?.sourceUrl || '');
+    const title = clean(paper?.title || url || 'competitor');
+    const row = (lastEvidenceCoverage?.perPaper || []).find((x) => clean(x.url) === url || clean(x.title) === title) || {};
+    const sourceCount = Number.isFinite(row.sourceCount) ? row.sourceCount : sourceIdsForPaper(paper).length;
+    const accessed = paper?.accessed === true || row.accessed === true;
+    const strength = row.evidenceStrength || (sourceCount >= 3 ? 'strong' : sourceCount >= 2 ? 'moderate' : sourceCount >= 1 ? 'seed-only/limited' : 'missing');
+    const warnings = [];
+    if (sourceCount <= 1) warnings.push('Only seed or one source found');
+    if (!clean(paper?.abstract || '')) warnings.push('No abstract/summary captured');
+    if (!accessed && sourceCount <= 1) warnings.push('Ranking evidence may be weak');
+    return { title, url, sourceCount, accessed, strength, warnings, sourceIds: sourceIdsForPaper(paper) };
+  }
+
+  function parseRankingEntries(report = lastRankingReport) {
+    const text = String(report || '');
+    for (const candidate of parseJsonCandidates(text)) {
+      try {
+        const data = JSON.parse(candidate);
+        const list = Array.isArray(data) ? data
+          : Array.isArray(data?.ranking) ? data.ranking
+          : Array.isArray(data?.competitorRanking) ? data.competitorRanking
+          : Array.isArray(data?.rankedCompetitors) ? data.rankedCompetitors
+          : [];
+        const rows = list.map((item, index) => ({
+          rank: Number(item?.rank) || index + 1,
+          title: clean(item?.title || item?.paper || item?.name || item?.url || `Competitor ${index + 1}`),
+          url: clean(item?.url || item?.sourceUrl || ''),
+          mainStrength: clean(item?.mainStrength || item?.strength || item?.rationale || ''),
+          relevance: clean(item?.relevance || item?.relevanceToDraft || item?.draftRelevance || ''),
+          sourceIds: Array.isArray(item?.sourceIds) ? item.sourceIds.map(clean).filter(Boolean) : readLines(item?.sourceIds || item?.evidence || '')
+        })).filter((row) => row.title || row.url);
+        if (rows.length) return rows.sort((a, b) => a.rank - b.rank);
+      } catch (_err) {}
+    }
+    const mdRows = [];
+    const rowRe = /^\s*\|\s*(\d+)\s*\|\s*([^|]+)\|([^|]*)\|([^|]*)\|([^|]*)\|/gm;
+    let match;
+    while ((match = rowRe.exec(text))) {
+      mdRows.push({ rank: Number(match[1]), title: clean(match[2]), mainStrength: clean(match[3]), sourceIds: (match[4].match(/S\d+/g) || []), relevance: clean(match[5]), url: '' });
+    }
+    return mdRows.sort((a, b) => a.rank - b.rank);
+  }
+
+  function renderRankingPreview() {
+    const node = el('competitiveRankingPreview');
+    if (!node) return;
+    const rows = parseRankingEntries(lastRankingReport);
+    if (!rows.length) {
+      node.innerHTML = '<div class="competitive-ranking-empty">Ranking table will appear here after <strong>Rank competitors</strong>.</div>';
+      return;
+    }
+    node.innerHTML = [
+      '<div class="competitive-ui-title">Ranking preview</div>',
+      '<div class="competitive-ranking-scroll"><table class="competitive-ranking-table">',
+      '<thead><tr><th>Rank</th><th>Paper</th><th>Main strength</th><th>Evidence</th><th>Relevance</th></tr></thead>',
+      '<tbody>',
+      ...rows.map((row) => [
+        '<tr>',
+        `<td>#${escapeHtml(row.rank)}</td>`,
+        `<td>${escapeHtml(row.title || row.url || 'Untitled')}</td>`,
+        `<td>${escapeHtml(row.mainStrength || '(not stated)')}</td>`,
+        `<td>${escapeHtml((row.sourceIds || []).join(', ') || 'weak/uncited')}</td>`,
+        `<td>${escapeHtml(row.relevance || '(not stated)')}</td>`,
+        '</tr>'
+      ].join('')),
+      '</tbody></table></div>'
+    ].join('');
+  }
+
+  function renderEvidenceDashboard() {
+    const node = el('competitiveEvidenceDashboard');
+    if (!node) { renderRankingPreview(); return; }
+    const papers = lastCompetitorSummaries || [];
+    if (!papers.length) {
+      node.innerHTML = '<div class="competitive-evidence-empty">No competitor research profiles yet. Add URLs and click <strong>Research competitor papers</strong>.</div>';
+      renderRankingPreview();
+      return;
+    }
+    node.innerHTML = [
+      '<div class="competitive-ui-title">Competitor evidence cards</div>',
+      '<div class="competitive-evidence-card-grid">',
+      ...papers.map((paper, index) => {
+        const info = paperCoverageInfo(paper);
+        const cache = paper?.cached ? `hit${paper.cachedAt ? ` · ${cacheAgeLabel(paper.cachedAt)}` : ''}` : 'miss/current run';
+        const badgeClass = info.strength === 'strong' ? 'good' : info.strength === 'moderate' ? 'moderate' : 'weak';
+        const sources = (lastSourceLedger || []).filter((src) => info.sourceIds.includes(src.id));
+        return [
+          `<article class="competitive-evidence-card" data-competitive-url="${escapeHtml(info.url)}">`,
+          '<div class="competitive-evidence-card-head">',
+          `<div><div class="competitive-card-kicker">Competitor ${index + 1}</div><strong>${escapeHtml(info.title || info.url || 'Untitled')}</strong></div>`,
+          `<span class="competitive-evidence-badge ${badgeClass}">${escapeHtml(info.strength)}</span>`,
+          '</div>',
+          info.url ? `<div class="competitive-card-url">${escapeHtml(info.url)}</div>` : '',
+          `<div class="competitive-card-meta">Sources: ${info.sourceCount} · Cache: ${escapeHtml(cache)} · IDs: ${escapeHtml(info.sourceIds.join(', ') || 'none')}</div>`,
+          info.warnings.length ? `<div class="competitive-card-warning">${escapeHtml(info.warnings.join('; '))}</div>` : '<div class="competitive-card-ok">Evidence coverage looks usable.</div>',
+          '<div class="competitive-card-actions">',
+          '<button class="btn mini competitive-toggle-sources" type="button">View sources</button>',
+          '<button class="btn mini competitive-rerun-url" type="button">Rerun research</button>',
+          '<button class="btn mini competitive-clear-url-cache" type="button">Clear cache</button>',
+          '</div>',
+          '<div class="competitive-card-sources" hidden>',
+          sources.length ? sources.map((src) => `<div><strong>[${escapeHtml(src.id)}]</strong> ${escapeHtml(src.title || src.url || 'Source')} ${src.url ? `<span class="competitive-card-url">${escapeHtml(src.url)}</span>` : ''}</div>`).join('') : '<div>No sources in ledger for this competitor yet.</div>',
+          '</div>',
+          '</article>'
+        ].join('');
+      }),
+      '</div>'
+    ].join('');
+    renderRankingPreview();
+  }
+
+  function clearResearchCacheForCurrentUrls() {
+    const urls = parseCompetitorInputs().urls;
+    if (!urls.length) { setStatus('No competitor URLs to clear from cache.'); return { ok: false, removed: 0 }; }
+    const removed = removeUrlCacheEntries(urls);
+    lastCompetitorSummaries = lastCompetitorSummaries.map((paper) => ({ ...paper, cached: false, cachedAt: '' }));
+    refreshEvidenceState(lastCompetitorSummaries);
+    setStatus(`Cleared ${removed} cached competitor research profile(s) for current URLs.`);
+    return { ok: true, removed };
+  }
+
+  async function rerunAllCompetitorResearch() {
+    const urls = parseCompetitorInputs().urls;
+    if (!urls.length) { setStatus('Add competitor URLs before rerunning research.'); return { ok: false }; }
+    removeUrlCacheEntries(urls);
+    lastCompetitorSummaries = [];
+    lastSourceLedger = [];
+    lastEvidenceCoverage = null;
+    lastRankingReport = '';
+    lastComparisonReport = '';
+    lastRoadmapReport = '';
+    refreshEvidenceState([]);
+    setStatus('Cleared current competitor research cache; rerunning web research...');
+    return researchCompetitorPapers();
+  }
+
+  async function rerunSingleCompetitorResearch(url) {
+    const target = clean(url);
+    if (!target) return { ok: false };
+    removeUrlCacheEntries([target]);
+    lastCompetitorSummaries = (lastCompetitorSummaries || []).filter((paper) => normalizeUrlForCache(paper?.url || paper?.sourceUrl || '') !== normalizeUrlForCache(target));
+    refreshEvidenceState(lastCompetitorSummaries);
+    setStatus(`Cleared cache for ${target}; rerunning web research for current URL set...`);
+    return researchCompetitorPapers();
+  }
+
+  function handleEvidenceDashboardClick(event) {
+    const target = event.target?.closest?.('button');
+    if (!target) return;
+    const card = target.closest('[data-competitive-url]');
+    const url = card?.getAttribute('data-competitive-url') || '';
+    if (target.classList.contains('competitive-toggle-sources')) {
+      event.preventDefault();
+      const panel = card?.querySelector?.('.competitive-card-sources');
+      if (panel) {
+        panel.hidden = !panel.hidden;
+        target.textContent = panel.hidden ? 'View sources' : 'Hide sources';
+      }
+    }
+    if (target.classList.contains('competitive-clear-url-cache')) {
+      event.preventDefault();
+      const removed = removeUrlCacheEntries([url]);
+      setStatus(`Cleared ${removed} cache entr${removed === 1 ? 'y' : 'ies'} for selected competitor.`);
+      const paper = (lastCompetitorSummaries || []).find((p) => normalizeUrlForCache(p.url || p.sourceUrl || '') === normalizeUrlForCache(url));
+      if (paper) { paper.cached = false; paper.cachedAt = ''; }
+      refreshEvidenceState(lastCompetitorSummaries);
+    }
+    if (target.classList.contains('competitive-rerun-url')) {
+      event.preventDefault();
+      rerunSingleCompetitorResearch(url);
+    }
   }
 
   function updateWorkflowStatus(step, message) {
@@ -738,6 +976,7 @@
     try {
       lastRankingReport = (await askCompetitiveStep('competitive-competitor-ranking', instructions, input, 'competitive-ranking', 5000)).trim();
       lastReport = lastRankingReport;
+      renderRankingPreview();
       setOutput(lastRankingReport || '(AI returned empty competitor ranking.)');
       setStatus(lastRankingReport ? 'Competitor ranking complete.' : 'Competitor ranking returned an empty report.');
       updateWorkflowStatus('rank', lastRankingReport ? 'ranking ready.' : 'ranking empty.');
@@ -1503,6 +1742,8 @@
       '  <div class="competitive-step-row" data-competitive-step="insert"><span class="competitive-step-label">6. Insert edits</span><span class="competitive-step-message">pending</span></div>',
       '</div>',
       '<div id="competitiveEvidenceStatus" class="competitive-web-status">Evidence ledger not built yet. Research competitors to generate source IDs.</div>',
+      '<div id="competitiveEvidenceDashboard" class="competitive-evidence-dashboard"><div class="competitive-evidence-empty">No competitor research profiles yet.</div></div>',
+      '<div id="competitiveRankingPreview" class="competitive-ranking-preview"><div class="competitive-ranking-empty">Ranking table will appear here after <strong>Rank competitors</strong>.</div></div>',
       '<div class="competitive-url-add-row">',
       '  <input id="competitiveAddUrlInput" type="url" placeholder="Paste competitor paper URL" />',
       '  <button id="addCompetitiveUrlBtn" class="btn mini" type="button">+ Add URL</button>',
@@ -1537,6 +1778,8 @@
       '  <button id="checkCompetitiveWebSearchBtn" class="btn mini" type="button">Check web search</button>',
       '  <button id="fetchCompetitivePapersBtn" class="btn mini" type="button">Research competitor papers</button>',
       '  <button id="rankCompetitivePapersBtn" class="btn mini" type="button">Rank competitors</button>',
+      '  <button id="rerunCompetitiveResearchBtn" class="btn mini" type="button">Rerun all web research</button>',
+      '  <button id="clearCompetitiveResearchCacheBtn" class="btn mini" type="button">Clear research cache</button>',
       '  <button id="compareCompetitiveDraftBtn" class="btn mini" type="button">Compare my draft</button>',
       '  <button id="generateCompetitiveRoadmapBtn" class="btn mini primary" type="button">Generate source-cited roadmap</button>',
       '  <button id="runCompetitiveReviewBtn" class="btn mini" type="button">Run full cited review</button>',
@@ -1545,7 +1788,7 @@
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18D uses a source-cited AI web-research agent: URLs are research seeds, not PDFs to extract. The workflow builds competitor profiles plus a source ledger, ranks competitors with source IDs, compares the draft, and generates a cited roadmap. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
+      '<div class="settings-note">Stage 18E uses a source-cited AI web-research agent: URLs are research seeds, not PDFs to extract. The UI now shows competitor evidence cards, cache hit/miss status, source IDs, rerun controls, and a compact ranking preview. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level <code>\lai</code>/<code>\laiold</code> review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');
@@ -1557,6 +1800,9 @@
     el('checkCompetitiveWebSearchBtn')?.addEventListener('click', checkWebSearchCapability, true);
     el('fetchCompetitivePapersBtn')?.addEventListener('click', researchCompetitorPapers, true);
     el('rankCompetitivePapersBtn')?.addEventListener('click', rankCompetitorPapers, true);
+    el('rerunCompetitiveResearchBtn')?.addEventListener('click', rerunAllCompetitorResearch, true);
+    el('clearCompetitiveResearchCacheBtn')?.addEventListener('click', clearResearchCacheForCurrentUrls, true);
+    el('competitiveEvidenceDashboard')?.addEventListener('click', handleEvidenceDashboardClick, true);
     el('compareCompetitiveDraftBtn')?.addEventListener('click', compareDraftAgainstRankedSet, true);
     el('generateCompetitiveRoadmapBtn')?.addEventListener('click', generateImprovementRoadmap, true);
     el('runCompetitiveReviewBtn')?.addEventListener('click', runCompetitiveReview, true);
@@ -1565,6 +1811,7 @@
     el('insertCompetitiveInlineLaiBtn')?.addEventListener('click', insertActionableEditsAtMatches, true);
     el('insertCompetitiveRoadmapBtn')?.addEventListener('click', appendLaiImprovementPlan, true);
 
+    renderEvidenceDashboard();
     return true;
   }
 
@@ -1597,7 +1844,12 @@
     getLastSourceLedger: () => lastSourceLedger,
     getLastEvidenceCoverage: () => lastEvidenceCoverage,
     sourcesMarkdown,
-    evidenceCoverageMarkdown
+    evidenceCoverageMarkdown,
+    renderEvidenceDashboard,
+    renderRankingPreview,
+    parseRankingEntries,
+    clearResearchCacheForCurrentUrls,
+    rerunAllCompetitorResearch
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
