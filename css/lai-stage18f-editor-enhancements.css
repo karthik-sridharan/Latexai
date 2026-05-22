@@ -1,4 +1,4 @@
-/* Latexai Stage 18F: editor syntax color, indentation guides, and shortcut settings */
+/* Latexai Stage 18G: stable editor syntax overlay, indentation guides, and shortcut settings */
 
 .source-shell.latexai-enhanced-source-shell {
   position: relative;
@@ -23,6 +23,8 @@
   color: #dbeafe;
   background: #0f172a;
   font: 14px/1.55 var(--mono);
+  box-sizing: border-box;
+  contain: paint;
 }
 
 #sourceEditor.latexai-syntax-textarea {
@@ -31,16 +33,26 @@
   position: relative;
   z-index: 2;
   background: transparent !important;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent;
+  /* Do not make the live editing surface fully transparent. Safari can repaint
+     transparent textarea text as opaque during Return/input, which made the
+     editor appear to switch between the old and highlighted surfaces. Keeping
+     the real textarea nearly transparent preserves one stable input surface
+     while the passive overlay provides the visible color layer. */
+  color: rgba(229, 231, 235, .018) !important;
+  -webkit-text-fill-color: rgba(229, 231, 235, .018);
   caret-color: #f8fafc;
   text-shadow: none;
+  -webkit-background-clip: padding-box;
+}
+
+#sourceEditor.latexai-syntax-textarea.latexai-syntax-stable-single-surface {
+  isolation: isolate;
 }
 
 #sourceEditor.latexai-syntax-textarea::selection {
   background: rgba(96,165,250,.45);
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  color: rgba(229, 231, 235, .018);
+  -webkit-text-fill-color: rgba(229, 231, 235, .018);
 }
 
 .latex-syntax-line {
