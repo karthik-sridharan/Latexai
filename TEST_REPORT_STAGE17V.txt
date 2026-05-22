@@ -1,0 +1,13 @@
+Stage: stage17v-compile-job-pdf-endpoint-hydration-1
+
+Checks run:
+- node --check js/compiler-provider.js
+- node --check js/compiler-provider-preload.js
+- node tests/stage17v-compile-job-pdf-endpoint-hydration.test.cjs
+
+Result:
+- Passed
+
+Notes:
+- Existing Stage 17U layout behavior is preserved.
+- Old stage-specific tests that assert the exact Stage 17U boot string are expected to fail after the boot string is advanced to Stage 17V.
