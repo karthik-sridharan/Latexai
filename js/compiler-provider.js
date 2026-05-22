@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage9h-tikz-cursor-regex-fix-1';
+  var STAGE = 'stage17q-compile-pdf-result-guard-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
 
   function isObject(x) {
@@ -40,6 +40,35 @@
   function absoluteBackendUrl(url, fallbackPath) {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url;
     return BACKEND_BASE + fallbackPath;
+  }
+
+  function deriveCompileJobsUrl(compileUrl) {
+    var fallback = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
+    try {
+      var base = (root.location && root.location.href) || BACKEND_BASE + '/';
+      var u = new URL(String(compileUrl || ''), base);
+      u.hash = '';
+      u.search = '';
+      u.pathname = u.pathname.replace(/\/+$/, '').replace(/\/compile$/, '/compile/jobs');
+      if (!/\/compile\/jobs$/i.test(u.pathname)) {
+        u.pathname = '/api/lumina/latex/compile/jobs';
+      }
+      return u.href;
+    } catch (err) {
+      return fallback;
+    }
+  }
+
+  function shouldSyncJobsUrlWithCompileUrl(compileUrl, jobsUrl) {
+    try {
+      var c = new URL(String(compileUrl || ''), (root.location && root.location.href) || BACKEND_BASE + '/');
+      var j = new URL(String(jobsUrl || ''), (root.location && root.location.href) || BACKEND_BASE + '/');
+      var compileLooksStandard = /\/api\/lumina\/latex\/compile\/?$/i.test(c.pathname);
+      var jobsLooksStandard = /\/api\/lumina\/latex\/compile\/jobs\/?$/i.test(j.pathname);
+      return compileLooksStandard && jobsLooksStandard && c.origin !== j.origin;
+    } catch (err) {
+      return false;
+    }
   }
 
   function findSettingsInLocalStorage() {
@@ -87,6 +116,11 @@
     next.compilerMode = 'backend-texlive';
     next.compileUrl = absoluteBackendUrl(next.compileUrl, '/api/lumina/latex/compile');
     next.compileStatusUrl = absoluteBackendUrl(next.compileStatusUrl, '/api/lumina/latex/compile/jobs');
+    var derivedJobsUrl = deriveCompileJobsUrl(next.compileUrl);
+    if (shouldSyncJobsUrlWithCompileUrl(next.compileUrl, next.compileStatusUrl)) {
+      next.compileStatusUrl = derivedJobsUrl;
+      next.compileStatusUrlAutoDerived = true;
+    }
     next.backendStatusUrl = absoluteBackendUrl(next.backendStatusUrl, '/api/lumina/latex/status');
     next.useCompileJobs = next.useCompileJobs !== false;
     next.engine = next.engine || 'pdflatex';
@@ -394,6 +428,34 @@
     return result;
   }
 
+  function hasPdfPayload(result) {
+    if (!result) return false;
+    if (result.pdfBase64 || result.pdfBytesBase64) return true;
+    if (typeof result.pdf === 'string' && result.pdf.indexOf('data:application/pdf;base64,') === 0) return true;
+    if (typeof result.pdfDataUrl === 'string' && result.pdfDataUrl.indexOf('data:application/pdf;base64,') === 0) return true;
+    if (typeof result.pdfUrl === 'string' && result.pdfUrl) return true;
+    if (typeof result.outputUrl === 'string' && /\.pdf(\?|#|$)/i.test(result.outputUrl)) return true;
+    return false;
+  }
+
+  function markMissingPdf(result, payload, note) {
+    result = isObject(result) ? Object.assign({}, result) : {};
+    result.success = false;
+    result.ok = false;
+    result.status = 'failed';
+    result.stage = result.stage || STAGE;
+    result.message = note || 'Compile backend reported success but did not return a PDF payload.';
+    result.compileInputSummary = result.compileInputSummary || (payload && payload.compileInputSummary);
+    var problem = {
+      level: 'error',
+      message: result.message,
+      line: null
+    };
+    result.problems = Array.isArray(result.problems) ? result.problems.slice() : [];
+    if (!result.problems.some(function (p) { return p && p.message === problem.message; })) result.problems.unshift(problem);
+    return result;
+  }
+
   function normalizeCompileResult(raw, payload) {
     raw = isObject(raw) ? raw : {};
     var result = Object.assign({}, isObject(raw.result) ? raw.result : {}, raw);
@@ -401,7 +463,13 @@
       result.jobId = result.jobId || raw.jobId;
       result.progress = result.progress == null ? raw.progress : result.progress;
     }
-    result.success = Boolean(result.success || result.ok || result.status === 'success' || result.status === 'completed');
+    result.success = Boolean(
+      result.success ||
+      result.ok ||
+      result.status === 'success' ||
+      result.status === 'completed' ||
+      result.status === 'succeeded'
+    );
     result.ok = result.success;
     result.status = result.success ? 'success' : (result.status || 'failed');
     result.provider = result.provider || 'cloudrun-texlive-latexmk';
@@ -436,11 +504,41 @@
     return { project: project || getGlobalProject(), settings: normalizeSettings(settings || getGlobalSettings()) };
   }
 
+  async function compileDirect(payload, settings) {
+    var directRaw = await fetchJson(settings.compileUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    var directResult = normalizeCompileResult(directRaw, payload);
+    directResult.usedDirectCompileEndpoint = true;
+    return directResult;
+  }
+
+  async function requirePdfOrFallback(result, payload, settings, source) {
+    result = normalizeCompileResult(result, payload);
+    if (hasPdfPayload(result) || result.mode === 'static-draft-fallback' || result.mode === 'mock-draft') return result;
+    if (result.ok && settings && settings.useCompileJobs && source !== 'direct') {
+      try {
+        var directResult = await compileDirect(payload, settings);
+        directResult.jobCompileFallbackReason = 'job result had status success but no PDF payload';
+        if (hasPdfPayload(directResult)) return directResult;
+        return markMissingPdf(directResult, payload, 'Compile job and direct compile endpoint completed without returning a PDF payload. Check that the configured backend returns pdfBase64/pdfBytesBase64/pdf data URL.');
+      } catch (err) {
+        return markMissingPdf(result, payload, 'Compile job completed without a PDF, and direct compile fallback failed: ' + (err && err.message ? err.message : String(err)));
+      }
+    }
+    if (result.ok && !hasPdfPayload(result)) {
+      return markMissingPdf(result, payload, 'Compile backend reported success but did not return a PDF payload.');
+    }
+    return result;
+  }
+
   async function compile() {
     var picked = pickProjectSettings(arguments);
     var settings = picked.settings;
     var payload = buildCompileRequest(picked.project, settings);
-    if (root.console && console.log) console.log('[Latexai Stage1 Step1] compile payload', payload.compileInputSummary);
+    if (root.console && console.log) console.log('[Latexai Stage17Q] compile payload', payload.compileInputSummary);
 
     var raw;
     if (settings.useCompileJobs) {
@@ -449,20 +547,22 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      // The current Cloud Run backend returns the result directly in the create-job response.
-      if (raw && raw.result) return normalizeCompileResult(raw, payload);
+      // The current Cloud Run backend may return the result directly in the create-job response.
+      if (raw && raw.result) return requirePdfOrFallback(raw, payload, settings, 'job-create');
       // Fallback for a backend that returns only a job id.
       if (raw && raw.jobId) {
         var statusUrl = settings.compileStatusUrl.replace(/\/+$/, '') + '/' + encodeURIComponent(raw.jobId);
-        var deadline = Date.now() + 90000;
+        var deadline = Date.now() + Number(settings.compileTimeoutMs || 90000);
         while (Date.now() < deadline) {
           var job = await fetchJson(statusUrl, { method: 'GET' });
-          if (job && (job.result || job.status === 'completed' || job.status === 'failed')) return normalizeCompileResult(job, payload);
+          if (job && (job.result || job.status === 'completed' || job.status === 'succeeded' || job.status === 'failed')) {
+            return requirePdfOrFallback(job, payload, settings, 'job-poll');
+          }
           await new Promise(function (resolve) { setTimeout(resolve, Number(settings.compilePollMs || 1000)); });
         }
         throw new Error('Compile job timed out while polling backend.');
       }
-      return normalizeCompileResult(raw, payload);
+      return requirePdfOrFallback(raw, payload, settings, 'job-create');
     }
 
     raw = await fetchJson(settings.compileUrl, {
@@ -470,7 +570,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    return normalizeCompileResult(raw, payload);
+    return requirePdfOrFallback(raw, payload, settings, 'direct');
   }
 
   async function checkAvailability(settings) {

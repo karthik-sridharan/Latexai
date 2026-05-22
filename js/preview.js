@@ -20,7 +20,11 @@
       NS.BrowserWasmProvider?.renderStatus?.();
       NS.TexlyreBusyTexProvider?.renderStatus?.();
     });
-    document.getElementById('compileProxyUrl')?.addEventListener('change', (event) => State().setSetting('compileUrl', event.target.value.trim() || '/api/lumina/latex/compile'));
+    document.getElementById('compileProxyUrl')?.addEventListener('change', (event) => {
+      const compileUrl = event.target.value.trim() || '/api/lumina/latex/compile';
+      State().setSetting('compileUrl', compileUrl);
+      State().setSetting('compileStatusUrl', deriveCompileJobsUrl(compileUrl));
+    });
     document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => State().setSetting('useCompileJobs', !!event.target.checked));
     document.getElementById('compilePollSelect')?.addEventListener('change', (event) => State().setSetting('compilePollMs', Number(event.target.value) || 1000));
     document.getElementById('shellEscapeCheck')?.addEventListener('change', (event) => {
@@ -297,16 +301,19 @@
       State().setLog(`Compiling ${project.rootFile} with ${settings.engine || 'pdflatex'} via ${settings.compilerMode || 'backend-texlive'}...`, []);
       renderLogs();
       const result = await NS.CompilerProvider.compile(project, settings);
-      State().setLog(result.log || 'Compile completed.', result.problems || []);
-      if (result.pdfBase64) {
-        showPdf(result.pdfBase64);
-        setPreviewMode('pdf');
-      } else {
-        setPreviewMode('draft');
-      }
-      const finalMessage = compileResultMessage(result);
-      State().setCompileStatus({ status: result.ok ? 'succeeded' : 'failed', jobId: result.jobId || State().state.compile?.jobId || null, progress: 100, message: finalMessage });
-      if (!result.ok || result.mode === 'static-draft-fallback') showLogsTab();
+      const displayedPdf = showPdfResult(result);
+      const missingPdf = result?.ok && !displayedPdf && result?.mode !== 'static-draft-fallback' && result?.mode !== 'mock-draft';
+      const effectiveOk = !!result.ok && !missingPdf;
+      const message = missingPdf
+        ? 'Compile backend reported success but did not return a PDF payload.'
+        : (result.log || 'Compile completed.');
+      const problems = Array.isArray(result.problems) ? result.problems.slice() : [];
+      if (missingPdf) problems.unshift({ level: 'error', message, line: null });
+      State().setLog(message, problems);
+      setPreviewMode(displayedPdf ? 'pdf' : 'draft');
+      const finalMessage = missingPdf ? message : compileResultMessage(result);
+      State().setCompileStatus({ status: effectiveOk ? 'succeeded' : 'failed', jobId: result.jobId || State().state.compile?.jobId || null, progress: 100, message: finalMessage });
+      if (!effectiveOk || result.mode === 'static-draft-fallback') showLogsTab();
     } catch (err) {
       const message = `Compile provider error: ${err.message || err}`;
       State().setCompileStatus({ status: 'error', progress: 100, message });
@@ -321,7 +328,43 @@
 
   function showPdf(base64) {
     lastPdfObjectUrl = NS.PreviewAdapter?.showPdf?.(base64) || lastPdfObjectUrl;
+    return lastPdfObjectUrl;
   }
+
+  function showPdfResult(result) {
+    if (!result) return null;
+    if (result.pdfBase64) return showPdf(result.pdfBase64);
+    if (result.pdfBytesBase64) return showPdf(result.pdfBytesBase64);
+    if (typeof result.pdf === 'string' && result.pdf.indexOf('data:application/pdf;base64,') === 0) {
+      return showPdf(result.pdf.split(',', 2)[1]);
+    }
+    if (typeof result.pdfDataUrl === 'string' && result.pdfDataUrl.indexOf('data:application/pdf;base64,') === 0) {
+      return showPdf(result.pdfDataUrl.split(',', 2)[1]);
+    }
+    const url = result.pdfUrl || result.pdfBlobUrl || result.outputUrl;
+    if (typeof url === 'string' && url) {
+      const iframe = document.getElementById('pdfPreview');
+      if (iframe) {
+        iframe.src = url;
+        return url;
+      }
+    }
+    return null;
+  }
+
+  function deriveCompileJobsUrl(compileUrl) {
+    try {
+      const u = new URL(String(compileUrl || '/api/lumina/latex/compile'), window.location.href);
+      u.hash = '';
+      u.search = '';
+      u.pathname = u.pathname.replace(/\/+$/, '').replace(/\/compile$/, '/compile/jobs');
+      if (!/\/compile\/jobs$/i.test(u.pathname)) u.pathname = '/api/lumina/latex/compile/jobs';
+      return u.href;
+    } catch (err) {
+      return '/api/lumina/latex/compile/jobs';
+    }
+  }
+
   function compileResultMessage(result) {
     if (result?.mode === 'static-draft-fallback') {
       return result.ok
@@ -331,8 +374,8 @@
     if (result?.mode === 'mock-draft') {
       return result.ok ? 'Draft checks completed.' : 'Draft checks found diagnostics.';
     }
-    if (result?.pdfBase64) return result.ok ? 'PDF compile completed.' : 'Compile finished with diagnostics.';
-    return result.ok ? 'Compile provider completed without a PDF.' : 'Compile finished with diagnostics.';
+    if (result?.pdfBase64 || result?.pdfBytesBase64 || result?.pdfUrl || result?.pdfBlobUrl || result?.outputUrl) return result.ok ? 'PDF compile completed.' : 'Compile finished with diagnostics.';
+    return result.ok ? 'Compile backend reported success but did not return a PDF payload.' : 'Compile finished with diagnostics.';
   }
 
   function parseCompileLog(logText) {
