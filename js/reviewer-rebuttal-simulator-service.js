@@ -1,5 +1,5 @@
 /* Latexai Stage 18Q ReviewerRebuttalSimulatorService
- * Stage: stage18q4-reviewer-rebuttal-live-index-repair-20260523-1
+ * Stage: stage18q5-reviewer-rebuttal-safe-mode-mount-fix-20260523-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,12 +16,15 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18q4-reviewer-rebuttal-live-index-repair-20260523-1';
+  const STAGE = 'stage18q5-reviewer-rebuttal-safe-mode-mount-fix-20260523-1';
 
-  if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('reviewer-rebuttal-simulator-service')) {
-    NS.ReviewerRebuttalSimulatorService = { STAGE, disabledBySafeMode: true, init: () => false };
-    return;
-  }
+  // Stage 18Q5: this feature is intentionally loaded as a core visible card.
+  // Do not allow stale optional-script safe-mode flags to suppress it silently.
+  try {
+    if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('reviewer-rebuttal-simulator-service')) {
+      (W.LUMINA_LATEX_BOOT_WARNINGS = W.LUMINA_LATEX_BOOT_WARNINGS || []).push('Safe-mode wanted to disable reviewer/rebuttal simulator, but Stage 18Q5 keeps it visible.');
+    }
+  } catch (_ignoredSafeMode) {}
 
   let lastPayload = null;
   let lastReviews = [];
@@ -377,7 +380,17 @@
     return true;
   }
 
-  function init() { return createCard(); }
+  function init() {
+    if (createCard()) return true;
+    try {
+      let attempts = 0;
+      const timer = setInterval(() => {
+        attempts += 1;
+        if (createCard() || attempts >= 20) clearInterval(timer);
+      }, 250);
+    } catch (_err) {}
+    return !!el('reviewerRebuttalCard');
+  }
 
   NS.ReviewerRebuttalSimulatorService = {
     STAGE,
