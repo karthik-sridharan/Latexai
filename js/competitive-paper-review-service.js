@@ -1,5 +1,5 @@
-/* Latexai Stage 18O CompetitivePaperReviewService
- * Stage: stage18o-competitive-review-ai-remake-lai-workflow-1
+/* Latexai Stage 18M CompetitivePaperReviewService
+ * Stage: stage18m-competitive-review-ranking-to-lai-edit-impact-map-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18o-competitive-review-ai-remake-lai-workflow-1';
+  const STAGE = 'stage18o-competitive-review-memory-wiring-backend-only-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -98,16 +98,6 @@
     const file = getFile(path);
     const text = editorText || fileText(file);
     return { path, file, text };
-  }
-
-  function sourceTextForPath(path) {
-    const normalized = normalizePath(path || activePath());
-    const file = getFile(normalized);
-    if (normalizePath(activePath()) === normalized) {
-      const editorValue = el('sourceEditor')?.value;
-      if (typeof editorValue === 'string' && editorValue.length) return editorValue;
-    }
-    return fileText(file);
   }
 
   function writeProjectFile(path, content) {
@@ -507,32 +497,18 @@
     };
   }
 
-  function findAllAnchorMatches(text, anchor) {
-    const source = String(text || '');
-    const needle = String(anchor || '');
-    if (!needle) return [];
-    const out = [];
-    let at = source.indexOf(needle);
-    while (at >= 0) {
-      out.push(at);
-      at = source.indexOf(needle, at + Math.max(1, needle.length));
-    }
-    return out;
-  }
-
   function insertionReadiness(edit) {
     const path = normalizePath(edit?.path || activePath());
     const file = getFile(path);
-    if (!file) return { label: 'file missing', ok: false, path, matchCount: 0 };
-    const text = sourceTextForPath(path);
+    if (!file) return { label: 'file missing', ok: false, path };
+    const text = fileText(file);
     const anchor = String(edit?.oldText || '');
-    if (!anchor.trim()) return { label: 'append/manual only', ok: false, path, matchCount: 0 };
-    const positions = findAllAnchorMatches(text, anchor);
-    if (!positions.length) return { label: 'anchor not found; append/manual fallback', ok: false, path, matchCount: 0 };
-    const issue = unsafeInsertionLocationReason(text, positions[0]);
-    if (issue) return { label: issue, ok: false, path, matchCount: positions.length };
-    if (positions.length > 1) return { label: `ambiguous anchor (${positions.length} matches); skipped until oldText is more specific`, ok: false, path, matchCount: positions.length };
-    return { label: edit.mode === 'replace' ? 'inline exact match' : 'inline anchor match', ok: true, path, matchCount: 1 };
+    if (!anchor.trim()) return { label: 'append/manual only', ok: false, path };
+    const at = text.indexOf(anchor);
+    if (at < 0) return { label: 'anchor not found; append/manual fallback', ok: false, path };
+    const issue = unsafeInsertionLocationReason(text, at);
+    if (issue) return { label: issue, ok: false, path };
+    return { label: edit.mode === 'replace' ? 'inline exact match' : 'inline anchor match', ok: true, path };
   }
 
   function buildEditImpactMap(report = lastReport) {
@@ -722,7 +698,7 @@
       rank: '3. Rank competitors',
       compare: '4. Compare draft',
       roadmap: '5. Improvement roadmap',
-      insert: '6. Apply remake'
+      insert: '6. Insert edits'
     };
     const rows = Array.from(node.querySelectorAll('[data-competitive-step]'));
     if (!rows.length) {
@@ -816,6 +792,166 @@
   function requireWebSearch() {
     // Stage 16C policy: competitive review must use web-search-capable AI.
     return true;
+  }
+
+
+  const MEMORY_ENABLED_KEY = 'latexai:memory-enabled';
+  let lastMemoryContextByStep = {};
+
+  function memoryEnabled() {
+    return String(W.localStorage?.getItem?.(MEMORY_ENABLED_KEY) || 'true') !== 'false';
+  }
+
+  function stableHash(value) {
+    const s = String(value || '');
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i += 1) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+
+  function memoryBaseUrl() {
+    const raw = clean(el('compileProxyUrl')?.value) || clean(el('aiProxyUrl')?.value) || '/api/lumina/latex/compile';
+    try {
+      const url = new URL(raw, W.location.href);
+      url.search = '';
+      url.hash = '';
+      url.pathname = url.pathname
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory');
+      if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = '/api/lumina/memory';
+      return url.href.replace(/\/$/, '');
+    } catch (_err) {
+      return raw.replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/$/, '');
+    }
+  }
+
+  function memoryHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = clean(el('compileProxyToken')?.value) || clean(el('aiProxyToken')?.value);
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+
+  function projectIdentity() {
+    const p = project() || {};
+    const root = rootPath();
+    const source = activeSource();
+    const projectKey = p.id || p.projectId || p.name || p.title || root || 'default-project';
+    const paperKey = `${projectKey}:${root}`;
+    let sessionId = '';
+    try {
+      sessionId = W.sessionStorage?.getItem?.('latexai:memory-session-id') || '';
+      if (!sessionId) {
+        sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        W.sessionStorage?.setItem?.('latexai:memory-session-id', sessionId);
+      }
+    } catch (_err) { sessionId = `sess-${stableHash(String(Date.now()))}`; }
+    return {
+      userId: 'local-user',
+      projectId: `project-${stableHash(projectKey)}`,
+      paperId: `paper-${stableHash(paperKey)}`,
+      sectionId: source?.path ? `section-${stableHash(source.path)}` : undefined,
+      sessionId,
+      rootPath: root,
+      activePath: source?.path || activePath()
+    };
+  }
+
+  async function memoryFetch(path, options = {}) {
+    if (!memoryEnabled()) return null;
+    try {
+      const response = await fetch(`${memoryBaseUrl()}${path}`, { ...options, headers: { ...memoryHeaders(), ...(options.headers || {}) }, cache: 'no-store' });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || json.ok === false) throw new Error(json?.detail || json?.error?.message || `HTTP ${response.status}`);
+      return json;
+    } catch (err) {
+      try { console.warn('[Latexai memory] non-blocking request failed', path, err); } catch (_err) {}
+      return null;
+    }
+  }
+
+  async function memoryPost(path, payload) {
+    return memoryFetch(path, { method: 'POST', body: JSON.stringify(payload || {}) });
+  }
+
+  async function loadCompetitiveMemoryContext(stepName, limit = 10) {
+    const ids = projectIdentity();
+    const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
+    if (ids.sectionId) qs.set('sectionId', ids.sectionId);
+    const json = await memoryFetch(`/context?${qs.toString()}`);
+    const ctx = json?.context || { facts: [], summaries: [], graphEdges: [] };
+    lastMemoryContextByStep[stepName] = ctx;
+    return ctx;
+  }
+
+  function memoryContextMarkdown(ctx) {
+    const facts = Array.isArray(ctx?.facts) ? ctx.facts.slice(0, 10) : [];
+    const summaries = Array.isArray(ctx?.summaries) ? ctx.summaries.slice(0, 3) : [];
+    if (!facts.length && !summaries.length) return '';
+    const lines = [
+      '--- Hidden Latexai project memory context ---',
+      'Use these backend memories silently to avoid repeating rejected ideas and to respect stable project preferences. Do not mention the memory system in the user-facing report unless explicitly asked.'
+    ];
+    summaries.forEach((s) => {
+      const content = String(s.content || '').replace(/\s+/g, ' ').trim();
+      if (content) lines.push(`Project ${s.summary_type || s.summaryType || 'summary'}: ${content.slice(0, 1200)}`);
+    });
+    facts.forEach((f, i) => {
+      const kind = f.fact_type || f.factType || f.key || 'memory';
+      const value = String(f.value || f.content || '').replace(/\s+/g, ' ').trim();
+      if (value) lines.push(`M${i + 1} [${kind}; uses=${f.use_count || f.useCount || 0}; success=${f.successful_use_count || f.successfulUseCount || 0}]: ${value.slice(0, 700)}`);
+    });
+    return lines.join('\n');
+  }
+
+  async function markMemoryUse(stepName, outcome, note = '') {
+    const facts = Array.isArray(lastMemoryContextByStep[stepName]?.facts) ? lastMemoryContextByStep[stepName].facts : [];
+    await Promise.all(facts.slice(0, 8).map((fact) => memoryPost('/use', { memoryId: fact.id, taskType: stepName, agentId: 'competitive-review-agent', outcome: outcome || 'used', note, metadata: { stage: STAGE } })));
+  }
+
+  function summarizeMemoryText(text, max = 1400) {
+    return String(text || '').replace(/```[\s\S]*?```/g, '[structured block omitted]').replace(/\s+/g, ' ').trim().slice(0, max);
+  }
+
+  async function saveCompetitiveMemory(stepName, report, payload = null, extra = {}) {
+    if (!memoryEnabled() || !String(report || '').trim()) return null;
+    const ids = projectIdentity();
+    const base = {
+      userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId,
+      source: 'competitive-paper-review-service',
+      metadata: {
+        stage: STAGE,
+        stepName,
+        rootPath: ids.rootPath,
+        activePath: ids.activePath,
+        targetVenue: payload?.targetVenue || clean(el('competitiveTargetVenue')?.value),
+        targetAudience: payload?.targetAudience || clean(el('competitiveTargetAudience')?.value),
+        comparisonModes: payload?.comparisonModes || targetModes(),
+        competitorUrls: payload?.competitorUrls || parseCompetitorInputs().urls,
+        ...extra
+      }
+    };
+    const event = await memoryPost('/event', { ...base, eventType: `competitive_${stepName}`, content: summarizeMemoryText(report, 3000) });
+    const fact = await memoryPost('/fact', {
+      ...base,
+      scope: 'paper',
+      factType: `competitive_${stepName}`,
+      key: `competitive:${stepName}:${stableHash(report)}`,
+      value: summarizeMemoryText(report, 1800),
+      confidence: 0.78,
+      importance: stepName === 'final_review' ? 0.9 : 0.75,
+      status: 'active'
+    });
+    await memoryPost('/summary', {
+      ...base,
+      scope: 'paper',
+      summaryType: 'competitive_review_state',
+      content: [`Latest competitive review step: ${stepName}.`, payload?.targetVenue ? `Target venue: ${payload.targetVenue}.` : '', payload?.targetAudience ? `Target audience: ${payload.targetAudience}.` : '', summarizeMemoryText(report, 1600)].filter(Boolean).join('\n')
+    });
+    if (event?.id && fact?.id) await memoryPost('/edge', { fromMemoryId: fact.id, toMemoryId: event.id, relation: 'derived_from_event', weight: 0.9, evidence: `Competitive review ${stepName}`, metadata: { stage: STAGE } });
+    return { event, fact };
   }
 
   function webSearchAvailableFromStatus(status) {
@@ -1002,10 +1138,12 @@
       { task: 'latex-competitive-paper-review', routeKey, context: { workflow: stepName } }
     );
     if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
+    const memoryContext = await loadCompetitiveMemoryContext(stepName, 10);
+    const memoryBlock = memoryContextMarkdown(memoryContext);
     const response = await NS.AIProvider.ask({
       workflow: stepName,
-      instructions,
-      input,
+      instructions: memoryBlock ? `${instructions}\n\n${memoryBlock}` : instructions,
+      input: memoryBlock ? `${memoryBlock}\n\n${input}` : input,
       temperature: 0.2,
       maxOutputTokens,
       webSearchRequired: true,
@@ -1021,7 +1159,9 @@
       routeKey,
       context: { workflow: stepName, requireWebSearch: true }
     });
-    return NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
+    const text = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
+    await markMemoryUse(stepName, text && text.trim() ? 'success' : 'used', text && text.trim() ? 'AI step completed with memory context.' : 'AI step returned empty text.');
+    return text;
   }
 
   async function ensureWebSearchReadyForWorkflow() {
@@ -1135,6 +1275,7 @@
     try {
       lastRankingReport = (await askCompetitiveStep('competitive-competitor-ranking', instructions, input, 'competitive-ranking', 5000)).trim();
       lastReport = lastRankingReport;
+      await saveCompetitiveMemory('competitor_ranking', lastRankingReport, payload, { sourceLedgerCount: lastSourceLedger.length });
       renderRankingPreview();
       setOutput(lastRankingReport || '(AI returned empty competitor ranking.)');
       setStatus(lastRankingReport ? 'Competitor ranking complete.' : 'Competitor ranking returned an empty report.');
@@ -1186,6 +1327,7 @@
     try {
       lastComparisonReport = (await askCompetitiveStep('competitive-draft-comparison', instructions, input, 'competitive-improvement', 6000)).trim();
       lastReport = lastComparisonReport;
+      await saveCompetitiveMemory('draft_comparison', lastComparisonReport, payload, { sourceLedgerCount: lastSourceLedger.length });
       setOutput(lastComparisonReport || '(AI returned empty draft comparison.)');
       setStatus(lastComparisonReport ? 'Draft comparison complete.' : 'Draft comparison returned an empty report.');
       updateWorkflowStatus('compare', lastComparisonReport ? 'comparison ready.' : 'comparison empty.');
@@ -1268,6 +1410,8 @@
       );
       if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
 
+      const memoryContext = await loadCompetitiveMemoryContext('competitive-web-review-improvement', 12);
+      const memoryBlock = memoryContextMarkdown(memoryContext);
       const response = await NS.AIProvider.ask({
         workflow: 'competitive-web-review-improvement',
         instructions: [
@@ -1308,10 +1452,12 @@
 
       const raw = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
       lastReport = raw.trim();
+      await markMemoryUse('competitive-web-review-improvement', lastReport ? 'success' : 'used', lastReport ? 'Competitive review completed with memory context.' : 'Competitive review returned empty report.');
+      await saveCompetitiveMemory('final_review', lastReport, payload, { sourceLedgerCount: lastSourceLedger.length, hasActionableEdits: /latexai_actionable_edits/i.test(lastReport) });
       buildEditImpactMap(lastReport);
       renderEditImpactMap();
       setOutput(lastReport || '(AI returned empty report.)');
-      setStatus(lastReport ? 'Competitive review complete. Next use AI remake with \\laiold/\\lai or AI append remake.' : 'Competitive review returned an empty report.');
+      setStatus(lastReport ? 'Competitive review complete.' : 'Competitive review returned an empty report.');
       return { ok: Boolean(lastReport), report: lastReport, payload };
     } catch (err) {
       const message = err?.message || String(err);
@@ -1379,6 +1525,7 @@
     ].join('\n');
 
     const path = writeProjectFile(reportFilename(), content);
+    saveCompetitiveMemory('saved_report', content, payload, { savedPath: path });
     setStatus(`Added competitive review to ${path}.`);
     return { ok: true, path };
   }
@@ -1491,164 +1638,6 @@
     const block = `\n\n${String(insertion || '').trim()}\n\n`;
     if (at >= 0) return s.slice(0, at).replace(/\s*$/, '') + block + s.slice(at);
     return s.replace(/\s*$/, '') + block;
-  }
-
-
-  function extractFencedBlocks(text, labels = []) {
-    const s = String(text || '');
-    const wanted = new Set((labels || []).map((label) => clean(label).toLowerCase()).filter(Boolean));
-    const blocks = [];
-    const re = /```\s*([^\r\n`]*)\r?\n([\s\S]*?)```/g;
-    let match;
-    while ((match = re.exec(s))) {
-      const label = clean(match[1]).toLowerCase();
-      const body = String(match[2] || '').trim();
-      if (!wanted.size || wanted.has(label)) blocks.push({ label, body });
-    }
-    return blocks;
-  }
-
-  function stripOuterFence(text) {
-    const s = String(text || '').trim();
-    const match = s.match(/^```\s*[^\n`]*\n([\s\S]*?)```\s*$/);
-    return match ? String(match[1] || '').trim() : s;
-  }
-
-  function extractAiRemadeSource(text, originalText = '') {
-    const named = extractFencedBlocks(text, ['latexai_remade_source', 'latexai_inplace_remake_source', 'latexai_full_source']);
-    if (named.length) return named[named.length - 1].body;
-    const texBlocks = extractFencedBlocks(text, ['latex', 'tex']);
-    const fullTex = texBlocks.filter((block) => /\\begin\s*\{document\}/.test(block.body) || /\\documentclass\b/.test(block.body));
-    if (fullTex.length) return fullTex[fullTex.length - 1].body;
-    const raw = stripOuterFence(text);
-    if (/\\begin\s*\{document\}/.test(raw) || (/\\laiold\s*\{/.test(raw) && raw.length > Math.max(600, String(originalText || '').length * 0.35))) return raw;
-    return '';
-  }
-
-  function extractAiAppendRemakeBlock(text) {
-    const named = extractFencedBlocks(text, ['latexai_append_remake_block', 'latexai_append_remake', 'latexai_append_plan']);
-    if (named.length) return named[named.length - 1].body;
-    const texBlocks = extractFencedBlocks(text, ['latex', 'tex']);
-    const appendBlocks = texBlocks.filter((block) => /\\lai\s*\{/.test(block.body) && !/\\begin\s*\{document\}|\\end\s*\{document\}|\\documentclass\b/.test(block.body));
-    if (appendBlocks.length) return appendBlocks[appendBlocks.length - 1].body;
-    const raw = stripOuterFence(text);
-    if (/\\lai\s*\{/.test(raw) && !/\\begin\s*\{document\}|\\end\s*\{document\}|\\documentclass\b/.test(raw)) return raw;
-    return '';
-  }
-
-  function validateAiRemadeSource(next, originalText = '') {
-    const source = String(next || '').trim();
-    const original = String(originalText || '');
-    if (!source) return { ok: false, reason: 'AI did not return a remade LaTeX source block.' };
-    if (/```/.test(source)) return { ok: false, reason: 'remade source still contains Markdown code fences.' };
-    if (!/\\lai\s*\{/.test(source)) return { ok: false, reason: 'remade source does not contain visible \\lai markup.' };
-    if (!/\\laiold\s*\{/.test(source)) return { ok: false, reason: 'remade source does not contain \\laiold markup for preserved old text.' };
-    if (/\\begin\s*\{document\}/.test(original) && !/\\begin\s*\{document\}/.test(source)) return { ok: false, reason: 'remade source is missing \\begin{document}.' };
-    if (/\\end\s*\{document\}/.test(original) && !/\\end\s*\{document\}/.test(source)) return { ok: false, reason: 'remade source is missing \\end{document}.' };
-    if (/\\documentclass\b/.test(original) && !/\\documentclass\b/.test(source)) return { ok: false, reason: 'remade source is missing the original documentclass/preamble.' };
-    if (original.length > 1000 && source.length < original.length * 0.45) return { ok: false, reason: 'remade source is much shorter than the original; refusing to overwrite the paper.' };
-    if (!bracesAreBalanced(source)) return { ok: false, reason: 'remade source has unbalanced braces.' };
-    const envIssue = environmentBalanceIssue(source);
-    if (envIssue) return { ok: false, reason: `remade source has ${envIssue}.` };
-    return { ok: true, reason: '' };
-  }
-
-  function normalizeAiAppendRemakeBlock(block) {
-    let s = stripOuterFence(block).replace(/\r\n?/g, '\n').trim();
-    if (!s) return '';
-    if (!/\\lai\s*\{/.test(s)) {
-      s = ['\\lai{', s, '}'].join('\n');
-    }
-    return s;
-  }
-
-  function validateAiAppendRemakeBlock(block) {
-    const s = String(block || '').trim();
-    if (!s) return { ok: false, reason: 'AI did not return an appendable LaTeX remake block.' };
-    if (/```/.test(s)) return { ok: false, reason: 'append block still contains Markdown code fences.' };
-    if (/\\(?:documentclass|usepackage)\b|\\begin\s*\{document\}|\\end\s*\{document\}/.test(s)) return { ok: false, reason: 'append block contains document-level LaTeX commands.' };
-    if (!/\\lai\s*\{/.test(s)) return { ok: false, reason: 'append block must contain visible \\lai markup.' };
-    if (!bracesAreBalanced(s)) return { ok: false, reason: 'append block has unbalanced braces.' };
-    const envIssue = environmentBalanceIssue(s);
-    if (envIssue) return { ok: false, reason: `append block has ${envIssue}.` };
-    return { ok: true, reason: '' };
-  }
-
-  function competitorUrlsMarkdown(urls) {
-    const list = (urls || []).map(clean).filter(Boolean);
-    return list.length ? list.map((url, index) => `${index + 1}. ${url}`).join('\n') : '(none provided)';
-  }
-
-  function activeRemakeSource() {
-    const payloadPath = normalizePath(lastPayload?.activePath || '');
-    const chosenPath = payloadPath && getFile(payloadPath) ? payloadPath : (getFile(rootPath()) ? rootPath() : activePath());
-    const file = getFile(chosenPath);
-    const text = sourceTextForPath(chosenPath) || fileText(file);
-    return { path: chosenPath, file, text };
-  }
-
-  function buildCompetitiveRemakeInput(mode, sourceInfo, payload) {
-    const competitors = parseCompetitorInputs();
-    const p = payload || lastPayload || buildPayload();
-    return [
-      `--- Remake mode ---\n${mode}`,
-      '',
-      '--- Competitor URL seeds ---',
-      competitorUrlsMarkdown(p.competitorUrls?.length ? p.competitorUrls : competitors.urls),
-      '',
-      p.competitorNotes || competitors.notes ? `--- User-provided competitor notes ---\n${p.competitorNotes || competitors.notes}` : '',
-      '',
-      '--- Target venue/audience ---',
-      `Venue: ${p.targetVenue || '(not specified)'}`,
-      `Audience: ${p.targetAudience || '(not specified)'}`,
-      `Comparison modes: ${(p.comparisonModes || []).join(', ') || 'overall competitiveness'}`,
-      '',
-      '--- Source ledger for competitor claims ---',
-      sourcesMarkdown(lastSourceLedger),
-      '',
-      '--- Competitive review/report to incorporate ---',
-      lastReport || '(no report captured)',
-      '',
-      lastRankingReport ? `--- Competitor ranking prepass ---\n${lastRankingReport}` : '',
-      '',
-      lastComparisonReport ? `--- Draft comparison prepass ---\n${lastComparisonReport}` : '',
-      '',
-      lastRoadmapReport ? `--- Roadmap prepass ---\n${lastRoadmapReport}` : '',
-      '',
-      '--- Current LaTeX source to remake ---',
-      `Path: ${sourceInfo.path}`,
-      sourceInfo.text
-    ].filter(Boolean).join('\n');
-  }
-
-  async function askCompetitiveRemake(stepName, instructions, input, maxOutputTokens = 14000) {
-    const modelDecision = NS.AIProvider?.validateRequestModel?.(
-      currentAiProvider(),
-      currentAiModel(),
-      { workflow: stepName },
-      { task: 'latex-competitive-paper-remake', routeKey: 'competitive-improvement', context: { workflow: stepName, requireWebSearch: false } }
-    );
-    if (modelDecision?.repaired) setStatus(`Competitive remake model repaired: ${modelDecision.reason}`);
-    const response = await NS.AIProvider.ask({
-      workflow: stepName,
-      instructions,
-      input,
-      temperature: 0.15,
-      maxOutputTokens,
-      webSearchRequired: false,
-      requireWebSearch: false,
-      competitiveReview: {
-        step: stepName,
-        useExistingReport: true,
-        rewriteLatexSource: true,
-        requireWebSearch: false
-      }
-    }, {
-      task: 'latex-competitive-paper-remake',
-      routeKey: 'competitive-improvement',
-      context: { workflow: stepName, requireWebSearch: false, source: 'competitive-review-report-plus-latex' }
-    });
-    return NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
   }
 
 
@@ -1936,215 +1925,84 @@
     return { ok: true, reason: '', text: [header, hint, impactLine, evidenceLine, '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
   }
 
-  function rangesOverlap(a, b) {
-    return Math.max(a.start, b.start) < Math.min(a.end, b.end);
-  }
-
-  function opsConflict(a, b) {
-    if (a.start === b.start || a.end === b.end) return true;
-    if (rangesOverlap(a, b)) return true;
-    const aPoint = a.start === a.end;
-    const bPoint = b.start === b.end;
-    if (aPoint && a.start >= b.start && a.start <= b.end) return true;
-    if (bPoint && b.start >= a.start && b.start <= a.end) return true;
-    return false;
-  }
-
-  function buildActionableInsertionPlan(edits) {
-    const queued = new Map();
-    const diagnostics = [];
-    let skipped = 0;
-
-    (edits || []).forEach((edit, index) => {
-      const path = normalizePath(edit.path || activePath());
-      const file = getFile(path);
-      const hint = edit.targetHint || `edit ${index + 1}`;
-      if (!file) { skipped += 1; diagnostics.push(`SKIP ${path}: file not found for ${hint}.`); return; }
-      const text = sourceTextForPath(path);
-      const anchor = String(edit.oldText || '');
-      if (!anchor.trim()) { skipped += 1; diagnostics.push(`SKIP ${path}: missing exact oldText/anchor for ${hint}.`); return; }
-      const matches = findAllAnchorMatches(text, anchor);
-      if (!matches.length) { skipped += 1; diagnostics.push(`SKIP ${path}: exact oldText/anchor not found for ${hint}.`); return; }
-      if (matches.length > 1) { skipped += 1; diagnostics.push(`SKIP ${path}: ambiguous oldText/anchor for ${hint}; found ${matches.length} matches. Ask AI to provide a longer exact anchor.`); return; }
-      const at = matches[0];
-      const locationIssue = unsafeInsertionLocationReason(text, at);
-      if (locationIssue) { skipped += 1; diagnostics.push(`SKIP ${path}: ${locationIssue} for ${hint}.`); return; }
-      const wrapped = wrapActionableReplacement({ ...edit, path }, index);
-      if (!wrapped.ok) { skipped += 1; diagnostics.push(`SKIP ${path}: unsafe LaTeX for ${hint}: ${wrapped.reason}.`); return; }
-
-      const start = edit.mode === 'insert_before' ? at : at;
-      const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
-      const insert = edit.mode === 'replace' ? wrapped.text : edit.mode === 'insert_after' ? `${anchor}\n\n${wrapped.text}` : `${wrapped.text}\n\n${anchor}`;
-      const op = { start, end, insert, targetHint: hint, anchorLength: anchor.length, mode: edit.mode, index };
-      const list = queued.get(path) || [];
-      const conflict = list.find((existing) => opsConflict(op, existing));
-      if (conflict) {
-        skipped += 1;
-        diagnostics.push(`SKIP ${path}: overlapping/duplicate anchor for ${hint}; conflicts with ${conflict.targetHint}.`);
-        return;
-      }
-      list.push(op);
-      queued.set(path, list);
-    });
-
-    return { queued, diagnostics, skipped, planned: Array.from(queued.values()).reduce((n, ops) => n + ops.length, 0) };
-  }
-
-  function insertionPlanMarkdown(plan) {
-    const rows = [];
-    for (const [path, ops] of (plan?.queued || new Map()).entries()) {
-      rows.push(`PLAN ${path}: ${ops.length} inline operation(s).`);
-      ops.slice().sort((a, b) => a.start - b.start).forEach((op) => rows.push(`  - ${op.mode} at ${op.start}: ${op.targetHint}`));
-    }
-    if (plan?.diagnostics?.length) rows.push(...plan.diagnostics);
-    return rows.length ? rows.join('\n') : 'No insertable exact-match edits planned.';
-  }
-
-  async function insertActionableEditsAtMatches() {
+  function insertActionableEditsAtMatches() {
     if (!lastReport) {
-      setStatus('Run full cited review first; the AI remake needs the review/report plus the LaTeX source.');
+      setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
-    }
-    if (!NS.AIProvider?.ask) {
-      setStatus('AIProvider is not loaded. Check feature flags and safe mode.');
-      return { ok: false, error: 'AIProvider missing' };
     }
 
     ensureRootLaiMacros();
-    const sourceInfo = activeRemakeSource();
-    if (!sourceInfo.text.trim()) {
-      setStatus('Cannot remake: selected LaTeX source is empty.');
-      return { ok: false, error: 'empty source' };
+    const parsed = extractActionableEdits(lastReport);
+    if (!parsed.edits.length) {
+      setStatus('No exact actionable edit JSON or \\laiold/\\lai pairs found. Use Append \\lai plan instead.');
+      return { ok: false, applied: 0, skipped: 0, source: parsed.source };
     }
 
-    const payload = lastPayload || buildPayload();
-    updateWorkflowStatus('insert', `asking AI to remake ${sourceInfo.path} with inline \\laiold/\\lai edits...`);
-    setStatus(`Asking AI to remake ${sourceInfo.path} using the review/report and competitor URLs...`);
+    const queued = new Map();
+    const messages = [];
+    let skipped = 0;
 
-    const instructions = [
-      'You are Latexai Competitive Review Remake Agent.',
-      'Use the competitive review/report, source ledger, competitor URL seeds, and the current LaTeX source to produce a full remade version of the same .tex file.',
-      'Return ONLY one fenced code block labelled latexai_remade_source. No prose before or after the block.',
-      'The fenced block must contain the complete LaTeX source file, not a diff and not JSON.',
-      'Preserve the original preamble, documentclass, packages, bibliography commands, labels, refs, citations, input/include commands, and unrelated content unless a change is required by the review.',
-      'Incorporate the strongest competitive improvements from the report at the correct locations in the paper.',
-      'For replacements, keep the original text visible as \\laiold{old text} immediately followed by the improved text as \\lai{new text}.',
-      'For pure additions, insert \\lai{new LaTeX} at the right location.',
-      'Do not delete old material silently; if you materially replace a sentence/paragraph/claim, preserve the replaced material in \\laiold.',
-      'Use compile-safe LaTeX body fragments inside \\lai and \\laiold: no Markdown fences, no document-level commands inside markup, balanced braces, and no nested \\lai or \\laiold.',
-      'Prefer fewer, high-impact edits over sprinkling tiny edits everywhere. Each edit should directly address the competitive ranking gaps in the report.',
-      'Do not use LaTeX comments as the main output. The changes must be visible Latexai markup.'
-    ].join('\n');
+    parsed.edits.forEach((edit, index) => {
+      const path = normalizePath(edit.path || activePath());
+      const file = getFile(path);
+      if (!file) { skipped += 1; messages.push(`SKIP ${path}: file not found for ${edit.targetHint}.`); return; }
+      const text = fileText(file);
+      const anchor = String(edit.oldText || '');
+      const at = text.indexOf(anchor);
+      if (at < 0) { skipped += 1; messages.push(`SKIP ${path}: exact oldText/anchor not found for ${edit.targetHint}.`); return; }
+      const locationIssue = unsafeInsertionLocationReason(text, at);
+      if (locationIssue) { skipped += 1; messages.push(`SKIP ${path}: ${locationIssue} for ${edit.targetHint}.`); return; }
+      const wrapped = wrapActionableReplacement({ ...edit, path }, index);
+      if (!wrapped.ok) { skipped += 1; messages.push(`SKIP ${path}: unsafe LaTeX for ${edit.targetHint}: ${wrapped.reason}.`); return; }
+      const replacement = wrapped.text;
+      const start = edit.mode === 'insert_before' ? at : at;
+      const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
+      const insert = edit.mode === 'replace' ? replacement : edit.mode === 'insert_after' ? `${anchor}\n\n${replacement}` : `${replacement}\n\n${anchor}`;
+      if (!queued.has(path)) queued.set(path, []);
+      queued.get(path).push({ start, end, insert, targetHint: edit.targetHint });
+    });
 
-    const input = buildCompetitiveRemakeInput('inline-full-source-remake-with-laiold-lai', sourceInfo, payload);
-
-    try {
-      const raw = (await askCompetitiveRemake('competitive-inline-lai-remake', instructions, input, 16000)).trim();
-      const remade = extractAiRemadeSource(raw, sourceInfo.text);
-      const validation = validateAiRemadeSource(remade, sourceInfo.text);
-      if (!validation.ok) {
-        setStatus(`AI remake was not applied: ${validation.reason}`);
-        setOutput(['# Competitive AI remake was not applied', '', validation.reason, '', '--- Raw AI response ---', raw || '(empty)'].join('\n'));
-        updateWorkflowStatus('insert', `AI remake rejected: ${validation.reason}`);
-        return { ok: false, error: validation.reason, raw };
+    let applied = 0;
+    for (const [path, ops] of queued.entries()) {
+      const file = getFile(path);
+      let text = fileText(file);
+      ops.sort((a, b) => b.start - a.start);
+      for (const op of ops) {
+        text = text.slice(0, op.start) + op.insert + text.slice(op.end);
+        applied += 1;
+        messages.push(`APPLY ${path}: ${op.targetHint}`);
       }
-
-      updateProjectSource(sourceInfo.path, remade);
-      refreshPaperAiReview([sourceInfo.path], 'Competitive Review AI Remake');
-      updateWorkflowStatus('insert', `AI remade ${sourceInfo.path} with visible \\laiold/\\lai markup.`);
-      renderEditImpactMap();
-      setStatus(`AI remade ${sourceInfo.path} with visible \\laiold/\\lai edits. Paper-level edit review refreshed.`);
-      setOutput([
-        '# Competitive AI remake applied',
-        '',
-        `Path: ${sourceInfo.path}`,
-        `Original characters: ${sourceInfo.text.length}`,
-        `Remade characters: ${remade.length}`,
-        '',
-        'The source file was replaced with the AI-remade version containing visible \\laiold/\\lai markup.',
-        'Use the Paper-level AI edit review to inspect and accept/reject individual Latexai edits.'
-      ].join('\n'));
-      return { ok: true, path: sourceInfo.path, mode: 'ai-inline-remake-laiold-lai', originalLength: sourceInfo.text.length, remadeLength: remade.length };
-    } catch (err) {
-      const message = err?.message || String(err);
-      setStatus(`Competitive AI remake failed: ${message}`);
-      setOutput(`Competitive AI remake failed:\n\n${message}`);
-      updateWorkflowStatus('insert', `AI remake failed: ${message}`);
-      return { ok: false, error: message };
+      updateProjectSource(path, text);
     }
+
+    const modifiedPaths = [...queued.keys()];
+    refreshPaperAiReview(modifiedPaths, 'Competitive Review');
+    updateWorkflowStatus('insert', `inserted ${applied}; skipped ${skipped}.`);
+    renderEditImpactMap();
+    setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}. Paper-level edit review refreshed.`);
+    setOutput([lastReport, '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
+    return { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()] };
   }
 
-  async function appendLaiImprovementPlan() {
+  function appendLaiImprovementPlan() {
     if (!lastReport) {
-      setStatus('Run full cited review first; the AI append remake needs the review/report plus the LaTeX source.');
+      setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
-    }
-    if (!NS.AIProvider?.ask) {
-      setStatus('AIProvider is not loaded. Check feature flags and safe mode.');
-      return { ok: false, error: 'AIProvider missing' };
     }
 
     ensureRootLaiMacros();
     const root = getFile(rootPath());
-    const sourceInfo = root ? { path: rootPath(), file: root, text: fileText(root) } : activeRemakeSource();
-    if (!sourceInfo.text.trim()) {
-      setStatus('Cannot append remake: selected LaTeX source is empty.');
-      return { ok: false, error: 'empty source' };
-    }
-
-    const payload = lastPayload || buildPayload();
-    updateWorkflowStatus('insert', `asking AI to write end-of-paper competitive remake for ${sourceInfo.path}...`);
-    setStatus(`Asking AI to append a detailed competitive remake plan to ${sourceInfo.path}...`);
-
-    const instructions = [
-      'You are Latexai Competitive Review Append-Remake Agent.',
-      'Use the competitive review/report, source ledger, competitor URL seeds, and the current LaTeX source to produce a detailed end-of-paper remake section.',
-      'Return ONLY one fenced code block labelled latexai_append_remake_block. No prose before or after the block.',
-      'The fenced block must contain only a compile-safe LaTeX body fragment to insert before \\end{document}; it must not contain \\documentclass, \\usepackage, \\begin{document}, or \\end{document}.',
-      'Wrap the appended material in visible \\lai{...} markup so the user can review it as an AI proposal.',
-      'The appended remake should be detailed enough to be useful: include a section title, prioritized changes, rewritten text/paragraphs/claims where appropriate, related-work positioning, and expected ranking effect relative to the competitor URLs.',
-      'Cite source IDs from the report/ledger for competitor-specific claims. Mark weak evidence explicitly.',
-      'Do not return Markdown. Return LaTeX only inside the fenced block.',
-      'Use balanced braces/environments and compile-safe text.'
-    ].join('\n');
-
-    const input = buildCompetitiveRemakeInput('append-end-of-paper-remake-with-details', sourceInfo, payload);
-
-    try {
-      const raw = (await askCompetitiveRemake('competitive-append-lai-remake', instructions, input, 9000)).trim();
-      const block = normalizeAiAppendRemakeBlock(extractAiAppendRemakeBlock(raw));
-      const validation = validateAiAppendRemakeBlock(block);
-      if (!validation.ok) {
-        setStatus(`AI append remake was not applied: ${validation.reason}`);
-        setOutput(['# Competitive AI append remake was not applied', '', validation.reason, '', '--- Raw AI response ---', raw || '(empty)'].join('\n'));
-        updateWorkflowStatus('insert', `AI append remake rejected: ${validation.reason}`);
-        return { ok: false, error: validation.reason, raw };
-      }
-
-      const insertion = wrapLaiPlanBlock(block, sourceInfo.path);
-      const next = insertBeforeEndDocument(sourceInfo.text, insertion);
-      updateProjectSource(sourceInfo.path, next);
-      refreshPaperAiReview([sourceInfo.path], 'Competitive Review AI Append Remake');
-      updateWorkflowStatus('insert', `AI appended detailed \\lai remake to ${sourceInfo.path}.`);
-      renderEditImpactMap();
-      setStatus(`AI appended a detailed competitive remake as visible \\lai markup to ${sourceInfo.path}. Paper-level edit review refreshed.`);
-      setOutput([
-        '# Competitive AI append remake applied',
-        '',
-        `Path: ${sourceInfo.path}`,
-        `Appended characters: ${block.length}`,
-        '',
-        'The AI-generated competitive remake block was inserted before \\end{document} using visible \\lai markup.',
-        'Use the Paper-level AI edit review to inspect the appended Latexai proposal.'
-      ].join('\n'));
-      return { ok: true, path: sourceInfo.path, mode: 'ai-append-remake-lai', appendedLength: block.length };
-    } catch (err) {
-      const message = err?.message || String(err);
-      setStatus(`Competitive AI append remake failed: ${message}`);
-      setOutput(`Competitive AI append remake failed:\n\n${message}`);
-      updateWorkflowStatus('insert', `AI append remake failed: ${message}`);
-      return { ok: false, error: message };
-    }
+    const active = root ? { path: rootPath(), file: root, text: fileText(root) } : activeSource();
+    const parsed = extractActionableEdits(lastReport);
+    const planText = parsed.appendPlan && parsed.appendPlan.trim() ? parsed.appendPlan : lastReport;
+    const insertion = wrapLaiPlanBlock(markdownToLaiPlan(planText, 'Latexai Competitive Review Improvement Plan'), active.path);
+    const next = insertBeforeEndDocument(active.text, insertion);
+    updateProjectSource(active.path, next);
+    refreshPaperAiReview([active.path], 'Competitive Review');
+    updateWorkflowStatus('insert', `appended visible \\lai plan to ${active.path}.`);
+    renderEditImpactMap();
+    setStatus(`Appended competitive improvement plan as visible \\lai markup to ${active.path}. Paper-level edit review refreshed.`);
+    return { ok: true, path: active.path, mode: 'append-lai-plan' };
   }
 
   function insertRoadmapComment() {
@@ -2180,49 +2038,6 @@
     }
   }
 
-  const COMPETITIVE_ACTION_BUTTON_IDS = [
-    'checkCompetitiveWebSearchBtn',
-    'fetchCompetitivePapersBtn',
-    'rankCompetitivePapersBtn',
-    'rerunCompetitiveResearchBtn',
-    'clearCompetitiveResearchCacheBtn',
-    'compareCompetitiveDraftBtn',
-    'generateCompetitiveRoadmapBtn',
-    'runCompetitiveReviewBtn',
-    'copyCompetitiveReviewBtn',
-    'addCompetitiveReviewBtn',
-    'insertCompetitiveInlineLaiBtn',
-    'insertCompetitiveRoadmapBtn'
-  ];
-  let busyTask = '';
-
-  function setCompetitiveBusy(label) {
-    busyTask = clean(label);
-    const busy = Boolean(busyTask);
-    COMPETITIVE_ACTION_BUTTON_IDS.forEach((id) => {
-      const button = el(id);
-      if (!button) return;
-      if (busy) button.setAttribute('disabled', 'disabled');
-      else button.removeAttribute('disabled');
-      button.classList.toggle('busy', busy);
-    });
-    const card = el('competitiveReviewCard');
-    if (card) card.setAttribute('data-competitive-busy', busy ? 'true' : 'false');
-  }
-
-  async function runWithCompetitiveBusy(label, fn) {
-    if (busyTask) {
-      setStatus(`Competitive review is already running: ${busyTask}.`);
-      return { ok: false, busy: true, task: busyTask };
-    }
-    setCompetitiveBusy(label);
-    try {
-      return await fn();
-    } finally {
-      setCompetitiveBusy('');
-    }
-  }
-
   function createCard() {
     const panel = el('copilotTab') || el('settingsTab') || D.querySelector('.right-panel');
     if (!panel || el('competitiveReviewCard')) return false;
@@ -2237,7 +2052,7 @@
       '    <h2>Competitive paper review</h2>',
       '  </div>',
       '</div>',
-      '<p class="competitive-review-help">Competitor-driven review workflow: add URLs, run a source-cited review, then ask AI to remake the paper using visible <code>\\laiold</code>/<code>\\lai</code> markup or append a detailed end-of-paper remake plan.</p>',
+      '<p class="competitive-review-help">Competitor-driven review workflow: add URLs, research competitor papers with a web-search-capable AI backend, rank competitors, compare the draft, then generate a roadmap with actionable <code>\\lai</code> edits.</p>',
       '<label class="competitive-web-required"><input id="competitiveRequireWebSearch" type="checkbox" checked disabled /> Require web-search-capable AI for this workflow</label>',
       '<div id="competitiveWebSearchStatus" class="competitive-web-status">Web search not checked yet.</div>',
       '<div id="competitiveWorkflowStatus" class="competitive-workflow-status">',
@@ -2246,7 +2061,7 @@
       '  <div class="competitive-step-row" data-competitive-step="rank"><span class="competitive-step-label">3. Rank competitors</span><span class="competitive-step-message">pending</span></div>',
       '  <div class="competitive-step-row" data-competitive-step="compare"><span class="competitive-step-label">4. Compare draft</span><span class="competitive-step-message">pending</span></div>',
       '  <div class="competitive-step-row" data-competitive-step="roadmap"><span class="competitive-step-label">5. Roadmap</span><span class="competitive-step-message">pending</span></div>',
-      '  <div class="competitive-step-row" data-competitive-step="insert"><span class="competitive-step-label">6. Apply remake</span><span class="competitive-step-message">pending</span></div>',
+      '  <div class="competitive-step-row" data-competitive-step="insert"><span class="competitive-step-label">6. Insert edits</span><span class="competitive-step-message">pending</span></div>',
       '</div>',
       '<div id="competitiveEvidenceStatus" class="competitive-web-status">Evidence ledger not built yet. Research competitors to generate source IDs.</div>',
       '<div id="competitiveEvidenceDashboard" class="competitive-evidence-dashboard"><div class="competitive-evidence-empty">No competitor research profiles yet.</div></div>',
@@ -2293,11 +2108,11 @@
       '  <button id="runCompetitiveReviewBtn" class="btn mini" type="button">Run full cited review</button>',
       '  <button id="copyCompetitiveReviewBtn" class="btn mini" type="button">Copy report</button>',
       '  <button id="addCompetitiveReviewBtn" class="btn mini" type="button">Add report to /reviews</button>',
-      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">AI remake with \\laiold/\\lai</button>',
-      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">AI append remake</button>',
+      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
+      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18O changes the insert/append workflow: after a full cited review, the buttons call AI again with the report, LaTeX source, and competitor URLs. Inline remake returns a full source with visible <code>\\laiold</code>/<code>\\lai</code>; append remake returns one detailed end-of-paper <code>\\lai</code> block.</div>',
-      '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready. Stage 18O uses AI-driven paper remake for inline and append insertion, with validation before source changes.</div>',
+      '<div class="settings-note">Stage 18M uses a source-cited AI web-research agent and adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
+      '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');
 
@@ -2305,19 +2120,19 @@
 
     el('addCompetitiveUrlBtn')?.addEventListener('click', appendCompetitorUrlFromInput, true);
     el('competitiveAddUrlInput')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); appendCompetitorUrlFromInput(); } }, true);
-    el('checkCompetitiveWebSearchBtn')?.addEventListener('click', () => runWithCompetitiveBusy('checking web search', checkWebSearchCapability), true);
-    el('fetchCompetitivePapersBtn')?.addEventListener('click', () => runWithCompetitiveBusy('researching competitor papers', researchCompetitorPapers), true);
-    el('rankCompetitivePapersBtn')?.addEventListener('click', () => runWithCompetitiveBusy('ranking competitors', rankCompetitorPapers), true);
-    el('rerunCompetitiveResearchBtn')?.addEventListener('click', () => runWithCompetitiveBusy('rerunning competitor research', rerunAllCompetitorResearch), true);
-    el('clearCompetitiveResearchCacheBtn')?.addEventListener('click', () => runWithCompetitiveBusy('clearing competitor cache', clearResearchCacheForCurrentUrls), true);
+    el('checkCompetitiveWebSearchBtn')?.addEventListener('click', checkWebSearchCapability, true);
+    el('fetchCompetitivePapersBtn')?.addEventListener('click', researchCompetitorPapers, true);
+    el('rankCompetitivePapersBtn')?.addEventListener('click', rankCompetitorPapers, true);
+    el('rerunCompetitiveResearchBtn')?.addEventListener('click', rerunAllCompetitorResearch, true);
+    el('clearCompetitiveResearchCacheBtn')?.addEventListener('click', clearResearchCacheForCurrentUrls, true);
     el('competitiveEvidenceDashboard')?.addEventListener('click', handleEvidenceDashboardClick, true);
-    el('compareCompetitiveDraftBtn')?.addEventListener('click', () => runWithCompetitiveBusy('comparing draft', compareDraftAgainstRankedSet), true);
-    el('generateCompetitiveRoadmapBtn')?.addEventListener('click', () => runWithCompetitiveBusy('generating roadmap', generateImprovementRoadmap), true);
-    el('runCompetitiveReviewBtn')?.addEventListener('click', () => runWithCompetitiveBusy('running full competitive review', runCompetitiveReview), true);
-    el('copyCompetitiveReviewBtn')?.addEventListener('click', () => runWithCompetitiveBusy('copying report', copyReport), true);
-    el('addCompetitiveReviewBtn')?.addEventListener('click', () => runWithCompetitiveBusy('saving report', addReportToProject), true);
-    el('insertCompetitiveInlineLaiBtn')?.addEventListener('click', () => runWithCompetitiveBusy('AI remaking paper with inline laiold/lai edits', insertActionableEditsAtMatches), true);
-    el('insertCompetitiveRoadmapBtn')?.addEventListener('click', () => runWithCompetitiveBusy('AI appending competitive remake plan', appendLaiImprovementPlan), true);
+    el('compareCompetitiveDraftBtn')?.addEventListener('click', compareDraftAgainstRankedSet, true);
+    el('generateCompetitiveRoadmapBtn')?.addEventListener('click', generateImprovementRoadmap, true);
+    el('runCompetitiveReviewBtn')?.addEventListener('click', runCompetitiveReview, true);
+    el('copyCompetitiveReviewBtn')?.addEventListener('click', copyReport, true);
+    el('addCompetitiveReviewBtn')?.addEventListener('click', addReportToProject, true);
+    el('insertCompetitiveInlineLaiBtn')?.addEventListener('click', insertActionableEditsAtMatches, true);
+    el('insertCompetitiveRoadmapBtn')?.addEventListener('click', appendLaiImprovementPlan, true);
 
     renderEvidenceDashboard();
     renderEditImpactMap();
@@ -2360,16 +2175,6 @@
     renderEditImpactMap,
     buildEditImpactMap,
     editImpactMarkdown,
-    buildActionableInsertionPlan,
-    insertionPlanMarkdown,
-    extractAiRemadeSource,
-    validateAiRemadeSource,
-    extractAiAppendRemakeBlock,
-    validateAiAppendRemakeBlock,
-    normalizeAiAppendRemakeBlock,
-    buildCompetitiveRemakeInput,
-    findAllAnchorMatches,
-    opsConflict,
     parseRankingEntries,
     clearResearchCacheForCurrentUrls,
     rerunAllCompetitorResearch
