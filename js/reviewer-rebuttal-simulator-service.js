@@ -1,5 +1,5 @@
 /* Latexai Stage 18Q ReviewerRebuttalSimulatorService
- * Stage: stage18s-vector-memory-and-semantic-retrieval-20260523-1
+ * Stage: stage18u-memory-aware-paper-edits-20260523-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18s-vector-memory-and-semantic-retrieval-20260523-1';
+  const STAGE = 'stage18u-memory-aware-paper-edits-20260523-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -537,6 +537,8 @@ ${input}` : input,
       'Also include a fenced code block labelled latexai_actionable_edits containing JSON:',
       '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"optional tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor","newText":"LaTeX replacement or insertion","confidence":0.0}],"appendPlan":"optional LaTeX plan"}.',
       'Use visible Latexai edit semantics: newText should be compatible with later \laiold/\lai insertion. Do not overwrite the entire source unless explicitly necessary.',
+      'When hidden memory mentions successful paper edit patterns, notation preferences, rejected rewrite styles, or previously failed insertion anchors, use that information to choose more exact oldText anchors and avoid repeating failed edits.',
+      'If a suggestion cannot be localized exactly, put it in appendPlan rather than fabricating oldText.',
       'Avoid preamble edits, Markdown inside LaTeX, and invented exact oldText strings.'
     ].join('\n');
     const input = [

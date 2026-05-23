@@ -1,5 +1,5 @@
 /* Latexai Stage 18M CompetitivePaperReviewService
- * Stage: stage18p-memory-context-retrieval-injection-1
+ * Stage: stage18u-memory-aware-paper-edits-20260523-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18p-memory-context-retrieval-injection-1';
+  const STAGE = 'stage18u-memory-aware-paper-edits-20260523-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -990,6 +990,54 @@
     return { event, fact, workingFact };
   }
 
+  async function savePaperEditMemory(stepName, result = {}, extra = {}) {
+    if (!memoryEnabled()) return null;
+    const ids = projectIdentity();
+    const status = result?.ok ? 'success' : (Number(result?.applied || 0) > 0 ? 'success' : 'failure');
+    const applied = Number(result?.applied || (result?.ok ? 1 : 0));
+    const skipped = Number(result?.skipped || 0);
+    const paths = Array.isArray(result?.paths) ? result.paths : (result?.path ? [result.path] : []);
+    const content = [
+      `Paper edit operation: ${stepName}`,
+      `Outcome: ${status}`,
+      `Applied: ${applied}`,
+      `Skipped: ${skipped}`,
+      paths.length ? `Paths: ${paths.join(', ')}` : '',
+      result?.source ? `Source: ${result.source}` : '',
+      Array.isArray(result?.messages) ? result.messages.slice(0, 20).join('\n') : '',
+      extra?.note || ''
+    ].filter(Boolean).join('\n');
+    const base = {
+      userId: ids.userId,
+      projectId: ids.projectId,
+      paperId: ids.paperId,
+      sectionId: ids.sectionId,
+      sessionId: ids.sessionId,
+      source: 'competitive-paper-review-service',
+      metadata: { stage: STAGE, stepName, rootPath: ids.rootPath, activePath: ids.activePath, paths, applied, skipped, status, ...extra }
+    };
+    const event = await memoryPost('/event', { ...base, eventType: `competitive_paper_edit_${stepName}`, content });
+    const fact = await memoryPost('/fact', {
+      ...base,
+      scope: applied > 0 ? 'working' : 'paper',
+      factType: status === 'success' ? 'successful_paper_edit_pattern' : 'failed_paper_edit_attempt',
+      key: `competitive-paper-edit:${stepName}:${stableHash(content)}`,
+      value: content,
+      confidence: status === 'success' ? 0.78 : 0.44,
+      importance: status === 'success' ? 0.82 : 0.62,
+      status: 'active'
+    });
+    if (event?.id && fact?.id) await memoryPost('/edge', {
+      fromMemoryId: fact.id,
+      toMemoryId: event.id,
+      relation: 'derived_from_edit_event',
+      weight: status === 'success' ? 0.88 : 0.62,
+      evidence: `Competitive paper edit ${stepName}: ${status}`,
+      metadata: { stage: STAGE }
+    });
+    return { event, fact };
+  }
+
   function webSearchAvailableFromStatus(status) {
     const provider = currentAiProvider();
     const web = status?.webSearch || status?.capabilities?.webSearch || {};
@@ -1962,17 +2010,21 @@
     return { ok: true, reason: '', text: [header, hint, impactLine, evidenceLine, '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
   }
 
-  function insertActionableEditsAtMatches() {
+  async function insertActionableEditsAtMatches() {
     if (!lastReport) {
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
     }
 
+    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-insert', 12, lastReport.slice(0, 8000));
     ensureRootLaiMacros();
     const parsed = extractActionableEdits(lastReport);
     if (!parsed.edits.length) {
       setStatus('No exact actionable edit JSON or \\laiold/\\lai pairs found. Use Append \\lai plan instead.');
-      return { ok: false, applied: 0, skipped: 0, source: parsed.source };
+      const result = { ok: false, applied: 0, skipped: 0, source: parsed.source };
+      await markMemoryUse('competitive-lai-insert', 'failure', 'No exact actionable edit JSON or laiold/lai pairs found for insertion.');
+      await savePaperEditMemory('competitive-lai-insert', result, { reason: 'no_actionable_edits' });
+      return result;
     }
 
     const queued = new Map();
@@ -2018,15 +2070,19 @@
     renderEditImpactMap();
     setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}. Paper-level edit review refreshed.`);
     setOutput([lastReport, '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
-    return { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()] };
+    const result = { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()] };
+    await markMemoryUse('competitive-lai-insert', applied > 0 ? 'success' : 'failure', `Applied ${applied} competitive lai edits; skipped ${skipped}.`);
+    await savePaperEditMemory('competitive-lai-insert', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0 });
+    return result;
   }
 
-  function appendLaiImprovementPlan() {
+  async function appendLaiImprovementPlan() {
     if (!lastReport) {
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
     }
 
+    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-append-plan', 12, lastReport.slice(0, 8000));
     ensureRootLaiMacros();
     const root = getFile(rootPath());
     const active = root ? { path: rootPath(), file: root, text: fileText(root) } : activeSource();
@@ -2039,7 +2095,10 @@
     updateWorkflowStatus('insert', `appended visible \\lai plan to ${active.path}.`);
     renderEditImpactMap();
     setStatus(`Appended competitive improvement plan as visible \\lai markup to ${active.path}. Paper-level edit review refreshed.`);
-    return { ok: true, path: active.path, mode: 'append-lai-plan' };
+    const result = { ok: true, path: active.path, mode: 'append-lai-plan' };
+    await markMemoryUse('competitive-lai-append-plan', 'success', `Appended competitive lai plan to ${active.path}.`);
+    await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0 });
+    return result;
   }
 
   function insertRoadmapComment() {
