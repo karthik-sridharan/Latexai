@@ -1,5 +1,5 @@
 /* Latexai Stage 18M CompetitivePaperReviewService
- * Stage: stage18m-competitive-review-ranking-to-lai-edit-impact-map-1
+ * Stage: stage18p-memory-context-retrieval-injection-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18o-competitive-review-memory-wiring-backend-only-1';
+  const STAGE = 'stage18p-memory-context-retrieval-injection-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -889,10 +889,12 @@
   function memoryContextMarkdown(ctx) {
     const facts = Array.isArray(ctx?.facts) ? ctx.facts.slice(0, 10) : [];
     const summaries = Array.isArray(ctx?.summaries) ? ctx.summaries.slice(0, 3) : [];
-    if (!facts.length && !summaries.length) return '';
+    const graphEdges = Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.slice(0, 8) : [];
+    if (!facts.length && !summaries.length && !graphEdges.length) return '';
     const lines = [
       '--- Hidden Latexai project memory context ---',
-      'Use these backend memories silently to avoid repeating rejected ideas and to respect stable project preferences. Do not mention the memory system in the user-facing report unless explicitly asked.'
+      'Use these backend memories silently to improve the review. Treat them as project context, not as user-facing content. Do not mention the memory system in the report unless explicitly asked.',
+      'Respect stable preferences, avoid repeated rejected directions, and use prior reviewer concerns only when relevant to the current draft.'
     ];
     summaries.forEach((s) => {
       const content = String(s.content || '').replace(/\s+/g, ' ').trim();
@@ -901,8 +903,20 @@
     facts.forEach((f, i) => {
       const kind = f.fact_type || f.factType || f.key || 'memory';
       const value = String(f.value || f.content || '').replace(/\s+/g, ' ').trim();
-      if (value) lines.push(`M${i + 1} [${kind}; uses=${f.use_count || f.useCount || 0}; success=${f.successful_use_count || f.successfulUseCount || 0}]: ${value.slice(0, 700)}`);
+      const score = f.retrievalScore != null ? `; score=${Number(f.retrievalScore).toFixed(3)}` : '';
+      const uses = f.use_count || f.useCount || 0;
+      const success = f.successful_use_count || f.successfulUseCount || 0;
+      if (value) lines.push(`M${i + 1} [${kind}; uses=${uses}; success=${success}${score}]: ${value.slice(0, 700)}`);
     });
+    if (graphEdges.length) {
+      lines.push('Related memory graph edges:');
+      graphEdges.forEach((e, i) => {
+        const rel = e.relation || 'related_to';
+        const weight = e.weight != null ? Number(e.weight).toFixed(2) : '0.50';
+        const evidence = String(e.evidence || '').replace(/\s+/g, ' ').trim();
+        lines.push(`G${i + 1} [${rel}; weight=${weight}]: ${e.from_memory_id || e.fromMemoryId || '?'} -> ${e.to_memory_id || e.toMemoryId || '?'}${evidence ? `; ${evidence.slice(0, 220)}` : ''}`);
+      });
+    }
     return lines.join('\n');
   }
 
@@ -951,7 +965,21 @@
       content: [`Latest competitive review step: ${stepName}.`, payload?.targetVenue ? `Target venue: ${payload.targetVenue}.` : '', payload?.targetAudience ? `Target audience: ${payload.targetAudience}.` : '', summarizeMemoryText(report, 1600)].filter(Boolean).join('\n')
     });
     if (event?.id && fact?.id) await memoryPost('/edge', { fromMemoryId: fact.id, toMemoryId: event.id, relation: 'derived_from_event', weight: 0.9, evidence: `Competitive review ${stepName}`, metadata: { stage: STAGE } });
-    return { event, fact };
+    let workingFact = null;
+    if (stepName === 'final_review') {
+      workingFact = await memoryPost('/fact', {
+        ...base,
+        scope: 'working',
+        factType: 'competitive_working_memory',
+        key: `working:competitive:${stableHash(report)}`,
+        value: summarizeMemoryText(report, 1200),
+        confidence: 0.74,
+        importance: 0.92,
+        status: 'active'
+      });
+      if (workingFact?.id && fact?.id) await memoryPost('/edge', { fromMemoryId: workingFact.id, toMemoryId: fact.id, relation: 'working_cache_of', weight: 0.82, evidence: 'Promoted final competitive review into active working memory for later agent calls.', metadata: { stage: STAGE } });
+    }
+    return { event, fact, workingFact };
   }
 
   function webSearchAvailableFromStatus(status) {
@@ -1415,6 +1443,7 @@
       const response = await NS.AIProvider.ask({
         workflow: 'competitive-web-review-improvement',
         instructions: [
+          memoryBlock,
           'Return a structured Markdown competitive review report. Be critical, concrete, source-cited, and action-oriented.',
           'Include an Evidence-cited ranking table with source IDs, an evidence coverage summary, and a sources consulted ledger.',
           'Every substantive competitor claim must cite source IDs like [S1] when source evidence is available; if not, mark it as weak/uncited.',
@@ -1423,8 +1452,8 @@
           'For every edit, include a rankingEffect object with competitors, gap, sourceIds, before, after, expectedImpact, and insertionMode. This is used to render the Latexai Edit impact map. For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
           'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
           'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
-        ].join('\n'),
-        input,
+        ].filter(Boolean).join('\n'),
+        input: memoryBlock ? `${memoryBlock}\n\n${input}` : input,
         temperature: 0.2,
         maxOutputTokens: 7000,
         webSearchRequired: true,
