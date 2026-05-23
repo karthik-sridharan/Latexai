@@ -1,4 +1,4 @@
-/* Latexai Stage 17M RightPanelOrganizerService
+/* Latexai Stage 18Q7 RightPanelOrganizerService
  * Stage: stage17m-tab-integrity-regression-lock-1
  *
  * Right panel cleanup / collapsible workflow sections.
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17m-tab-integrity-regression-lock-1';
+  const STAGE = 'stage18q7-reviewer-rebuttal-organizer-registration-20260523-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -38,6 +38,7 @@
     paperAiPolishCard: ['copilot'],
     competitiveReviewCard: ['copilot'],
     devilsDebateCard: ['copilot'],
+    reviewerRebuttalCard: ['copilot'],
     citationAiCard: ['copilot'],
     citationVerifierCard: ['copilot'],
     localCitationVerifierCard: ['copilot'],
@@ -157,7 +158,8 @@
         'paperAiDashboardCard',
         'paperAiPolishCard',
         'competitiveReviewCard',
-        'devilsDebateCard'
+        'devilsDebateCard',
+        'reviewerRebuttalCard'
       ]
     },
     {
@@ -484,7 +486,7 @@
     const titleNeedles = {
       'core-copilot': ['latex copilot'],
       'compile-settings': ['compile settings', 'backend status', 'browser engine status', 'texlyre busytex status'],
-      'paper-ai': ['paper ai dashboard', 'paper-level edit review', 'competitive paper review', 'devil’s advocate', "devil's advocate"],
+      'paper-ai': ['paper ai dashboard', 'paper-level edit review', 'competitive paper review', 'devil’s advocate', "devil's advocate", 'reviewer / rebuttal simulator', 'reviewer/rebuttal simulator'],
       citations: ['citation filler', 'citation verifier', 'local citation verifier', 'ai citation'],
       'history-comments': ['ai suggestion comments', 'ai revision history', 'unified ai reports'],
       presentation: ['presentation', 'beamer', 'talk package'],
