@@ -1,18 +1,15 @@
 Stage 18O test report
-=====================
 
-Stage: stage18o-competitive-review-ai-remake-lai-workflow-1
+Static checks performed:
+- Applied Stage 18M patch over Stage 18L frontend source.
+- Updated competitive-paper-review-service.js to Stage 18O.
+- Added hidden memory retrieval, usage tracking, event/fact/summary/edge persistence.
+- Ensured memory calls are non-blocking and do not add UI.
+- Ran `node --check js/competitive-paper-review-service.js` successfully.
 
-Checks run:
-- node --check js/competitive-paper-review-service.js
-- node --check js/model-registry-service.js
-- node --check js/model-provider-service.js
-- node --check js/ai-provider.js
-- node --check js/editor-enhancement-service.js
-- node tests/stage18o-competitive-review-ai-remake-lai-workflow.test.cjs
-
-Result: PASS
-
-Notes:
-- The Stage 18O test checks cachebusters, prompt contracts, UI labels, busy-guard preservation, and the new AI-remake extraction/validation helpers.
-- Runtime harness verifies extraction and validation for both `latexai_remade_source` and `latexai_append_remake_block` fenced outputs.
+Manual smoke test after deployment:
+1. Confirm compile backend URL points to the deployed Stage 18N backend.
+2. Confirm `curl BACKEND/api/lumina/memory/health` returns ok.
+3. Run competitive review.
+4. Confirm review still completes even if memory endpoint is unavailable.
+5. Confirm memory counts increase at `/api/lumina/memory/health` after a successful review.
