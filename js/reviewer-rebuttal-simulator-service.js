@@ -1,5 +1,5 @@
 /* Latexai Stage 18Q ReviewerRebuttalSimulatorService
- * Stage: stage18q3-reviewer-rebuttal-direct-loader-fix-20260523-1
+ * Stage: stage18q4-reviewer-rebuttal-live-index-repair-20260523-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18q3-reviewer-rebuttal-direct-loader-fix-20260523-1';
+  const STAGE = 'stage18q4-reviewer-rebuttal-live-index-repair-20260523-1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('reviewer-rebuttal-simulator-service')) {
     NS.ReviewerRebuttalSimulatorService = { STAGE, disabledBySafeMode: true, init: () => false };
