@@ -1,5 +1,5 @@
 /* Latexai Stage 18Q ReviewerRebuttalSimulatorService
- * Stage: stage18q5-reviewer-rebuttal-safe-mode-mount-fix-20260523-1
+ * Stage: stage18q6-reviewer-rebuttal-static-copilot-card-20260523-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18q5-reviewer-rebuttal-safe-mode-mount-fix-20260523-1';
+  const STAGE = 'stage18q6-reviewer-rebuttal-static-copilot-card-20260523-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -339,9 +339,24 @@
     catch (_err) { setOutput(text); setStatus('Could not copy automatically; report is shown below.'); }
   }
 
+  function bindCardEvents() {
+    syncReviewerRows();
+    el('reviewerSimCount')?.addEventListener('change', syncReviewerRows, true);
+    el('runReviewerSimBtn')?.addEventListener('click', runReviews, true);
+    el('generateReviewerRebuttalBtn')?.addEventListener('click', generateRebuttal, true);
+    el('synthesizeReviewerFinalBtn')?.addEventListener('click', synthesizeFinalRevision, true);
+    el('runReviewerFullLoopBtn')?.addEventListener('click', runFullLoop, true);
+    el('cancelReviewerSimBtn')?.addEventListener('click', cancelLoop, true);
+    el('copyReviewerSimBtn')?.addEventListener('click', copyReport, true);
+    setStatus('Reviewer/rebuttal simulator ready.');
+    return true;
+  }
+
   function createCard() {
+    const existing = el('reviewerRebuttalCard');
+    if (existing) return bindCardEvents();
     const panel = el('copilotTab') || el('settingsTab') || D.querySelector('.right-panel');
-    if (!panel || el('reviewerRebuttalCard')) return false;
+    if (!panel) return false;
     const card = D.createElement('div');
     card.id = 'reviewerRebuttalCard';
     card.className = 'devils-debate-card reviewer-rebuttal-card';
@@ -369,15 +384,7 @@
       '<pre id="reviewerRebuttalOutput" class="devils-output"></pre>'
     ].join('');
     panel.appendChild(card);
-    syncReviewerRows();
-    el('reviewerSimCount')?.addEventListener('change', syncReviewerRows, true);
-    el('runReviewerSimBtn')?.addEventListener('click', runReviews, true);
-    el('generateReviewerRebuttalBtn')?.addEventListener('click', generateRebuttal, true);
-    el('synthesizeReviewerFinalBtn')?.addEventListener('click', synthesizeFinalRevision, true);
-    el('runReviewerFullLoopBtn')?.addEventListener('click', runFullLoop, true);
-    el('cancelReviewerSimBtn')?.addEventListener('click', cancelLoop, true);
-    el('copyReviewerSimBtn')?.addEventListener('click', copyReport, true);
-    return true;
+    return bindCardEvents();
   }
 
   function init() {
