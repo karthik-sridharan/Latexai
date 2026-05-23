@@ -1,0 +1,13 @@
+Stage 18P local checks:
+
+- node -c js/competitive-paper-review-service.js: PASS
+- index.html script cache marker updated to stage18p-memory-context-retrieval-injection-1: PASS
+- competitive review memory context retrieval remains backend-only/no UI panel: PASS
+
+Manual browser/cloud test:
+1. Upload patch files to GitHub Pages repo.
+2. Open app with ?v=18p.
+3. Run competitive review once.
+4. Check /api/lumina/memory/health.
+5. Run competitive review again.
+6. Check that usageEvents increases, showing retrieved memory was injected/marked used.
