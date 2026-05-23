@@ -30,6 +30,7 @@
     { key: 'model-registry', title: 'Backend model registry', tier: 'stable', defaultEnabled: true, description: 'Central provider/model registry with backend validation and safe fallback repair.' },
     { key: 'competitive-review', title: 'Competitive paper review', tier: 'experimental', defaultEnabled: true, description: 'Requires a web-search-capable AI backend; compares the current draft against competitor URLs and produces an improvement roadmap.' },
     { key: 'devils-advocate-debate', title: 'Devil’s advocate debate', tier: 'experimental', defaultEnabled: true, description: 'Runs advocate, critic, and synthesizer AI agents to produce a balanced paper improvement plan.' },
+    { key: 'reviewer-rebuttal-simulator', title: 'Reviewer / rebuttal simulator', tier: 'experimental', defaultEnabled: true, description: 'Simulate 2–4 configurable reviewers, generate an author rebuttal, and synthesize a final revision plan.' },
     { key: 'ai-revision-history', title: 'AI revision history', tier: 'stable', defaultEnabled: true, description: 'Create snapshots, compare AI changes, and restore/revert if needed.' },
     { key: 'ai-suggestion-comments', title: 'AI suggestion comments', tier: 'stable', defaultEnabled: true, description: 'Annotate AI suggestions, resolve/reopen comments, and exchange comments with coauthors as JSON.' },
     { key: 'paper-ai-dashboard', title: 'Paper AI dashboard', tier: 'stable', defaultEnabled: true, description: 'Quick-launch and status dashboard for paper AI workflows.' },
