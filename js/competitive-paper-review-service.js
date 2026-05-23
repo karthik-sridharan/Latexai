@@ -876,9 +876,17 @@
     return memoryFetch(path, { method: 'POST', body: JSON.stringify(payload || {}) });
   }
 
-  async function loadCompetitiveMemoryContext(stepName, limit = 10) {
+  function memorySemanticQuery(stepName, extraText = '') {
+    const src = activeSource();
+    const excerpt = String(src?.text || src?.content || '').slice(0, 8000);
+    return [stepName, activePath(), extraText, excerpt].filter(Boolean).join('\n');
+  }
+
+  async function loadCompetitiveMemoryContext(stepName, limit = 10, queryText = '') {
     const ids = projectIdentity();
     const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
+    const q = memorySemanticQuery(stepName, queryText);
+    if (q) qs.set('q', q.slice(0, 12000));
     if (ids.sectionId) qs.set('sectionId', ids.sectionId);
     const json = await memoryFetch(`/context?${qs.toString()}`);
     const ctx = json?.context || { facts: [], summaries: [], graphEdges: [] };
@@ -1166,7 +1174,7 @@
       { task: 'latex-competitive-paper-review', routeKey, context: { workflow: stepName } }
     );
     if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
-    const memoryContext = await loadCompetitiveMemoryContext(stepName, 10);
+    const memoryContext = await loadCompetitiveMemoryContext(stepName, 10, `${instructions}\n${input}`);
     const memoryBlock = memoryContextMarkdown(memoryContext);
     const response = await NS.AIProvider.ask({
       workflow: stepName,
@@ -1438,7 +1446,7 @@
       );
       if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
 
-      const memoryContext = await loadCompetitiveMemoryContext('competitive-web-review-improvement', 12);
+      const memoryContext = await loadCompetitiveMemoryContext('competitive-web-review-improvement', 12, `${urls.join(' ')}\n${sourceText.slice(0, 8000)}`);
       const memoryBlock = memoryContextMarkdown(memoryContext);
       const response = await NS.AIProvider.ask({
         workflow: 'competitive-web-review-improvement',

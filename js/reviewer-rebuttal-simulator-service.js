@@ -1,5 +1,5 @@
 /* Latexai Stage 18Q ReviewerRebuttalSimulatorService
- * Stage: stage18r-memory-aware-reviewer-rebuttal-loop-20260523-1
+ * Stage: stage18s-vector-memory-and-semantic-retrieval-20260523-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18r-memory-aware-reviewer-rebuttal-loop-20260523-1';
+  const STAGE = 'stage18s-vector-memory-and-semantic-retrieval-20260523-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -161,9 +161,17 @@
     return memoryFetch(path, { method: 'POST', body: JSON.stringify(payload || {}) });
   }
 
-  async function loadReviewerMemoryContext(stepName, limit = 10) {
+  function memorySemanticQuery(stepName, extraText = '') {
+    const src = activeSource();
+    const excerpt = String(src?.text || src?.content || '').slice(0, 8000);
+    return [stepName, activePath(), extraText, excerpt].filter(Boolean).join('\n');
+  }
+
+  async function loadReviewerMemoryContext(stepName, limit = 10, queryText = '') {
     const ids = projectIdentity();
     const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
+    const q = memorySemanticQuery(stepName, queryText);
+    if (q) qs.set('q', q.slice(0, 12000));
     if (ids.sectionId) qs.set('sectionId', ids.sectionId);
     const json = await memoryFetch(`/context?${qs.toString()}`);
     const ctx = json?.context || { facts: [], summaries: [], graphEdges: [] };
@@ -441,7 +449,7 @@
           payload.draftExcerpt
         ].join('\n');
         const stepName = `simulated_review_${reviewer.index}`;
-        const memoryContext = await loadReviewerMemoryContext(stepName, 10);
+        const memoryContext = await loadReviewerMemoryContext(stepName, 10, `${reviewer.name} ${reviewer.style}\n${instructions}\n${input}`);
         const memoryBlock = memoryContextMarkdown(memoryContext);
         const text = await askAI(
           memoryBlock ? `${instructions}
@@ -491,7 +499,7 @@ ${input}` : input,
     ].join('\n');
     try {
       const stepName = 'review_rebuttal';
-      const memoryContext = await loadReviewerMemoryContext(stepName, 12);
+      const memoryContext = await loadReviewerMemoryContext(stepName, 12, `${instructions}\n${input}`);
       const memoryBlock = memoryContextMarkdown(memoryContext);
       lastRebuttal = (await askAI(
         memoryBlock ? `${instructions}
@@ -540,7 +548,7 @@ ${input}` : input,
     ].join('\n');
     try {
       const stepName = 'final_synthesis';
-      const memoryContext = await loadReviewerMemoryContext(stepName, 14);
+      const memoryContext = await loadReviewerMemoryContext(stepName, 14, `${instructions}\n${input}`);
       const memoryBlock = memoryContextMarkdown(memoryContext);
       lastSynthesis = (await askAI(
         memoryBlock ? `${instructions}
