@@ -1,5 +1,5 @@
 /* Latexai Stage 18Q ReviewerRebuttalSimulatorService
- * Stage: stage18q6-reviewer-rebuttal-static-copilot-card-20260523-1
+ * Stage: stage18r-memory-aware-reviewer-rebuttal-loop-20260523-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18q6-reviewer-rebuttal-static-copilot-card-20260523-1';
+  const STAGE = 'stage18r-memory-aware-reviewer-rebuttal-loop-20260523-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -76,6 +76,204 @@
 
   function currentProviderModel() {
     return { provider: clean(el('aiProvider')?.value || 'openai'), model: clean(el('aiModel')?.value || 'gpt-4.1-mini') };
+  }
+
+
+  const MEMORY_ENABLED_KEY = 'latexai:memory-enabled';
+  let lastMemoryContextByStep = {};
+
+  function memoryEnabled() {
+    try { return String(W.localStorage?.getItem?.(MEMORY_ENABLED_KEY) || 'true') !== 'false'; }
+    catch (_err) { return true; }
+  }
+
+  function stableHash(value) {
+    const str = String(value || '');
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+
+  function memoryBaseUrl() {
+    const raw = clean(el('compileProxyUrl')?.value) || clean(el('aiProxyUrl')?.value) || '/api/lumina/latex/compile';
+    try {
+      const url = new URL(raw, W.location.href);
+      url.search = '';
+      url.hash = '';
+      url.pathname = url.pathname
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory');
+      if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = '/api/lumina/memory';
+      return url.href.replace(/\/$/, '');
+    } catch (_err) {
+      return raw.replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/$/, '');
+    }
+  }
+
+  function memoryHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = clean(el('compileProxyToken')?.value) || clean(el('aiProxyToken')?.value);
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+
+  function projectIdentity() {
+    const p = project() || {};
+    const root = rootPath();
+    const active = activeSource();
+    const projectKey = p.id || p.projectId || p.name || p.title || root || 'default-project';
+    const paperKey = `${projectKey}:${root}`;
+    let sessionId = '';
+    try {
+      sessionId = W.sessionStorage?.getItem?.('latexai:memory-session-id') || '';
+      if (!sessionId) {
+        sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        W.sessionStorage?.setItem?.('latexai:memory-session-id', sessionId);
+      }
+    } catch (_err) { sessionId = `sess-${stableHash(String(Date.now()))}`; }
+    return {
+      userId: 'local-user',
+      projectId: `project-${stableHash(projectKey)}`,
+      paperId: `paper-${stableHash(paperKey)}`,
+      sectionId: active?.path ? `section-${stableHash(active.path)}` : undefined,
+      sessionId,
+      rootPath: root,
+      activePath: active?.path || activePath()
+    };
+  }
+
+  async function memoryFetch(path, options = {}) {
+    if (!memoryEnabled()) return null;
+    try {
+      const response = await fetch(`${memoryBaseUrl()}${path}`, { ...options, headers: { ...memoryHeaders(), ...(options.headers || {}) }, cache: 'no-store' });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || json.ok === false) throw new Error(json?.detail || json?.error?.message || `HTTP ${response.status}`);
+      return json;
+    } catch (err) {
+      try { console.warn('[Latexai reviewer memory] non-blocking request failed', path, err); } catch (_ignored) {}
+      return null;
+    }
+  }
+
+  function memoryPost(path, payload) {
+    return memoryFetch(path, { method: 'POST', body: JSON.stringify(payload || {}) });
+  }
+
+  async function loadReviewerMemoryContext(stepName, limit = 10) {
+    const ids = projectIdentity();
+    const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
+    if (ids.sectionId) qs.set('sectionId', ids.sectionId);
+    const json = await memoryFetch(`/context?${qs.toString()}`);
+    const ctx = json?.context || { facts: [], summaries: [], graphEdges: [] };
+    lastMemoryContextByStep[stepName] = ctx;
+    return ctx;
+  }
+
+  function memoryContextMarkdown(ctx) {
+    const facts = Array.isArray(ctx?.facts) ? ctx.facts.slice(0, 10) : [];
+    const summaries = Array.isArray(ctx?.summaries) ? ctx.summaries.slice(0, 3) : [];
+    const graphEdges = Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.slice(0, 8) : [];
+    if (!facts.length && !summaries.length && !graphEdges.length) return '';
+    const lines = [
+      '--- Hidden Latexai project memory context ---',
+      'Use these backend memories silently to improve this reviewer/rebuttal simulation. Treat them as project context, not as user-facing content. Do not mention the memory system unless explicitly asked.',
+      'Respect stable notation/preferences, use prior reviewer concerns when relevant, and avoid directions previously rejected by the user.'
+    ];
+    summaries.forEach((sum) => {
+      const content = String(sum.content || '').replace(/\s+/g, ' ').trim();
+      if (content) lines.push(`Project ${sum.summary_type || sum.summaryType || 'summary'}: ${content.slice(0, 1200)}`);
+    });
+    facts.forEach((fact, i) => {
+      const kind = fact.fact_type || fact.factType || fact.key || 'memory';
+      const value = String(fact.value || fact.content || '').replace(/\s+/g, ' ').trim();
+      const score = fact.retrievalScore != null ? `; score=${Number(fact.retrievalScore).toFixed(3)}` : '';
+      const uses = fact.use_count || fact.useCount || 0;
+      const success = fact.successful_use_count || fact.successfulUseCount || 0;
+      if (value) lines.push(`M${i + 1} [${kind}; uses=${uses}; success=${success}${score}]: ${value.slice(0, 700)}`);
+    });
+    if (graphEdges.length) {
+      lines.push('Related memory graph edges:');
+      graphEdges.forEach((edge, i) => {
+        const rel = edge.relation || 'related_to';
+        const weight = edge.weight != null ? Number(edge.weight).toFixed(2) : '0.50';
+        const evidence = String(edge.evidence || '').replace(/\s+/g, ' ').trim();
+        lines.push(`G${i + 1} [${rel}; weight=${weight}]: ${edge.from_memory_id || edge.fromMemoryId || '?'} -> ${edge.to_memory_id || edge.toMemoryId || '?'}${evidence ? `; ${evidence.slice(0, 220)}` : ''}`);
+      });
+    }
+    return lines.join('\n');
+  }
+
+  async function markMemoryUse(stepName, outcome, note = '') {
+    const facts = Array.isArray(lastMemoryContextByStep[stepName]?.facts) ? lastMemoryContextByStep[stepName].facts : [];
+    await Promise.all(facts.slice(0, 8).map((fact) => memoryPost('/use', {
+      memoryId: fact.id,
+      taskType: stepName,
+      agentId: 'reviewer-rebuttal-simulator',
+      outcome: outcome || 'used',
+      note,
+      metadata: { stage: STAGE }
+    })));
+  }
+
+  function summarizeMemoryText(text, max = 1400) {
+    return String(text || '').replace(/```[\s\S]*?```/g, '[structured block omitted]').replace(/\s+/g, ' ').trim().slice(0, max);
+  }
+
+  async function saveReviewerMemory(stepName, content, payload = null, extra = {}) {
+    if (!memoryEnabled() || !String(content || '').trim()) return null;
+    const ids = projectIdentity();
+    const base = {
+      userId: ids.userId,
+      projectId: ids.projectId,
+      paperId: ids.paperId,
+      sessionId: ids.sessionId,
+      source: 'reviewer-rebuttal-simulator-service',
+      metadata: {
+        stage: STAGE,
+        stepName,
+        rootPath: ids.rootPath,
+        activePath: ids.activePath,
+        targetVenue: payload?.targetVenue || clean(el('reviewerSimVenue')?.value),
+        paperGoal: payload?.paperGoal || clean(el('reviewerSimGoal')?.value),
+        reviewerCount: payload?.reviewers?.length || selectedReviewers().length,
+        ...extra
+      }
+    };
+    const event = await memoryPost('/event', { ...base, eventType: `reviewer_rebuttal_${stepName}`, content: summarizeMemoryText(content, 3000) });
+    const fact = await memoryPost('/fact', {
+      ...base,
+      scope: 'paper',
+      factType: `reviewer_rebuttal_${stepName}`,
+      key: `reviewer-rebuttal:${stepName}:${stableHash(content)}`,
+      value: summarizeMemoryText(content, 1800),
+      confidence: 0.78,
+      importance: stepName === 'final_synthesis' ? 0.9 : 0.78,
+      status: 'active'
+    });
+    await memoryPost('/summary', {
+      ...base,
+      scope: 'paper',
+      summaryType: 'reviewer_rebuttal_state',
+      content: [`Latest reviewer/rebuttal step: ${stepName}.`, payload?.targetVenue ? `Target venue: ${payload.targetVenue}.` : '', payload?.paperGoal ? `Paper goal: ${payload.paperGoal}.` : '', summarizeMemoryText(content, 1600)].filter(Boolean).join('\n')
+    });
+    if (event?.id && fact?.id) await memoryPost('/edge', { fromMemoryId: fact.id, toMemoryId: event.id, relation: 'derived_from_event', weight: 0.9, evidence: `Reviewer/rebuttal simulator ${stepName}`, metadata: { stage: STAGE } });
+    let workingFact = null;
+    if (stepName === 'final_synthesis') {
+      workingFact = await memoryPost('/fact', {
+        ...base,
+        scope: 'working',
+        factType: 'reviewer_rebuttal_working_memory',
+        key: `working:reviewer-rebuttal:${stableHash(content)}`,
+        value: summarizeMemoryText(content, 1200),
+        confidence: 0.74,
+        importance: 0.92,
+        status: 'active'
+      });
+      if (workingFact?.id && fact?.id) await memoryPost('/edge', { fromMemoryId: workingFact.id, toMemoryId: fact.id, relation: 'working_cache_of', weight: 0.84, evidence: 'Promoted final reviewer/rebuttal synthesis into active working memory for later agent calls.', metadata: { stage: STAGE } });
+    }
+    return { event, fact, workingFact };
   }
 
   function setStatus(message) { const node = el('reviewerRebuttalStatus'); if (node) node.textContent = message; }
@@ -242,8 +440,23 @@
           '--- Draft excerpt ---',
           payload.draftExcerpt
         ].join('\n');
-        const text = await askAI(instructions, input, 4500, 0.3, 'latexai-simulated-reviewer');
+        const stepName = `simulated_review_${reviewer.index}`;
+        const memoryContext = await loadReviewerMemoryContext(stepName, 10);
+        const memoryBlock = memoryContextMarkdown(memoryContext);
+        const text = await askAI(
+          memoryBlock ? `${instructions}
+
+${memoryBlock}` : instructions,
+          memoryBlock ? `${memoryBlock}
+
+${input}` : input,
+          4500,
+          0.3,
+          'latexai-simulated-reviewer'
+        );
         lastReviews.push({ ...reviewer, text: text.trim() });
+        await markMemoryUse(stepName, text && text.trim() ? 'success' : 'used', text && text.trim() ? `${reviewer.name} completed review with memory context.` : `${reviewer.name} returned empty review.`);
+        await saveReviewerMemory('simulated_review', text, payload, { reviewerName: reviewer.name, reviewerStyle: reviewer.style, reviewerIndex: reviewer.index });
         setOutput(fullReport());
       }
       setStatus('Reviewer simulation complete. Add rebuttal guidance, then generate rebuttal.');
@@ -277,7 +490,22 @@
       '--- Draft excerpt ---', payload.draftExcerpt
     ].join('\n');
     try {
-      lastRebuttal = (await askAI(instructions, input, 5000, 0.2, 'latexai-review-rebuttal')).trim();
+      const stepName = 'review_rebuttal';
+      const memoryContext = await loadReviewerMemoryContext(stepName, 12);
+      const memoryBlock = memoryContextMarkdown(memoryContext);
+      lastRebuttal = (await askAI(
+        memoryBlock ? `${instructions}
+
+${memoryBlock}` : instructions,
+        memoryBlock ? `${memoryBlock}
+
+${input}` : input,
+        5000,
+        0.2,
+        'latexai-review-rebuttal'
+      )).trim();
+      await markMemoryUse(stepName, lastRebuttal ? 'success' : 'used', lastRebuttal ? 'Rebuttal completed with memory context.' : 'Rebuttal returned empty text.');
+      await saveReviewerMemory('rebuttal', lastRebuttal, payload);
       setOutput(fullReport());
       setStatus('AI rebuttal complete.');
       return { ok: true, rebuttal: lastRebuttal };
@@ -311,7 +539,22 @@
       '--- Draft excerpt ---', payload.draftExcerpt
     ].join('\n');
     try {
-      lastSynthesis = (await askAI(instructions, input, 6500, 0.2, 'latexai-final-review-synthesis')).trim();
+      const stepName = 'final_synthesis';
+      const memoryContext = await loadReviewerMemoryContext(stepName, 14);
+      const memoryBlock = memoryContextMarkdown(memoryContext);
+      lastSynthesis = (await askAI(
+        memoryBlock ? `${instructions}
+
+${memoryBlock}` : instructions,
+        memoryBlock ? `${memoryBlock}
+
+${input}` : input,
+        6500,
+        0.2,
+        'latexai-final-review-synthesis'
+      )).trim();
+      await markMemoryUse(stepName, lastSynthesis ? 'success' : 'used', lastSynthesis ? 'Final synthesis completed with memory context.' : 'Final synthesis returned empty text.');
+      await saveReviewerMemory('final_synthesis', lastSynthesis, payload);
       setOutput(fullReport());
       setStatus('Final synthesis complete.');
       return { ok: true, synthesis: lastSynthesis };
