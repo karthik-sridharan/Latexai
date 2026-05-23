@@ -1,5 +1,5 @@
-/* Latexai Stage 18Q ReviewerRebuttalSimulatorService
- * Stage: stage18u-memory-aware-paper-edits-20260523-1
+/* Latexai Stage 18X ReviewerRebuttalSimulatorService
+ * Stage: stage18x-memory-project-paper-identity-scoping-20260523-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18u-memory-aware-paper-edits-20260523-1';
+  const STAGE = 'stage18x-memory-project-paper-identity-scoping-20260523-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -94,6 +94,63 @@
     return (h >>> 0).toString(36);
   }
 
+  function stripLatexForIdentity(value) {
+    return String(value || '')
+      .replace(/%.*$/gm, ' ')
+      .replace(/\\(texorpdfstring|textbf|textit|emph|mathrm|mathbf|mathit|operatorname)\s*\{([^{}]*)\}/g, '$2')
+      .replace(/\\[a-zA-Z@]+\*?(?:\[[^\]]*\])?/g, ' ')
+      .replace(/[{}$]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function extractLatexTitle(text) {
+    const s = String(text || '');
+    const match = s.match(/\\title\s*(?:\[[^\]]*\])?\s*\{([\s\S]{0,500}?)\}/);
+    return stripLatexForIdentity(match ? match[1] : '').slice(0, 180);
+  }
+
+  function projectSourceSnapshot() {
+    const p = project() || {};
+    const texFiles = (files() || [])
+      .filter((file) => /\.tex$/i.test(String(file?.path || '')))
+      .sort((a, b) => String(a.path || '').localeCompare(String(b.path || '')));
+    const active = activeSource();
+    const root = rootPath();
+    const rootFile = getFile(root);
+    const rootText = normalizePath(active?.path) === normalizePath(root) && active?.text ? active.text : fileText(rootFile);
+    const titleGuess = extractLatexTitle(rootText) || extractLatexTitle(active?.text || '');
+    const pieces = texFiles.map((file) => `${normalizePath(file.path)}\n${fileText(file)}`).join('\n\n---LATEXAI-FILE---\n\n');
+    const sourceCorpus = pieces || String(active?.text || rootText || '');
+    const projectLabel = clean(p.id || p.projectId || p.name || p.title || root || W.location?.pathname || 'local-latexai-project');
+    const sourceHash = stableHash(sourceCorpus);
+    const fallbackClue = stableHash(String(rootText || sourceCorpus).slice(0, 12000));
+    const documentFingerprint = stableHash([projectLabel, root, titleGuess || fallbackClue].join('\n'));
+    return {
+      projectLabel,
+      rootPath: root,
+      activePath: active?.path || activePath(),
+      titleGuess: titleGuess || '',
+      documentFingerprint,
+      sourceHash,
+      texFileCount: texFiles.length,
+      sourceBytes: sourceCorpus.length
+    };
+  }
+
+  function storedScopedId(kind, deterministicKey) {
+    const key = `latexai:memory:${kind}:id:${stableHash(deterministicKey)}`;
+    try {
+      const existing = W.localStorage?.getItem?.(key);
+      if (existing) return existing;
+      const id = `${kind}-${stableHash(deterministicKey)}`;
+      W.localStorage?.setItem?.(key, id);
+      return id;
+    } catch (_err) {
+      return `${kind}-${stableHash(deterministicKey)}`;
+    }
+  }
+
   function memoryBaseUrl() {
     const raw = clean(el('compileProxyUrl')?.value) || clean(el('aiProxyUrl')?.value) || '/api/lumina/latex/compile';
     try {
@@ -120,11 +177,9 @@
   }
 
   function projectIdentity() {
-    const p = project() || {};
-    const root = rootPath();
-    const active = activeSource();
-    const projectKey = p.id || p.projectId || p.name || p.title || root || 'default-project';
-    const paperKey = `${projectKey}:${root}`;
+    const snapshot = projectSourceSnapshot();
+    const projectKey = snapshot.projectLabel || snapshot.rootPath || 'local-latexai-project';
+    const paperKey = [projectKey, snapshot.rootPath, snapshot.documentFingerprint].join('\n');
     let sessionId = '';
     try {
       sessionId = W.sessionStorage?.getItem?.('latexai:memory-session-id') || '';
@@ -133,16 +188,52 @@
         W.sessionStorage?.setItem?.('latexai:memory-session-id', sessionId);
       }
     } catch (_err) { sessionId = `sess-${stableHash(String(Date.now()))}`; }
+    const projectId = storedScopedId('project', projectKey);
+    const paperId = storedScopedId('paper', paperKey);
+    const sectionId = snapshot.activePath ? `section-${stableHash([paperId, snapshot.activePath].join(':'))}` : undefined;
     return {
       userId: 'local-user',
-      projectId: `project-${stableHash(projectKey)}`,
-      paperId: `paper-${stableHash(paperKey)}`,
-      sectionId: active?.path ? `section-${stableHash(active.path)}` : undefined,
+      projectId,
+      paperId,
+      sectionId,
       sessionId,
-      rootPath: root,
-      activePath: active?.path || activePath()
+      rootPath: snapshot.rootPath,
+      activePath: snapshot.activePath,
+      titleGuess: snapshot.titleGuess,
+      documentFingerprint: snapshot.documentFingerprint,
+      sourceHash: snapshot.sourceHash,
+      identityMetadata: {
+        identityStage: 'stage18x-memory-project-paper-identity-scoping',
+        projectLabel: snapshot.projectLabel,
+        titleGuess: snapshot.titleGuess,
+        documentFingerprint: snapshot.documentFingerprint,
+        sourceHash: snapshot.sourceHash,
+        rootPath: snapshot.rootPath,
+        activePath: snapshot.activePath,
+        texFileCount: snapshot.texFileCount,
+        sourceBytes: snapshot.sourceBytes
+      }
     };
   }
+
+  async function registerMemoryScope(ids, reason = 'context', stepName = '') {
+    if (!ids) return null;
+    return memoryPost('/scope', {
+      userId: ids.userId,
+      projectId: ids.projectId,
+      paperId: ids.paperId,
+      sectionId: ids.sectionId,
+      sessionId: ids.sessionId,
+      scope: ids.sectionId ? 'section' : 'paper',
+      documentFingerprint: ids.documentFingerprint,
+      sourceHash: ids.sourceHash,
+      titleGuess: ids.titleGuess,
+      rootPath: ids.rootPath,
+      activePath: ids.activePath,
+      metadata: { stage: STAGE, reason, stepName, ...(ids.identityMetadata || {}) }
+    });
+  }
+
 
   async function memoryFetch(path, options = {}) {
     if (!memoryEnabled()) return null;
@@ -169,6 +260,7 @@
 
   async function loadReviewerMemoryContext(stepName, limit = 10, queryText = '') {
     const ids = projectIdentity();
+    await registerMemoryScope(ids, 'context', stepName);
     const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
     const q = memorySemanticQuery(stepName, queryText);
     if (q) qs.set('q', q.slice(0, 12000));
@@ -241,8 +333,7 @@
       metadata: {
         stage: STAGE,
         stepName,
-        rootPath: ids.rootPath,
-        activePath: ids.activePath,
+        ...(ids.identityMetadata || {}),
         targetVenue: payload?.targetVenue || clean(el('reviewerSimVenue')?.value),
         paperGoal: payload?.paperGoal || clean(el('reviewerSimGoal')?.value),
         reviewerCount: payload?.reviewers?.length || selectedReviewers().length,
@@ -632,7 +723,7 @@ ${input}` : input,
       '  <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
-      '<div class="settings-note">Stage 18Q is a foundation workflow. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>',
+      '<div class="settings-note">Stage 18X keeps reviewer/rebuttal memories scoped by stable project and paper identity. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>',
       '<div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator ready.</div>',
       '<pre id="reviewerRebuttalOutput" class="devils-output"></pre>'
     ].join('');
