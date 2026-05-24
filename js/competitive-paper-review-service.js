@@ -1,5 +1,5 @@
 /* Latexai Stage 18X2 CompetitivePaperReviewService
- * Stage: stage18x2-competitive-review-memory-context-scope-fix-20260524-1
+ * Stage: stage18x3-memory-backend-url-resolution-fix-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x2-competitive-review-memory-context-scope-fix-20260524-1';
+  const STAGE = 'stage18x3-memory-backend-url-resolution-fix-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -866,22 +866,48 @@
     }
   }
 
-  function memoryBaseUrl() {
-    const raw = clean(el('compileProxyUrl')?.value) || clean(el('aiProxyUrl')?.value) || '/api/lumina/latex/compile';
+  function memoryBackendCandidates() {
+    const ls = (key) => { try { return clean(W.localStorage?.getItem?.(key)); } catch (_err) { return ''; } };
+    return [
+      clean(el('aiProxyUrl')?.value),
+      ls('lumina-latex.ai.proxyUrl'),
+      clean(el('compileProxyUrl')?.value),
+      ls('lumina-latex.compileUrl'),
+      '/api/lumina/ai'
+    ].filter(Boolean);
+  }
+
+  function isStaticRelativeApi(raw) {
+    const value = clean(raw);
+    if (!/^\/api\//i.test(value)) return false;
+    const host = String(W.location?.hostname || '').toLowerCase();
+    return host.endsWith('github.io') || host === 'localhost' || host === '127.0.0.1' ? host.endsWith('github.io') : false;
+  }
+
+  function toMemoryUrl(raw) {
     try {
       const url = new URL(raw, W.location.href);
       url.search = '';
       url.hash = '';
       url.pathname = url.pathname
         .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
-        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory');
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/memory');
       if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = '/api/lumina/memory';
       return url.href.replace(/\/$/, '');
     } catch (_err) {
-      return raw.replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
+      return String(raw || '')
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
         .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/memory')
         .replace(/\/$/, '');
     }
+  }
+
+  function memoryBaseUrl() {
+    const candidates = memoryBackendCandidates();
+    const usable = candidates.find((raw) => !isStaticRelativeApi(raw)) || candidates[0] || '/api/lumina/ai';
+    return toMemoryUrl(usable);
   }
 
   function memoryHeaders() {
@@ -918,7 +944,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x2-competitive-review-memory-context-scope-fix',
+        identityStage: 'stage18x3-memory-backend-url-resolution-fix',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,

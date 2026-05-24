@@ -151,22 +151,48 @@
     }
   }
 
-  function memoryBaseUrl() {
-    const raw = clean(el('compileProxyUrl')?.value) || clean(el('aiProxyUrl')?.value) || '/api/lumina/latex/compile';
+  function memoryBackendCandidates() {
+    const ls = (key) => { try { return clean(W.localStorage?.getItem?.(key)); } catch (_err) { return ''; } };
+    return [
+      clean(el('aiProxyUrl')?.value),
+      ls('lumina-latex.ai.proxyUrl'),
+      clean(el('compileProxyUrl')?.value),
+      ls('lumina-latex.compileUrl'),
+      '/api/lumina/ai'
+    ].filter(Boolean);
+  }
+
+  function isStaticRelativeApi(raw) {
+    const value = clean(raw);
+    if (!/^\/api\//i.test(value)) return false;
+    const host = String(W.location?.hostname || '').toLowerCase();
+    return host.endsWith('github.io') || host === 'localhost' || host === '127.0.0.1' ? host.endsWith('github.io') : false;
+  }
+
+  function toMemoryUrl(raw) {
     try {
       const url = new URL(raw, W.location.href);
       url.search = '';
       url.hash = '';
       url.pathname = url.pathname
         .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
-        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory');
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/memory');
       if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = '/api/lumina/memory';
       return url.href.replace(/\/$/, '');
     } catch (_err) {
-      return raw.replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
+      return String(raw || '')
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
         .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/memory')
         .replace(/\/$/, '');
     }
+  }
+
+  function memoryBaseUrl() {
+    const candidates = memoryBackendCandidates();
+    const usable = candidates.find((raw) => !isStaticRelativeApi(raw)) || candidates[0] || '/api/lumina/ai';
+    return toMemoryUrl(usable);
   }
 
   function memoryHeaders() {
