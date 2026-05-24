@@ -1,5 +1,5 @@
-/* Latexai Stage 18X4 BackendUrlSettingsService
- * Stage: stage18x4-separate-memory-backend-settings-20260524-1
+/* Latexai Stage 18X5 BackendUrlSettingsService
+ * Stage: stage18x5-ipad-memory-diagnostics-settings-20260524-1
  *
  * Keeps backend endpoint configuration in the Settings tab:
  * - AI backend proxy URL remains the existing AI proxy route.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x4-separate-memory-backend-settings-20260524-1';
+  const STAGE = 'stage18x5-ipad-memory-diagnostics-settings-20260524-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
@@ -75,7 +75,79 @@
   }
 
   function getMemoryProxyToken() {
-    return clean(el('memoryProxyToken')?.value) || safeGet(LS_MEMORY_PROXY_TOKEN, '') || getAiProxyToken() || clean(el('compileProxyToken')?.value);
+    // Stage 18X5: keep memory auth independent from AI/compile auth.
+    // Reusing an AI proxy token against the memory service can make writes fail silently.
+    return clean(el('memoryProxyToken')?.value) || safeGet(LS_MEMORY_PROXY_TOKEN, '');
+  }
+
+
+  function memoryHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getMemoryProxyToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+
+  function setMemoryStatus(text, detail, ok = null) {
+    const title = el('memoryBackendStatusText');
+    const body = el('memoryBackendStatusDetail');
+    const card = el('memoryBackendStatusCard');
+    if (title) title.textContent = text || 'Not checked';
+    if (body) body.textContent = detail || '';
+    if (card) {
+      card.classList.toggle('ok', ok === true);
+      card.classList.toggle('bad', ok === false);
+    }
+  }
+
+  async function memoryRequest(path, options = {}) {
+    const base = getMemoryApiBaseUrl();
+    const response = await fetch(`${base}${path}`, {
+      ...options,
+      headers: { ...memoryHeaders(), ...(options.headers || {}) },
+      cache: 'no-store'
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.ok === false) {
+      throw new Error(json?.detail || json?.error?.message || `HTTP ${response.status}`);
+    }
+    return json;
+  }
+
+  async function testMemoryBackend() {
+    const base = getMemoryApiBaseUrl();
+    safeSet(LS_MEMORY_BACKEND_URL, getMemoryBackendUrl());
+    safeSet(LS_MEMORY_PROXY_TOKEN, getMemoryProxyToken());
+    safeSet('latexai:memory-enabled', 'true');
+    setMemoryStatus('Testing memory backend...', `Checking ${base}`, null);
+    try {
+      const health = await memoryRequest('/health');
+      const stamp = Date.now().toString(36);
+      const scope = await memoryRequest('/scope', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: 'local-user',
+          projectId: 'settings-memory-test-project',
+          paperId: `settings-memory-test-paper-${stamp}`,
+          sessionId: `settings-memory-test-session-${stamp}`,
+          scope: 'paper',
+          titleGuess: 'Settings memory backend browser test',
+          documentFingerprint: `settings-memory-test-${stamp}`,
+          sourceHash: stamp,
+          metadata: { stage: STAGE, reason: 'ipad-settings-memory-backend-test' }
+        })
+      });
+      const counts = health?.counts || {};
+      setMemoryStatus(
+        'Memory backend OK',
+        `Connected to ${base}. Browser write succeeded: ${scope?.ok ? 'yes' : 'unknown'}. Storage: ${health?.storage?.backend || 'unknown'}; events=${counts.events ?? '?'} facts=${counts.facts ?? '?'} scopes=${counts.scopes ?? '?'}.`,
+        true
+      );
+      return { ok: true, base, health, scope, stage: STAGE };
+    } catch (err) {
+      setMemoryStatus('Memory backend failed', `${base}: ${err?.message || err}`, false);
+      return { ok: false, base, error: err?.message || String(err), stage: STAGE };
+    }
   }
 
   function syncInput(id, storageKey, fallback) {
@@ -95,6 +167,12 @@
     syncInput('aiProxyToken', LS_AI_PROXY_TOKEN, '');
     syncInput('memoryBackendUrl', LS_MEMORY_BACKEND_URL, DEFAULT_MEMORY_BACKEND_URL);
     syncInput('memoryProxyToken', LS_MEMORY_PROXY_TOKEN, '');
+    if (!safeGet('latexai:memory-enabled', '')) safeSet('latexai:memory-enabled', 'true');
+    const testBtn = el('testMemoryBackendBtn');
+    if (testBtn && !testBtn.dataset.boundStage18x5) {
+      testBtn.dataset.boundStage18x5 = 'true';
+      testBtn.addEventListener('click', () => { testMemoryBackend(); });
+    }
     return true;
   }
 
@@ -106,7 +184,8 @@
     getAiProxyToken,
     getMemoryBackendUrl,
     getMemoryApiBaseUrl,
-    getMemoryProxyToken
+    getMemoryProxyToken,
+    testMemoryBackend
   };
   NS.BackendUrlSettings = NS.BackendUrlSettingsService;
 

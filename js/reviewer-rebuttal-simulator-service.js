@@ -1,5 +1,5 @@
-/* Latexai Stage 18X4 ReviewerRebuttalSimulatorService
- * Stage: stage18x4-separate-memory-backend-settings-20260524-1
+/* Latexai Stage 18X5 ReviewerRebuttalSimulatorService
+ * Stage: stage18x5-ipad-memory-diagnostics-settings-20260524-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x4-separate-memory-backend-settings-20260524-1';
+  const STAGE = 'stage18x5-ipad-memory-diagnostics-settings-20260524-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -178,7 +178,7 @@
 
   function memoryHeaders() {
     const headers = { 'Content-Type': 'application/json' };
-    const token = NS.BackendUrlSettings?.getMemoryProxyToken?.() || clean(el('memoryProxyToken')?.value) || clean(el('compileProxyToken')?.value) || clean(el('aiProxyToken')?.value);
+    const token = NS.BackendUrlSettings?.getMemoryProxyToken?.() || clean(el('memoryProxyToken')?.value);
     if (token) headers.Authorization = `Bearer ${token}`;
     return headers;
   }
@@ -210,7 +210,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x4-separate-memory-backend-settings',
+        identityStage: 'stage18x5-ipad-memory-diagnostics-settings',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,

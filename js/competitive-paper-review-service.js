@@ -1,5 +1,5 @@
-/* Latexai Stage 18X4 CompetitivePaperReviewService
- * Stage: stage18x4-separate-memory-backend-settings-20260524-1
+/* Latexai Stage 18X5 CompetitivePaperReviewService
+ * Stage: stage18x5-ipad-memory-diagnostics-settings-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x4-separate-memory-backend-settings-20260524-1';
+  const STAGE = 'stage18x5-ipad-memory-diagnostics-settings-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -893,7 +893,7 @@
 
   function memoryHeaders() {
     const headers = { 'Content-Type': 'application/json' };
-    const token = NS.BackendUrlSettings?.getMemoryProxyToken?.() || clean(el('memoryProxyToken')?.value) || clean(el('compileProxyToken')?.value) || clean(el('aiProxyToken')?.value);
+    const token = NS.BackendUrlSettings?.getMemoryProxyToken?.() || clean(el('memoryProxyToken')?.value);
     if (token) headers.Authorization = `Bearer ${token}`;
     return headers;
   }
@@ -925,7 +925,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x4-separate-memory-backend-settings',
+        identityStage: 'stage18x5-ipad-memory-diagnostics-settings',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
