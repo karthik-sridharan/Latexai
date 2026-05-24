@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage18x4-separate-memory-backend-settings-20260524-1';
+  window.LUMINA_LATEX_STAGE='latex-stage18x5-ipad-memory-diagnostics-settings-20260524-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -58,25 +58,25 @@
 <link rel="stylesheet" href="css/lai-stage15e-safe-mode.css?v=stage15e-safe-mode-recovery-1" />
 <link rel="stylesheet" href="css/lai-stage15j-feature-flags.css?v=stage15j-feature-flag-registry-guarded-loader-1" />
 <link rel="stylesheet" href="css/lai-stage16a-paper-ai-polish.css?v=stage17u-right-panel-horizontal-review-scroll-1" />
-<link rel="stylesheet" href="css/lai-stage16b-competitive-review.css?v=stage18x4-separate-memory-backend-settings-1" />
-<link rel="stylesheet" href="css/lai-stage16d-devils-debate.css?v=stage18x4-separate-memory-backend-settings-1" />
+<link rel="stylesheet" href="css/lai-stage16b-competitive-review.css?v=stage18x5-ipad-memory-diagnostics-settings-1" />
+<link rel="stylesheet" href="css/lai-stage16d-devils-debate.css?v=stage18x5-ipad-memory-diagnostics-settings-1" />
 <link rel="stylesheet" href="css/lai-stage16e-ai-revision-history.css?v=stage16e-ai-revision-history-1" />
 <link rel="stylesheet" href="css/lai-stage16f-ai-comments.css?v=stage16f-ai-suggestion-comments-1" />
 <link rel="stylesheet" href="css/lai-stage17c-paper-ai-dashboard.css?v=stage17c-paper-ai-dashboard-1" />
 <link rel="stylesheet" href="css/lai-stage17d-left-panel-layout.css?v=stage17d-left-panel-layout-fix-1" />
 <link rel="stylesheet" href="css/lai-stage17ef-ai-reports-browser.css?v=stage17ef-unified-ai-reports-browser-1" />
-<link rel="stylesheet" href="css/lai-stage17i-ai-routing-inspector.css?v=stage18x4-separate-memory-backend-settings-1" />
+<link rel="stylesheet" href="css/lai-stage17i-ai-routing-inspector.css?v=stage18x5-ipad-memory-diagnostics-settings-1" />
 <link rel="stylesheet" href="css/lai-stage17j-right-panel-sections.css?v=stage17u-right-panel-horizontal-review-scroll-1" />
 <link rel="stylesheet" href="css/lai-stage15f-backend-diagnostics.css?v=stage15f-backend-diagnostics-dashboard-1" />
-<link rel="stylesheet" href="css/lai-stage15g-model-routing.css?v=stage18x4-separate-memory-backend-settings-1" />
-<link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x4-separate-memory-backend-settings-1" />
+<link rel="stylesheet" href="css/lai-stage15g-model-routing.css?v=stage18x5-ipad-memory-diagnostics-settings-1" />
+<link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x5-ipad-memory-diagnostics-settings-1" />
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
-<script src="js/feature-flag-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
+<script src="js/feature-flag-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage18x4-separate-memory-backend-settings-20260524-1">
+<div class="app-shell" data-stage="latex-stage18x5-ipad-memory-diagnostics-settings-20260524-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -272,7 +272,7 @@
             <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>
             <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>
           </div>
-          <div class="settings-note">Stage 18X4 keeps reviewer/rebuttal workflows memory-scoped and uses a separate Settings-tab memory backend URL. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
+          <div class="settings-note">Stage 18X5 keeps reviewer/rebuttal workflows memory-scoped, uses a separate Settings-tab memory backend URL, and adds an iPad-friendly memory backend test. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
           <div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator loading...</div>
           <pre id="reviewerRebuttalOutput" class="devils-output"></pre>
         </div>
@@ -287,7 +287,7 @@
             <h2>Backend URLs and compile settings</h2>
           </div>
         </div>
-        <div class="settings-note">Stage 18X4 keeps AI generation and memory storage as separate services. Put the old working AI proxy in the AI field, and the Neon-backed memory service in the memory field.</div>
+        <div class="settings-note">Stage 18X5 keeps AI generation, memory storage, and compile routing as separate services. Put the old working AI proxy in the AI field, and the Neon-backed memory service in the memory field. Use Test memory backend to verify browser-to-Neon writes from iPad.</div>
         <label class="field">AI backend proxy URL
           <input id="aiProxyUrl" data-lumina-ai-proxy-url type="url" value="/api/lumina/ai" placeholder="https://your-ai-backend.example.com/api/lumina/ai" />
         </label>
@@ -300,6 +300,14 @@
         <label class="field">Memory proxy token, optional
           <input id="memoryProxyToken" data-lumina-memory-proxy-token type="password" autocomplete="off" placeholder="Optional bearer token for memory backend" />
         </label>
+        <div id="memoryBackendStatusCard" class="backend-status-card memory-status-card">
+          <div>
+            <div class="smallcaps">Memory backend status</div>
+            <strong id="memoryBackendStatusText">Not checked</strong>
+            <p id="memoryBackendStatusDetail">Use Test memory backend after setting the Neon-backed memory URL. This writes one harmless diagnostics scope so you can verify memory from an iPad without browser console.</p>
+          </div>
+          <button id="testMemoryBackendBtn" class="btn mini" type="button">Test memory backend</button>
+        </div>
         <label class="field">Compile backend URL
           <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-compile-backend.example.com/api/lumina/latex/compile" />
         </label>
@@ -413,8 +421,8 @@
 <script src="js/browser-wasm-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/compiler-provider.js?v=stage17x-compile-log-diagnostics-surfacing-1" defer></script>
-<script src="js/ai-provider.js?v=stage18x4-separate-memory-backend-settings-1" defer></script>
-<script src="js/backend-url-settings-service.js?v=stage18x4-separate-memory-backend-settings-1" defer></script>
+<script src="js/ai-provider.js?v=stage18x5-ipad-memory-diagnostics-settings-1" defer></script>
+<script src="js/backend-url-settings-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1" defer></script>
 <script src="js/state.js?v=stage4e-editor-forced-lai-guard-1" defer></script>
 <script src="js/editor.js?v=stage4j-always-visible-lai-guard-1" defer></script>
 <script src="js/editor-enhancement-service.js?v=stage18l-shortcut-manager-full-width-layout-1" defer></script>
@@ -425,9 +433,9 @@
 <script src="js/source-display-sync.js?v=stage8b-source-display-sync-fix-1" defer></script>
 <script src="js/patch-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/patch-manager.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
-<script src="js/copilot.js?v=stage18x4-separate-memory-backend-settings-1" defer></script>
+<script src="js/copilot.js?v=stage18x5-ipad-memory-diagnostics-settings-1" defer></script>
 <script src="js/selection-action-bubble.js?v=stage7c-move-selection-bubble-left-1" defer></script>
-<script src="js/diagnostics.js?v=stage18x4-separate-memory-backend-settings-1" defer></script>
+<script src="js/diagnostics.js?v=stage18x5-ipad-memory-diagnostics-settings-1" defer></script>
 <script src="js/main.js?v=stage8d-figure-placeholder-tabs-fix-1" defer></script>
 <script src="js/lai-stage5e-panel-scroll-pdf-viewer.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/pdf-region-selection-service.js?v=stage7d-pdf-region-selection-1" defer></script>
@@ -436,26 +444,26 @@
 <script src="js/image-to-tikz-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
 <script src="js/document-ai-service.js?v=stage11g-resolve-laiold-lai-edits-1" defer></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
-<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
-<script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-reports-browser" data-src="js/ai-report-service.js?v=stage17ef-unified-ai-reports-browser-1"></script>
-<script type="application/latexai-feature-script" data-feature="model-registry" data-src="js/model-registry-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
-<script type="application/latexai-feature-script" data-feature="ai-routing-inspector" data-src="js/ai-routing-inspector-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="model-registry" data-src="js/model-registry-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="ai-routing-inspector" data-src="js/ai-routing-inspector-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
 <script type="application/latexai-feature-script" data-feature="citation-ai" data-src="js/citation-ai-service.js?v=stage12c-missing-bibtex-repair-1"></script>
 <script type="application/latexai-feature-script" data-feature="citation-verifier" data-src="js/citation-verifier-service.js?v=stage12f-clickable-link-panel-fix-1"></script>
 <script type="application/latexai-feature-script" data-feature="presentation-export" data-src="js/presentation-export-service.js?v=stage13g-talk-package-validator-zip-1"></script>
 <script type="application/latexai-feature-script" data-feature="compile-root-service" data-src="js/compile-root-service.js?v=stage14a-active-standalone-compile-root-1"></script>
 <script type="application/latexai-feature-script" data-feature="standalone-path-fixer" data-src="js/standalone-path-service.js?v=stage14b-standalone-path-fixer-1"></script>
 <script type="application/latexai-feature-script" data-feature="ui-cleanup" data-src="js/ui-cleanup-service.js?v=stage15ef-safe-mode-backend-diagnostics-1"></script>
-<script type="application/latexai-feature-script" data-feature="backend-diagnostics" data-src="js/backend-diagnostics-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
-<script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="backend-diagnostics" data-src="js/backend-diagnostics-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
 <script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
-<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage18x4-separate-memory-backend-settings-1"></script>
+<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1"></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 <script id="stage18a-right-panel-organizer-fallback">
 /* LATEXAI_STAGE18A_RIGHT_PANEL_ORGANIZER_FALLBACK_LOADER: load organizer if the feature loader cache, saved flags, or older deployed query string are stale. */
@@ -469,7 +477,7 @@ window.addEventListener('DOMContentLoaded', function () {
       var existing = document.querySelector('script[src*="right-panel-organizer-service.js"]');
       if (existing && existing.dataset.stage18aFallbackLoaded === 'true') return;
       var s = document.createElement('script');
-      s.src = 'js/right-panel-organizer-service.js?v=stage18x4-separate-memory-backend-settings-1';
+      s.src = 'js/right-panel-organizer-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1';
       s.defer = true;
       s.dataset.stage18aFallbackLoaded = 'true';
       document.body.appendChild(s);
@@ -484,7 +492,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage18x4-separate-memory-backend-settings-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -541,7 +549,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage18x4-separate-memory-backend-settings-1&watchdog=' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage18x5-ipad-memory-diagnostics-settings-1&watchdog=' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
