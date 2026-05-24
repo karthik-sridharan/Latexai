@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage15f-backend-diagnostics-dashboard-1';
+  const STAGE = 'stage18x4-backend-url-settings-diagnostics-1';
 
   let lastReport = null;
 
@@ -65,6 +65,22 @@
   function extractionHealthUrl() {
     const raw = value('aiProxyUrl') || value('compileProxyUrl') || W.location.href;
     return replacePath(raw, '/health') || `${endpointOrigin(raw)}/health`;
+  }
+
+  function memoryHealthUrl() {
+    if (NS.BackendUrlSettings?.getMemoryApiBaseUrl) return `${NS.BackendUrlSettings.getMemoryApiBaseUrl()}/health`;
+    const raw = value('memoryBackendUrl') || 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app';
+    try {
+      const url = new URL(absoluteUrl(raw));
+      url.pathname = url.pathname.replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/memory');
+      if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = url.pathname.replace(/\/+$/, '') + '/api/lumina/memory';
+      url.pathname = url.pathname.replace(/\/?$/, '/health');
+      url.search = '';
+      url.hash = '';
+      return url.href;
+    } catch (_err) {
+      return '';
+    }
   }
 
   async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
@@ -129,6 +145,7 @@
     const targets = [
       { name: 'Compile backend health', url: compileHealthUrl() },
       { name: 'AI backend status', url: aiStatusUrl() },
+      { name: 'Memory backend health', url: memoryHealthUrl() },
       { name: 'Shared backend health', url: extractionHealthUrl() }
     ].filter((target, index, arr) => target.url && arr.findIndex((x) => x.name === target.name && x.url === target.url) === index);
 
@@ -146,6 +163,8 @@
       local,
       configured: {
         aiProxyUrl: value('aiProxyUrl'),
+        memoryBackendUrl: value('memoryBackendUrl'),
+        memoryApiBaseUrl: NS.BackendUrlSettings?.getMemoryApiBaseUrl?.() || '',
         compileProxyUrl: value('compileProxyUrl'),
         aiProvider: value('aiProvider'),
         aiModel: value('aiModel'),
@@ -175,6 +194,8 @@
       'Configured endpoints',
       '--------------------',
       `AI proxy: ${report.configured.aiProxyUrl || '(empty)'}`,
+      `Memory backend: ${report.configured.memoryBackendUrl || '(empty)'}`,
+      `Memory API base: ${report.configured.memoryApiBaseUrl || '(empty)'}`,
       `Compile proxy: ${report.configured.compileProxyUrl || '(empty)'}`,
       `Provider/model: ${report.configured.aiProvider || '(provider?)'} / ${report.configured.aiModel || '(model?)'}`,
       `Compiler mode: ${report.configured.compilerMode || '(unknown)'}`,

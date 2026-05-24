@@ -1,5 +1,5 @@
-/* Latexai Stage 18X2 CompetitivePaperReviewService
- * Stage: stage18x3-memory-backend-url-resolution-fix-20260524-1
+/* Latexai Stage 18X4 CompetitivePaperReviewService
+ * Stage: stage18x4-separate-memory-backend-settings-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x3-memory-backend-url-resolution-fix-20260524-1';
+  const STAGE = 'stage18x4-separate-memory-backend-settings-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -866,53 +866,34 @@
     }
   }
 
-  function memoryBackendCandidates() {
-    const ls = (key) => { try { return clean(W.localStorage?.getItem?.(key)); } catch (_err) { return ''; } };
-    return [
-      clean(el('aiProxyUrl')?.value),
-      ls('lumina-latex.ai.proxyUrl'),
-      clean(el('compileProxyUrl')?.value),
-      ls('lumina-latex.compileUrl'),
-      '/api/lumina/ai'
-    ].filter(Boolean);
-  }
-
-  function isStaticRelativeApi(raw) {
-    const value = clean(raw);
-    if (!/^\/api\//i.test(value)) return false;
-    const host = String(W.location?.hostname || '').toLowerCase();
-    return host.endsWith('github.io') || host === 'localhost' || host === '127.0.0.1' ? host.endsWith('github.io') : false;
-  }
-
   function toMemoryUrl(raw) {
+    if (NS.BackendUrlSettings?.normalizeMemoryApiBase) return NS.BackendUrlSettings.normalizeMemoryApiBase(raw);
     try {
-      const url = new URL(raw, W.location.href);
+      const url = new URL(raw || 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app', W.location.href);
       url.search = '';
       url.hash = '';
       url.pathname = url.pathname
         .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
         .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
-        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/memory');
-      if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = '/api/lumina/memory';
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/memory')
+        .replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/memory');
+      if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = url.pathname.replace(/\/+$/, '') + '/api/lumina/memory';
       return url.href.replace(/\/$/, '');
     } catch (_err) {
-      return String(raw || '')
-        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/memory')
-        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/memory')
-        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/memory')
-        .replace(/\/$/, '');
+      return 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/memory';
     }
   }
 
   function memoryBaseUrl() {
-    const candidates = memoryBackendCandidates();
-    const usable = candidates.find((raw) => !isStaticRelativeApi(raw)) || candidates[0] || '/api/lumina/ai';
-    return toMemoryUrl(usable);
+    if (NS.BackendUrlSettings?.getMemoryApiBaseUrl) return NS.BackendUrlSettings.getMemoryApiBaseUrl();
+    const stored = (() => { try { return clean(W.localStorage?.getItem?.('lumina-latex.memory.backendUrl')); } catch (_err) { return ''; } })();
+    const raw = clean(el('memoryBackendUrl')?.value) || stored || 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app';
+    return toMemoryUrl(raw);
   }
 
   function memoryHeaders() {
     const headers = { 'Content-Type': 'application/json' };
-    const token = clean(el('compileProxyToken')?.value) || clean(el('aiProxyToken')?.value);
+    const token = NS.BackendUrlSettings?.getMemoryProxyToken?.() || clean(el('memoryProxyToken')?.value) || clean(el('compileProxyToken')?.value) || clean(el('aiProxyToken')?.value);
     if (token) headers.Authorization = `Bearer ${token}`;
     return headers;
   }
@@ -944,7 +925,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x3-memory-backend-url-resolution-fix',
+        identityStage: 'stage18x4-separate-memory-backend-settings',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,

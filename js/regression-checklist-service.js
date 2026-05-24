@@ -84,6 +84,7 @@
     checks.push(exists('#aiProvider') ? pass('AI provider selector exists') : warn('AI provider selector exists', 'Missing #aiProvider'));
     checks.push(exists('#aiModel') ? pass('AI model selector exists') : warn('AI model selector exists', 'Missing #aiModel'));
     checks.push(exists('#aiProxyUrl') ? pass('AI backend proxy field exists') : warn('AI backend proxy field exists', 'Missing #aiProxyUrl'));
+    checks.push(exists('#memoryBackendUrl') ? pass('Memory backend URL field exists') : warn('Memory backend URL field exists', 'Missing #memoryBackendUrl'));
     checks.push(exists('#askCopilotBtn') ? pass('Ask Copilot button exists') : warn('Ask Copilot button exists', 'Missing #askCopilotBtn'));
     checks.push(exists('#copilotPrompt') ? pass('Copilot prompt field exists') : warn('Copilot prompt field exists', 'Missing #copilotPrompt'));
 
@@ -122,8 +123,10 @@
     const checks = [];
     const compileUrl = text(el('compileProxyUrl')?.value);
     const aiUrl = text(el('aiProxyUrl')?.value);
+    const memoryUrl = text(el('memoryBackendUrl')?.value);
     checks.push(compileUrl ? pass('Compile backend URL configured', compileUrl) : warn('Compile backend URL configured', 'Compile URL is empty.'));
     checks.push(aiUrl ? pass('AI backend URL configured', aiUrl) : warn('AI backend URL configured', 'AI proxy URL is empty.'));
+    checks.push(memoryUrl ? pass('Memory backend URL configured', memoryUrl) : warn('Memory backend URL configured', 'Memory backend URL is empty.'));
     checks.push(exists('#backendDiagnosticsCard') ? pass('Backend diagnostics card exists') : warn('Backend diagnostics card exists', 'Open Settings; diagnostics card may not have initialized yet.'));
     checks.push(exists('#modelRoutingCard') ? pass('Model routing card exists') : warn('Model routing card exists', 'Open Settings; model routing card may not have initialized yet.'));
     return checks;

@@ -26,7 +26,7 @@
   let remoteModels = null;
 
   function getProxyUrl() {
-    return document.getElementById('aiProxyUrl')?.value?.trim() || localStorage.getItem(LS_PROXY_URL) || '/api/lumina/ai';
+    return NS.BackendUrlSettings?.getAiProxyUrl?.() || document.getElementById('aiProxyUrl')?.value?.trim() || localStorage.getItem(LS_PROXY_URL) || '/api/lumina/ai';
   }
 
   function getConfig() {

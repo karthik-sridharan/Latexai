@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18q7-reviewer-rebuttal-organizer-registration-20260523-1';
+  const STAGE = 'stage18x4-separate-memory-backend-settings-20260524-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -102,8 +102,6 @@
         '#copilotTab > .section-head.compact',
         '#aiProvider',
         '#aiModel',
-        '#aiProxyUrl',
-        '#aiProxyToken',
         '#copilotTask',
         '#copilotPrompt',
         '#askCopilotBtn',
@@ -123,6 +121,10 @@
       defaultOpen: true,
       selectors: [
         '#settingsTab > .section-head.compact',
+        '#aiProxyUrl',
+        '#aiProxyToken',
+        '#memoryBackendUrl',
+        '#memoryProxyToken',
         '#compileProxyUrl',
         '#backendStatusCard',
         '#compileProxyToken',

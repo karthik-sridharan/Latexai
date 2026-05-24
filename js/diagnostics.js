@@ -7,7 +7,7 @@
 
   const REQUIRED_IDS = [
     'sourceEditor','lineGutter','fileTree','outlineList','draftPreview','pdfPreview','logPanel','problemList',
-    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','wasmStatusCard','wasmStatusText','wasmStatusDetail','testBrowserWasmBtn','browserWasmAssetBase','browserWasmTexliveEndpoint','browserWasmReuseCheck','texlyreStatusCard','texlyreStatusText','texlyreStatusDetail','testTexlyreBtn','texlyreModuleUrl','texlyreBusytexBase','texlyreReuseCheck','texlyreUseWorkerCheck','resetTexlyreDirectModeBtn','openOverleafBtn','rootFileSelect','compileStatusCard','compileProgressBar','copilotContextChips','patchReview','patchMeta','patchSummary','patchDiff','previewCopilotPatchBtn','applyCopilotPatchBtn','discardCopilotPatchBtn'
+    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','memoryBackendUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','wasmStatusCard','wasmStatusText','wasmStatusDetail','testBrowserWasmBtn','browserWasmAssetBase','browserWasmTexliveEndpoint','browserWasmReuseCheck','texlyreStatusCard','texlyreStatusText','texlyreStatusDetail','testTexlyreBtn','texlyreModuleUrl','texlyreBusytexBase','texlyreReuseCheck','texlyreUseWorkerCheck','resetTexlyreDirectModeBtn','openOverleafBtn','rootFileSelect','compileStatusCard','compileProgressBar','copilotContextChips','patchReview','patchMeta','patchSummary','patchDiff','previewCopilotPatchBtn','applyCopilotPatchBtn','discardCopilotPatchBtn'
   ];
 
   function run() {
@@ -39,6 +39,7 @@
       fileCount: state?.project?.files?.length || 0,
       draftPreviewPresent: !!document.getElementById('draftPreview')?.textContent?.trim(),
       aiProxyConfigured: !!document.getElementById('aiProxyUrl')?.value,
+      memoryBackendConfigured: !!document.getElementById('memoryBackendUrl')?.value,
       compileProxyConfigured: !!compileProxyValue,
       compileJobsEnabled: !!document.getElementById('compileJobsCheck')?.checked,
       compileBackendAvailability: compilerAvailability,
