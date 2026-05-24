@@ -1,5 +1,5 @@
-/* Latexai Stage 18X CompetitivePaperReviewService
- * Stage: stage18x-memory-project-paper-identity-scoping-20260523-1
+/* Latexai Stage 18X2 CompetitivePaperReviewService
+ * Stage: stage18x2-competitive-review-memory-context-scope-fix-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x-memory-project-paper-identity-scoping-20260523-1';
+  const STAGE = 'stage18x2-competitive-review-memory-context-scope-fix-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -918,7 +918,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x-memory-project-paper-identity-scoping',
+        identityStage: 'stage18x2-competitive-review-memory-context-scope-fix',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -1585,7 +1585,13 @@
       );
       if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
 
-      const memoryContext = await loadCompetitiveMemoryContext('competitive-web-review-improvement', 12, `${urls.join(' ')}\n${sourceText.slice(0, 8000)}`);
+      const memoryQuery = [
+        Array.isArray(payload.competitorUrls) ? payload.competitorUrls.join('\n') : '',
+        payload.targetVenue || '',
+        Array.isArray(payload.comparisonModes) ? payload.comparisonModes.join(', ') : '',
+        payload.draftExcerpt ? String(payload.draftExcerpt).slice(0, 8000) : ''
+      ].filter(Boolean).join('\n\n');
+      const memoryContext = await loadCompetitiveMemoryContext('competitive-web-review-improvement', 12, memoryQuery);
       const memoryBlock = memoryContextMarkdown(memoryContext);
       const response = await NS.AIProvider.ask({
         workflow: 'competitive-web-review-improvement',
