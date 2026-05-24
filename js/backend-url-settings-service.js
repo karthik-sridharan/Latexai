@@ -1,5 +1,5 @@
-/* Latexai Stage 18X5 BackendUrlSettingsService
- * Stage: stage18x5-ipad-memory-diagnostics-settings-20260524-1
+/* Latexai Stage 18X6 BackendUrlSettingsService
+ * Stage: stage18x6-memory-cors-ipad-fetch-fix-20260524-1
  *
  * Keeps backend endpoint configuration in the Settings tab:
  * - AI backend proxy URL remains the existing AI proxy route.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x5-ipad-memory-diagnostics-settings-20260524-1';
+  const STAGE = 'stage18x6-memory-cors-ipad-fetch-fix-20260524-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
@@ -75,16 +75,23 @@
   }
 
   function getMemoryProxyToken() {
-    // Stage 18X5: keep memory auth independent from AI/compile auth.
+    // Stage 18X6: keep memory auth independent from AI/compile auth.
     // Reusing an AI proxy token against the memory service can make writes fail silently.
     return clean(el('memoryProxyToken')?.value) || safeGet(LS_MEMORY_PROXY_TOKEN, '');
   }
 
 
-  function memoryHeaders() {
-    const headers = { 'Content-Type': 'application/json' };
+  function memoryHeaders(options = {}) {
+    const headers = {};
     const token = getMemoryProxyToken();
     if (token) headers.Authorization = `Bearer ${token}`;
+    const method = clean(options.method || 'GET').toUpperCase();
+    const hasBody = options.body !== undefined && options.body !== null;
+    // Stage 18X6: do not attach Content-Type to simple GET checks.
+    // On iPad/Safari/Brave, Content-Type + cache:no-store can trigger a
+    // preflight with cache-control/pragma headers that Cloud Run/CORS may reject
+    // as a generic "Load failed". POST requests still send JSON.
+    if (hasBody || method !== 'GET') headers['Content-Type'] = 'application/json';
     return headers;
   }
 
@@ -104,10 +111,11 @@
     const base = getMemoryApiBaseUrl();
     const response = await fetch(`${base}${path}`, {
       ...options,
-      headers: { ...memoryHeaders(), ...(options.headers || {}) },
-      cache: 'no-store'
+      headers: { ...memoryHeaders(options), ...(options.headers || {}) }
     });
-    const json = await response.json().catch(() => ({}));
+    const text = await response.text().catch(() => '');
+    let json = {};
+    try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
     if (!response.ok || json.ok === false) {
       throw new Error(json?.detail || json?.error?.message || `HTTP ${response.status}`);
     }
@@ -145,7 +153,7 @@
       );
       return { ok: true, base, health, scope, stage: STAGE };
     } catch (err) {
-      setMemoryStatus('Memory backend failed', `${base}: ${err?.message || err}`, false);
+      setMemoryStatus('Memory backend failed', `${base}: ${err?.message || err}. If this says Load failed, upload 18X6 and verify the backend CORS env includes https://karthik-sridharan.github.io.`, false);
       return { ok: false, base, error: err?.message || String(err), stage: STAGE };
     }
   }
@@ -169,8 +177,8 @@
     syncInput('memoryProxyToken', LS_MEMORY_PROXY_TOKEN, '');
     if (!safeGet('latexai:memory-enabled', '')) safeSet('latexai:memory-enabled', 'true');
     const testBtn = el('testMemoryBackendBtn');
-    if (testBtn && !testBtn.dataset.boundStage18x5) {
-      testBtn.dataset.boundStage18x5 = 'true';
+    if (testBtn && !testBtn.dataset.boundStage18x6) {
+      testBtn.dataset.boundStage18x6 = 'true';
       testBtn.addEventListener('click', () => { testMemoryBackend(); });
     }
     return true;

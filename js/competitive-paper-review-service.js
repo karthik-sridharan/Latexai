@@ -1,5 +1,5 @@
-/* Latexai Stage 18X5 CompetitivePaperReviewService
- * Stage: stage18x5-ipad-memory-diagnostics-settings-20260524-1
+/* Latexai Stage 18X6 CompetitivePaperReviewService
+ * Stage: stage18x6-memory-cors-ipad-fetch-fix-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x5-ipad-memory-diagnostics-settings-20260524-1';
+  const STAGE = 'stage18x6-memory-cors-ipad-fetch-fix-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -891,10 +891,13 @@
     return toMemoryUrl(raw);
   }
 
-  function memoryHeaders() {
-    const headers = { 'Content-Type': 'application/json' };
+  function memoryHeaders(options = {}) {
+    const headers = {};
     const token = NS.BackendUrlSettings?.getMemoryProxyToken?.() || clean(el('memoryProxyToken')?.value);
     if (token) headers.Authorization = `Bearer ${token}`;
+    const method = clean(options.method || 'GET').toUpperCase();
+    const hasBody = options.body !== undefined && options.body !== null;
+    if (hasBody || method !== 'GET') headers['Content-Type'] = 'application/json';
     return headers;
   }
 
@@ -925,7 +928,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x5-ipad-memory-diagnostics-settings',
+        identityStage: 'stage18x6-memory-cors-ipad-fetch-fix',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -960,8 +963,10 @@
   async function memoryFetch(path, options = {}) {
     if (!memoryEnabled()) return null;
     try {
-      const response = await fetch(`${memoryBaseUrl()}${path}`, { ...options, headers: { ...memoryHeaders(), ...(options.headers || {}) }, cache: 'no-store' });
-      const json = await response.json().catch(() => ({}));
+      const response = await fetch(`${memoryBaseUrl()}${path}`, { ...options, headers: { ...memoryHeaders(options), ...(options.headers || {}) } });
+      const text = await response.text().catch(() => '');
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
       if (!response.ok || json.ok === false) throw new Error(json?.detail || json?.error?.message || `HTTP ${response.status}`);
       return json;
     } catch (err) {

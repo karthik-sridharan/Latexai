@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x5-ipad-memory-diagnostics-settings-20260524-1';
+  const STAGE = 'stage18x6-memory-cors-ipad-fetch-fix-20260524-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
