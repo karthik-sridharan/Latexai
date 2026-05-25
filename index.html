@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19a-memory-aware-final-paper-rewrite-20260524-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19b-lai-edit-validation-safety-pass-20260524-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -73,10 +73,10 @@
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
-<script src="js/feature-flag-service.js?v=stage19a-memory-aware-final-paper-rewrite-1"></script>
+<script src="js/feature-flag-service.js?v=stage19b-lai-edit-validation-safety-pass-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage19a-memory-aware-final-paper-rewrite-20260524-1">
+<div class="app-shell" data-stage="latex-stage19b-lai-edit-validation-safety-pass-20260524-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -422,8 +422,8 @@
 <script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/compiler-provider.js?v=stage17x-compile-log-diagnostics-surfacing-1" defer></script>
 <script src="js/ai-provider.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
-<script src="js/backend-url-settings-service.js?v=stage19a-memory-aware-final-paper-rewrite-1" defer></script>
-<script src="js/research-memory-extraction-service.js?v=stage19a-memory-aware-final-paper-rewrite-1" defer></script>
+<script src="js/backend-url-settings-service.js?v=stage19b-lai-edit-validation-safety-pass-1" defer></script>
+<script src="js/research-memory-extraction-service.js?v=stage19b-lai-edit-validation-safety-pass-1" defer></script>
 <script src="js/state.js?v=stage4e-editor-forced-lai-guard-1" defer></script>
 <script src="js/editor.js?v=stage4j-always-visible-lai-guard-1" defer></script>
 <script src="js/editor-enhancement-service.js?v=stage18l-shortcut-manager-full-width-layout-1" defer></script>
@@ -445,9 +445,9 @@
 <script src="js/image-to-tikz-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
 <script src="js/document-ai-service.js?v=stage11g-resolve-laiold-lai-edits-1" defer></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
-<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19a-memory-aware-final-paper-rewrite-1"></script>
+<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19b-lai-edit-validation-safety-pass-1"></script>
 <script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19a-memory-aware-final-paper-rewrite-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19b-lai-edit-validation-safety-pass-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
@@ -493,7 +493,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19a-memory-aware-final-paper-rewrite-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19b-lai-edit-validation-safety-pass-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -550,7 +550,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19a-memory-aware-final-paper-rewrite-1&watchdog=' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19b-lai-edit-validation-safety-pass-1&watchdog=' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
