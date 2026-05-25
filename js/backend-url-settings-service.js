@@ -1,10 +1,11 @@
-/* Latexai Stage 18Y BackendUrlSettingsService
- * Stage: stage18z-memory-aware-notation-citation-retrieval-20260524-1
+/* Latexai Stage 19C2 BackendUrlSettingsService
+ * Stage: stage19c2-github-backend-url-settings-field-20260525-1
  *
  * Keeps backend endpoint configuration in the Settings tab:
  * - AI backend proxy URL remains the existing AI proxy route.
  * - Compile backend URL remains the existing compiler route.
  * - Memory backend URL is separate and points to the Neon-backed memory service.
+ * - GitHub backend URL is separate and points to the GitHub sync/repo-creation service.
  */
 (function () {
   'use strict';
@@ -12,15 +13,18 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18z-memory-aware-notation-citation-retrieval-20260524-1';
+  const STAGE = 'stage19c2-github-backend-url-settings-field-20260525-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
   const LS_MEMORY_BACKEND_URL = 'lumina-latex.memory.backendUrl';
   const LS_MEMORY_PROXY_TOKEN = 'lumina-latex.memory.proxyToken';
+  const LS_GITHUB_BACKEND_URL = 'lumina-latex.github.backendUrl';
+  const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
 
   const DEFAULT_AI_PROXY_URL = '/api/lumina/ai';
   const DEFAULT_MEMORY_BACKEND_URL = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app';
+  const DEFAULT_GITHUB_BACKEND_URL = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
 
   function el(id) { return D.getElementById(id); }
   function clean(value) { return String(value || '').trim(); }
@@ -56,6 +60,47 @@
         .replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/memory')
         .replace(/\/$/, '') || DEFAULT_MEMORY_BACKEND_URL + '/api/lumina/memory';
     }
+  }
+
+  function normalizeGithubApiBase(raw) {
+    const value = clean(raw) || DEFAULT_GITHUB_BACKEND_URL;
+    try {
+      const url = new URL(value, W.location?.href || DEFAULT_GITHUB_BACKEND_URL);
+      url.search = '';
+      url.hash = '';
+      url.pathname = url.pathname
+        .replace(/\/api\/lumina\/github(?:\/.+)?$/i, '/api/lumina/github')
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/github')
+        .replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/github')
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/github');
+      if (!/\/api\/lumina\/github\/?$/i.test(url.pathname)) {
+        url.pathname = url.pathname.replace(/\/+$/, '') + '/api/lumina/github';
+      }
+      return url.href.replace(/\/$/, '');
+    } catch (_err) {
+      return value
+        .replace(/\/api\/lumina\/github(?:\/.+)?$/i, '/api/lumina/github')
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/github')
+        .replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/github')
+        .replace(/\/api\/lumina\/ai(?:\/status|\/workflows|\/models)?\/?$/i, '/api/lumina/github')
+        .replace(/\/$/, '') || DEFAULT_GITHUB_BACKEND_URL;
+    }
+  }
+
+  function mirrorGithubBackendToGitSettings(value) {
+    const backendBase = normalizeGithubApiBase(value || getGithubBackendUrl());
+    safeSet(LS_GITHUB_BACKEND_URL, backendBase);
+    try {
+      const parsed = JSON.parse(W.localStorage?.getItem?.(GIT_SETTINGS_KEY) || 'null') || {};
+      parsed.backendBase = backendBase;
+      parsed.savedAt = new Date().toISOString();
+      W.localStorage?.setItem?.(GIT_SETTINGS_KEY, JSON.stringify(parsed));
+    } catch (_err) {}
+    return backendBase;
+  }
+
+  function getGithubBackendUrl() {
+    return normalizeGithubApiBase(clean(el('githubBackendUrl')?.value) || safeGet(LS_GITHUB_BACKEND_URL, DEFAULT_GITHUB_BACKEND_URL));
   }
 
   function getAiProxyUrl() {
@@ -175,6 +220,15 @@
     syncInput('aiProxyToken', LS_AI_PROXY_TOKEN, '');
     syncInput('memoryBackendUrl', LS_MEMORY_BACKEND_URL, DEFAULT_MEMORY_BACKEND_URL);
     syncInput('memoryProxyToken', LS_MEMORY_PROXY_TOKEN, '');
+    syncInput('githubBackendUrl', LS_GITHUB_BACKEND_URL, DEFAULT_GITHUB_BACKEND_URL);
+    mirrorGithubBackendToGitSettings(getGithubBackendUrl());
+    const githubInput = el('githubBackendUrl');
+    if (githubInput && !githubInput.dataset.boundStage19c2) {
+      githubInput.dataset.boundStage19c2 = 'true';
+      const persistGithub = () => { githubInput.value = mirrorGithubBackendToGitSettings(githubInput.value); };
+      githubInput.addEventListener('change', persistGithub);
+      githubInput.addEventListener('blur', persistGithub);
+    }
     if (!safeGet('latexai:memory-enabled', '')) safeSet('latexai:memory-enabled', 'true');
     const testBtn = el('testMemoryBackendBtn');
     if (testBtn && !testBtn.dataset.boundStage18x6) {
@@ -188,6 +242,9 @@
     STAGE,
     init,
     normalizeMemoryApiBase,
+    normalizeGithubApiBase,
+    getGithubBackendUrl,
+    mirrorGithubBackendToGitSettings,
     getAiProxyUrl,
     getAiProxyToken,
     getMemoryBackendUrl,

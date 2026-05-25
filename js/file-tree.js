@@ -21,6 +21,16 @@
     status: 'GitHub sync ready.'
   };
 
+
+  function settingsGithubBackend() {
+    return NS.BackendUrlSettings?.getGithubBackendUrl?.() || '';
+  }
+
+  function activeGithubBackend() {
+    const fromSettings = String(settingsGithubBackend() || '').trim();
+    return fromSettings || git.backendBase || DEFAULT_GITHUB_BACKEND;
+  }
+
   function loadGitSettings() {
     const keys = [
       GIT_SETTINGS_KEY,
@@ -47,11 +57,13 @@
         }
       } catch (_err) {}
     }
+    const fromSettings = settingsGithubBackend();
+    if (fromSettings) git.backendBase = fromSettings;
   }
 
   function saveGitSettings() {
     localStorage.setItem(GIT_SETTINGS_KEY, JSON.stringify({
-      backendBase: git.backendBase || DEFAULT_GITHUB_BACKEND,
+      backendBase: activeGithubBackend(),
       owner: git.owner || '',
       repo: git.repo || '',
       branch: git.branch || 'main',
@@ -226,7 +238,7 @@
     box.className = 'git-setup';
     box.style.cssText = 'display:grid;gap:4px;margin-top:8px;';
     box.append(
-      labeledInput('GitHub backend URL', 'gitBackendInput', git.backendBase || DEFAULT_GITHUB_BACKEND),
+      labeledInput('GitHub backend URL', 'gitBackendInput', activeGithubBackend()),
       labeledInput('Owner / org', 'gitOwnerInput', git.owner || ''),
       labeledInput('Repo', 'gitRepoInput', git.repo || ''),
       labeledInput('Branch', 'gitBranchInput', git.branch || 'main'),
@@ -469,7 +481,7 @@
     loadGitSettings();
     pullGitSetup();
     return {
-      backendBase: git.backendBase || DEFAULT_GITHUB_BACKEND,
+      backendBase: activeGithubBackend(),
       owner: git.owner || '',
       repo: git.repo || '',
       branch: git.branch || 'main',
@@ -498,7 +510,12 @@
     const branch = document.getElementById('gitBranchInput');
     const rootPath = document.getElementById('gitRootPathInput');
     const commitMessage = document.getElementById('gitCommitMessageInput');
-    if (backend) git.backendBase = String(backend.value || '').trim() || DEFAULT_GITHUB_BACKEND;
+    if (backend) {
+      git.backendBase = String(backend.value || '').trim() || DEFAULT_GITHUB_BACKEND;
+      NS.BackendUrlSettings?.mirrorGithubBackendToGitSettings?.(git.backendBase);
+    } else if (settingsGithubBackend()) {
+      git.backendBase = settingsGithubBackend();
+    }
     if (owner) git.owner = String(owner.value || '').trim();
     if (repo) git.repo = String(repo.value || '').trim();
     if (branch) git.branch = String(branch.value || '').trim() || 'main';
@@ -508,7 +525,7 @@
   }
 
   async function gitFetch(path, body) {
-    const url = String(git.backendBase || DEFAULT_GITHUB_BACKEND).replace(/\/$/, '') + path;
+    const url = String(activeGithubBackend()).replace(/\/$/, '') + path;
     const response = await fetch(url, {
       method: body ? 'POST' : 'GET',
       headers: { 'Content-Type': 'application/json' },

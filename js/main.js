@@ -84,7 +84,7 @@
       project.updatedAt = project.createdAt;
       project.settings = settings;
       project.meta = Object.assign({}, project.meta || {}, {
-        architectureStage: 'stage19c-clean-new-project-github-repo-workflow',
+        architectureStage: 'stage19c2-github-backend-url-settings-field',
         cleanNewProject: true,
         previousProjectName: currentName
       });
