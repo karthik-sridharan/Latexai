@@ -98,9 +98,14 @@
     return { project, settings: project.settings, loaded: !!localStorage.getItem(STORAGE_KEY) };
   }
 
+  function clearFullProjectCache() {
+    localStorage.removeItem(FULL_PROJECT_CACHE_KEY);
+  }
+
   function clearLocal() {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SETTINGS_KEY);
+    clearFullProjectCache();
   }
 
   function saveSnapshot(project, label = 'manual') {
@@ -139,6 +144,7 @@
     saveLocal,
     loadLocal,
     clearLocal,
+    clearFullProjectCache,
     saveSnapshot,
     listSnapshots
   };

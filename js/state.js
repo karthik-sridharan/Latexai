@@ -250,6 +250,26 @@
     emit('reset');
   }
 
+  function resetProjectClean(project, options = {}) {
+    // Stage 19C: New Project must be truly fresh. Do not merge the old full-project
+    // cache into the new default files, but preserve backend/API settings by default.
+    const preserveSettings = options.preserveSettings !== false;
+    const currentSettings = Object.assign(Model().defaultSettings(), state.settings || {}, state.project?.settings || {});
+    try { Store().clearFullProjectCache?.(); } catch (_err) {}
+    localStorage.removeItem(FULL_PROJECT_CACHE_KEY);
+    state.project = Model().normalizeProject(project || Model().defaultProject());
+    state.settings = preserveSettings
+      ? Object.assign(Model().defaultSettings(), currentSettings, state.project.settings || {})
+      : Object.assign(Model().defaultSettings(), state.project.settings || {});
+    enforceSafetySettings();
+    state.project.settings = Object.assign({}, state.settings);
+    state.dirty = true;
+    ensureValidActiveFile();
+    save();
+    emit('reset');
+    return state.project;
+  }
+
   function ensureValidActiveFile() {
     const p = state.project;
     if (!p.files.some((file) => file.path === p.activePath)) p.activePath = p.files[0]?.path || 'main.tex';

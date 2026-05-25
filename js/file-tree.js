@@ -422,6 +422,75 @@
     }
   }
 
+
+  async function createProjectRepository(project, options = {}) {
+    loadGitSettings();
+    pullGitSetup();
+    const normalizedProject = State().defaultProject ? W.LuminaLatex.ProjectModel.normalizeProject(project) : project;
+    const repoName = sanitizeRepoName(options.repoName || normalizedProject?.name || 'latexai-project');
+    if (!repoName) throw new Error('Could not derive a GitHub repository name from the project name.');
+    const branch = String(options.branch || git.branch || 'main').trim() || 'main';
+    const files = {};
+    for (const file of normalizedProject.files || []) files[file.path] = fileContentForGithub(file);
+    const result = await gitFetch('/create-project-repo', {
+      owner: options.owner || git.owner || '',
+      repo: repoName,
+      branch,
+      rootPath: normalizeRepoPath(options.rootPath || git.rootPath || ''),
+      private: options.private !== false,
+      description: options.description || `Latexai project: ${normalizedProject.name || repoName}`,
+      project: normalizedProject,
+      files,
+      message: options.message || `Latexai new project: ${normalizedProject.name || repoName}`
+    });
+    git.owner = result.owner || result.repoOwner || git.owner || '';
+    git.repo = result.repo || repoName;
+    git.branch = result.branch || branch;
+    git.rootPath = normalizeRepoPath(result.rootPath || options.rootPath || git.rootPath || '');
+    git.headSha = result.commitSha || result.headSha || git.headSha || null;
+    git.status = `Created GitHub repository ${git.owner}/${git.repo}.\nInitial commit: ${git.headSha || 'created'}`;
+    saveGitSettings();
+    render();
+    return {
+      ok: true,
+      result,
+      github: {
+        owner: git.owner,
+        repo: git.repo,
+        branch: git.branch,
+        rootPath: git.rootPath,
+        headSha: git.headSha,
+        htmlUrl: result.htmlUrl || result.repoUrl || ''
+      }
+    };
+  }
+
+  function getGithubSettings() {
+    loadGitSettings();
+    pullGitSetup();
+    return {
+      backendBase: git.backendBase || DEFAULT_GITHUB_BACKEND,
+      owner: git.owner || '',
+      repo: git.repo || '',
+      branch: git.branch || 'main',
+      rootPath: normalizeRepoPath(git.rootPath || ''),
+      headSha: git.headSha || null
+    };
+  }
+
+  function sanitizeRepoName(value) {
+    let repo = String(value || '')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9_.-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/\.{2,}/g, '.')
+      .slice(0, 90);
+    if (!repo) repo = 'latexai-project';
+    if (!/^[A-Za-z0-9]/.test(repo)) repo = 'latexai-' + repo;
+    return repo;
+  }
+
   function pullGitSetup() {
     const backend = document.getElementById('gitBackendInput');
     const owner = document.getElementById('gitOwnerInput');
@@ -559,5 +628,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, commitAllToGithub, checkGithubBackend, defaultCommitMessage, commitMessageForGithub };
+  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, commitAllToGithub, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub };
 })();

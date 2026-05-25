@@ -44,15 +44,83 @@
   }
 
   function bindTopActions() {
-    document.getElementById('newProjectBtn')?.addEventListener('click', () => {
-      if (!confirm('Start a new LaTeX project? Current local changes should already be autosaved, but this will replace the active project.')) return;
-      NS.State.resetProject(NS.State.defaultProject());
-      toast('New project created.');
-    });
+    document.getElementById('newProjectBtn')?.addEventListener('click', createNewProjectWorkflow);
     document.getElementById('saveProjectBtn')?.addEventListener('click', () => {
       NS.State.save();
       toast('Saved locally.');
     });
+  }
+
+
+  async function createNewProjectWorkflow() {
+    const currentName = NS.State.state.project?.name || 'Untitled Lumina LaTeX Project';
+    const name = prompt('New project name', 'Untitled Latexai Project');
+    if (!name || !String(name).trim()) return;
+    const cleanName = String(name).trim();
+    const suggestedRepo = NS.FileTree?.sanitizeRepoName?.(cleanName) || cleanName.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'latexai-project';
+    const repoName = prompt('New GitHub repository name', suggestedRepo);
+    if (!repoName || !String(repoName).trim()) return;
+
+    const message = [
+      `Create new project “${cleanName}”?`,
+      '',
+      `This will replace the active local project “${currentName}”.`,
+      'Backend/API settings will be kept.',
+      `A new GitHub repository named “${String(repoName).trim()}” will be created and used for this project.`
+    ].join('\n');
+    if (!confirm(message)) return;
+
+    const btn = document.getElementById('newProjectBtn');
+    const oldText = btn?.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+    try {
+      const settings = Object.assign({}, NS.State.state.settings || {}, NS.State.state.project?.settings || {});
+      const project = NS.State.defaultProject();
+      project.name = cleanName;
+      project.title = cleanName;
+      project.projectId = NS.ProjectModel?.uid?.('project') || project.projectId;
+      project.id = project.projectId;
+      project.createdAt = NS.ProjectModel?.nowIso?.() || new Date().toISOString();
+      project.updatedAt = project.createdAt;
+      project.settings = settings;
+      project.meta = Object.assign({}, project.meta || {}, {
+        architectureStage: 'stage19c-clean-new-project-github-repo-workflow',
+        cleanNewProject: true,
+        previousProjectName: currentName
+      });
+      project.files = (project.files || []).map((file) => {
+        if (file.path !== 'main.tex') return file;
+        return Object.assign({}, file, {
+          text: String(file.text || '')
+            .replace(/\title\{[^}]*\}/, `\\title{${escapeLatexTitle(cleanName)}}`)
+        });
+      });
+
+      toast('Creating GitHub repository…');
+      const gh = await NS.FileTree?.createProjectRepository?.(project, {
+        repoName: String(repoName).trim(),
+        private: true,
+        message: `Latexai new project: ${cleanName}`
+      });
+      if (!gh?.github?.owner || !gh?.github?.repo) throw new Error('GitHub repository was not created.');
+      project.github = Object.assign({}, gh.github);
+      project.meta.github = Object.assign({}, gh.github);
+      NS.State.resetProjectClean ? NS.State.resetProjectClean(project, { preserveSettings: true }) : NS.State.resetProject(project);
+      NS.FileTree?.render?.();
+      NS.Preview?.renderDraftPreview?.();
+      toast(`New project created: ${gh.github.owner}/${gh.github.repo}`);
+    } catch (err) {
+      alert(`New project failed:\n${err?.message || err}\n\nNo local project reset was performed.`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = oldText || 'New project'; }
+    }
+  }
+
+  function escapeLatexTitle(value) {
+    return String(value || '')
+      .replace(/([#$%&_{}])/g, '\\$1')
+      .replace(/~/g, '\\textasciitilde{}')
+      .replace(/\^/g, '\\textasciicircum{}');
   }
 
   function renderStage() {
