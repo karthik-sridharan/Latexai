@@ -1,5 +1,5 @@
-/* Latexai Stage 19B CompetitivePaperReviewService
- * Stage: stage19b-lai-edit-validation-safety-pass-20260524-1
+/* Latexai Stage 19D CompetitivePaperReviewService
+ * Stage: stage19d-github-save-checkpoint-workflow-20260525-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19b-lai-edit-validation-safety-pass-20260524-1';
+  const STAGE = 'stage19d-github-save-checkpoint-workflow-20260525-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -2521,10 +2521,26 @@
     return { ok: true, reason: '', text: [header, hint, impactLine, evidenceLine, '\\lai{', prepared.text, '}', footer].filter(Boolean).join('\n') };
   }
 
+  async function checkpointBeforeRiskySourceAction(label) {
+    try {
+      if (!NS.FileTree?.autoCheckpointBeforeRiskyAction) return true;
+      const checkpoint = await NS.FileTree.autoCheckpointBeforeRiskyAction(label, { updateStatus: true });
+      if (checkpoint?.ok || checkpoint?.skipped) return true;
+      const message = checkpoint?.error || checkpoint?.reason || 'Unknown checkpoint failure.';
+      return confirm(`Auto-checkpoint before ${label} failed:\n${message}\n\nProceed without a GitHub checkpoint?`);
+    } catch (err) {
+      return confirm(`Auto-checkpoint before ${label} failed:\n${err?.message || err}\n\nProceed without a GitHub checkpoint?`);
+    }
+  }
+
   async function insertActionableEditsAtMatches() {
     if (!lastReport) {
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
+    }
+    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + insert \lai edits'))) {
+      setStatus('Insert \lai edits cancelled because GitHub checkpoint did not complete.');
+      return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
     }
 
     const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-insert', 16, lastReport.slice(0, 10000));
@@ -2600,6 +2616,10 @@
     if (!lastReport) {
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
+    }
+    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + append \lai plan'))) {
+      setStatus('Append \lai plan cancelled because GitHub checkpoint did not complete.');
+      return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
     }
 
     const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-append-plan', 16, lastReport.slice(0, 10000));

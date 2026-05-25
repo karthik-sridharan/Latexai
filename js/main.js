@@ -84,7 +84,7 @@
       project.updatedAt = project.createdAt;
       project.settings = settings;
       project.meta = Object.assign({}, project.meta || {}, {
-        architectureStage: 'stage19c2-github-backend-url-settings-field',
+        architectureStage: 'stage19d-github-save-checkpoint-workflow',
         cleanNewProject: true,
         previousProjectName: currentName
       });

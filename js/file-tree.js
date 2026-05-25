@@ -8,6 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
+  const STAGE = 'stage19d-github-save-checkpoint-workflow-20260525-1';
 
   const git = {
     setupOpen: false,
@@ -29,6 +30,36 @@
   function activeGithubBackend() {
     const fromSettings = String(settingsGithubBackend() || '').trim();
     return fromSettings || git.backendBase || DEFAULT_GITHUB_BACKEND;
+  }
+
+  function syncGitFromProject(project = null) {
+    try {
+      const gh = (project || State().state.project || {}).github || {};
+      if (!gh || typeof gh !== 'object') return false;
+      if (gh.owner && !git.owner) git.owner = String(gh.owner || '').trim();
+      if (gh.repo && !git.repo) git.repo = String(gh.repo || '').trim();
+      if (gh.branch && (!git.branch || git.branch === 'main')) git.branch = String(gh.branch || 'main').trim() || 'main';
+      if (gh.rootPath && !git.rootPath) git.rootPath = normalizeRepoPath(gh.rootPath || '');
+      if (gh.headSha && !git.headSha) git.headSha = String(gh.headSha || '').trim();
+      if (gh.owner || gh.repo) {
+        git.backendBase = activeGithubBackend();
+        return true;
+      }
+    } catch (_err) {}
+    return false;
+  }
+
+  function isGithubAttached() {
+    syncGitFromProject();
+    return Boolean((git.owner || '').trim() && (git.repo || '').trim());
+  }
+
+  function attachedRepoLabel() {
+    syncGitFromProject();
+    if (!git.owner || !git.repo) return 'not attached';
+    const folder = normalizeRepoPath(git.rootPath || '');
+    const branch = git.branch || 'main';
+    return `${git.owner}/${git.repo}${folder ? '/' + folder : ''} @ ${branch}`;
   }
 
   function loadGitSettings() {
@@ -57,6 +88,7 @@
         }
       } catch (_err) {}
     }
+    syncGitFromProject();
     const fromSettings = settingsGithubBackend();
     if (fromSettings) git.backendBase = fromSettings;
   }
@@ -88,6 +120,7 @@
     const tree = document.getElementById('fileTree');
     if (!tree) return;
     const { project } = State().state;
+    syncGitFromProject(project);
     tree.innerHTML = '';
 
     const header = document.createElement('div');
@@ -101,7 +134,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • Stage 6D</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19D</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -125,7 +158,8 @@
     actions.append(
       button('Check', checkGithubBackend, 'btn mini'),
       button('Load', loadFromGithub, 'btn mini'),
-      button('Commit', commitAllToGithub, 'btn mini')
+      button('Save GitHub', commitAllToGithub, 'btn mini'),
+      button('Checkpoint', promptCheckpointToGithub, 'btn mini')
     );
     header.appendChild(actions);
 
@@ -387,50 +421,133 @@
     }
   }
 
+  function projectFilesForGithub(project) {
+    const files = {};
+    for (const file of project.files || []) files[file.path] = fileContentForGithub(file);
+    return files;
+  }
+
+  async function commitProjectToGithub(options = {}) {
+    pullGitSetup();
+    syncGitFromProject();
+    if (!git.owner || !git.repo) {
+      throw new Error('No GitHub repository is attached. Create a GitHub-backed project or load a project from GitHub first.');
+    }
+    State().mergeFullProjectCacheIntoCurrent?.(options.reason || 'pre-github-save');
+    State().save();
+
+    const project = State().state.project;
+    const files = projectFilesForGithub(project);
+    const paths = Object.keys(files).sort();
+    if (!paths.length) throw new Error('No files to commit.');
+
+    const message = String(options.message || '').trim() || commitMessageForGithub();
+    if (options.updateStatus !== false) {
+      git.status = `${options.statusPrefix || 'Saving'} ${paths.length} files to GitHub...\nRepo: ${attachedRepoLabel()}\nMessage: ${message}`;
+      render();
+    }
+
+    const result = await gitFetch('/autosave-commit', {
+      owner: git.owner,
+      repo: git.repo,
+      branch: git.branch || 'main',
+      rootPath: normalizeRepoPath(git.rootPath || ''),
+      expectedHeadSha: options.skipExpectedHead ? null : (options.expectedHeadSha || git.headSha || project.github?.headSha || null),
+      message,
+      project,
+      files
+    });
+
+    git.headSha = result.commitSha || git.headSha;
+    const github = Object.assign({}, project.github || {}, {
+      owner: git.owner,
+      repo: git.repo,
+      branch: git.branch || 'main',
+      rootPath: normalizeRepoPath(git.rootPath || ''),
+      headSha: git.headSha,
+      lastSavedAt: new Date().toISOString(),
+      lastSaveMessage: message
+    });
+    State().state.project.github = github;
+    State().state.project.meta = Object.assign({}, State().state.project.meta || {}, { github, lastGithubSaveStage: STAGE });
+    saveGitSettings();
+    State().save();
+    if (options.updateStatus !== false) {
+      git.status = `${options.donePrefix || 'Saved'} ${result.fileCount || paths.length} files to GitHub.\nRepo: ${attachedRepoLabel()}\nMessage: ${message}\nCommit: ${result.commitSha || 'unknown'}`;
+      render();
+    }
+    return result;
+  }
+
   async function commitAllToGithub() {
     try {
-      pullGitSetup();
-      if (!git.owner || !git.repo) throw new Error('Owner and repo are required.');
-      State().mergeFullProjectCacheIntoCurrent?.('pre-github-commit');
-      State().save();
-
-      const project = State().state.project;
-      const files = {};
-      for (const file of project.files) files[file.path] = fileContentForGithub(file);
-
-      const paths = Object.keys(files).sort();
-      if (!paths.length) throw new Error('No files to commit.');
-
-      const message = commitMessageForGithub();
-      git.status = `Committing ${paths.length} files...\nMessage: ${message}`;
-      render();
-
-      const result = await gitFetch('/autosave-commit', {
-        owner: git.owner,
-        repo: git.repo,
-        branch: git.branch || 'main',
-        rootPath: normalizeRepoPath(git.rootPath || ''),
-        expectedHeadSha: git.headSha || project.github?.headSha || null,
-        message,
-        project,
-        files
+      const result = await commitProjectToGithub({
+        reason: 'manual-github-save',
+        statusPrefix: 'Saving',
+        donePrefix: 'Saved'
       });
-
-      git.headSha = result.commitSha || git.headSha;
-      git.status = `Committed ${result.fileCount || paths.length} files.\nMessage: ${message}\nCommit: ${result.commitSha || 'unknown'}`;
-      saveGitSettings();
-      State().state.project.github = Object.assign({}, project.github || {}, {
-        owner: git.owner,
-        repo: git.repo,
-        branch: git.branch || 'main',
-        rootPath: normalizeRepoPath(git.rootPath || ''),
-        headSha: git.headSha
-      });
-      State().save();
-      W.LuminaLatex.Main?.toast?.('Committed to GitHub.');
+      W.LuminaLatex.Main?.toast?.(`Saved to GitHub: ${(result.commitSha || '').slice(0, 7) || 'commit created'}`);
+      return result;
     } catch (err) {
-      git.status = `Commit failed:\n${err.message || err}`;
+      git.status = `GitHub save failed:\n${err.message || err}`;
       render();
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
+  function checkpointMessage(label = '') {
+    const clean = String(label || '').trim();
+    const suffix = clean ? clean.replace(/^checkpoint:\s*/i, '') : 'manual checkpoint';
+    return `checkpoint: ${suffix} (${new Date().toISOString()})`;
+  }
+
+  async function createCheckpointToGithub(labelOrOptions = {}) {
+    const options = typeof labelOrOptions === 'string' ? { label: labelOrOptions } : Object.assign({}, labelOrOptions || {});
+    const message = options.message || checkpointMessage(options.label || options.reason || 'manual checkpoint');
+    return commitProjectToGithub({
+      reason: options.reason || 'github-checkpoint',
+      message,
+      statusPrefix: options.statusPrefix || 'Creating checkpoint for',
+      donePrefix: options.donePrefix || 'Checkpointed',
+      updateStatus: options.updateStatus !== false
+    });
+  }
+
+  async function promptCheckpointToGithub() {
+    try {
+      const label = prompt('Checkpoint name', 'before major AI edit');
+      if (label === null) return { ok: false, cancelled: true };
+      const result = await createCheckpointToGithub({ label: label || 'manual checkpoint' });
+      W.LuminaLatex.Main?.toast?.(`Checkpoint saved: ${(result.commitSha || '').slice(0, 7) || 'commit created'}`);
+      return result;
+    } catch (err) {
+      git.status = `Checkpoint failed:\n${err.message || err}`;
+      render();
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
+  async function autoCheckpointBeforeRiskyAction(reason = 'risky AI action', options = {}) {
+    try {
+      loadGitSettings();
+      syncGitFromProject();
+      if (!isGithubAttached()) {
+        return { ok: false, skipped: true, reason: 'No GitHub repository attached.' };
+      }
+      const message = options.message || checkpointMessage(`before ${reason}`);
+      const result = await createCheckpointToGithub({
+        reason: `auto-checkpoint:${reason}`,
+        message,
+        statusPrefix: 'Auto-checkpointing before',
+        donePrefix: 'Auto-checkpoint created for',
+        updateStatus: options.updateStatus !== false
+      });
+      return { ok: true, result, commitSha: result.commitSha || '' };
+    } catch (err) {
+      const message = err?.message || String(err);
+      git.status = `Auto-checkpoint failed before ${reason}:\n${message}`;
+      render();
+      return { ok: false, error: message };
     }
   }
 
@@ -479,6 +596,7 @@
 
   function getGithubSettings() {
     loadGitSettings();
+    syncGitFromProject();
     pullGitSetup();
     return {
       backendBase: activeGithubBackend(),
@@ -645,5 +763,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, commitAllToGithub, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub };
+  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached };
 })();

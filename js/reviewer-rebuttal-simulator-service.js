@@ -1,5 +1,5 @@
-/* Latexai Stage 19A ReviewerRebuttalSimulatorService
- * Stage: stage19a-memory-aware-final-paper-rewrite-20260524-1
+/* Latexai Stage 19D ReviewerRebuttalSimulatorService
+ * Stage: stage19d-github-save-checkpoint-workflow-20260525-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19a-memory-aware-final-paper-rewrite-20260524-1';
+  const STAGE = 'stage19d-github-save-checkpoint-workflow-20260525-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -757,10 +757,26 @@ ${input}` : input,
     }
   }
 
+  async function checkpointBeforeFinalSynthesis() {
+    try {
+      if (!NS.FileTree?.autoCheckpointBeforeRiskyAction) return true;
+      const checkpoint = await NS.FileTree.autoCheckpointBeforeRiskyAction('reviewer/rebuttal final synthesis', { updateStatus: true });
+      if (checkpoint?.ok || checkpoint?.skipped) return true;
+      const message = checkpoint?.error || checkpoint?.reason || 'Unknown checkpoint failure.';
+      return confirm(`Auto-checkpoint before reviewer/rebuttal final synthesis failed:\n${message}\n\nProceed without a GitHub checkpoint?`);
+    } catch (err) {
+      return confirm(`Auto-checkpoint before reviewer/rebuttal final synthesis failed:\n${err?.message || err}\n\nProceed without a GitHub checkpoint?`);
+    }
+  }
+
   async function synthesizeFinalRevision() {
     const payload = lastPayload || buildPayload();
     if (!lastReviews.length) await runReviews();
     if (!lastRebuttal) await generateRebuttal();
+    if (!(await checkpointBeforeFinalSynthesis())) {
+      setStatus('Final synthesis cancelled because GitHub checkpoint did not complete.');
+      return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
+    }
     setStatus('Synthesizing final revision plan and paper rewrite proposal...');
     const instructions = [
       'You are the final synthesis agent for a paper revision workflow.',
