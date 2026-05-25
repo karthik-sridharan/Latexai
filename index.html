@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19e-open-existing-github-project-20260525-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19e2-open-github-load-apply-fix-20260525-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -76,7 +76,7 @@
 <script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="latex-stage19e-open-existing-github-project-20260525-1">
+<div class="app-shell" data-stage="latex-stage19e2-open-github-load-apply-fix-20260525-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -432,7 +432,7 @@
 <script src="js/state.js?v=stage4e-editor-forced-lai-guard-1" defer></script>
 <script src="js/editor.js?v=stage4j-always-visible-lai-guard-1" defer></script>
 <script src="js/editor-enhancement-service.js?v=stage18l-shortcut-manager-full-width-layout-1" defer></script>
-<script src="js/file-tree.js?v=stage19e-open-existing-github-project-1" defer></script>
+<script src="js/file-tree.js?v=stage19e2-open-github-load-apply-fix-1" defer></script>
 <script src="js/preview.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/import-export.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/selection-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
@@ -442,7 +442,7 @@
 <script src="js/copilot.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
 <script src="js/selection-action-bubble.js?v=stage7c-move-selection-bubble-left-1" defer></script>
 <script src="js/diagnostics.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
-<script src="js/main.js?v=stage19e-open-existing-github-project-1" defer></script>
+<script src="js/main.js?v=stage19e2-open-github-load-apply-fix-1" defer></script>
 <script src="js/lai-stage5e-panel-scroll-pdf-viewer.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/pdf-region-selection-service.js?v=stage7d-pdf-region-selection-1" defer></script>
 <script src="js/asset-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
@@ -450,9 +450,9 @@
 <script src="js/image-to-tikz-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
 <script src="js/document-ai-service.js?v=stage11g-resolve-laiold-lai-edits-1" defer></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
-<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19e-open-existing-github-project-1"></script>
+<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19e2-open-github-load-apply-fix-1"></script>
 <script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19e-open-existing-github-project-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19e2-open-github-load-apply-fix-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
@@ -498,7 +498,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19e-open-existing-github-project-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19e2-open-github-load-apply-fix-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -555,7 +555,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19e-open-existing-github-project-1&watchdog=' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19e2-open-github-load-apply-fix-1&watchdog=' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
