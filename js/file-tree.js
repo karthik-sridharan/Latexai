@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19e2-open-github-load-apply-fix-20260525-1';
+  const STAGE = 'stage19e3-open-github-specific-repo-selection-fix-20260525-1';
 
   const git = {
     setupOpen: false,
@@ -532,7 +532,8 @@
 
   async function loadFromGithub(options = {}) {
     try {
-      pullGitSetup();
+      const hasExplicitRepoSelection = !!(options.fromPrompt || options.owner || options.repo || options.branch || options.rootPath !== undefined);
+      pullGitSetup({ keepRepoSelection: hasExplicitRepoSelection });
       if (options.owner) git.owner = String(options.owner || '').trim();
       if (options.repo) git.repo = String(options.repo || '').trim();
       if (options.branch) git.branch = String(options.branch || 'main').trim() || 'main';
@@ -793,7 +794,8 @@ ${message}`);
     return repo;
   }
 
-  function pullGitSetup() {
+  function pullGitSetup(options = {}) {
+    const keepRepoSelection = !!options.keepRepoSelection;
     const backend = document.getElementById('gitBackendInput');
     const owner = document.getElementById('gitOwnerInput');
     const repo = document.getElementById('gitRepoInput');
@@ -806,10 +808,16 @@ ${message}`);
     } else if (settingsGithubBackend()) {
       git.backendBase = settingsGithubBackend();
     }
-    if (owner) git.owner = String(owner.value || '').trim();
-    if (repo) git.repo = String(repo.value || '').trim();
-    if (branch) git.branch = String(branch.value || '').trim() || 'main';
-    if (rootPath) git.rootPath = normalizeRepoPath(rootPath.value);
+    // Stage 19E3: when Open GitHub has just prompted for a specific repo,
+    // do not let stale hidden Git panel inputs overwrite that explicit choice.
+    // The previous 19E2 path called pullGitSetup() inside loadFromGithub(),
+    // which could reset git.owner/git.repo back to the recently attached repo.
+    if (!keepRepoSelection) {
+      if (owner) git.owner = String(owner.value || '').trim();
+      if (repo) git.repo = String(repo.value || '').trim();
+      if (branch) git.branch = String(branch.value || '').trim() || 'main';
+      if (rootPath) git.rootPath = normalizeRepoPath(rootPath.value);
+    }
     if (commitMessage) git.commitMessage = String(commitMessage.value || '');
     saveGitSettings();
   }
