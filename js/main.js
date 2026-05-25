@@ -45,6 +45,7 @@
 
   function bindTopActions() {
     document.getElementById('newProjectBtn')?.addEventListener('click', createNewProjectWorkflow);
+    document.getElementById('openGithubProjectBtn')?.addEventListener('click', () => NS.FileTree?.promptOpenGithubProject?.());
     document.getElementById('saveProjectBtn')?.addEventListener('click', () => {
       NS.State.save();
       toast('Saved locally.');
@@ -84,7 +85,7 @@
       project.updatedAt = project.createdAt;
       project.settings = settings;
       project.meta = Object.assign({}, project.meta || {}, {
-        architectureStage: 'stage19d-github-save-checkpoint-workflow',
+        architectureStage: 'stage19e-open-existing-github-project',
         cleanNewProject: true,
         previousProjectName: currentName
       });
@@ -105,6 +106,8 @@
       if (!gh?.github?.owner || !gh?.github?.repo) throw new Error('GitHub repository was not created.');
       project.github = Object.assign({}, gh.github);
       project.meta.github = Object.assign({}, gh.github);
+      if (NS.FileTree?.applyGithubIdentity) NS.FileTree.applyGithubIdentity(project, gh.github);
+      project.meta = Object.assign({}, project.meta || {}, { architectureStage: 'stage19e-open-existing-github-project' });
       NS.State.resetProjectClean ? NS.State.resetProjectClean(project, { preserveSettings: true }) : NS.State.resetProject(project);
       NS.FileTree?.render?.();
       NS.Preview?.renderDraftPreview?.();

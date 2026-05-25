@@ -1,5 +1,5 @@
 /* Latexai Stage 19D CompetitivePaperReviewService
- * Stage: stage19d-github-save-checkpoint-workflow-20260525-1
+ * Stage: stage19e-open-existing-github-project-20260525-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19d-github-save-checkpoint-workflow-20260525-1';
+  const STAGE = 'stage19e-open-existing-github-project-20260525-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -837,7 +837,9 @@
     const titleGuess = extractLatexTitle(rootText) || extractLatexTitle(active?.text || '');
     const pieces = texFiles.map((file) => `${normalizePath(file.path)}\n${fileText(file)}`).join('\n\n---LATEXAI-FILE---\n\n');
     const sourceCorpus = pieces || String(active?.text || rootText || '');
-    const projectLabel = clean(p.id || p.projectId || p.name || p.title || root || W.location?.pathname || 'local-latexai-project');
+    const gh = p.github || p.meta?.github || {};
+    const githubLabel = gh?.owner && gh?.repo ? `github:${gh.owner}/${gh.repo}:${gh.branch || 'main'}:${gh.rootPath || ''}` : '';
+    const projectLabel = clean(githubLabel || p.id || p.projectId || p.name || p.title || root || W.location?.pathname || 'local-latexai-project');
     const sourceHash = stableHash(sourceCorpus);
     const fallbackClue = stableHash(String(rootText || sourceCorpus).slice(0, 12000));
     const documentFingerprint = stableHash([projectLabel, root, titleGuess || fallbackClue].join('\n'));
@@ -928,7 +930,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19b-lai-edit-validation-safety-pass',
+        identityStage: 'stage19e-open-existing-github-project',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,

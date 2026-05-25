@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19d-github-save-checkpoint-workflow-20260525-1';
+  const STAGE = 'stage19e-open-existing-github-project-20260525-1';
 
   const git = {
     setupOpen: false,
@@ -134,7 +134,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19D</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -158,6 +158,7 @@
     actions.append(
       button('Check', checkGithubBackend, 'btn mini'),
       button('Load', loadFromGithub, 'btn mini'),
+      button('Open GitHub', promptOpenGithubProject, 'btn mini'),
       button('Save GitHub', commitAllToGithub, 'btn mini'),
       button('Checkpoint', promptCheckpointToGithub, 'btn mini')
     );
@@ -381,10 +382,118 @@
     }
   }
 
-  async function loadFromGithub() {
+  function parseGithubRepoSpec(input) {
+    let value = String(input || '').trim();
+    if (!value) return null;
+    value = value.replace(/^https?:\/\/github\.com\//i, '').replace(/^git@github\.com:/i, '').replace(/\.git$/i, '');
+    value = value.replace(/^\/+|\/+$/g, '');
+    const parts = value.split('/').filter(Boolean);
+    if (parts.length < 2) return null;
+    return { owner: parts[0], repo: parts[1] };
+  }
+
+  function stableHash(value) {
+    const text = String(value || '');
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  function githubIdentitySeed(gh = {}, rootFile = 'main.tex', titleGuess = '') {
+    return [
+      'github',
+      String(gh.owner || '').trim().toLowerCase(),
+      String(gh.repo || '').trim().toLowerCase(),
+      String(gh.branch || 'main').trim() || 'main',
+      normalizeRepoPath(gh.rootPath || ''),
+      String(rootFile || 'main.tex').trim(),
+      String(titleGuess || '').trim().slice(0, 180)
+    ].join('\n');
+  }
+
+  function githubScopedIds(gh = {}, rootFile = 'main.tex', titleGuess = '') {
+    const seed = githubIdentitySeed(gh, rootFile, titleGuess);
+    const projectSeed = [String(gh.owner || '').trim().toLowerCase(), String(gh.repo || '').trim().toLowerCase(), normalizeRepoPath(gh.rootPath || '')].join('/');
+    return {
+      projectId: `github-project-${stableHash(projectSeed)}`,
+      paperId: `github-paper-${stableHash(seed)}`,
+      identitySeed: seed
+    };
+  }
+
+  function guessTitleFromFiles(files = {}, rootFile = 'main.tex') {
+    try {
+      const text = String(files[rootFile] || Object.entries(files).find(([path]) => /\.tex$/i.test(path))?.[1] || '');
+      const match = text.match(/\\title\s*(?:\[[^\]]*\])?\s*\{([\s\S]{0,500}?)\}/);
+      return match ? String(match[1] || '').replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*\])?/g, '').replace(/[{}]/g, '').trim().slice(0, 180) : '';
+    } catch (_err) { return ''; }
+  }
+
+  function applyGithubIdentity(project, gh) {
+    if (!project || !gh?.owner || !gh?.repo) return project;
+    const filesObj = Array.isArray(project.files)
+      ? Object.fromEntries(project.files.map((file) => [file.path, file.text || '']))
+      : (project.files || {});
+    const rootFile = project.rootFile || 'main.tex';
+    const titleGuess = guessTitleFromFiles(filesObj, rootFile) || project.name || `${gh.owner}/${gh.repo}`;
+    const ids = githubScopedIds(gh, rootFile, titleGuess);
+    project.projectId = ids.projectId;
+    project.id = ids.projectId;
+    project.paperId = ids.paperId;
+    project.github = Object.assign({}, project.github || {}, gh);
+    project.meta = Object.assign({}, project.meta || {}, {
+      github: Object.assign({}, gh),
+      githubIdentityStage: STAGE,
+      githubIdentitySeed: ids.identitySeed,
+      paperId: ids.paperId,
+      openedFromGithubAt: new Date().toISOString()
+    });
+    return project;
+  }
+
+  async function promptOpenGithubProject() {
+    loadGitSettings();
+    syncGitFromProject();
+    const existing = git.owner && git.repo ? `${git.owner}/${git.repo}` : '';
+    const spec = prompt('Open GitHub project (owner/repo or GitHub URL)', existing || 'owner/repo');
+    if (!spec || !String(spec).trim()) return { ok: false, cancelled: true };
+    const parsed = parseGithubRepoSpec(spec);
+    if (!parsed) {
+      alert('Please enter a GitHub repository as owner/repo, or paste a https://github.com/owner/repo URL.');
+      return { ok: false, error: 'invalid repo spec' };
+    }
+    const branch = prompt('Branch', git.branch || 'main');
+    if (branch === null) return { ok: false, cancelled: true };
+    const rootPath = prompt('Folder path inside repo (blank for repo root)', git.rootPath || '');
+    if (rootPath === null) return { ok: false, cancelled: true };
+    const currentName = State().state.project?.name || 'current local project';
+    const message = [
+      `Open ${parsed.owner}/${parsed.repo}${rootPath ? '/' + normalizeRepoPath(rootPath) : ''} @ ${branch || 'main'}?`,
+      '',
+      `This will replace the active local project “${currentName}”.`,
+      'Backend/API settings will be kept.',
+      'If the current project is important, use Save GitHub or Export zip first.'
+    ].join('\n');
+    if (!confirm(message)) return { ok: false, cancelled: true };
+    git.owner = parsed.owner;
+    git.repo = parsed.repo;
+    git.branch = String(branch || 'main').trim() || 'main';
+    git.rootPath = normalizeRepoPath(rootPath || '');
+    saveGitSettings();
+    return loadFromGithub({ source: 'open-existing-github-project', preserveSettings: true });
+  }
+
+  async function loadFromGithub(options = {}) {
     try {
       pullGitSetup();
-      if (!git.owner || !git.repo) throw new Error('Owner and repo are required.');
+      if (options.owner) git.owner = String(options.owner || '').trim();
+      if (options.repo) git.repo = String(options.repo || '').trim();
+      if (options.branch) git.branch = String(options.branch || 'main').trim() || 'main';
+      if (options.rootPath !== undefined) git.rootPath = normalizeRepoPath(options.rootPath || '');
+      if (!git.owner || !git.repo) throw new Error('Owner and repo are required. Use Git → Open GitHub or fill owner/repo first.');
       git.status = 'Loading from GitHub...';
       render();
 
@@ -397,27 +506,33 @@
 
       if (!result.project || !result.project.files) throw new Error('Backend returned no project.files.');
 
-      const nextProject = Object.assign({}, result.project, {
-        github: {
-          owner: git.owner,
-          repo: git.repo,
-          branch: git.branch || 'main',
-          rootPath: normalizeRepoPath(git.rootPath || ''),
-          headSha: result.headSha || null
-        }
-      });
+      const github = {
+        owner: git.owner,
+        repo: git.repo,
+        branch: git.branch || 'main',
+        rootPath: normalizeRepoPath(git.rootPath || ''),
+        headSha: result.headSha || null,
+        openedAt: new Date().toISOString(),
+        openStage: STAGE
+      };
+
+      const nextProject = applyGithubIdentity(Object.assign({}, result.project, { github }), github);
 
       git.headSha = result.headSha || null;
-      git.status = `Loaded ${result.fileCount || Object.keys(result.project.files || {}).length} files from GitHub.`;
+      git.status = `Loaded ${result.fileCount || Object.keys(result.project.files || {}).length} files from GitHub.\nRepo: ${attachedRepoLabel()}`;
       saveGitSettings();
-      State().resetProject(nextProject);
-      State().rememberFullProject?.(State().state.project, 'github-load');
+      if (State().resetProjectClean) State().resetProjectClean(nextProject, { preserveSettings: true, reason: options.source || 'github-open' });
+      else State().resetProject(nextProject);
+      State().rememberFullProject?.(State().state.project, options.source || 'github-open');
       State().save();
       W.LuminaLatex.Preview?.renderDraftPreview?.();
-      W.LuminaLatex.Main?.toast?.('GitHub project loaded.');
+      W.LuminaLatex.Main?.toast?.('GitHub project opened.');
+      render();
+      return { ok: true, project: State().state.project, result };
     } catch (err) {
       git.status = `Load failed:\n${err.message || err}`;
       render();
+      return { ok: false, error: err?.message || String(err) };
     }
   }
 
@@ -763,5 +878,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached };
+  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec };
 })();
