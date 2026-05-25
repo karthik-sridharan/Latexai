@@ -1,5 +1,5 @@
-/* Latexai Stage 19A CompetitivePaperReviewService
- * Stage: stage19a-memory-aware-final-paper-rewrite-20260524-1
+/* Latexai Stage 19B CompetitivePaperReviewService
+ * Stage: stage19b-lai-edit-validation-safety-pass-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19a-memory-aware-final-paper-rewrite-20260524-1';
+  const STAGE = 'stage19b-lai-edit-validation-safety-pass-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -928,7 +928,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19a-memory-aware-final-paper-rewrite',
+        identityStage: 'stage19b-lai-edit-validation-safety-pass',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -2000,7 +2000,7 @@
       if (body.length > budget) {
         const head = body.slice(0, Math.floor(budget * 0.68));
         const tail = body.slice(-Math.floor(budget * 0.30));
-        body = `${head}\n\n% ... [middle omitted in Stage 19A rewrite prompt] ...\n\n${tail}`;
+        body = `${head}\n\n% ... [middle omitted in Stage 19B rewrite prompt] ...\n\n${tail}`;
       }
       chunks.push(header + body);
       remaining -= header.length + body.length;
@@ -2086,12 +2086,12 @@
       });
       const text = (NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '')).trim();
       if (text) {
-        await saveCompetitiveMemory(stepName, text, payload, { mode, source: 'stage19a-memory-aware-final-paper-rewrite', hasActionableEdits: /latexai_actionable_edits/i.test(text) });
+        await saveCompetitiveMemory(stepName, text, payload, { mode, source: 'stage19b-lai-edit-validation-safety-pass', hasActionableEdits: /latexai_actionable_edits/i.test(text) });
       }
       return { ok: Boolean(text), text, stepName };
     } catch (err) {
       const message = err?.message || String(err);
-      try { console.warn('[Latexai] Stage 19A final rewrite generation failed; falling back to existing report', err); } catch (_ignored) {}
+      try { console.warn('[Latexai] Stage 19B final rewrite generation failed; falling back to existing report', err); } catch (_ignored) {}
       return { ok: false, text: '', error: message, stepName };
     }
   }
@@ -2302,6 +2302,147 @@
     return { ok: true, reason: '', text: s };
   }
 
+  function countRegex(value, re) {
+    const s = String(value || '');
+    const flags = re.flags && re.flags.includes('g') ? re.flags : `${re.flags || ''}g`;
+    const rx = new RegExp(re.source, flags);
+    let n = 0;
+    while (rx.exec(s)) n += 1;
+    return n;
+  }
+
+  function findLatexMacroArgumentSpans(text, macroName, limit = 80) {
+    const s = String(text || '');
+    const spans = [];
+    const needle = `\\${macroName}`;
+    let pos = 0;
+    while (spans.length < limit) {
+      const at = s.indexOf(needle, pos);
+      if (at < 0) break;
+      const prev = s[at - 1] || '';
+      const afterName = s[at + needle.length] || '';
+      if ((/[A-Za-z]/.test(prev) && prev === '\\') || /[A-Za-z]/.test(afterName)) { pos = at + needle.length; continue; }
+      let i = at + needle.length;
+      while (/\s/.test(s[i] || '')) i += 1;
+      if (s[i] !== '{') { pos = at + needle.length; continue; }
+      let depth = 0;
+      for (let j = i; j < s.length; j += 1) {
+        const ch = s[j];
+        if ((ch === '{' || ch === '}') && isEscapedAt(s, j)) continue;
+        if (ch === '{') depth += 1;
+        if (ch === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            spans.push({ macroName, start: at, open: i, close: j, end: j + 1, body: s.slice(i + 1, j) });
+            pos = j + 1;
+            break;
+          }
+        }
+        if (j === s.length - 1) pos = s.length;
+      }
+      if (pos <= at) pos = at + needle.length;
+    }
+    return spans;
+  }
+
+  function likelyFullDocumentDuplicate(value) {
+    const s = String(value || '');
+    return /\\documentclass\b|\\begin\s*\{document\}|\\end\s*\{document\}/.test(s);
+  }
+
+  function validateGeneratedLaiEditText(text, options = {}) {
+    const s = String(text || '');
+    const mode = options.mode || '';
+    const errors = [];
+    const warnings = [];
+    const laiBlocks = findLatexMacroArgumentSpans(s, 'lai', 100);
+    const laiOldBlocks = findLatexMacroArgumentSpans(s, 'laiold', 100);
+    const beginBlocks = countRegex(s, /%\s*BEGIN\s+LAI-ACTIONABLE-EDIT/g);
+    const endBlocks = countRegex(s, /%\s*END\s+LAI-ACTIONABLE-EDIT/g);
+
+    if (!s.trim()) errors.push('empty generated edit text');
+    if (!bracesAreBalanced(s)) errors.push('generated edit text has unbalanced braces');
+    const envIssue = environmentBalanceIssue(s);
+    if (envIssue) errors.push(`generated edit text has ${envIssue}`);
+    if (likelyFullDocumentDuplicate(s)) errors.push('generated edit text contains document-level LaTeX commands, which could duplicate the paper');
+    if (/```/.test(s)) errors.push('generated edit text still contains Markdown code fences');
+    if (beginBlocks !== endBlocks) warnings.push(`actionable edit block markers are imbalanced: ${beginBlocks} BEGIN vs ${endBlocks} END`);
+    if (!laiBlocks.length && /\\lai\b/.test(s)) warnings.push('found \\lai text but could not parse a balanced \\lai{...} block');
+    if (/\\laiold\b/.test(s) && !laiOldBlocks.length) warnings.push('found \\laiold text but could not parse a balanced \\laiold{...} block');
+    if (mode === 'replace' && !laiOldBlocks.length) warnings.push('replace-mode edit has no \\laiold block; this is OK only if the edit is inserting new material rather than replacing source text');
+    if (mode === 'append' && laiOldBlocks.length) warnings.push('append-mode plan contains \\laiold blocks; append plans usually need only visible \\lai additions');
+
+    for (const block of [...laiBlocks, ...laiOldBlocks]) {
+      const body = String(block.body || '');
+      if (body.length > 9000) warnings.push(`${block.macroName} block is large (${body.length} chars); consider splitting into smaller localized edits`);
+      if (/\\(?:documentclass|usepackage)\b|\\begin\s*\{document\}|\\end\s*\{document\}/.test(body)) errors.push(`${block.macroName} block contains document-level LaTeX`);
+      if (/\\verb\b|\\begin\s*\{verbatim\}/.test(body)) errors.push(`${block.macroName} block contains verbatim content, which is unsafe inside Latexai markup`);
+      if (!bracesAreBalanced(body)) errors.push(`${block.macroName} block has unbalanced braces`);
+      const innerEnvIssue = environmentBalanceIssue(body);
+      if (innerEnvIssue) errors.push(`${block.macroName} block has ${innerEnvIssue}`);
+    }
+
+    const sourceText = String(options.sourceText || '');
+    if (options.expectedAppend && sourceText) {
+      const endDoc = sourceText.lastIndexOf('\\end{document}');
+      if (endDoc >= 0) {
+        const lastBegin = s.lastIndexOf('% BEGIN LAI-ACTIONABLE-EDIT');
+        if (lastBegin >= 0 && lastBegin > s.lastIndexOf('\\end{document}')) warnings.push('append block appears after \\end{document}; Latexai should insert append plans before \\end{document}');
+      }
+    }
+
+    const duplicateRatio = sourceText && s.length > 20000 ? Math.min(1, s.length / Math.max(1, sourceText.length)) : 0;
+    if (duplicateRatio > 0.65 && mode !== 'append') warnings.push('generated edit text is very large relative to the source; possible full-section or full-paper duplication');
+
+    return {
+      ok: errors.length === 0,
+      errors,
+      warnings,
+      counts: {
+        chars: s.length,
+        laiBlocks: laiBlocks.length,
+        laiOldBlocks: laiOldBlocks.length,
+        actionableBeginBlocks: beginBlocks,
+        actionableEndBlocks: endBlocks
+      }
+    };
+  }
+
+  function formatLaiValidationReport(report, label = 'Latexai edit safety pass') {
+    const r = report || { ok: true, errors: [], warnings: [], counts: {} };
+    const c = r.counts || {};
+    const lines = [
+      `--- ${label} ---`,
+      `Status: ${r.ok ? 'OK' : 'FAILED'}`,
+      `Inserted/generated \\lai blocks: ${c.laiBlocks || 0}`,
+      `Inserted/generated \\laiold blocks: ${c.laiOldBlocks || 0}`,
+      `Actionable edit markers: ${c.actionableBeginBlocks || 0} BEGIN / ${c.actionableEndBlocks || 0} END`,
+      `Characters checked: ${c.chars || 0}`
+    ];
+    if (r.errors?.length) lines.push('Errors:', ...r.errors.map((x) => `- ${x}`));
+    if (r.warnings?.length) lines.push('Warnings:', ...r.warnings.map((x) => `- ${x}`));
+    if (!r.errors?.length && !r.warnings?.length) lines.push('No obvious malformed Latexai edit blocks detected.');
+    return lines.join('\n');
+  }
+
+  function combineValidationReports(reports) {
+    const list = (reports || []).filter(Boolean);
+    const errors = [];
+    const warnings = [];
+    const counts = { chars: 0, laiBlocks: 0, laiOldBlocks: 0, actionableBeginBlocks: 0, actionableEndBlocks: 0 };
+    for (const item of list) {
+      for (const e of item.errors || []) errors.push(`${item.path || item.label || 'edit'}: ${e}`);
+      for (const w of item.warnings || []) warnings.push(`${item.path || item.label || 'edit'}: ${w}`);
+      const c = item.counts || {};
+      counts.chars += c.chars || 0;
+      counts.laiBlocks += c.laiBlocks || 0;
+      counts.laiOldBlocks += c.laiOldBlocks || 0;
+      counts.actionableBeginBlocks += c.actionableBeginBlocks || 0;
+      counts.actionableEndBlocks += c.actionableEndBlocks || 0;
+    }
+    return { ok: errors.length === 0, errors, warnings, counts, reports: list };
+  }
+
   function unsafeInsertionLocationReason(sourceText, at) {
     const s = String(sourceText || '');
     const beginDoc = s.indexOf('\\begin{document}');
@@ -2401,6 +2542,7 @@
 
     const queued = new Map();
     const messages = [];
+    const validationReports = [];
     let skipped = 0;
 
     parsed.edits.forEach((edit, index) => {
@@ -2416,6 +2558,9 @@
       const wrapped = wrapActionableReplacement({ ...edit, path }, index);
       if (!wrapped.ok) { skipped += 1; messages.push(`SKIP ${path}: unsafe LaTeX for ${edit.targetHint}: ${wrapped.reason}.`); return; }
       const replacement = wrapped.text;
+      const validation = validateGeneratedLaiEditText(replacement, { mode: edit.mode, path, sourceText: text });
+      validationReports.push({ ...validation, path, label: edit.targetHint });
+      if (!validation.ok) { skipped += 1; messages.push(`SKIP ${path}: Stage 19B safety pass failed for ${edit.targetHint}: ${validation.errors.join('; ')}.`); return; }
       const start = edit.mode === 'insert_before' ? at : at;
       const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
       const insert = edit.mode === 'replace' ? replacement : edit.mode === 'insert_after' ? `${anchor}\n\n${replacement}` : `${replacement}\n\n${anchor}`;
@@ -2437,14 +2582,17 @@
     }
 
     const modifiedPaths = [...queued.keys()];
+    const combinedValidation = combineValidationReports(validationReports);
     refreshPaperAiReview(modifiedPaths, 'Competitive Review');
     updateWorkflowStatus('insert', `inserted ${applied}; skipped ${skipped}.`);
     renderEditImpactMap();
-    setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}. Paper-level edit review refreshed.`);
-    setOutput([lastReport, '', '--- Stage 19A memory-aware final rewrite used for insertion ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)', '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
-    const result = { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()], rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
+    const validationText = formatLaiValidationReport(combinedValidation, 'Stage 19B Latexai edit safety pass');
+    const validationSuffix = combinedValidation.warnings.length ? ` Safety warnings: ${combinedValidation.warnings.length}.` : '';
+    setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}.${validationSuffix} Paper-level edit review refreshed.`);
+    setOutput([lastReport, '', '--- Stage 19B memory-aware final rewrite used for insertion ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)', '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages, '', validationText].join('\n'));
+    const result = { ok: applied > 0 && combinedValidation.ok, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()], validation: combinedValidation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-lai-insert', applied > 0 ? 'success' : 'failure', `Applied ${applied} competitive lai edits; skipped ${skipped}.`);
-    await savePaperEditMemory('competitive-lai-insert', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok) });
+    await savePaperEditMemory('competitive-lai-insert', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: Boolean(combinedValidation.ok), validationWarnings: combinedValidation.warnings.length, validationErrors: combinedValidation.errors.length });
     return result;
   }
 
@@ -2463,15 +2611,28 @@
     const parsed = extractActionableEdits(appendSource);
     const planText = parsed.appendPlan && parsed.appendPlan.trim() ? parsed.appendPlan : appendSource;
     const insertion = wrapLaiPlanBlock(markdownToLaiPlan(planText, 'Latexai Competitive Review Improvement Plan'), active.path);
+    const validation = validateGeneratedLaiEditText(insertion, { mode: 'append', path: active.path, sourceText: active.text, expectedAppend: true });
+    if (!validation.ok) {
+      const validationText = formatLaiValidationReport(validation, 'Stage 19B append-plan safety pass');
+      setStatus(`Append \\lai plan blocked by safety pass: ${validation.errors.join('; ')}`);
+      setOutput([lastReport, '', '--- Stage 19B append-plan safety pass blocked insertion ---', validationText, '', '--- AI-generated append source ---', appendSource].join('\n'));
+      const result = { ok: false, path: active.path, mode: 'append-lai-plan', validation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
+      await markMemoryUse('competitive-lai-append-plan', 'failure', `Append lai plan blocked by Stage 19B safety pass: ${validation.errors.join('; ')}`);
+      await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: false, validationErrors: validation.errors.length, validationWarnings: validation.warnings.length });
+      return result;
+    }
     const next = insertBeforeEndDocument(active.text, insertion);
     updateProjectSource(active.path, next);
     refreshPaperAiReview([active.path], 'Competitive Review');
     updateWorkflowStatus('insert', `appended visible \\lai plan to ${active.path}.`);
     renderEditImpactMap();
-    setStatus(`Appended competitive improvement plan as visible \\lai markup to ${active.path}. Paper-level edit review refreshed.`);
-    const result = { ok: true, path: active.path, mode: 'append-lai-plan', rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
+    const validationText = formatLaiValidationReport(validation, 'Stage 19B append-plan safety pass');
+    const warningSuffix = validation.warnings.length ? ` Safety warnings: ${validation.warnings.length}.` : '';
+    setStatus(`Appended competitive improvement plan as visible \\lai markup to ${active.path}.${warningSuffix} Paper-level edit review refreshed.`);
+    setOutput([lastReport, '', '--- Stage 19B append-plan safety pass ---', validationText, '', '--- Stage 19B memory-aware append rewrite source ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)'].join('\n'));
+    const result = { ok: true, path: active.path, mode: 'append-lai-plan', validation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-lai-append-plan', 'success', `Appended competitive lai plan to ${active.path}.`);
-    await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok) });
+    await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: Boolean(validation.ok), validationWarnings: validation.warnings.length, validationErrors: validation.errors.length });
     return result;
   }
 
@@ -2631,6 +2792,8 @@
     insertActionableEditsAtMatches,
     generateMemoryAwareFinalPaperRewrite,
     extractActionableEdits,
+    validateGeneratedLaiEditText,
+    formatLaiValidationReport,
     getLastReport: () => lastReport,
     getLastPayload: () => lastPayload,
     getLastCompetitorSummaries: () => lastCompetitorSummaries,
