@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19e-open-existing-github-project-20260525-1';
+  const STAGE = 'stage19e2-open-github-load-apply-fix-20260525-1';
 
   const git = {
     setupOpen: false,
@@ -134,7 +134,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E2</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -157,7 +157,7 @@
     actions.style.marginTop = '0.4rem';
     actions.append(
       button('Check', checkGithubBackend, 'btn mini'),
-      button('Load', loadFromGithub, 'btn mini'),
+      button('Load attached', () => loadFromGithub({ source: 'load-attached-github-project' }), 'btn mini'),
       button('Open GitHub', promptOpenGithubProject, 'btn mini'),
       button('Save GitHub', commitAllToGithub, 'btn mini'),
       button('Checkpoint', promptCheckpointToGithub, 'btn mini')
@@ -483,7 +483,51 @@
     git.branch = String(branch || 'main').trim() || 'main';
     git.rootPath = normalizeRepoPath(rootPath || '');
     saveGitSettings();
-    return loadFromGithub({ source: 'open-existing-github-project', preserveSettings: true });
+    return loadFromGithub({ source: 'open-existing-github-project', preserveSettings: true, fromPrompt: true, alertSuccess: true });
+  }
+
+  function countProjectFiles(project) {
+    const files = project?.files;
+    if (Array.isArray(files)) return files.length;
+    if (files && typeof files === 'object') return Object.keys(files).length;
+    return 0;
+  }
+
+  function coerceGithubProjectResult(result, github) {
+    if (!result || typeof result !== 'object') throw new Error('GitHub backend returned an empty response.');
+    const rawProject = result.project || result.latexProject || result.data?.project || null;
+    const rawFiles = rawProject?.files || result.files || result.fileMap || result.projectFiles || null;
+    if (!rawFiles || countProjectFiles({ files: rawFiles }) < 1) {
+      throw new Error('GitHub backend returned no project files. Check the repository branch/folder path and supported file types.');
+    }
+    const project = Object.assign({}, rawProject || {}, {
+      schema: rawProject?.schema || 'lumina-latex-project-v1',
+      name: rawProject?.name || `${github.owner}/${github.repo}${github.rootPath ? '/' + github.rootPath : ''}`,
+      rootFile: rawProject?.rootFile || rawProject?.mainFile || result.rootFile || ('main.tex' in rawFiles ? 'main.tex' : ''),
+      activePath: rawProject?.activePath || rawProject?.rootFile || result.rootFile || ('main.tex' in rawFiles ? 'main.tex' : ''),
+      files: rawFiles,
+      github
+    });
+    return W.LuminaLatex.ProjectModel?.normalizeProject?.(project) || project;
+  }
+
+  function forceGithubProjectIntoUi(nextProject, reason) {
+    const state = State();
+    if (!state) throw new Error('State service is not ready.');
+    if (state.resetProjectClean) state.resetProjectClean(nextProject, { preserveSettings: true, reason: reason || 'github-open' });
+    else state.resetProject(nextProject);
+
+    // Stage 19E2: force all visible panes to repaint after opening GitHub.
+    // This avoids iPad/Safari cases where state changed but the old editor text
+    // remained visible until another local action occurred.
+    state.setActivePath?.(state.state.project.rootFile || state.state.project.activePath || 'main.tex');
+    state.rememberFullProject?.(state.state.project, reason || 'github-open');
+    state.save?.();
+    W.LuminaLatex.Editor?.render?.(state.state);
+    W.LuminaLatex.FileTree?.render?.();
+    W.LuminaLatex.Preview?.renderDraftPreview?.();
+    try { document.getElementById('sourceEditor')?.dispatchEvent(new Event('change', { bubbles: true })); } catch (_err) {}
+    return state.state.project;
   }
 
   async function loadFromGithub(options = {}) {
@@ -493,8 +537,14 @@
       if (options.repo) git.repo = String(options.repo || '').trim();
       if (options.branch) git.branch = String(options.branch || 'main').trim() || 'main';
       if (options.rootPath !== undefined) git.rootPath = normalizeRepoPath(options.rootPath || '');
-      if (!git.owner || !git.repo) throw new Error('Owner and repo are required. Use Git → Open GitHub or fill owner/repo first.');
-      git.status = 'Loading from GitHub...';
+      if (!git.owner || !git.repo) {
+        if (!options.fromPrompt) return promptOpenGithubProject();
+        throw new Error('Owner and repo are required. Enter owner/repo or paste a GitHub URL.');
+      }
+      git.status = `Loading from GitHub...
+Repo: ${git.owner}/${git.repo}
+Branch: ${git.branch || 'main'}${git.rootPath ? `
+Folder: ${git.rootPath}` : ''}`;
       render();
 
       const result = await gitFetch('/load-project', {
@@ -504,35 +554,42 @@
         rootPath: normalizeRepoPath(git.rootPath || '')
       });
 
-      if (!result.project || !result.project.files) throw new Error('Backend returned no project.files.');
-
       const github = {
         owner: git.owner,
         repo: git.repo,
         branch: git.branch || 'main',
         rootPath: normalizeRepoPath(git.rootPath || ''),
-        headSha: result.headSha || null,
+        headSha: result.headSha || result.commitSha || result.project?.github?.headSha || null,
         openedAt: new Date().toISOString(),
         openStage: STAGE
       };
 
-      const nextProject = applyGithubIdentity(Object.assign({}, result.project, { github }), github);
+      const nextProject = applyGithubIdentity(coerceGithubProjectResult(result, github), github);
+      const loadedProject = forceGithubProjectIntoUi(nextProject, options.source || 'github-open');
 
-      git.headSha = result.headSha || null;
-      git.status = `Loaded ${result.fileCount || Object.keys(result.project.files || {}).length} files from GitHub.\nRepo: ${attachedRepoLabel()}`;
+      git.headSha = github.headSha || null;
+      const fileCount = loadedProject.files?.length || result.fileCount || countProjectFiles(result.project || {});
+      const rootFile = loadedProject.rootFile || loadedProject.activePath || 'main.tex';
+      git.status = `Loaded ${fileCount} files from GitHub.
+Repo: ${attachedRepoLabel()}
+Root: ${rootFile}`;
       saveGitSettings();
-      if (State().resetProjectClean) State().resetProjectClean(nextProject, { preserveSettings: true, reason: options.source || 'github-open' });
-      else State().resetProject(nextProject);
-      State().rememberFullProject?.(State().state.project, options.source || 'github-open');
-      State().save();
-      W.LuminaLatex.Preview?.renderDraftPreview?.();
-      W.LuminaLatex.Main?.toast?.('GitHub project opened.');
       render();
-      return { ok: true, project: State().state.project, result };
+      W.LuminaLatex.Main?.toast?.(`GitHub project opened: ${git.owner}/${git.repo}`);
+      if (options.alertSuccess) alert(`GitHub project opened.
+
+Repo: ${git.owner}/${git.repo}
+Files: ${fileCount}
+Root: ${rootFile}`);
+      return { ok: true, project: loadedProject, result };
     } catch (err) {
-      git.status = `Load failed:\n${err.message || err}`;
+      const message = err?.message || String(err);
+      git.status = `Load failed:
+${message}`;
       render();
-      return { ok: false, error: err?.message || String(err) };
+      alert(`GitHub load failed:
+${message}`);
+      return { ok: false, error: message };
     }
   }
 
@@ -878,5 +935,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec };
+  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi };
 })();

@@ -85,7 +85,7 @@
       project.updatedAt = project.createdAt;
       project.settings = settings;
       project.meta = Object.assign({}, project.meta || {}, {
-        architectureStage: 'stage19e-open-existing-github-project',
+        architectureStage: 'stage19e2-open-github-load-apply-fix',
         cleanNewProject: true,
         previousProjectName: currentName
       });
@@ -107,7 +107,7 @@
       project.github = Object.assign({}, gh.github);
       project.meta.github = Object.assign({}, gh.github);
       if (NS.FileTree?.applyGithubIdentity) NS.FileTree.applyGithubIdentity(project, gh.github);
-      project.meta = Object.assign({}, project.meta || {}, { architectureStage: 'stage19e-open-existing-github-project' });
+      project.meta = Object.assign({}, project.meta || {}, { architectureStage: 'stage19e2-open-github-load-apply-fix' });
       NS.State.resetProjectClean ? NS.State.resetProjectClean(project, { preserveSettings: true }) : NS.State.resetProject(project);
       NS.FileTree?.render?.();
       NS.Preview?.renderDraftPreview?.();
