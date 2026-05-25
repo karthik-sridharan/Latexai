@@ -1,5 +1,5 @@
-/* Latexai Stage 18Y CompetitivePaperReviewService
- * Stage: stage18z-memory-aware-notation-citation-retrieval-20260524-1
+/* Latexai Stage 19A CompetitivePaperReviewService
+ * Stage: stage19a-memory-aware-final-paper-rewrite-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18z-memory-aware-notation-citation-retrieval-20260524-1';
+  const STAGE = 'stage19a-memory-aware-final-paper-rewrite-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -928,7 +928,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18z-memory-aware-notation-citation-retrieval',
+        identityStage: 'stage19a-memory-aware-final-paper-rewrite',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -1973,6 +1973,128 @@
     return s.replace(/\s*$/, '') + block;
   }
 
+  function texSourceSnapshotForRewrite(maxChars = 76000) {
+    const texFiles = (files() || [])
+      .filter((file) => /\.tex$/i.test(String(file?.path || '')))
+      .sort((a, b) => {
+        const ap = normalizePath(a?.path || '');
+        const bp = normalizePath(b?.path || '');
+        if (ap === rootPath()) return -1;
+        if (bp === rootPath()) return 1;
+        if (ap === activePath()) return -1;
+        if (bp === activePath()) return 1;
+        return ap.localeCompare(bp);
+      });
+    const active = activeSource();
+    const list = texFiles.length ? texFiles : [{ path: active.path, text: active.text }];
+    const chunks = [];
+    let remaining = Math.max(12000, maxChars);
+    for (const file of list) {
+      const path = normalizePath(file.path || active.path || 'main.tex');
+      let text = fileText(file);
+      if (normalizePath(active.path) === path && active.text) text = active.text;
+      const header = `\n\n--- LATEXAI_SOURCE_FILE path=${path} ---\n`;
+      const budget = remaining - header.length;
+      if (budget <= 1000) break;
+      let body = String(text || '');
+      if (body.length > budget) {
+        const head = body.slice(0, Math.floor(budget * 0.68));
+        const tail = body.slice(-Math.floor(budget * 0.30));
+        body = `${head}\n\n% ... [middle omitted in Stage 19A rewrite prompt] ...\n\n${tail}`;
+      }
+      chunks.push(header + body);
+      remaining -= header.length + body.length;
+    }
+    return chunks.join('\n').trim();
+  }
+
+  function finalRewritePromptSchema(mode) {
+    const inline = mode === 'inline';
+    return [
+      'Return exactly one fenced code block labelled latexai_actionable_edits containing valid JSON.',
+      'JSON schema:',
+      '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor copied from the provided LaTeX source","newText":"compile-safe LaTeX body fragment","confidence":0.0,"rankingEffect":{"competitors":["competitor title or rank"],"gap":"gap addressed","sourceIds":["S1"],"before":"current estimated position","after":"projected position","expectedImpact":"why this improves competitive standing","insertionMode":"inline \\laiold/\\lai or append \\lai plan"}}],"appendPlan":"Markdown fallback plan, only for suggestions that cannot be localized exactly"}.',
+      inline
+        ? 'For inline mode, prioritize 3-8 localized actionableEdits whose oldText is an exact substring of the supplied source. Prefer small section/paragraph anchors over huge replacements. Do not fabricate oldText.'
+        : 'For append mode, actionableEdits may be empty; put the complete final improvement/rewrite plan in appendPlan. The appendPlan should be suitable to convert into a visible end-of-paper \\lai block.',
+      'newText must be body-level LaTeX only: no Markdown fences, no \\documentclass, no \\usepackage, no \\begin{document}, no \\end{document}.',
+      'Preserve known notation and citation decisions from hidden memory. Do not repeat negative-memory suggestions or previously failed rewrite styles.',
+      'If memory mentions successful paper edit patterns or failed anchors, use that to choose safer oldText anchors.'
+    ].join('\n');
+  }
+
+  async function generateMemoryAwareFinalPaperRewrite(mode, memoryContext = null) {
+    const payload = lastPayload || buildPayload();
+    const sourceSnapshot = texSourceSnapshotForRewrite();
+    const report = String(lastReport || '').trim();
+    if (!report || !sourceSnapshot.trim()) return { ok: false, text: '', error: 'Missing report or source snapshot.' };
+    if (!NS.AIProvider?.ask) return { ok: false, text: '', error: 'AIProvider missing.' };
+    const stepName = mode === 'append' ? 'memory-aware-final-paper-append-rewrite' : 'memory-aware-final-paper-inline-rewrite';
+    const memoryBlock = memoryContextMarkdown(memoryContext) || '';
+    const instructions = [
+      'You are Latexai\'s final paper rewrite agent.',
+      'Use the competitive review, ranked competitor evidence, draft comparison, edit impact map, and hidden research memory to produce actionable LaTeX edits for the current paper.',
+      'The goal is not another generic review. The goal is to transform review insight into concrete visible Latexai edits that improve the paper\'s competitive standing.',
+      'Use \\laiold{old text} / \\lai{new text} semantics indirectly through the JSON schema; Latexai will wrap replacements itself.',
+      'Respect all hidden memory constraints: notation glossary, citation memories, prior reviewer concerns, negative memories, and successful/failed edit patterns.',
+      finalRewritePromptSchema(mode),
+      memoryBlock ? `\n${memoryBlock}` : ''
+    ].filter(Boolean).join('\n\n');
+    const input = [
+      '--- Target venue / modes ---',
+      `Venue: ${payload.targetVenue || '(not specified)'}`,
+      `Audience: ${payload.targetAudience || '(not specified)'}`,
+      `Modes: ${(payload.comparisonModes || []).join(', ') || '(not specified)'}`,
+      '',
+      '--- Competitor URL seeds ---',
+      (payload.competitorUrls || []).map((url, i) => `${i + 1}. ${url}`).join('\n') || '(none)',
+      '',
+      '--- Competitor research summaries ---',
+      summariesMarkdown(payload.competitorSummaries || lastCompetitorSummaries),
+      '',
+      '--- Source ledger ---',
+      sourcesMarkdown(lastSourceLedger),
+      '',
+      '--- Existing competitive review / roadmap / report ---',
+      report.slice(0, 30000),
+      '',
+      '--- Current edit impact map ---',
+      editImpactMarkdown(buildEditImpactMap(report)),
+      '',
+      '--- Current LaTeX source snapshot ---',
+      sourceSnapshot
+    ].join('\n');
+    try {
+      setStatus(mode === 'append' ? 'Asking AI to convert review into a memory-aware final append plan...' : 'Asking AI to convert review into memory-aware localized \\lai edits...');
+      const response = await NS.AIProvider.ask({
+        workflow: stepName,
+        instructions,
+        input: memoryBlock ? `${memoryBlock}\n\n${input}` : input,
+        temperature: 0.18,
+        maxOutputTokens: mode === 'append' ? 6500 : 8000,
+        competitiveReview: {
+          step: stepName,
+          memoryAwareFinalRewrite: true,
+          targetVenue: payload.targetVenue,
+          comparisonModes: payload.comparisonModes,
+          mode
+        }
+      }, {
+        task: 'latex-paper-final-rewrite',
+        routeKey: 'paper-rewrite',
+        context: { workflow: stepName, memoryAwareFinalRewrite: true, mode }
+      });
+      const text = (NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '')).trim();
+      if (text) {
+        await saveCompetitiveMemory(stepName, text, payload, { mode, source: 'stage19a-memory-aware-final-paper-rewrite', hasActionableEdits: /latexai_actionable_edits/i.test(text) });
+      }
+      return { ok: Boolean(text), text, stepName };
+    } catch (err) {
+      const message = err?.message || String(err);
+      try { console.warn('[Latexai] Stage 19A final rewrite generation failed; falling back to existing report', err); } catch (_ignored) {}
+      return { ok: false, text: '', error: message, stepName };
+    }
+  }
 
   function refreshPaperAiReview(paths, source = 'Competitive Review') {
     const normalized = [...new Set((paths || []).map(normalizePath).filter(Boolean))];
@@ -2264,12 +2386,14 @@
       return { ok: false, error: 'No report' };
     }
 
-    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-insert', 12, lastReport.slice(0, 8000));
+    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-insert', 16, lastReport.slice(0, 10000));
+    const rewrite = await generateMemoryAwareFinalPaperRewrite('inline', memoryContext);
+    const insertionSource = rewrite?.ok && rewrite.text ? rewrite.text : lastReport;
     ensureRootLaiMacros();
-    const parsed = extractActionableEdits(lastReport);
+    const parsed = extractActionableEdits(insertionSource);
     if (!parsed.edits.length) {
       setStatus('No exact actionable edit JSON or \\laiold/\\lai pairs found. Use Append \\lai plan instead.');
-      const result = { ok: false, applied: 0, skipped: 0, source: parsed.source };
+      const result = { ok: false, applied: 0, skipped: 0, source: parsed.source, rewriteAttempted: Boolean(rewrite?.stepName), rewriteError: rewrite?.error || '' };
       await markMemoryUse('competitive-lai-insert', 'failure', 'No exact actionable edit JSON or laiold/lai pairs found for insertion.');
       await savePaperEditMemory('competitive-lai-insert', result, { reason: 'no_actionable_edits' });
       return result;
@@ -2317,10 +2441,10 @@
     updateWorkflowStatus('insert', `inserted ${applied}; skipped ${skipped}.`);
     renderEditImpactMap();
     setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}. Paper-level edit review refreshed.`);
-    setOutput([lastReport, '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
-    const result = { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()] };
+    setOutput([lastReport, '', '--- Stage 19A memory-aware final rewrite used for insertion ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)', '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages].join('\n'));
+    const result = { ok: applied > 0, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()], rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-lai-insert', applied > 0 ? 'success' : 'failure', `Applied ${applied} competitive lai edits; skipped ${skipped}.`);
-    await savePaperEditMemory('competitive-lai-insert', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0 });
+    await savePaperEditMemory('competitive-lai-insert', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok) });
     return result;
   }
 
@@ -2330,12 +2454,14 @@
       return { ok: false, error: 'No report' };
     }
 
-    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-append-plan', 12, lastReport.slice(0, 8000));
+    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-append-plan', 16, lastReport.slice(0, 10000));
+    const rewrite = await generateMemoryAwareFinalPaperRewrite('append', memoryContext);
+    const appendSource = rewrite?.ok && rewrite.text ? rewrite.text : lastReport;
     ensureRootLaiMacros();
     const root = getFile(rootPath());
     const active = root ? { path: rootPath(), file: root, text: fileText(root) } : activeSource();
-    const parsed = extractActionableEdits(lastReport);
-    const planText = parsed.appendPlan && parsed.appendPlan.trim() ? parsed.appendPlan : lastReport;
+    const parsed = extractActionableEdits(appendSource);
+    const planText = parsed.appendPlan && parsed.appendPlan.trim() ? parsed.appendPlan : appendSource;
     const insertion = wrapLaiPlanBlock(markdownToLaiPlan(planText, 'Latexai Competitive Review Improvement Plan'), active.path);
     const next = insertBeforeEndDocument(active.text, insertion);
     updateProjectSource(active.path, next);
@@ -2343,9 +2469,9 @@
     updateWorkflowStatus('insert', `appended visible \\lai plan to ${active.path}.`);
     renderEditImpactMap();
     setStatus(`Appended competitive improvement plan as visible \\lai markup to ${active.path}. Paper-level edit review refreshed.`);
-    const result = { ok: true, path: active.path, mode: 'append-lai-plan' };
+    const result = { ok: true, path: active.path, mode: 'append-lai-plan', rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-lai-append-plan', 'success', `Appended competitive lai plan to ${active.path}.`);
-    await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0 });
+    await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok) });
     return result;
   }
 
@@ -2452,8 +2578,8 @@
       '  <button id="runCompetitiveReviewBtn" class="btn mini" type="button">Run full cited review</button>',
       '  <button id="copyCompetitiveReviewBtn" class="btn mini" type="button">Copy report</button>',
       '  <button id="addCompetitiveReviewBtn" class="btn mini" type="button">Add report to /reviews</button>',
-      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
-      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
+      '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">AI remake + insert \\lai edits</button>',
+      '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">AI remake + append \\lai plan</button>',
       '</div>',
       '<div class="settings-note">Stage 18Y uses source-cited AI web research plus scoped persistent research memory extraction; it adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
@@ -2503,6 +2629,7 @@
     insertRoadmapComment,
     appendLaiImprovementPlan,
     insertActionableEditsAtMatches,
+    generateMemoryAwareFinalPaperRewrite,
     extractActionableEdits,
     getLastReport: () => lastReport,
     getLastPayload: () => lastPayload,

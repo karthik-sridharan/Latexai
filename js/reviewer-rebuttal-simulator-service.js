@@ -1,5 +1,5 @@
-/* Latexai Stage 18Y ReviewerRebuttalSimulatorService
- * Stage: stage18z-memory-aware-notation-citation-retrieval-20260524-1
+/* Latexai Stage 19A ReviewerRebuttalSimulatorService
+ * Stage: stage19a-memory-aware-final-paper-rewrite-20260524-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18z-memory-aware-notation-citation-retrieval-20260524-1';
+  const STAGE = 'stage19a-memory-aware-final-paper-rewrite-20260524-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -213,7 +213,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18z-memory-aware-notation-citation-retrieval',
+        identityStage: 'stage19a-memory-aware-final-paper-rewrite',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -765,10 +765,10 @@ ${input}` : input,
     const instructions = [
       'You are the final synthesis agent for a paper revision workflow.',
       'Use the simulated reviews, user guidance, and AI rebuttal to propose the strongest final revision.',
-      'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy.',
+      'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy. Make the final strategy paper-editable rather than generic advice.',
       'Also include a fenced code block labelled latexai_actionable_edits containing JSON:',
       '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"optional tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor","newText":"LaTeX replacement or insertion","confidence":0.0}],"appendPlan":"optional LaTeX plan"}.',
-      'Use visible Latexai edit semantics: newText should be compatible with later \laiold/\lai insertion. Do not overwrite the entire source unless explicitly necessary.',
+      'Use visible Latexai edit semantics: newText should be compatible with later \laiold/\lai insertion. Generate localized source-aware edits where possible; do not overwrite the entire source unless explicitly necessary.',
       'When hidden memory mentions successful paper edit patterns, notation preferences, rejected rewrite styles, or previously failed insertion anchors, use that information to choose more exact oldText anchors and avoid repeating failed edits.',
       'If a suggestion cannot be localized exactly, put it in appendPlan rather than fabricating oldText.',
       'Avoid preamble edits, Markdown inside LaTeX, and invented exact oldText strings.'
@@ -864,7 +864,7 @@ ${input}` : input,
       '  <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
-      '<div class="settings-note">Stage 18Y keeps reviewer/rebuttal memories scoped by stable project and paper identity and extracts notation/citation/reviewer-concern memories silently. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>',
+      '<div class="settings-note">Stage 19A keeps reviewer/rebuttal memories scoped by stable project and paper identity. The final synthesis is memory-aware and should produce source-aware <code>\\laiold</code>/<code>\\lai</code> actionable edits where possible; it still does not overwrite source automatically.</div>',
       '<div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator ready.</div>',
       '<pre id="reviewerRebuttalOutput" class="devils-output"></pre>'
     ].join('');
