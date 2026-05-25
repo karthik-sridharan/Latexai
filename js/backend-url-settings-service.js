@@ -1,5 +1,5 @@
-/* Latexai Stage 18X6 BackendUrlSettingsService
- * Stage: stage18x6-memory-cors-ipad-fetch-fix-20260524-1
+/* Latexai Stage 18Y BackendUrlSettingsService
+ * Stage: stage18y-notation-citation-memory-extraction-20260524-1
  *
  * Keeps backend endpoint configuration in the Settings tab:
  * - AI backend proxy URL remains the existing AI proxy route.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x6-memory-cors-ipad-fetch-fix-20260524-1';
+  const STAGE = 'stage18y-notation-citation-memory-extraction-20260524-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
@@ -75,7 +75,7 @@
   }
 
   function getMemoryProxyToken() {
-    // Stage 18X6: keep memory auth independent from AI/compile auth.
+    // Stage 18Y: keep memory auth independent from AI/compile auth.
     // Reusing an AI proxy token against the memory service can make writes fail silently.
     return clean(el('memoryProxyToken')?.value) || safeGet(LS_MEMORY_PROXY_TOKEN, '');
   }
@@ -87,7 +87,7 @@
     if (token) headers.Authorization = `Bearer ${token}`;
     const method = clean(options.method || 'GET').toUpperCase();
     const hasBody = options.body !== undefined && options.body !== null;
-    // Stage 18X6: do not attach Content-Type to simple GET checks.
+    // Stage 18Y: do not attach Content-Type to simple GET checks.
     // On iPad/Safari/Brave, Content-Type + cache:no-store can trigger a
     // preflight with cache-control/pragma headers that Cloud Run/CORS may reject
     // as a generic "Load failed". POST requests still send JSON.
@@ -153,7 +153,7 @@
       );
       return { ok: true, base, health, scope, stage: STAGE };
     } catch (err) {
-      setMemoryStatus('Memory backend failed', `${base}: ${err?.message || err}. If this says Load failed, upload 18X6 and verify the backend CORS env includes https://karthik-sridharan.github.io.`, false);
+      setMemoryStatus('Memory backend failed', `${base}: ${err?.message || err}. If this says Load failed, verify the backend CORS env includes https://karthik-sridharan.github.io and that the memory backend URL has no /api/lumina/memory suffix.`, false);
       return { ok: false, base, error: err?.message || String(err), stage: STAGE };
     }
   }

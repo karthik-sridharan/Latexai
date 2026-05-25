@@ -1,5 +1,5 @@
-/* Latexai Stage 18X6 CompetitivePaperReviewService
- * Stage: stage18x6-memory-cors-ipad-fetch-fix-20260524-1
+/* Latexai Stage 18Y CompetitivePaperReviewService
+ * Stage: stage18y-notation-citation-memory-extraction-20260524-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x6-memory-cors-ipad-fetch-fix-20260524-1';
+  const STAGE = 'stage18y-notation-citation-memory-extraction-20260524-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -928,7 +928,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x6-memory-cors-ipad-fetch-fix',
+        identityStage: 'stage18y-notation-citation-memory-extraction',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -1090,7 +1090,8 @@
       });
       if (workingFact?.id && fact?.id) await memoryPost('/edge', { fromMemoryId: workingFact.id, toMemoryId: fact.id, relation: 'working_cache_of', weight: 0.82, evidence: 'Promoted final competitive review into active working memory for later agent calls.', metadata: { stage: STAGE } });
     }
-    return { event, fact, workingFact };
+    const researchFacts = await saveResearchSpecificMemories(stepName, report, payload, { parentFactId: fact?.id || '', parentEventId: event?.id || '', sourceLedgerCount: extra?.sourceLedgerCount || 0, hasActionableEdits: extra?.hasActionableEdits === true });
+    return { event, fact, workingFact, researchFacts };
   }
 
   async function savePaperEditMemory(stepName, result = {}, extra = {}) {
@@ -1138,7 +1139,43 @@
       evidence: `Competitive paper edit ${stepName}: ${status}`,
       metadata: { stage: STAGE }
     });
-    return { event, fact };
+    const researchFacts = await saveResearchSpecificMemories(stepName, content, null, { parentFactId: fact?.id || '', parentEventId: event?.id || '', editStatus: status, applied, skipped });
+    return { event, fact, researchFacts };
+  }
+
+
+  async function saveResearchSpecificMemories(stepName, reportText, payload = null, extra = {}) {
+    const svc = NS.ResearchMemoryExtractionService;
+    if (!svc?.saveResearchMemories || !memoryEnabled()) return null;
+    try {
+      const ids = projectIdentity();
+      const src = activeSource();
+      const sourceText = String(src?.text || payload?.draftExcerpt || '');
+      return await svc.saveResearchMemories({
+        memoryPost,
+        ids,
+        stableHash,
+        sourceText,
+        reportText,
+        payload: payload || {},
+        source: 'competitive-paper-review-service',
+        stepName,
+        stage: STAGE,
+        parentFactId: extra?.parentFactId || '',
+        parentEventId: extra?.parentEventId || '',
+        metadata: {
+          ...(ids.identityMetadata || {}),
+          targetVenue: payload?.targetVenue || clean(el('competitiveTargetVenue')?.value),
+          targetAudience: payload?.targetAudience || clean(el('competitiveTargetAudience')?.value),
+          comparisonModes: payload?.comparisonModes || targetModes(),
+          competitorUrls: payload?.competitorUrls || parseCompetitorInputs().urls,
+          ...extra
+        }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai research memory] competitive extraction failed', err); } catch (_ignored) {}
+      return null;
+    }
   }
 
   function webSearchAvailableFromStatus(status) {
@@ -2316,7 +2353,7 @@
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">Insert \lai edits at matches</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">Append \lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18X uses source-cited AI web research plus scoped persistent memory identity; it adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
+      '<div class="settings-note">Stage 18Y uses source-cited AI web research plus scoped persistent research memory extraction; it adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');

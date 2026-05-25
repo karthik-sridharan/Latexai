@@ -1,5 +1,5 @@
-/* Latexai Stage 18X6 ReviewerRebuttalSimulatorService
- * Stage: stage18x6-memory-cors-ipad-fetch-fix-20260524-1
+/* Latexai Stage 18Y ReviewerRebuttalSimulatorService
+ * Stage: stage18y-notation-citation-memory-extraction-20260524-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x6-memory-cors-ipad-fetch-fix-20260524-1';
+  const STAGE = 'stage18y-notation-citation-memory-extraction-20260524-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -213,7 +213,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18x6-memory-cors-ipad-fetch-fix',
+        identityStage: 'stage18y-notation-citation-memory-extraction',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -384,7 +384,41 @@
       });
       if (workingFact?.id && fact?.id) await memoryPost('/edge', { fromMemoryId: workingFact.id, toMemoryId: fact.id, relation: 'working_cache_of', weight: 0.84, evidence: 'Promoted final reviewer/rebuttal synthesis into active working memory for later agent calls.', metadata: { stage: STAGE } });
     }
-    return { event, fact, workingFact };
+    const researchFacts = await saveResearchSpecificMemories(stepName, content, payload, { parentFactId: fact?.id || '', parentEventId: event?.id || '', reviewerName: extra?.reviewerName || '', reviewerStyle: extra?.reviewerStyle || '' });
+    return { event, fact, workingFact, researchFacts };
+  }
+
+
+  async function saveResearchSpecificMemories(stepName, reportText, payload = null, extra = {}) {
+    const svc = NS.ResearchMemoryExtractionService;
+    if (!svc?.saveResearchMemories || !memoryEnabled()) return null;
+    try {
+      const ids = projectIdentity();
+      const src = activeSource();
+      return await svc.saveResearchMemories({
+        memoryPost,
+        ids,
+        stableHash,
+        sourceText: String(src?.text || payload?.draftExcerpt || ''),
+        reportText,
+        payload: payload || {},
+        source: 'reviewer-rebuttal-simulator-service',
+        stepName,
+        stage: STAGE,
+        parentFactId: extra?.parentFactId || '',
+        parentEventId: extra?.parentEventId || '',
+        metadata: {
+          ...(ids.identityMetadata || {}),
+          targetVenue: payload?.targetVenue || clean(el('reviewerSimVenue')?.value),
+          paperGoal: payload?.paperGoal || clean(el('reviewerSimGoal')?.value),
+          reviewerCount: payload?.reviewers?.length || selectedReviewers().length,
+          ...extra
+        }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai research memory] reviewer/rebuttal extraction failed', err); } catch (_ignored) {}
+      return null;
+    }
   }
 
   function setStatus(message) { const node = el('reviewerRebuttalStatus'); if (node) node.textContent = message; }
@@ -735,7 +769,7 @@ ${input}` : input,
       '  <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
-      '<div class="settings-note">Stage 18X keeps reviewer/rebuttal memories scoped by stable project and paper identity. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>',
+      '<div class="settings-note">Stage 18Y keeps reviewer/rebuttal memories scoped by stable project and paper identity and extracts notation/citation/reviewer-concern memories silently. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>',
       '<div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator ready.</div>',
       '<pre id="reviewerRebuttalOutput" class="devils-output"></pre>'
     ].join('');
