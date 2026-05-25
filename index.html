@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19c-clean-new-project-github-repo-workflow-20260524-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19c2-github-backend-url-settings-field-20260525-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -287,7 +287,7 @@
             <h2>Backend URLs and compile settings</h2>
           </div>
         </div>
-        <div class="settings-note">Stage 18Y keeps AI generation, memory storage, and compile routing as separate services, and silently extracts notation/citation/reviewer-concern memories into the configured Neon-backed memory service.</div>
+        <div class="settings-note">Stage 19C2 keeps AI generation, memory storage, compile routing, and GitHub sync as separate services. Backend/API settings are preserved when creating a new project.</div>
         <label class="field">AI backend proxy URL
           <input id="aiProxyUrl" data-lumina-ai-proxy-url type="url" value="/api/lumina/ai" placeholder="https://your-ai-backend.example.com/api/lumina/ai" />
         </label>
@@ -308,6 +308,10 @@
           </div>
           <button id="testMemoryBackendBtn" class="btn mini" type="button">Test memory backend</button>
         </div>
+        <label class="field">GitHub backend URL
+          <input id="githubBackendUrl" data-lumina-github-backend-url type="url" value="https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github" placeholder="https://your-github-backend.example.com/api/lumina/github" />
+        </label>
+        <div class="settings-note">The GitHub backend is separate from AI, memory, and compile. It is used only for GitHub load/commit and automatic repository creation from New project.</div>
         <label class="field">Compile backend URL
           <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-compile-backend.example.com/api/lumina/latex/compile" />
         </label>
@@ -422,12 +426,12 @@
 <script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/compiler-provider.js?v=stage17x-compile-log-diagnostics-surfacing-1" defer></script>
 <script src="js/ai-provider.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
-<script src="js/backend-url-settings-service.js?v=stage19c-clean-new-project-github-repo-workflow-1" defer></script>
+<script src="js/backend-url-settings-service.js?v=stage19c2-github-backend-url-settings-field-1" defer></script>
 <script src="js/research-memory-extraction-service.js?v=stage19c-clean-new-project-github-repo-workflow-1" defer></script>
 <script src="js/state.js?v=stage4e-editor-forced-lai-guard-1" defer></script>
 <script src="js/editor.js?v=stage4j-always-visible-lai-guard-1" defer></script>
 <script src="js/editor-enhancement-service.js?v=stage18l-shortcut-manager-full-width-layout-1" defer></script>
-<script src="js/file-tree.js?v=stage6d-optional-github-commit-message-1" defer></script>
+<script src="js/file-tree.js?v=stage19c2-github-backend-url-settings-field-1" defer></script>
 <script src="js/preview.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/import-export.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/selection-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
@@ -437,7 +441,7 @@
 <script src="js/copilot.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
 <script src="js/selection-action-bubble.js?v=stage7c-move-selection-bubble-left-1" defer></script>
 <script src="js/diagnostics.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
-<script src="js/main.js?v=stage8d-figure-placeholder-tabs-fix-1" defer></script>
+<script src="js/main.js?v=stage19c2-github-backend-url-settings-field-1" defer></script>
 <script src="js/lai-stage5e-panel-scroll-pdf-viewer.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/pdf-region-selection-service.js?v=stage7d-pdf-region-selection-1" defer></script>
 <script src="js/asset-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
