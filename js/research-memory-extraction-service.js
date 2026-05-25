@@ -1,5 +1,5 @@
 /* Latexai Stage 18Y ResearchMemoryExtractionService
- * Stage: stage18y-notation-citation-memory-extraction-20260524-1
+ * Stage: stage18z-memory-aware-notation-citation-retrieval-20260524-1
  *
  * Hidden research-specific memory extraction for Latexai.
  * No UI: extracts notation, citation, reviewer concern, and negative-memory facts
@@ -11,7 +11,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18y-notation-citation-memory-extraction-20260524-1';
+  const STAGE = 'stage18z-memory-aware-notation-citation-retrieval-20260524-1';
 
   function clean(value) { return String(value || '').replace(/\s+/g, ' ').trim(); }
   function compact(value, max = 700) { return clean(value).slice(0, max); }

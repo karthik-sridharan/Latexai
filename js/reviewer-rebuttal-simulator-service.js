@@ -1,5 +1,5 @@
 /* Latexai Stage 18Y ReviewerRebuttalSimulatorService
- * Stage: stage18y-notation-citation-memory-extraction-20260524-1
+ * Stage: stage18z-memory-aware-notation-citation-retrieval-20260524-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18y-notation-citation-memory-extraction-20260524-1';
+  const STAGE = 'stage18z-memory-aware-notation-citation-retrieval-20260524-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -213,7 +213,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage18y-notation-citation-memory-extraction',
+        identityStage: 'stage18z-memory-aware-notation-citation-retrieval',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -264,47 +264,142 @@
     return memoryFetch(path, { method: 'POST', body: JSON.stringify(payload || {}) });
   }
 
-  function memorySemanticQuery(stepName, extraText = '') {
+  const RESEARCH_MEMORY_FOCUS_QUERIES = [
+    {
+      name: 'notation-citation',
+      text: 'notation_sentence notation_macro_definition theorem_environment latex_label_inventory symbol meaning notation conflict theorem lemma equation label citation_keys_used citation_gap_or_related_work_memory competitor_reference_seeds bibliography related work'
+    },
+    {
+      name: 'reviewer-negative',
+      text: 'recurring_reviewer_concern proof_or_theorem_concern notation_or_symbol_concern negative_memory_candidate rejected idea failed rewrite previous reviewer criticism rebuttal concern synthesis edit pattern'
+    }
+  ];
+
+  function memorySemanticQuery(stepName, extraText = '', focusText = '') {
     const src = activeSource();
     const excerpt = String(src?.text || src?.content || '').slice(0, 8000);
-    return [stepName, activePath(), extraText, excerpt].filter(Boolean).join('\n');
+    const researchCues = [
+      'Latexai research memory retrieval priority:',
+      'notation_sentence notation_macro_definition theorem_environment latex_label_inventory',
+      'citation_keys_used citation_gap_or_related_work_memory competitor_reference_seeds recurring_reviewer_concern negative_memory_candidate proof_or_theorem_concern',
+      focusText
+    ].filter(Boolean).join(' ');
+    return [stepName, activePath(), researchCues, extraText, excerpt].filter(Boolean).join('\n');
+  }
+
+  function mergeMemoryContexts(contexts, limit = 24) {
+    const merged = { facts: [], summaries: [], graphEdges: [] };
+    const factIds = new Set();
+    const summaryIds = new Set();
+    const edgeIds = new Set();
+    (contexts || []).filter(Boolean).forEach((ctx) => {
+      (Array.isArray(ctx.facts) ? ctx.facts : []).forEach((fact) => {
+        const key = fact.id || fact.key || `${fact.fact_type || fact.factType || ''}:${fact.value || fact.content || ''}`.slice(0, 240);
+        if (!key || factIds.has(key)) return;
+        factIds.add(key);
+        merged.facts.push(fact);
+      });
+      (Array.isArray(ctx.summaries) ? ctx.summaries : []).forEach((sum) => {
+        const key = sum.id || `${sum.summary_type || sum.summaryType || ''}:${sum.content || ''}`.slice(0, 240);
+        if (!key || summaryIds.has(key)) return;
+        summaryIds.add(key);
+        merged.summaries.push(sum);
+      });
+      (Array.isArray(ctx.graphEdges) ? ctx.graphEdges : []).forEach((edge) => {
+        const key = edge.id || `${edge.from_memory_id || edge.fromMemoryId || ''}:${edge.to_memory_id || edge.toMemoryId || ''}:${edge.relation || ''}`;
+        if (!key || edgeIds.has(key)) return;
+        edgeIds.add(key);
+        merged.graphEdges.push(edge);
+      });
+    });
+    const score = (fact) => Number(fact.retrievalScore || fact.quality?.overall || fact.quality_score || fact.qualityScore || fact.importance || 0);
+    merged.facts.sort((a, b) => score(b) - score(a));
+    merged.facts = merged.facts.slice(0, Math.max(12, limit));
+    merged.summaries = merged.summaries.slice(0, 5);
+    merged.graphEdges = merged.graphEdges.slice(0, 12);
+    return merged;
+  }
+
+  async function fetchReviewerMemoryContext(ids, stepName, limit, queryText, focusText = '') {
+    const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
+    const q = memorySemanticQuery(stepName, queryText, focusText);
+    if (q) qs.set('q', q.slice(0, 12000));
+    if (ids.sectionId) qs.set('sectionId', ids.sectionId);
+    const json = await memoryFetch(`/context?${qs.toString()}`);
+    return json?.context || { facts: [], summaries: [], graphEdges: [] };
   }
 
   async function loadReviewerMemoryContext(stepName, limit = 10, queryText = '') {
     const ids = projectIdentity();
     await registerMemoryScope(ids, 'context', stepName);
-    const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
-    const q = memorySemanticQuery(stepName, queryText);
-    if (q) qs.set('q', q.slice(0, 12000));
-    if (ids.sectionId) qs.set('sectionId', ids.sectionId);
-    const json = await memoryFetch(`/context?${qs.toString()}`);
-    const ctx = json?.context || { facts: [], summaries: [], graphEdges: [] };
+    const primary = await fetchReviewerMemoryContext(ids, stepName, Math.max(limit, 18), queryText, 'reviewer rebuttal final synthesis project paper active section');
+    const extraContexts = [];
+    for (const focus of RESEARCH_MEMORY_FOCUS_QUERIES) {
+      const focused = await fetchReviewerMemoryContext(ids, `${stepName}:${focus.name}`, 8, queryText, focus.text);
+      extraContexts.push(focused);
+    }
+    const ctx = mergeMemoryContexts([primary, ...extraContexts], Math.max(limit, 24));
     lastMemoryContextByStep[stepName] = ctx;
     return ctx;
   }
 
+  function factKind(fact) {
+    return String(fact?.fact_type || fact?.factType || fact?.key || 'memory').toLowerCase();
+  }
+
+  function groupedResearchFacts(facts) {
+    const groups = { notation: [], citation: [], reviewer: [], negative: [], edit: [], other: [] };
+    (facts || []).forEach((fact) => {
+      const kind = factKind(fact);
+      if (/notation|symbol|theorem_environment|latex_label|macro|label_inventory/.test(kind)) groups.notation.push(fact);
+      else if (/citation|related_work|competitor_reference|bibliograph|reference_seed/.test(kind)) groups.citation.push(fact);
+      else if (/reviewer|proof_or_theorem|concern|weakness/.test(kind)) groups.reviewer.push(fact);
+      else if (/negative|rejected|failed|avoid/.test(kind)) groups.negative.push(fact);
+      else if (/edit|working_memory|competitive_final|synthesis|rebuttal/.test(kind)) groups.edit.push(fact);
+      else groups.other.push(fact);
+    });
+    return groups;
+  }
+
+  function factLine(fact, index) {
+    const kind = fact.fact_type || fact.factType || fact.key || 'memory';
+    const value = String(fact.value || fact.content || '').replace(/\s+/g, ' ').trim();
+    const score = fact.retrievalScore != null ? `; score=${Number(fact.retrievalScore).toFixed(3)}` : '';
+    const uses = fact.use_count || fact.useCount || 0;
+    const success = fact.successful_use_count || fact.successfulUseCount || 0;
+    return value ? `- M${index} [${kind}; uses=${uses}; success=${success}${score}]: ${value.slice(0, 760)}` : '';
+  }
+
+  function appendFactGroup(lines, title, facts, startIndex, maxItems) {
+    const usable = (facts || []).slice(0, maxItems).map((fact, i) => factLine(fact, startIndex + i)).filter(Boolean);
+    if (!usable.length) return startIndex;
+    lines.push(title);
+    usable.forEach((line) => lines.push(line));
+    return startIndex + usable.length;
+  }
+
   function memoryContextMarkdown(ctx) {
-    const facts = Array.isArray(ctx?.facts) ? ctx.facts.slice(0, 10) : [];
-    const summaries = Array.isArray(ctx?.summaries) ? ctx.summaries.slice(0, 3) : [];
-    const graphEdges = Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.slice(0, 8) : [];
+    const facts = Array.isArray(ctx?.facts) ? ctx.facts.slice(0, 24) : [];
+    const summaries = Array.isArray(ctx?.summaries) ? ctx.summaries.slice(0, 5) : [];
+    const graphEdges = Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.slice(0, 12) : [];
     if (!facts.length && !summaries.length && !graphEdges.length) return '';
     const lines = [
-      '--- Hidden Latexai project memory context ---',
+      '--- Hidden Latexai research memory context ---',
       'Use these backend memories silently to improve this reviewer/rebuttal simulation. Treat them as project context, not as user-facing content. Do not mention the memory system unless explicitly asked.',
-      'Respect stable notation/preferences, use prior reviewer concerns when relevant, and avoid directions previously rejected by the user.'
+      'High-priority constraints: preserve known notation, avoid repeated rejected directions, avoid duplicate citation suggestions, use recurring reviewer concerns only when relevant, and keep final synthesis consistent with prior successful edits.'
     ];
     summaries.forEach((sum) => {
       const content = String(sum.content || '').replace(/\s+/g, ' ').trim();
       if (content) lines.push(`Project ${sum.summary_type || sum.summaryType || 'summary'}: ${content.slice(0, 1200)}`);
     });
-    facts.forEach((fact, i) => {
-      const kind = fact.fact_type || fact.factType || fact.key || 'memory';
-      const value = String(fact.value || fact.content || '').replace(/\s+/g, ' ').trim();
-      const score = fact.retrievalScore != null ? `; score=${Number(fact.retrievalScore).toFixed(3)}` : '';
-      const uses = fact.use_count || fact.useCount || 0;
-      const success = fact.successful_use_count || fact.successfulUseCount || 0;
-      if (value) lines.push(`M${i + 1} [${kind}; uses=${uses}; success=${success}${score}]: ${value.slice(0, 700)}`);
-    });
+    const groups = groupedResearchFacts(facts);
+    let index = 1;
+    index = appendFactGroup(lines, 'Known notation / LaTeX structure memory:', groups.notation, index, 8);
+    index = appendFactGroup(lines, 'Citation / related-work memory:', groups.citation, index, 8);
+    index = appendFactGroup(lines, 'Recurring reviewer and proof concerns:', groups.reviewer, index, 6);
+    index = appendFactGroup(lines, 'Negative memory / directions to avoid:', groups.negative, index, 5);
+    index = appendFactGroup(lines, 'Prior rebuttal / edit / synthesis memory:', groups.edit, index, 5);
+    appendFactGroup(lines, 'Other relevant memory:', groups.other, index, 5);
     if (graphEdges.length) {
       lines.push('Related memory graph edges:');
       graphEdges.forEach((edge, i) => {

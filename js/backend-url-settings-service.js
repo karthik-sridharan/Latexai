@@ -1,5 +1,5 @@
 /* Latexai Stage 18Y BackendUrlSettingsService
- * Stage: stage18y-notation-citation-memory-extraction-20260524-1
+ * Stage: stage18z-memory-aware-notation-citation-retrieval-20260524-1
  *
  * Keeps backend endpoint configuration in the Settings tab:
  * - AI backend proxy URL remains the existing AI proxy route.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18y-notation-citation-memory-extraction-20260524-1';
+  const STAGE = 'stage18z-memory-aware-notation-citation-retrieval-20260524-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
