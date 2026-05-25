@@ -85,7 +85,7 @@
       project.updatedAt = project.createdAt;
       project.settings = settings;
       project.meta = Object.assign({}, project.meta || {}, {
-        architectureStage: 'stage19e3-open-github-specific-repo-selection-fix',
+        architectureStage: 'stage19e4-open-github-left-panel-hard-refresh',
         cleanNewProject: true,
         previousProjectName: currentName
       });
@@ -107,7 +107,7 @@
       project.github = Object.assign({}, gh.github);
       project.meta.github = Object.assign({}, gh.github);
       if (NS.FileTree?.applyGithubIdentity) NS.FileTree.applyGithubIdentity(project, gh.github);
-      project.meta = Object.assign({}, project.meta || {}, { architectureStage: 'stage19e3-open-github-specific-repo-selection-fix' });
+      project.meta = Object.assign({}, project.meta || {}, { architectureStage: 'stage19e4-open-github-left-panel-hard-refresh' });
       NS.State.resetProjectClean ? NS.State.resetProjectClean(project, { preserveSettings: true }) : NS.State.resetProject(project);
       NS.FileTree?.render?.();
       NS.Preview?.renderDraftPreview?.();

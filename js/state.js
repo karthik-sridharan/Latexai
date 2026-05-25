@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage3j-full-project-guard-20260518-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage19e4-open-github-left-panel-hard-refresh-20260525-1';
 
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
 
@@ -266,6 +266,36 @@
     state.dirty = true;
     ensureValidActiveFile();
     save();
+    emit('reset');
+    return state.project;
+  }
+
+  function replaceProjectFromExternalSource(project, options = {}) {
+    // Stage 19E4: GitHub open must replace the complete active project without
+    // the old full-project guard re-merging stale files from the previous repo.
+    // This bypasses save(), because save() intentionally calls protectFullProject().
+    const preserveSettings = options.preserveSettings !== false;
+    const currentSettings = Object.assign(Model().defaultSettings(), state.settings || {}, state.project?.settings || {});
+    try { Store().clearFullProjectCache?.(); } catch (_err) {}
+    try { localStorage.removeItem(FULL_PROJECT_CACHE_KEY); } catch (_err) {}
+
+    state.project = Model().normalizeProject(project || Model().defaultProject());
+    state.settings = preserveSettings
+      ? Object.assign(Model().defaultSettings(), currentSettings, state.project.settings || {})
+      : Object.assign(Model().defaultSettings(), state.project.settings || {});
+    enforceSafetySettings();
+    state.project.settings = Object.assign({}, state.settings);
+    ensureValidActiveFile();
+
+    const saved = Store().saveLocal(state.project, state.settings);
+    state.project = Model().normalizeProject(saved.project || state.project);
+    state.settings = Object.assign(Model().defaultSettings(), saved.settings || state.settings || {});
+    state.project.settings = Object.assign({}, state.settings);
+    state.dirty = false;
+    state.lastSavedAt = saved.savedAt || nowIso();
+    state.sync = { provider: 'github', status: 'loaded-github', lastEvent: state.lastSavedAt };
+    rememberFullProject(state.project, options.reason || 'github-open-replace');
+    emit(options.reason || 'github-project-opened');
     emit('reset');
     return state.project;
   }

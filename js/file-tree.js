@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19e3-open-github-specific-repo-selection-fix-20260525-1';
+  const STAGE = 'stage19e4-open-github-left-panel-hard-refresh-20260525-1';
 
   const git = {
     setupOpen: false,
@@ -134,7 +134,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E2</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E4</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -511,22 +511,48 @@
     return W.LuminaLatex.ProjectModel?.normalizeProject?.(project) || project;
   }
 
+  function refreshGithubProjectPanes(project, reason) {
+    const state = State();
+    const current = project || state?.state?.project || null;
+    if (!current) return;
+    try { W.LuminaLatex.Editor?.render?.(state.state); } catch (_err) {}
+    try { render(); } catch (_err) {}
+    try { renderRootSelect(); } catch (_err) {}
+    try { W.LuminaLatex.Preview?.renderDraftPreview?.(); } catch (_err) {}
+    try { W.LuminaLatex.CompileRootService?.render?.(); } catch (_err) {}
+    try {
+      const title = document.getElementById('projectTitleDisplay');
+      if (title) title.textContent = current.name || current.title || 'GitHub project';
+    } catch (_err) {}
+    try {
+      const active = state?.getActiveFile?.();
+      const pill = document.getElementById('activeFilePill');
+      if (pill) pill.textContent = active?.path || current.activePath || current.rootFile || 'main.tex';
+    } catch (_err) {}
+    try {
+      // Some older GitHub helper panels wrote their own file list below the native
+      // Source tree. They are not the source of truth after Stage 19E4, so mark
+      // them stale to avoid confusing the user after opening a different repo.
+      document.querySelectorAll('[data-lai-stable-github-file-list], .lai-stable-github-file-list, .lai-github-workspace, .lai-integrated-github-filetree')
+        .forEach((el) => { el.dataset.stage19e4Stale = 'true'; el.style.display = 'none'; });
+    } catch (_err) {}
+    try { W.LuminaLatex.Main?.toast?.(`Loaded GitHub project: ${attachedRepoLabel()}`); } catch (_err) {}
+    try { console.info('[Latexai Stage19E4] refreshed GitHub project panes', { reason, files: current.files?.map?.((f) => f.path) || [] }); } catch (_err) {}
+  }
+
   function forceGithubProjectIntoUi(nextProject, reason) {
     const state = State();
     if (!state) throw new Error('State service is not ready.');
-    if (state.resetProjectClean) state.resetProjectClean(nextProject, { preserveSettings: true, reason: reason || 'github-open' });
-    else state.resetProject(nextProject);
-
-    // Stage 19E2: force all visible panes to repaint after opening GitHub.
-    // This avoids iPad/Safari cases where state changed but the old editor text
-    // remained visible until another local action occurred.
-    state.setActivePath?.(state.state.project.rootFile || state.state.project.activePath || 'main.tex');
+    const replace = state.replaceProjectFromExternalSource || state.resetProjectClean || state.resetProject;
+    const loaded = replace.call(state, nextProject, { preserveSettings: true, reason: reason || 'github-open' });
+    const project = loaded || state.state.project;
+    const rootPath = project.rootFile || project.activePath || 'main.tex';
+    state.setActivePath?.(rootPath);
     state.rememberFullProject?.(state.state.project, reason || 'github-open');
-    state.save?.();
-    W.LuminaLatex.Editor?.render?.(state.state);
-    W.LuminaLatex.FileTree?.render?.();
-    W.LuminaLatex.Preview?.renderDraftPreview?.();
+    refreshGithubProjectPanes(state.state.project, reason || 'github-open');
+    [0, 80, 250, 700].forEach((delay) => setTimeout(() => refreshGithubProjectPanes(State().state.project, `${reason || 'github-open'}:${delay}`), delay));
     try { document.getElementById('sourceEditor')?.dispatchEvent(new Event('change', { bubbles: true })); } catch (_err) {}
+    W.LuminaLatex.__lastOpenedGithubProject = state.state.project;
     return state.state.project;
   }
 
@@ -943,5 +969,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi };
+  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi, refreshGithubProjectPanes };
 })();
