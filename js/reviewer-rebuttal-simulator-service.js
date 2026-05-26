@@ -1,5 +1,5 @@
-/* Latexai Stage 19I4 ReviewerRebuttalSimulatorService
- * Stage: stage19i4-reviewer-rebuttal-trajectory-agent-runs-fix-20260526-1
+/* Latexai Stage 19I5 ReviewerRebuttalSimulatorService
+ * Stage: stage19i5-reviewer-rebuttal-role-classification-fix-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i4-reviewer-rebuttal-trajectory-agent-runs-fix-20260526-1';
+  const STAGE = 'stage19i5-reviewer-rebuttal-role-classification-fix-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -451,18 +451,27 @@
   }
 
   function agentRoleForReviewerStep(stepName, task) {
-    const name = String(stepName || task || '').toLowerCase();
-    // Stage 19I2: use the canonical Stage 19I context-profile roles so the
-    // reviewer/rebuttal workflow contributes rows to agent_context_usage_stats.
-    // The earlier labels (simulated_reviewer_agent, defender_rebuttal_agent,
-    // editor_synthesis_agent) were useful for display but did not match the
-    // backend's seeded context profiles.
-    if (/notation/.test(name)) return 'notation_auditor';
-    if (/citation|related/.test(name)) return 'citation_auditor';
-    if (/simulated_review|reviewer|review/.test(name)) return 'critic';
-    if (/rebuttal|defend|author_response/.test(name)) return 'defender';
-    if (/synthesis|final|rewrite|revision|edit/.test(name)) return 'editor';
-    if (/evaluate|score|outcome/.test(name)) return 'evaluator';
+    const primary = String(stepName || '').toLowerCase();
+    const combined = `${String(stepName || '')} ${String(task || '')}`.toLowerCase();
+
+    // Stage 19I5: classify the reviewer/rebuttal workflow by the canonical
+    // step first. Earlier 19I builds checked for the generic word "review"
+    // before checking "rebuttal" or "synthesis". That made tasks such as
+    // "review_rebuttal" and focused queries such as
+    // "final_synthesis:reviewer-negative" get logged as critic.
+    // Exact workflow stages must win over focus labels.
+    if (/^simulated_review_?\d*$/.test(primary) || /^reviewer_?\d*$/.test(primary)) return 'critic';
+    if (/^review_rebuttal$/.test(primary) || /^rebuttal$/.test(primary) || /^author_response$/.test(primary)) return 'defender';
+    if (/^final_synthesis$/.test(primary) || /^synthesize/.test(primary) || /^revision_synthesis$/.test(primary)) return 'editor';
+
+    // Focus/audit contexts only win when the primary step was not one of the
+    // main critic/defender/editor stages above.
+    if (/notation/.test(combined)) return 'notation_auditor';
+    if (/citation|related/.test(combined)) return 'citation_auditor';
+    if (/rebuttal|defend|author_response/.test(combined)) return 'defender';
+    if (/synthesis|final|rewrite|revision|edit/.test(combined)) return 'editor';
+    if (/evaluate|score|outcome/.test(combined)) return 'evaluator';
+    if (/simulated_review|reviewer|review|critique|critic/.test(combined)) return 'critic';
     return 'critic';
   }
 
