@@ -1,5 +1,5 @@
-/* Latexai Stage 19F ReviewerRebuttalSimulatorService
- * Stage: stage19i-agent-role-specific-context-policy-20260526-1
+/* Latexai Stage 19I2 ReviewerRebuttalSimulatorService
+ * Stage: stage19i2-reviewer-rebuttal-buttons-and-role-context-fix-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i-agent-role-specific-context-policy-20260526-1';
+  const STAGE = 'stage19i2-reviewer-rebuttal-buttons-and-role-context-fix-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -31,6 +31,7 @@
   let lastRebuttal = '';
   let lastSynthesis = '';
   let cancelled = false;
+  let reviewerDelegatedEventsBound = false;
 
   function State() { return NS.State; }
   function el(id) { return D.getElementById(id); }
@@ -215,7 +216,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19i-agent-role-specific-context-policy',
+        identityStage: 'stage19i2-reviewer-rebuttal-role-context-fix',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -336,7 +337,7 @@
       workflow: 'reviewer-rebuttal-simulator',
       query: q.slice(0, 12000),
       limit: Math.max(1, Number(limit) || 12),
-      metadata: { stage: STAGE, focusText: focusText.slice(0, 1200), contextPolicy: 'stage19i-agent-role-specific' }
+      metadata: { stage: STAGE, focusText: focusText.slice(0, 1200), contextPolicy: 'stage19i2-agent-role-specific' }
     };
     const json = await memoryPost('/agent-context', payload);
     if (json?.context) return json.context;
@@ -346,7 +347,7 @@
     if (ids.sectionId) qs.set('sectionId', ids.sectionId);
     const fallback = await memoryFetch(`/context?${qs.toString()}`);
     const ctx = fallback?.context || { facts: [], summaries: [], graphEdges: [] };
-    ctx.agentContextProfile = { requestedRole: agentRole, fallback: true, profileVersion: 'stage19i-fallback' };
+    ctx.agentContextProfile = { requestedRole: agentRole, fallback: true, profileVersion: 'stage19i2-fallback' };
     return ctx;
   }
 
@@ -447,10 +448,18 @@
 
   function agentRoleForReviewerStep(stepName, task) {
     const name = String(stepName || task || '').toLowerCase();
-    if (/simulated_review/.test(name)) return 'simulated_reviewer_agent';
-    if (/rebuttal/.test(name)) return 'defender_rebuttal_agent';
-    if (/synthesis|final/.test(name)) return 'editor_synthesis_agent';
-    return 'reviewer_rebuttal_agent';
+    // Stage 19I2: use the canonical Stage 19I context-profile roles so the
+    // reviewer/rebuttal workflow contributes rows to agent_context_usage_stats.
+    // The earlier labels (simulated_reviewer_agent, defender_rebuttal_agent,
+    // editor_synthesis_agent) were useful for display but did not match the
+    // backend's seeded context profiles.
+    if (/notation/.test(name)) return 'notation_auditor';
+    if (/citation|related/.test(name)) return 'citation_auditor';
+    if (/simulated_review|reviewer|review/.test(name)) return 'critic';
+    if (/rebuttal|defend|author_response/.test(name)) return 'defender';
+    if (/synthesis|final|rewrite|revision|edit/.test(name)) return 'editor';
+    if (/evaluate|score|outcome/.test(name)) return 'evaluator';
+    return 'critic';
   }
 
   async function logReviewerAgentRun(details) {
@@ -474,7 +483,7 @@
         stepName: details.stepName || details.taskType || '',
         provider: details.provider || pm.provider,
         model: details.model || pm.model,
-        promptTemplateId: details.promptTemplateId || `reviewer-rebuttal:${details.stepName || details.taskType || 'unknown'}:stage19g`,
+        promptTemplateId: details.promptTemplateId || `reviewer-rebuttal:${details.stepName || details.taskType || 'unknown'}:stage19i2`,
         promptText: details.instructions || '',
         inputText: details.input || '',
         outputText: details.output || '',
@@ -489,7 +498,7 @@
             memorySummaries: Array.isArray(ctx?.summaries) ? ctx.summaries.length : 0,
             graphEdges: Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.length : 0,
             agentContextProfile: ctx?.agentContextProfile || null,
-            contextPolicy: 'stage19i-agent-role-specific'
+            contextPolicy: 'stage19i2-agent-role-specific'
           }
         },
         output: {
@@ -873,7 +882,7 @@ ${input}` : input,
           4500,
           0.3,
           'latexai-simulated-reviewer',
-          { stepName, memoryContext, memoryBlock, reviewerName: reviewer.name, reviewerStyle: reviewer.style, agentRole: 'simulated_reviewer_agent' }
+          { stepName, memoryContext, memoryBlock, reviewerName: reviewer.name, reviewerStyle: reviewer.style, agentRole: 'critic' }
         );
         lastReviews.push({ ...reviewer, text: text.trim() });
         await markMemoryUse(stepName, text && text.trim() ? 'success' : 'used', text && text.trim() ? `${reviewer.name} completed review with memory context.` : `${reviewer.name} returned empty review.`);
@@ -924,7 +933,7 @@ ${input}` : input,
         5000,
         0.2,
         'latexai-review-rebuttal',
-        { stepName, memoryContext, memoryBlock, agentRole: 'defender_rebuttal_agent' }
+        { stepName, memoryContext, memoryBlock, agentRole: 'defender' }
       )).trim();
       await markMemoryUse(stepName, lastRebuttal ? 'success' : 'used', lastRebuttal ? 'Rebuttal completed with memory context.' : 'Rebuttal returned empty text.');
       await saveReviewerMemory('rebuttal', lastRebuttal, payload);
@@ -962,7 +971,7 @@ ${input}` : input,
         steps.push({
           stepIndex: i,
           stepName: `simulated_review_${i + 1}`,
-          agentRole: 'simulated_reviewer_agent',
+          agentRole: 'critic',
           actionType: 'simulate_review',
           agentRunId: run.runId || '',
           contextBundleId: run.contextBundleId || '',
@@ -971,18 +980,18 @@ ${input}` : input,
           memoryIds: memoryIdsFromContext(lastMemoryContextByStep[`simulated_review_${i + 1}`] || {})
         });
       });
-      const rebuttalRun = trajectoryAgentRuns.find((r) => r.stepName === 'rebuttal') || {};
+      const rebuttalRun = trajectoryAgentRuns.find((r) => r.stepName === 'review_rebuttal' || r.stepName === 'rebuttal') || {};
       if (lastRebuttal || rebuttalRun.runId) {
         steps.push({
           stepIndex: steps.length,
           stepName: 'rebuttal',
-          agentRole: 'defender_rebuttal_agent',
+          agentRole: 'defender',
           actionType: 'generate_rebuttal',
           agentRunId: rebuttalRun.runId || '',
           contextBundleId: rebuttalRun.contextBundleId || '',
           status: lastRebuttal ? 'success' : 'empty',
           summary: summarizeMemoryText(lastRebuttal || '', 1200),
-          memoryIds: memoryIdsFromContext(lastMemoryContextByStep.rebuttal || {})
+          memoryIds: memoryIdsFromContext(lastMemoryContextByStep.review_rebuttal || lastMemoryContextByStep.rebuttal || {})
         });
       }
       const synthesisRun = trajectoryAgentRuns.find((r) => r.stepName === 'final_synthesis') || {};
@@ -990,7 +999,7 @@ ${input}` : input,
         steps.push({
           stepIndex: steps.length,
           stepName: 'final_synthesis',
-          agentRole: 'editor_synthesis_agent',
+          agentRole: 'editor',
           actionType: 'synthesize_revision_plan',
           agentRunId: synthesisRun.runId || '',
           contextBundleId: synthesisRun.contextBundleId || '',
@@ -1070,7 +1079,7 @@ ${input}` : input,
         6500,
         0.2,
         'latexai-final-review-synthesis',
-        { stepName, memoryContext, memoryBlock, agentRole: 'editor_synthesis_agent' }
+        { stepName, memoryContext, memoryBlock, agentRole: 'editor' }
       )).trim();
       await markMemoryUse(stepName, lastSynthesis ? 'success' : 'used', lastSynthesis ? 'Final synthesis completed with memory context.' : 'Final synthesis returned empty text.');
       await saveReviewerMemory('final_synthesis', lastSynthesis, payload);
@@ -1106,7 +1115,34 @@ ${input}` : input,
     catch (_err) { setOutput(text); setStatus('Could not copy automatically; report is shown below.'); }
   }
 
+
+  function bindReviewerDelegatedEvents() {
+    if (reviewerDelegatedEventsBound) return;
+    reviewerDelegatedEventsBound = true;
+    D.addEventListener('click', (event) => {
+      const target = event.target?.closest?.('#runReviewerSimBtn,#generateReviewerRebuttalBtn,#synthesizeReviewerFinalBtn,#runReviewerFullLoopBtn,#cancelReviewerSimBtn,#copyReviewerSimBtn');
+      if (!target) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (target.disabled) return;
+      const id = target.id;
+      try {
+        if (id === 'runReviewerSimBtn') { setStatus('Starting reviewer simulation...'); void runReviews(); return; }
+        if (id === 'generateReviewerRebuttalBtn') { setStatus('Starting rebuttal generation...'); void generateRebuttal(); return; }
+        if (id === 'synthesizeReviewerFinalBtn') { setStatus('Starting final synthesis...'); void synthesizeFinalRevision(); return; }
+        if (id === 'runReviewerFullLoopBtn') { setStatus('Starting full reviewer/rebuttal loop...'); void runFullLoop(); return; }
+        if (id === 'cancelReviewerSimBtn') { cancelLoop(); return; }
+        if (id === 'copyReviewerSimBtn') { void copyReport(); return; }
+      } catch (err) {
+        const message = err?.message || String(err);
+        setStatus(`Reviewer/rebuttal button failed: ${message}`);
+        try { console.warn('[Latexai reviewer/rebuttal] delegated button handler failed', err); } catch (_ignored) {}
+      }
+    }, true);
+  }
+
   function bindCardEvents() {
+    bindReviewerDelegatedEvents();
     syncReviewerRows();
     el('reviewerSimCount')?.addEventListener('change', syncReviewerRows, true);
     el('runReviewerSimBtn')?.addEventListener('click', runReviews, true);
@@ -1146,7 +1182,7 @@ ${input}` : input,
       '  <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
-      '<div class="settings-note">Stage 19A keeps reviewer/rebuttal memories scoped by stable project and paper identity. The final synthesis is memory-aware and should produce source-aware <code>\\laiold</code>/<code>\\lai</code> actionable edits where possible; it still does not overwrite source automatically.</div>',
+      '<div class="settings-note">Stage 19I2 keeps reviewer/rebuttal memories scoped by stable project and paper identity and logs role-specific context usage. The final synthesis is memory-aware and should produce source-aware <code>\\laiold</code>/<code>\\lai</code> actionable edits where possible; it still does not overwrite source automatically.</div>',
       '<div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator ready.</div>',
       '<pre id="reviewerRebuttalOutput" class="devils-output"></pre>'
     ].join('');
