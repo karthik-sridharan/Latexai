@@ -264,13 +264,20 @@
 
   async function saveLocalStorage() {
     var project = discoverProject();
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(project));
-    state.lastSavedAt = nowIso();
-    state.lastError = null;
-    state.dirty = false;
-    saveStatus();
-    emit("latexai:storage-saved", { mode: "localStorage", project: project });
-    return { ok: true, mode: "localStorage", project: project, savedAt: state.lastSavedAt };
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(project));
+      state.lastSavedAt = nowIso();
+      state.lastError = null;
+      state.dirty = false;
+      saveStatus();
+      emit("latexai:storage-saved", { mode: "localStorage", project: project });
+      return { ok: true, mode: "localStorage", project: project, savedAt: state.lastSavedAt };
+    } catch (err) {
+      state.lastError = "Browser autosave skipped because storage quota was exceeded. Use Save GitHub/Checkpoint for durable storage.";
+      saveStatus();
+      emit("latexai:storage-save-skipped", { mode: "localStorage", error: state.lastError });
+      return { ok: false, mode: "localStorage", project: project, message: state.lastError };
+    }
   }
 
   async function loadLocalStorage() {

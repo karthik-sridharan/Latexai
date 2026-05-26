@@ -5,7 +5,7 @@
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const Model = () => NS.ProjectModel;
   const Store = () => NS.ProjectStore;
-  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage19e4-open-github-left-panel-hard-refresh-20260525-1';
+  const STAGE = W.LUMINA_LATEX_STAGE || 'latex-stage19h2-github-load-storage-quota-fix-20260526-1';
 
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
 
@@ -74,6 +74,24 @@
       const normalized = Model().normalizeProject(project || state.project);
       const shouldCache = normalized.github || normalized.files.length > 1;
       if (!shouldCache) return false;
+      // Stage 19H2: avoid failing GitHub load on iPad/Safari localStorage quota.
+      // ProjectStore.saveLocal already writes a compact autosave. This best-effort
+      // full-project guard cache should never throw or block project loading.
+      const files = Array.isArray(normalized.files) ? normalized.files : [];
+      const compactFiles = files.map((file) => {
+        const path = String(file.path || '');
+        const isText = /\.(tex|bib|sty|cls|bst|md|txt|json|yml|yaml)$/i.test(path) || file.kind === 'tex' || file.kind === 'bib';
+        const content = String(file.content ?? file.text ?? '');
+        if (isText && content.length < 350000) return file;
+        const copy = Object.assign({}, file);
+        delete copy.content; delete copy.text; delete copy.data; delete copy.base64; delete copy.blob;
+        copy.localStorageOmittedContent = true;
+        return copy;
+      });
+      const compactProject = Object.assign({}, normalized, {
+        files: compactFiles,
+        meta: Object.assign({}, normalized.meta || {}, { fullProjectCacheCompacted: true, fullProjectCacheStage: STAGE })
+      });
       localStorage.setItem(FULL_PROJECT_CACHE_KEY, JSON.stringify({
         schema: 'lumina-latex-full-project-cache-v1',
         stage: STAGE,
@@ -82,11 +100,13 @@
         githubKey: githubKey(normalized),
         fileCount: normalized.files.length,
         paths: normalized.files.map((f) => f.path),
-        project: normalized
+        compacted: true,
+        project: compactProject
       }));
       return true;
     } catch (err) {
-      console.warn('Could not remember full project cache', err);
+      console.warn('Could not remember full project cache; continuing without browser full-project cache.', err);
+      try { localStorage.removeItem(FULL_PROJECT_CACHE_KEY); } catch (_err) {}
       return false;
     }
   }
