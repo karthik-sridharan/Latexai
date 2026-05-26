@@ -1,5 +1,5 @@
-/* Latexai Stage 19D ReviewerRebuttalSimulatorService
- * Stage: stage19e-open-existing-github-project-20260525-1
+/* Latexai Stage 19F ReviewerRebuttalSimulatorService
+ * Stage: stage19f-agent-run-logging-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19e-open-existing-github-project-20260525-1';
+  const STAGE = 'stage19f-agent-run-logging-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -215,7 +215,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19e-open-existing-github-project',
+        identityStage: 'stage19f-agent-run-logging',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -414,6 +414,81 @@
     return lines.join('\n');
   }
 
+
+  function estimateTokens(text) {
+    const chars = String(text || '').length;
+    return Math.max(0, Math.ceil(chars / 4));
+  }
+
+  function memoryIdsFromContext(ctx) {
+    const ids = [];
+    (ctx?.facts || []).forEach((fact) => { if (fact?.id) ids.push(String(fact.id)); });
+    return Array.from(new Set(ids));
+  }
+
+  function agentRoleForReviewerStep(stepName, task) {
+    const name = String(stepName || task || '').toLowerCase();
+    if (/simulated_review/.test(name)) return 'simulated_reviewer_agent';
+    if (/rebuttal/.test(name)) return 'defender_rebuttal_agent';
+    if (/synthesis|final/.test(name)) return 'editor_synthesis_agent';
+    return 'reviewer_rebuttal_agent';
+  }
+
+  async function logReviewerAgentRun(details) {
+    if (!memoryEnabled()) return null;
+    try {
+      const ids = projectIdentity();
+      const ctx = details.memoryContext || lastMemoryContextByStep[details.stepName] || {};
+      const pm = currentProviderModel();
+      const memoryIds = memoryIdsFromContext(ctx);
+      return await memoryPost('/agent-run', {
+        scope: 'agent',
+        userId: ids.userId,
+        projectId: ids.projectId,
+        paperId: ids.paperId,
+        sectionId: ids.sectionId,
+        sessionId: ids.sessionId,
+        agentRole: details.agentRole || agentRoleForReviewerStep(details.stepName, details.taskType),
+        agentId: details.agentId || 'reviewer-rebuttal-simulator-service',
+        taskType: details.taskType || 'latexai-reviewer-rebuttal-simulator',
+        workflow: 'reviewer-rebuttal-simulator',
+        stepName: details.stepName || details.taskType || '',
+        provider: details.provider || pm.provider,
+        model: details.model || pm.model,
+        promptTemplateId: details.promptTemplateId || `reviewer-rebuttal:${details.stepName || details.taskType || 'unknown'}:stage19f`,
+        promptText: details.instructions || '',
+        inputText: details.input || '',
+        outputText: details.output || '',
+        status: details.status || 'unknown',
+        latencyMs: details.latencyMs || 0,
+        tokenEstimate: estimateTokens(`${details.instructions || ''}\n${details.input || ''}\n${details.output || ''}`),
+        contextBundle: {
+          memoryIds,
+          contextText: details.memoryBlock || memoryContextMarkdown(ctx),
+          metadata: {
+            memoryFacts: Array.isArray(ctx?.facts) ? ctx.facts.length : 0,
+            memorySummaries: Array.isArray(ctx?.summaries) ? ctx.summaries.length : 0,
+            graphEdges: Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.length : 0
+          }
+        },
+        output: {
+          text: details.output || '',
+          summary: String(details.output || '').replace(/```[\s\S]*?```/g, '[structured block omitted]').replace(/\s+/g, ' ').trim().slice(0, 1200)
+        },
+        error: details.error || '',
+        metadata: {
+          stage: STAGE,
+          reviewerName: details.reviewerName || '',
+          reviewerStyle: details.reviewerStyle || '',
+          ...(ids.identityMetadata || {})
+        }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai agent-run logging] reviewer/rebuttal log failed', err); } catch (_ignored) {}
+      return null;
+    }
+  }
+
   async function markMemoryUse(stepName, outcome, note = '') {
     const facts = Array.isArray(lastMemoryContextByStep[stepName]?.facts) ? lastMemoryContextByStep[stepName].facts : [];
     await Promise.all(facts.slice(0, 8).map((fact) => memoryPost('/use', {
@@ -521,25 +596,55 @@
   function setStatus(message) { const node = el('reviewerRebuttalStatus'); if (node) node.textContent = message; }
   function setOutput(text) { const node = el('reviewerRebuttalOutput'); if (node) node.textContent = text || ''; }
 
-  async function askAI(instructions, input, maxOutputTokens = 5000, temperature = 0.25, task = 'latexai-reviewer-rebuttal-simulator') {
+  async function askAI(instructions, input, maxOutputTokens = 5000, temperature = 0.25, task = 'latexai-reviewer-rebuttal-simulator', logDetails = {}) {
     if (!NS.AIProvider?.ask) throw new Error('AIProvider is not loaded. Check feature flags and safe mode.');
     const pm = currentProviderModel();
-    const response = await NS.AIProvider.ask({
-      instructions,
-      input,
-      provider: pm.provider,
-      model: pm.model,
-      maxOutputTokens,
-      temperature,
-      stage: STAGE
-    }, {
-      task,
-      routeKey: 'paper-review-rebuttal',
-      provider: pm.provider,
-      model: pm.model,
-      context: { workflow: 'reviewer-rebuttal-simulator', stage: STAGE }
-    });
-    return NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
+    const startedAt = Date.now();
+    let text = '';
+    try {
+      const response = await NS.AIProvider.ask({
+        instructions,
+        input,
+        provider: pm.provider,
+        model: pm.model,
+        maxOutputTokens,
+        temperature,
+        stage: STAGE
+      }, {
+        task,
+        routeKey: 'paper-review-rebuttal',
+        provider: pm.provider,
+        model: pm.model,
+        context: { workflow: 'reviewer-rebuttal-simulator', stage: STAGE }
+      });
+      text = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
+      await logReviewerAgentRun({
+        ...logDetails,
+        taskType: task,
+        provider: pm.provider,
+        model: pm.model,
+        instructions,
+        input,
+        output: text,
+        status: text && text.trim() ? 'success' : 'empty',
+        latencyMs: Date.now() - startedAt
+      });
+      return text;
+    } catch (err) {
+      await logReviewerAgentRun({
+        ...logDetails,
+        taskType: task,
+        provider: pm.provider,
+        model: pm.model,
+        instructions,
+        input,
+        output: text,
+        status: 'failure',
+        latencyMs: Date.now() - startedAt,
+        error: err?.message || String(err)
+      });
+      throw err;
+    }
   }
 
   function reviewerDefaults() {
@@ -694,7 +799,8 @@ ${memoryBlock}` : instructions,
 ${input}` : input,
           4500,
           0.3,
-          'latexai-simulated-reviewer'
+          'latexai-simulated-reviewer',
+          { stepName, memoryContext, memoryBlock, reviewerName: reviewer.name, reviewerStyle: reviewer.style, agentRole: 'simulated_reviewer_agent' }
         );
         lastReviews.push({ ...reviewer, text: text.trim() });
         await markMemoryUse(stepName, text && text.trim() ? 'success' : 'used', text && text.trim() ? `${reviewer.name} completed review with memory context.` : `${reviewer.name} returned empty review.`);
@@ -744,7 +850,8 @@ ${memoryBlock}` : instructions,
 ${input}` : input,
         5000,
         0.2,
-        'latexai-review-rebuttal'
+        'latexai-review-rebuttal',
+        { stepName, memoryContext, memoryBlock, agentRole: 'defender_rebuttal_agent' }
       )).trim();
       await markMemoryUse(stepName, lastRebuttal ? 'success' : 'used', lastRebuttal ? 'Rebuttal completed with memory context.' : 'Rebuttal returned empty text.');
       await saveReviewerMemory('rebuttal', lastRebuttal, payload);
@@ -811,7 +918,8 @@ ${memoryBlock}` : instructions,
 ${input}` : input,
         6500,
         0.2,
-        'latexai-final-review-synthesis'
+        'latexai-final-review-synthesis',
+        { stepName, memoryContext, memoryBlock, agentRole: 'editor_synthesis_agent' }
       )).trim();
       await markMemoryUse(stepName, lastSynthesis ? 'success' : 'used', lastSynthesis ? 'Final synthesis completed with memory context.' : 'Final synthesis returned empty text.');
       await saveReviewerMemory('final_synthesis', lastSynthesis, payload);

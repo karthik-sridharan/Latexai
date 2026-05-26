@@ -1,5 +1,5 @@
-/* Latexai Stage 19D CompetitivePaperReviewService
- * Stage: stage19e-open-existing-github-project-20260525-1
+/* Latexai Stage 19F CompetitivePaperReviewService
+ * Stage: stage19f-agent-run-logging-20260526-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19e-open-existing-github-project-20260525-1';
+  const STAGE = 'stage19f-agent-run-logging-20260526-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -930,7 +930,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19e-open-existing-github-project',
+        identityStage: 'stage19f-agent-run-logging',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -1134,6 +1134,81 @@
       });
     }
     return lines.join('\n');
+  }
+
+
+  function estimateTokens(text) {
+    const chars = String(text || '').length;
+    return Math.max(0, Math.ceil(chars / 4));
+  }
+
+  function memoryIdsFromContext(ctx) {
+    const ids = [];
+    (ctx?.facts || []).forEach((fact) => { if (fact?.id) ids.push(String(fact.id)); });
+    return Array.from(new Set(ids));
+  }
+
+  function agentRoleForCompetitiveStep(stepName) {
+    const name = String(stepName || '').toLowerCase();
+    if (/research|source|competitor/.test(name)) return 'competitive_research_agent';
+    if (/ranking/.test(name)) return 'competitive_ranking_agent';
+    if (/comparison/.test(name)) return 'draft_comparison_agent';
+    if (/rewrite|remake|lai|append|insert|edit/.test(name)) return 'paper_edit_agent';
+    return 'competitive_review_agent';
+  }
+
+  async function logCompetitiveAgentRun(details) {
+    if (!memoryEnabled()) return null;
+    try {
+      const ids = projectIdentity();
+      const ctx = details.memoryContext || lastMemoryContextByStep[details.stepName] || {};
+      const memoryIds = memoryIdsFromContext(ctx);
+      return await memoryPost('/agent-run', {
+        scope: 'agent',
+        userId: ids.userId,
+        projectId: ids.projectId,
+        paperId: ids.paperId,
+        sectionId: ids.sectionId,
+        sessionId: ids.sessionId,
+        agentRole: details.agentRole || agentRoleForCompetitiveStep(details.stepName),
+        agentId: details.agentId || 'competitive-paper-review-service',
+        taskType: details.taskType || details.stepName || 'competitive-review',
+        workflow: 'competitive-review',
+        stepName: details.stepName || '',
+        provider: details.provider || currentAiProvider(),
+        model: details.model || currentAiModel(),
+        promptTemplateId: details.promptTemplateId || `competitive-review:${details.stepName || 'unknown'}:stage19f`,
+        promptText: details.instructions || '',
+        inputText: details.input || '',
+        outputText: details.output || '',
+        status: details.status || 'unknown',
+        latencyMs: details.latencyMs || 0,
+        tokenEstimate: estimateTokens(`${details.instructions || ''}\n${details.input || ''}\n${details.output || ''}`),
+        contextBundle: {
+          memoryIds,
+          contextText: details.memoryBlock || memoryContextMarkdown(ctx),
+          metadata: {
+            memoryFacts: Array.isArray(ctx?.facts) ? ctx.facts.length : 0,
+            memorySummaries: Array.isArray(ctx?.summaries) ? ctx.summaries.length : 0,
+            graphEdges: Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.length : 0
+          }
+        },
+        output: {
+          text: details.output || '',
+          summary: summarizeMemoryText(details.output || '', 1200)
+        },
+        error: details.error || '',
+        metadata: {
+          stage: STAGE,
+          routeKey: details.routeKey || '',
+          requireWebSearch: Boolean(details.requireWebSearch),
+          ...(ids.identityMetadata || {})
+        }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai agent-run logging] competitive log failed', err); } catch (_ignored) {}
+      return null;
+    }
   }
 
   async function markMemoryUse(stepName, outcome, note = '') {
@@ -1468,28 +1543,67 @@
     if (modelDecision?.repaired) setStatus(`Competitive review model repaired: ${modelDecision.reason}`);
     const memoryContext = await loadCompetitiveMemoryContext(stepName, 10, `${instructions}\n${input}`);
     const memoryBlock = memoryContextMarkdown(memoryContext);
-    const response = await NS.AIProvider.ask({
-      workflow: stepName,
-      instructions: memoryBlock ? `${instructions}\n\n${memoryBlock}` : instructions,
-      input: memoryBlock ? `${memoryBlock}\n\n${input}` : input,
-      temperature: 0.2,
-      maxOutputTokens,
-      webSearchRequired: true,
-      requireWebSearch: true,
-      requiredTools: ['web_search'],
-      competitiveReview: {
-        step: stepName,
+    const effectiveInstructions = memoryBlock ? `${instructions}\n\n${memoryBlock}` : instructions;
+    const effectiveInput = memoryBlock ? `${memoryBlock}\n\n${input}` : input;
+    const startedAt = Date.now();
+    let text = '';
+    try {
+      const response = await NS.AIProvider.ask({
+        workflow: stepName,
+        instructions: effectiveInstructions,
+        input: effectiveInput,
+        temperature: 0.2,
+        maxOutputTokens,
+        webSearchRequired: true,
         requireWebSearch: true,
-        webSearchEvidenceRequired: true
-      }
-    }, {
-      task: 'latex-competitive-paper-review',
-      routeKey,
-      context: { workflow: stepName, requireWebSearch: true }
-    });
-    const text = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
-    await markMemoryUse(stepName, text && text.trim() ? 'success' : 'used', text && text.trim() ? 'AI step completed with memory context.' : 'AI step returned empty text.');
-    return text;
+        requiredTools: ['web_search'],
+        competitiveReview: {
+          step: stepName,
+          requireWebSearch: true,
+          webSearchEvidenceRequired: true
+        }
+      }, {
+        task: 'latex-competitive-paper-review',
+        routeKey,
+        context: { workflow: stepName, requireWebSearch: true }
+      });
+      text = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
+      await logCompetitiveAgentRun({
+        stepName,
+        taskType: 'latex-competitive-paper-review',
+        routeKey,
+        provider,
+        model,
+        instructions: effectiveInstructions,
+        input: effectiveInput,
+        output: text,
+        status: text && text.trim() ? 'success' : 'empty',
+        latencyMs: Date.now() - startedAt,
+        memoryContext,
+        memoryBlock,
+        requireWebSearch: true
+      });
+      await markMemoryUse(stepName, text && text.trim() ? 'success' : 'used', text && text.trim() ? 'AI step completed with memory context.' : 'AI step returned empty text.');
+      return text;
+    } catch (err) {
+      await logCompetitiveAgentRun({
+        stepName,
+        taskType: 'latex-competitive-paper-review',
+        routeKey,
+        provider,
+        model,
+        instructions: effectiveInstructions,
+        input: effectiveInput,
+        output: text,
+        status: 'failure',
+        latencyMs: Date.now() - startedAt,
+        memoryContext,
+        memoryBlock,
+        requireWebSearch: true,
+        error: err?.message || String(err)
+      });
+      throw err;
+    }
   }
 
   async function ensureWebSearchReadyForWorkflow() {
@@ -1746,6 +1860,11 @@
       ].filter(Boolean).join('\n\n');
       const memoryContext = await loadCompetitiveMemoryContext('competitive-web-review-improvement', 12, memoryQuery);
       const memoryBlock = memoryContextMarkdown(memoryContext);
+      const finalReviewStartedAt = Date.now();
+      const finalReviewInstructionsForLog = [
+        'Return a structured Markdown competitive review report. Be critical, concrete, source-cited, and action-oriented.',
+        'Include evidence-cited rankings, concrete improvement roadmap, and latexai_actionable_edits JSON.'
+      ].join(' ');
       const response = await NS.AIProvider.ask({
         workflow: 'competitive-web-review-improvement',
         instructions: [
@@ -1787,6 +1906,25 @@
 
       const raw = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
       lastReport = raw.trim();
+      await logCompetitiveAgentRun({
+        stepName: 'competitive-web-review-improvement',
+        taskType: 'latex-competitive-paper-review',
+        routeKey: 'competitive-improvement',
+        provider: currentAiProvider(),
+        model: currentAiModel(),
+        instructions: memoryBlock ? `${finalReviewInstructionsForLog}
+
+${memoryBlock}` : finalReviewInstructionsForLog,
+        input: memoryBlock ? `${memoryBlock}
+
+${input}` : input,
+        output: lastReport,
+        status: lastReport ? 'success' : 'empty',
+        latencyMs: Date.now() - finalReviewStartedAt,
+        memoryContext,
+        memoryBlock,
+        requireWebSearch: true
+      });
       await markMemoryUse('competitive-web-review-improvement', lastReport ? 'success' : 'used', lastReport ? 'Competitive review completed with memory context.' : 'Competitive review returned empty report.');
       await saveCompetitiveMemory('final_review', lastReport, payload, { sourceLedgerCount: lastSourceLedger.length, hasActionableEdits: /latexai_actionable_edits/i.test(lastReport) });
       buildEditImpactMap(lastReport);
@@ -2087,6 +2225,23 @@
         context: { workflow: stepName, memoryAwareFinalRewrite: true, mode }
       });
       const text = (NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '')).trim();
+      await logCompetitiveAgentRun({
+        stepName,
+        taskType: 'latex-paper-final-rewrite',
+        routeKey: 'paper-rewrite',
+        provider: currentAiProvider(),
+        model: currentAiModel(),
+        instructions,
+        input: memoryBlock ? `${memoryBlock}
+
+${input}` : input,
+        output: text,
+        status: text ? 'success' : 'empty',
+        latencyMs: Date.now() - finalRewriteStartedAt,
+        memoryContext,
+        memoryBlock,
+        requireWebSearch: false
+      });
       if (text) {
         await saveCompetitiveMemory(stepName, text, payload, { mode, source: 'stage19b-lai-edit-validation-safety-pass', hasActionableEdits: /latexai_actionable_edits/i.test(text) });
       }
@@ -2094,6 +2249,25 @@
     } catch (err) {
       const message = err?.message || String(err);
       try { console.warn('[Latexai] Stage 19B final rewrite generation failed; falling back to existing report', err); } catch (_ignored) {}
+      try {
+        await logCompetitiveAgentRun({
+          stepName,
+          taskType: 'latex-paper-final-rewrite',
+          routeKey: 'paper-rewrite',
+          provider: currentAiProvider(),
+          model: currentAiModel(),
+          instructions,
+          input: memoryBlock ? `${memoryBlock}
+
+${input}` : input,
+          output: '',
+          status: 'failure',
+          latencyMs: typeof finalRewriteStartedAt === 'number' ? Date.now() - finalRewriteStartedAt : 0,
+          memoryContext,
+          memoryBlock,
+          error: message
+        });
+      } catch (_ignoredLog) {}
       return { ok: false, text: '', error: message, stepName };
     }
   }
