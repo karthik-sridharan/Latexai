@@ -1,5 +1,5 @@
-/* Latexai Stage 17O DevilsAdvocateDebateService
- * Stage: stage18a-model-routing-audit-validation-lock-1
+/* Latexai Stage 19I8 DevilsAdvocateDebateService
+ * Stage: stage19i8-devils-advocate-memory-trajectory-wiring-20260526-1
  *
  * Devil's advocate paper debate workflow:
  * - one AI agent argues for the current draft;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
+  const STAGE = 'stage19i8-devils-advocate-memory-trajectory-wiring-20260526-1';
   const PROMPT_PATH = 'prompt/ai-devils-advocate-debate.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('devils-advocate-debate-service')) {
@@ -34,6 +34,282 @@
   let lastSynthesis = '';
   let lastPayload = null;
   let cancelled = false;
+  const DEVIL_WORKFLOW = 'devils-advocate-paper-debate';
+  const lastMemoryContextByStep = {};
+
+  function memoryEnabled() {
+    try { return W.localStorage?.getItem?.('latexai:memory-enabled') !== 'false'; } catch (_err) { return true; }
+  }
+
+  function stableHash(text) {
+    let h = 2166136261;
+    const str = String(text || '');
+    for (let i = 0; i < str.length; i += 1) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  function projectIdentity() {
+    if (NS.RewardLoggingService?.projectIdentity) return NS.RewardLoggingService.projectIdentity();
+    const p = project();
+    const github = p.github || p.meta?.github || {};
+    const owner = clean(github.owner);
+    const repo = clean(github.repo);
+    const branch = clean(github.branch || 'main') || 'main';
+    const active = activePath();
+    const seed = owner && repo ? `github:${owner}/${repo}:${branch}:${p.rootFile || active}` : `local:${p.id || p.projectId || active}`;
+    return {
+      userId: 'local-user',
+      projectId: p.projectId || p.id || `project_${stableHash(seed)}`,
+      paperId: p.paperId || p.meta?.paperId || `paper_${stableHash(seed + ':' + (p.rootFile || active))}`,
+      sectionId: active,
+      sessionId: `session_${stableHash(String(W.location?.href || '') + ':' + seed)}`,
+      identityMetadata: { owner, repo, branch, activePath: active, stage: STAGE }
+    };
+  }
+
+  function memoryBase() {
+    const configured = NS.BackendUrlSettings?.getMemoryApiBaseUrl?.();
+    if (configured) return configured.replace(/\/$/, '');
+    const raw = clean(W.localStorage?.getItem?.('lumina-latex.memory.backendUrl')) || 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app';
+    return raw.replace(/\/$/, '').replace(/\/api\/lumina\/memory\/?$/, '') + '/api/lumina/memory';
+  }
+
+  function memoryHeaders(body) {
+    const headers = {};
+    const token = NS.BackendUrlSettings?.getMemoryProxyToken?.() || '';
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    return headers;
+  }
+
+  async function memoryPost(path, payload) {
+    if (!memoryEnabled()) return null;
+    const response = await fetch(`${memoryBase()}${path}`, {
+      method: 'POST',
+      headers: memoryHeaders(payload),
+      body: JSON.stringify(payload || {})
+    });
+    const text = await response.text().catch(() => '');
+    let json = {};
+    try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
+    if (!response.ok || json.ok === false) throw new Error(json.detail || json.message || json.raw || `HTTP ${response.status}`);
+    return json;
+  }
+
+  function estimateTokens(text) {
+    return Math.max(0, Math.ceil(String(text || '').length / 4));
+  }
+
+  function summarizeMemoryText(text, max = 1200) {
+    return String(text || '').replace(/```[\s\S]*?```/g, '[structured block omitted]').replace(/\s+/g, ' ').trim().slice(0, max);
+  }
+
+  function memoryIdsFromContext(ctx) {
+    const ids = [];
+    (ctx?.facts || []).forEach((fact) => { if (fact?.id) ids.push(String(fact.id)); });
+    (ctx?.memoryIds || ctx?.memory_ids || []).forEach((id) => { if (id) ids.push(String(id)); });
+    return Array.from(new Set(ids));
+  }
+
+  function agentRoleForDebateRole(role) {
+    const r = String(role || '').toLowerCase();
+    if (r === 'advocate') return 'advocate';
+    if (r === 'critic') return 'critic';
+    if (r === 'synthesizer') return 'synthesizer';
+    return r || 'critic';
+  }
+
+  function stepNameForDebateAgent(agent, round) {
+    const role = agentRoleForDebateRole(agent?.role);
+    if (role === 'synthesizer') return 'final_synthesis';
+    return `${role}_round_${round || 1}`;
+  }
+
+  function debateMemoryQuery(payload, agent, stepName, transcriptText) {
+    const role = agentRoleForDebateRole(agent?.role);
+    const roleHint = role === 'advocate'
+      ? 'strongest contribution theorem support novelty defense accepted framing successful rebuttal evidence'
+      : role === 'critic'
+        ? 'reviewer criticism novelty weakness theorem proof assumption citation gap related work competitor overclaim'
+        : 'balanced synthesis accepted edit pattern notation constraints reviewer risk rebuttal final revision lai edits';
+    return [
+      roleHint,
+      `topic: ${payload.topic}`,
+      `venue: ${payload.targetVenue || ''}`,
+      `audience: ${payload.targetAudience || ''}`,
+      `step: ${stepName}`,
+      String(transcriptText || '').slice(-7000),
+      String(payload.draftExcerpt || '').slice(0, 7000)
+    ].filter(Boolean).join('\n');
+  }
+
+  async function fetchDebateMemoryContext(payload, agent, stepName, transcriptText) {
+    try {
+      const ids = projectIdentity();
+      const role = agentRoleForDebateRole(agent?.role);
+      const query = debateMemoryQuery(payload, agent, stepName, transcriptText);
+      const json = await memoryPost('/agent-context', {
+        userId: ids.userId,
+        projectId: ids.projectId,
+        paperId: ids.paperId,
+        sectionId: ids.sectionId,
+        sessionId: ids.sessionId,
+        agentRole: role,
+        taskType: stepName,
+        workflow: DEVIL_WORKFLOW,
+        query: query.slice(0, 12000),
+        limit: role === 'synthesizer' ? 26 : 22,
+        metadata: { stage: STAGE, contextPolicy: 'stage19i8-devils-advocate-agent-role-specific' }
+      });
+      const ctx = json?.context || { facts: [], summaries: [], graphEdges: [] };
+      lastMemoryContextByStep[stepName] = ctx;
+      return ctx;
+    } catch (err) {
+      try { console.warn('[Latexai devil debate context] failed', err); } catch (_ignored) {}
+      return { facts: [], summaries: [], graphEdges: [], agentContextProfile: { fallback: true, error: err?.message || String(err) } };
+    }
+  }
+
+  function factKind(fact) {
+    return String(fact?.fact_type || fact?.factType || fact?.key || 'memory').toLowerCase();
+  }
+
+  function memoryContextMarkdown(ctx, agentRole) {
+    const facts = Array.isArray(ctx?.facts) ? ctx.facts.slice(0, 18) : [];
+    const summaries = Array.isArray(ctx?.summaries) ? ctx.summaries.slice(0, 4) : [];
+    const edges = Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.slice(0, 8) : [];
+    if (!facts.length && !summaries.length && !edges.length) return '';
+    const role = agentRoleForDebateRole(agentRole);
+    const lines = [
+      '--- Hidden Latexai memory context for this debate agent ---',
+      `Agent role: ${role}`,
+      'Use this as private project context. Do not mention the memory system. Preserve notation and avoid repeating rejected/failed directions.'
+    ];
+    summaries.forEach((sum) => {
+      const content = String(sum.content || '').replace(/\s+/g, ' ').trim();
+      if (content) lines.push(`Project ${sum.summary_type || sum.summaryType || 'summary'}: ${content.slice(0, 1000)}`);
+    });
+    facts.forEach((fact, i) => {
+      const value = String(fact.value || fact.content || '').replace(/\s+/g, ' ').trim();
+      if (!value) return;
+      const score = fact.retrievalScore != null ? `; score=${Number(fact.retrievalScore).toFixed(3)}` : '';
+      lines.push(`- M${i + 1} [${factKind(fact)}${score}]: ${value.slice(0, 620)}`);
+    });
+    if (edges.length) lines.push(`Memory graph edges available: ${edges.length}. Use them only when relevant.`);
+    lines.push('--- End hidden memory context ---');
+    return lines.join('\n');
+  }
+
+  async function logDevilAgentRun(details) {
+    if (!memoryEnabled()) return null;
+    try {
+      const ids = projectIdentity();
+      const ctx = details.memoryContext || lastMemoryContextByStep[details.stepName] || {};
+      const memoryIds = memoryIdsFromContext(ctx);
+      return await memoryPost('/agent-run', {
+        scope: 'agent',
+        userId: ids.userId,
+        projectId: ids.projectId,
+        paperId: ids.paperId,
+        sectionId: ids.sectionId,
+        sessionId: ids.sessionId,
+        agentRole: details.agentRole || agentRoleForDebateRole(details.agent?.role),
+        agentId: details.agentId || 'devils-advocate-debate-service',
+        taskType: details.taskType || details.stepName || 'latex-paper-debate',
+        workflow: DEVIL_WORKFLOW,
+        stepName: details.stepName || '',
+        provider: details.provider || details.agent?.provider || '',
+        model: details.model || details.agent?.model || '',
+        promptTemplateId: details.promptTemplateId || `devils-advocate:${details.stepName || 'unknown'}:stage19i8`,
+        promptText: details.instructions || '',
+        inputText: details.input || '',
+        outputText: details.output || '',
+        status: details.status || 'success',
+        latencyMs: details.latencyMs || 0,
+        tokenEstimate: estimateTokens(`${details.instructions || ''}
+${details.input || ''}
+${details.output || ''}`),
+        contextBundle: {
+          memoryIds,
+          contextText: details.memoryBlock || memoryContextMarkdown(ctx, details.agentRole || details.agent?.role),
+          metadata: {
+            memoryFacts: Array.isArray(ctx?.facts) ? ctx.facts.length : 0,
+            memorySummaries: Array.isArray(ctx?.summaries) ? ctx.summaries.length : 0,
+            graphEdges: Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.length : 0,
+            agentContextProfile: ctx?.agentContextProfile || null,
+            contextPolicy: 'stage19i8-devils-advocate-agent-role-specific'
+          }
+        },
+        output: { text: details.output || '', summary: summarizeMemoryText(details.output || '', 1200) },
+        error: details.error || '',
+        metadata: { stage: STAGE, round: details.round || '', topic: details.topic || '', ...(ids.identityMetadata || {}) }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai devil debate agent-run logging] failed', err); } catch (_ignored) {}
+      return null;
+    }
+  }
+
+  async function logDevilTrajectory(payload, status, trajectoryAgentRuns, memoryContexts, errorMessage = '') {
+    try {
+      const steps = [];
+      let idx = 0;
+      (lastTranscript || []).forEach((turn) => {
+        const run = (trajectoryAgentRuns || []).find((r) => r?.metadata?.round === turn.round && r?.agentRole === turn.role) || trajectoryAgentRuns?.[idx] || {};
+        steps.push({
+          stepIndex: idx,
+          stepName: `${turn.role}_round_${turn.round}`,
+          agentRole: turn.role,
+          actionType: `latex-paper-debate-${turn.role}`,
+          agentRunId: run.runId || run.id || '',
+          contextBundleId: run.contextBundleId || '',
+          status: 'success',
+          summary: summarizeMemoryText(turn.text, 1400),
+          metadata: { provider: turn.provider, model: turn.model, round: turn.round }
+        });
+        idx += 1;
+      });
+      if (lastSynthesis) {
+        const run = (trajectoryAgentRuns || []).find((r) => r?.agentRole === 'synthesizer') || trajectoryAgentRuns?.[idx] || {};
+        steps.push({
+          stepIndex: idx,
+          stepName: 'final_synthesis',
+          agentRole: 'synthesizer',
+          actionType: 'latex-paper-debate-synthesizer',
+          agentRunId: run.runId || run.id || '',
+          contextBundleId: run.contextBundleId || '',
+          status: 'success',
+          summary: summarizeMemoryText(lastSynthesis, 1600),
+          metadata: { provider: payload?.agents?.synthesizer?.provider, model: payload?.agents?.synthesizer?.model }
+        });
+      }
+      await NS.DebateTrajectoryLoggingService?.logTrajectory?.({
+        workflow: DEVIL_WORKFLOW,
+        trajectoryType: 'devils_advocate_paper_debate',
+        title: `Devil's advocate debate: ${payload?.topic || 'paper debate'}`,
+        status,
+        branchLabel: `rounds:${payload?.rounds || 0}`,
+        rootStateText: String(payload?.draftExcerpt || '').slice(0, 9000),
+        agentRunIds: (trajectoryAgentRuns || []).map((r) => r?.runId || r?.id).filter(Boolean),
+        contextBundleIds: (trajectoryAgentRuns || []).map((r) => r?.contextBundleId).filter(Boolean),
+        memoryContexts,
+        steps,
+        outcomes: [{
+          outcomeType: 'devils_advocate_debate_completed',
+          status,
+          rewardValue: status === 'success' ? 1 : -0.25,
+          rewardLabel: status === 'success' ? 'debate_completed' : 'debate_failed',
+          summary: errorMessage || summarizeMemoryText(lastSynthesis || transcriptToMarkdown(lastTranscript), 1600)
+        }],
+        metadata: { stage: STAGE, topic: payload?.topic || '', targetVenue: payload?.targetVenue || '', error: errorMessage || '' }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai devil debate trajectory logging] failed', err); } catch (_ignored) {}
+    }
+  }
 
   function State() { return NS.State; }
   function el(id) { return D.getElementById(id); }
@@ -351,6 +627,8 @@
     lastTranscript = [];
     const payload = buildPayload();
     const errors = validatePayload(payload);
+    const trajectoryAgentRuns = [];
+    const trajectoryMemoryContexts = [];
     if (errors.length) {
       setStatus(errors.join(' '));
       setOutput(`Cannot run debate:\n\n${errors.map((e) => `- ${e}`).join('\n')}`);
@@ -367,42 +645,96 @@
       for (let round = 1; round <= payload.rounds; round += 1) {
         if (cancelled) throw new Error('Debate cancelled.');
 
+        setStatus(`Round ${round}/${payload.rounds}: loading advocate memory context...`);
+        const advocateStep = stepNameForDebateAgent(payload.agents.advocate, round);
+        const advocateInput = currentDebateContext(payload, lastTranscript);
+        const advocateCtx = await fetchDebateMemoryContext(payload, payload.agents.advocate, advocateStep, advocateInput);
+        trajectoryMemoryContexts.push(advocateCtx);
+        const advocateMemoryBlock = memoryContextMarkdown(advocateCtx, 'advocate');
+        const advocateInstructions = [
+          developerPrompt,
+          advocateMemoryBlock,
+          '',
+          'You are the ADVOCATE agent. Argue in favor of the current draft.',
+          'Defend novelty, technical value, clarity, positioning, and acceptance chances.',
+          'Acknowledge weaknesses only when it strengthens the defense.',
+          'Return Markdown. No JSON.'
+        ].filter(Boolean).join('\n');
+
         setStatus(`Round ${round}/${payload.rounds}: advocate is arguing for the draft using ${payload.agents.advocate.provider}/${payload.agents.advocate.model}...`);
+        const advocateStarted = Date.now();
         const advocateText = await askAsAgent(payload.agents.advocate, {
-          instructions: [
-            developerPrompt,
-            '',
-            'You are the ADVOCATE agent. Argue in favor of the current draft.',
-            'Defend novelty, technical value, clarity, positioning, and acceptance chances.',
-            'Acknowledge weaknesses only when it strengthens the defense.',
-            'Return Markdown. No JSON.'
-          ].join('\n'),
-          input: currentDebateContext(payload, lastTranscript),
+          instructions: advocateInstructions,
+          input: advocateInput,
           temperature: 0.35,
           maxOutputTokens: 3500,
           debateAgent: { role: 'advocate', round, totalRounds: payload.rounds }
         }, { task: 'latex-paper-debate-advocate' });
+
+        const advocateRun = await logDevilAgentRun({
+          agent: payload.agents.advocate,
+          agentRole: 'advocate',
+          stepName: advocateStep,
+          taskType: 'latex-paper-debate-advocate',
+          round,
+          topic: payload.topic,
+          instructions: advocateInstructions,
+          input: advocateInput,
+          output: advocateText,
+          status: 'success',
+          latencyMs: Date.now() - advocateStarted,
+          memoryContext: advocateCtx,
+          memoryBlock: advocateMemoryBlock
+        });
+        if (advocateRun) trajectoryAgentRuns.push({ ...advocateRun, agentRole: 'advocate', metadata: { round } });
 
         lastTranscript.push({ round, role: 'advocate', provider: payload.agents.advocate.provider, model: payload.agents.advocate.model, text: advocateText.trim() });
         renderTranscript();
 
         if (cancelled) throw new Error('Debate cancelled.');
 
+        setStatus(`Round ${round}/${payload.rounds}: loading critic memory context...`);
+        const criticStep = stepNameForDebateAgent(payload.agents.critic, round);
+        const criticInput = currentDebateContext(payload, lastTranscript);
+        const criticCtx = await fetchDebateMemoryContext(payload, payload.agents.critic, criticStep, criticInput);
+        trajectoryMemoryContexts.push(criticCtx);
+        const criticMemoryBlock = memoryContextMarkdown(criticCtx, 'critic');
+        const criticInstructions = [
+          developerPrompt,
+          criticMemoryBlock,
+          '',
+          'You are the CRITIC agent. Act as a very critical reviewer.',
+          'Find weaknesses in novelty, correctness, assumptions, related work, clarity, and positioning.',
+          'Respond directly to the advocate when useful.',
+          'Return Markdown. No JSON.'
+        ].filter(Boolean).join('\n');
+
         setStatus(`Round ${round}/${payload.rounds}: critic is challenging the draft using ${payload.agents.critic.provider}/${payload.agents.critic.model}...`);
+        const criticStarted = Date.now();
         const criticText = await askAsAgent(payload.agents.critic, {
-          instructions: [
-            developerPrompt,
-            '',
-            'You are the CRITIC agent. Act as a very critical reviewer.',
-            'Find weaknesses in novelty, correctness, assumptions, related work, clarity, and positioning.',
-            'Respond directly to the advocate when useful.',
-            'Return Markdown. No JSON.'
-          ].join('\n'),
-          input: currentDebateContext(payload, lastTranscript),
+          instructions: criticInstructions,
+          input: criticInput,
           temperature: 0.35,
           maxOutputTokens: 3500,
           debateAgent: { role: 'critic', round, totalRounds: payload.rounds }
         }, { task: 'latex-paper-debate-critic' });
+
+        const criticRun = await logDevilAgentRun({
+          agent: payload.agents.critic,
+          agentRole: 'critic',
+          stepName: criticStep,
+          taskType: 'latex-paper-debate-critic',
+          round,
+          topic: payload.topic,
+          instructions: criticInstructions,
+          input: criticInput,
+          output: criticText,
+          status: 'success',
+          latencyMs: Date.now() - criticStarted,
+          memoryContext: criticCtx,
+          memoryBlock: criticMemoryBlock
+        });
+        if (criticRun) trajectoryAgentRuns.push({ ...criticRun, agentRole: 'critic', metadata: { round } });
 
         lastTranscript.push({ round, role: 'critic', provider: payload.agents.critic.provider, model: payload.agents.critic.model, text: criticText.trim() });
         renderTranscript();
@@ -410,31 +742,60 @@
 
       if (cancelled) throw new Error('Debate cancelled.');
 
+      setStatus(`Synthesizer is loading memory context...`);
+      const synthStep = stepNameForDebateAgent(payload.agents.synthesizer, 'final');
+      const synthInput = currentDebateContext(payload, lastTranscript);
+      const synthCtx = await fetchDebateMemoryContext(payload, payload.agents.synthesizer, synthStep, synthInput);
+      trajectoryMemoryContexts.push(synthCtx);
+      const synthMemoryBlock = memoryContextMarkdown(synthCtx, 'synthesizer');
+      const synthInstructions = [
+        developerPrompt,
+        synthMemoryBlock,
+        '',
+        'You are the SYNTHESIZER agent.',
+        'Use both the advocate and critic arguments to produce a balanced, constructive improvement plan.',
+        'Return Markdown with: summary, strongest positives, most serious risks, prioritized edits, citation/related-work fixes, theorem/proof fixes, predicted acceptance impact, and suggested visible \\lai edits.',
+        'Also include one fenced code block labelled latexai_actionable_edits.',
+        'That block must be JSON with schema {"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"optional tex path","targetHint":"section or paragraph hint","oldText":"exact source substring for replace/anchor","newText":"LaTeX replacement or insertion","confidence":0.0}],"appendPlan":"optional high-level LaTeX plan"}.',
+        'For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
+        'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
+        'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
+      ].filter(Boolean).join('\n');
+
       setStatus(`Synthesizer is producing the balanced improvement plan using ${payload.agents.synthesizer.provider}/${payload.agents.synthesizer.model}...`);
+      const synthStarted = Date.now();
       lastSynthesis = await askAsAgent(payload.agents.synthesizer, {
-        instructions: [
-          developerPrompt,
-          '',
-          'You are the SYNTHESIZER agent.',
-          'Use both the advocate and critic arguments to produce a balanced, constructive improvement plan.',
-          'Return Markdown with: summary, strongest positives, most serious risks, prioritized edits, citation/related-work fixes, theorem/proof fixes, predicted acceptance impact, and suggested visible \\lai edits.',
-          'Also include one fenced code block labelled latexai_actionable_edits.',
-          'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
-          'For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
-          'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
-          'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
-        ].join('\n'),
-        input: currentDebateContext(payload, lastTranscript),
+        instructions: synthInstructions,
+        input: synthInput,
         temperature: 0.2,
         maxOutputTokens: 5500,
         debateAgent: { role: 'synthesizer', round: 'final', totalRounds: payload.rounds }
       }, { task: 'latex-paper-debate-synthesizer' });
 
+      const synthRun = await logDevilAgentRun({
+        agent: payload.agents.synthesizer,
+        agentRole: 'synthesizer',
+        stepName: synthStep,
+        taskType: 'latex-paper-debate-synthesizer',
+        round: 'final',
+        topic: payload.topic,
+        instructions: synthInstructions,
+        input: synthInput,
+        output: lastSynthesis,
+        status: 'success',
+        latencyMs: Date.now() - synthStarted,
+        memoryContext: synthCtx,
+        memoryBlock: synthMemoryBlock
+      });
+      if (synthRun) trajectoryAgentRuns.push({ ...synthRun, agentRole: 'synthesizer', metadata: { round: 'final' } });
+
+      await logDevilTrajectory(payload, 'success', trajectoryAgentRuns, trajectoryMemoryContexts);
       setOutput(formatFullReport());
-      setStatus('Devil’s advocate debate complete.');
+      setStatus('Devil’s advocate debate complete. Agent/context/trajectory logs were sent to memory backend.');
       return { ok: true, transcript: lastTranscript, synthesis: lastSynthesis, payload };
     } catch (err) {
       const message = err?.message || String(err);
+      await logDevilTrajectory(payload, 'failed', trajectoryAgentRuns, trajectoryMemoryContexts, message);
       setStatus(`Debate stopped: ${message}`);
       setOutput(formatFullReport() || `Debate stopped:\n\n${message}`);
       return { ok: false, error: message, transcript: lastTranscript, synthesis: lastSynthesis, payload };
