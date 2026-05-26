@@ -477,6 +477,8 @@
     save,
     load,
     resetProject,
+    resetProjectClean,
+    replaceProjectFromExternalSource,
     ensureValidActiveFile,
     forceTeXlyreDirectMode,
     getFile,

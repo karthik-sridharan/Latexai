@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19e4-open-github-left-panel-hard-refresh-20260525-1';
+  const STAGE = 'stage19e5-github-project-state-export-refresh-fix-20260525-1';
 
   const git = {
     setupOpen: false,
@@ -134,7 +134,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E4</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E5</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -531,7 +531,7 @@
     } catch (_err) {}
     try {
       // Some older GitHub helper panels wrote their own file list below the native
-      // Source tree. They are not the source of truth after Stage 19E4, so mark
+      // Source tree. They are not the source of truth after Stage 19E5, so mark
       // them stale to avoid confusing the user after opening a different repo.
       document.querySelectorAll('[data-lai-stable-github-file-list], .lai-stable-github-file-list, .lai-github-workspace, .lai-integrated-github-filetree')
         .forEach((el) => { el.dataset.stage19e4Stale = 'true'; el.style.display = 'none'; });
@@ -543,14 +543,18 @@
   function forceGithubProjectIntoUi(nextProject, reason) {
     const state = State();
     if (!state) throw new Error('State service is not ready.');
-    const replace = state.replaceProjectFromExternalSource || state.resetProjectClean || state.resetProject;
+    const replace = state.replaceProjectFromExternalSource || state.resetProjectClean;
+    if (typeof replace !== 'function') {
+      throw new Error('Clean GitHub project replacement API is missing. Upload Stage 19E5 js/state.js.');
+    }
     const loaded = replace.call(state, nextProject, { preserveSettings: true, reason: reason || 'github-open' });
     const project = loaded || state.state.project;
     const rootPath = project.rootFile || project.activePath || 'main.tex';
     state.setActivePath?.(rootPath);
     state.rememberFullProject?.(state.state.project, reason || 'github-open');
+    try { document.getElementById('fileTree')?.replaceChildren(); } catch (_err) {}
     refreshGithubProjectPanes(state.state.project, reason || 'github-open');
-    [0, 80, 250, 700].forEach((delay) => setTimeout(() => refreshGithubProjectPanes(State().state.project, `${reason || 'github-open'}:${delay}`), delay));
+    [0, 80, 250, 700, 1500].forEach((delay) => setTimeout(() => refreshGithubProjectPanes(State().state.project, `${reason || 'github-open'}:${delay}`), delay));
     try { document.getElementById('sourceEditor')?.dispatchEvent(new Event('change', { bubbles: true })); } catch (_err) {}
     W.LuminaLatex.__lastOpenedGithubProject = state.state.project;
     return state.state.project;
