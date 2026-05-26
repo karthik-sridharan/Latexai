@@ -1,5 +1,5 @@
-/* Latexai Stage 19I2 ReviewerRebuttalSimulatorService
- * Stage: stage19i2-reviewer-rebuttal-buttons-and-role-context-fix-20260526-1
+/* Latexai Stage 19I3 ReviewerRebuttalSimulatorService
+ * Stage: stage19i3-reviewer-rebuttal-full-loop-timeout-progress-fix-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i2-reviewer-rebuttal-buttons-and-role-context-fix-20260526-1';
+  const STAGE = 'stage19i3-reviewer-rebuttal-full-loop-timeout-progress-fix-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -32,6 +32,9 @@
   let lastSynthesis = '';
   let cancelled = false;
   let reviewerDelegatedEventsBound = false;
+  let reviewerWorkflowBusy = false;
+  let reviewerStatusTimer = null;
+  const AI_CALL_TIMEOUT_MS = 180000;
 
   function State() { return NS.State; }
   function el(id) { return D.getElementById(id); }
@@ -655,13 +658,72 @@
   function setStatus(message) { const node = el('reviewerRebuttalStatus'); if (node) node.textContent = message; }
   function setOutput(text) { const node = el('reviewerRebuttalOutput'); if (node) node.textContent = text || ''; }
 
+  function setReviewerButtonsBusy(isBusy) {
+    ['runReviewerSimBtn', 'generateReviewerRebuttalBtn', 'synthesizeReviewerFinalBtn', 'runReviewerFullLoopBtn'].forEach((id) => {
+      const node = el(id);
+      if (node) node.disabled = Boolean(isBusy);
+    });
+    const cancel = el('cancelReviewerSimBtn');
+    if (cancel) cancel.disabled = false;
+  }
+
+  function stopReviewerStatusTicker() {
+    if (reviewerStatusTimer) {
+      try { clearInterval(reviewerStatusTimer); } catch (_err) {}
+      reviewerStatusTimer = null;
+    }
+  }
+
+  function startReviewerStatusTicker(label) {
+    stopReviewerStatusTicker();
+    const started = Date.now();
+    reviewerStatusTimer = setInterval(() => {
+      if (!reviewerWorkflowBusy && !label) return;
+      const elapsed = Math.max(1, Math.round((Date.now() - started) / 1000));
+      setStatus(`${label || 'Reviewer/rebuttal workflow still running'}... ${elapsed}s elapsed`);
+    }, 10000);
+  }
+
+  function withTimeout(promise, timeoutMs, label) {
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label || 'AI call'} timed out after ${Math.round(timeoutMs / 1000)}s. Check AI backend URL/model, then retry.`)), timeoutMs);
+    });
+    return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer); });
+  }
+
+  async function runWorkflowWithBusy(label, fn) {
+    if (reviewerWorkflowBusy) {
+      setStatus('Reviewer/rebuttal workflow is already running. Use Cancel or wait for the current AI call to finish.');
+      return { ok: false, error: 'workflow_already_running' };
+    }
+    reviewerWorkflowBusy = true;
+    cancelled = false;
+    setReviewerButtonsBusy(true);
+    setStatus(label);
+    startReviewerStatusTicker(label);
+    try {
+      return await fn();
+    } catch (err) {
+      const message = err?.message || String(err);
+      setStatus(`Reviewer/rebuttal workflow failed: ${message}`);
+      try { console.warn('[Latexai reviewer/rebuttal] workflow failed', err); } catch (_ignored) {}
+      return { ok: false, error: message };
+    } finally {
+      reviewerWorkflowBusy = false;
+      setReviewerButtonsBusy(false);
+      stopReviewerStatusTicker();
+    }
+  }
+
   async function askAI(instructions, input, maxOutputTokens = 5000, temperature = 0.25, task = 'latexai-reviewer-rebuttal-simulator', logDetails = {}) {
     if (!NS.AIProvider?.ask) throw new Error('AIProvider is not loaded. Check feature flags and safe mode.');
     const pm = currentProviderModel();
     const startedAt = Date.now();
     let text = '';
     try {
-      const response = await NS.AIProvider.ask({
+      const timeoutMs = Math.max(60000, Number(W.localStorage?.getItem?.('latexai:reviewer-rebuttal-ai-timeout-ms') || AI_CALL_TIMEOUT_MS));
+      const response = await withTimeout(NS.AIProvider.ask({
         instructions,
         input,
         provider: pm.provider,
@@ -675,7 +737,7 @@
         provider: pm.provider,
         model: pm.model,
         context: { workflow: 'reviewer-rebuttal-simulator', stage: STAGE }
-      });
+      }), timeoutMs, `${logDetails.stepName || task} AI call`);
       text = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
       const loggedRun = await logReviewerAgentRun({
         ...logDetails,
@@ -1100,14 +1162,19 @@ ${input}` : input,
   }
 
   async function runFullLoop() {
-    await runReviews();
-    if (cancelled) return;
-    await generateRebuttal();
-    if (cancelled) return;
-    await synthesizeFinalRevision();
+    setStatus('Full loop: starting reviewer simulation...');
+    const reviewResult = await runReviews();
+    if (cancelled) return { ok: false, cancelled: true };
+    if (!reviewResult?.ok) return reviewResult;
+    setStatus('Full loop: reviews complete; generating rebuttal...');
+    const rebuttalResult = await generateRebuttal();
+    if (cancelled) return { ok: false, cancelled: true };
+    if (!rebuttalResult?.ok) return rebuttalResult;
+    setStatus('Full loop: rebuttal complete; synthesizing final revision...');
+    return await synthesizeFinalRevision();
   }
 
-  function cancelLoop() { cancelled = true; setStatus('Cancel requested. Current AI call may finish before stopping.'); }
+  function cancelLoop() { cancelled = true; setStatus('Cancel requested. Current AI call may finish before stopping; no new reviewer/rebuttal steps will start.'); }
 
   async function copyReport() {
     const text = fullReport();
@@ -1127,12 +1194,13 @@ ${input}` : input,
       if (target.disabled) return;
       const id = target.id;
       try {
-        if (id === 'runReviewerSimBtn') { setStatus('Starting reviewer simulation...'); void runReviews(); return; }
-        if (id === 'generateReviewerRebuttalBtn') { setStatus('Starting rebuttal generation...'); void generateRebuttal(); return; }
-        if (id === 'synthesizeReviewerFinalBtn') { setStatus('Starting final synthesis...'); void synthesizeFinalRevision(); return; }
-        if (id === 'runReviewerFullLoopBtn') { setStatus('Starting full reviewer/rebuttal loop...'); void runFullLoop(); return; }
         if (id === 'cancelReviewerSimBtn') { cancelLoop(); return; }
         if (id === 'copyReviewerSimBtn') { void copyReport(); return; }
+        if (reviewerWorkflowBusy) { setStatus('Reviewer/rebuttal workflow is already running. Use Cancel or wait for the current AI call to finish.'); return; }
+        if (id === 'runReviewerSimBtn') { void runWorkflowWithBusy('Starting reviewer simulation', runReviews); return; }
+        if (id === 'generateReviewerRebuttalBtn') { void runWorkflowWithBusy('Starting rebuttal generation', generateRebuttal); return; }
+        if (id === 'synthesizeReviewerFinalBtn') { void runWorkflowWithBusy('Starting final synthesis', synthesizeFinalRevision); return; }
+        if (id === 'runReviewerFullLoopBtn') { void runWorkflowWithBusy('Starting full reviewer/rebuttal loop', runFullLoop); return; }
       } catch (err) {
         const message = err?.message || String(err);
         setStatus(`Reviewer/rebuttal button failed: ${message}`);
@@ -1145,12 +1213,10 @@ ${input}` : input,
     bindReviewerDelegatedEvents();
     syncReviewerRows();
     el('reviewerSimCount')?.addEventListener('change', syncReviewerRows, true);
-    el('runReviewerSimBtn')?.addEventListener('click', runReviews, true);
-    el('generateReviewerRebuttalBtn')?.addEventListener('click', generateRebuttal, true);
-    el('synthesizeReviewerFinalBtn')?.addEventListener('click', synthesizeFinalRevision, true);
-    el('runReviewerFullLoopBtn')?.addEventListener('click', runFullLoop, true);
-    el('cancelReviewerSimBtn')?.addEventListener('click', cancelLoop, true);
-    el('copyReviewerSimBtn')?.addEventListener('click', copyReport, true);
+    // Stage 19I3: buttons are handled by the delegated document listener above.
+    // Avoid direct per-card listeners because this card is frequently remounted
+    // by the right-panel organizer; duplicate direct listeners caused long/stale
+    // full-loop runs on iPad.
     setStatus('Reviewer/rebuttal simulator ready.');
     return true;
   }
