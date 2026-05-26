@@ -1,5 +1,5 @@
-/* Latexai Stage 19I3 ReviewerRebuttalSimulatorService
- * Stage: stage19i3-reviewer-rebuttal-full-loop-timeout-progress-fix-20260526-1
+/* Latexai Stage 19I4 ReviewerRebuttalSimulatorService
+ * Stage: stage19i4-reviewer-rebuttal-trajectory-agent-runs-fix-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i3-reviewer-rebuttal-full-loop-timeout-progress-fix-20260526-1';
+  const STAGE = 'stage19i4-reviewer-rebuttal-trajectory-agent-runs-fix-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -34,6 +34,7 @@
   let reviewerDelegatedEventsBound = false;
   let reviewerWorkflowBusy = false;
   let reviewerStatusTimer = null;
+  let trajectoryAgentRuns = [];
   const AI_CALL_TIMEOUT_MS = 180000;
 
   function State() { return NS.State; }
