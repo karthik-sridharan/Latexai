@@ -1,5 +1,5 @@
 /* Latexai Stage 19I5 ReviewerRebuttalSimulatorService
- * Stage: stage19i5-reviewer-rebuttal-role-classification-fix-20260526-1
+ * Stage: stage19i6-reviewer-rebuttal-explicit-role-context-fix-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i5-reviewer-rebuttal-role-classification-fix-20260526-1';
+  const STAGE = 'stage19i6-reviewer-rebuttal-explicit-role-context-fix-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -327,9 +327,9 @@
     return merged;
   }
 
-  async function fetchReviewerMemoryContext(ids, stepName, limit, queryText, focusText = '') {
+  async function fetchReviewerMemoryContext(ids, stepName, limit, queryText, focusText = '', explicitAgentRole = '') {
     const q = memorySemanticQuery(stepName, queryText, focusText);
-    const agentRole = agentRoleForReviewerStep(stepName, stepName);
+    const agentRole = explicitAgentRole || agentRoleForReviewerStep(stepName, stepName);
     const payload = {
       userId: ids.userId,
       projectId: ids.projectId,
@@ -355,13 +355,18 @@
     return ctx;
   }
 
-  async function loadReviewerMemoryContext(stepName, limit = 10, queryText = '') {
+  async function loadReviewerMemoryContext(stepName, limit = 10, queryText = '', explicitAgentRole = '') {
     const ids = projectIdentity();
     await registerMemoryScope(ids, 'context', stepName);
-    const primary = await fetchReviewerMemoryContext(ids, stepName, Math.max(limit, 18), queryText, 'reviewer rebuttal final synthesis project paper active section');
+    const canonicalAgentRole = explicitAgentRole || agentRoleForReviewerStep(stepName, stepName);
+    const primary = await fetchReviewerMemoryContext(ids, stepName, Math.max(limit, 18), queryText, 'reviewer rebuttal final synthesis project paper active section', canonicalAgentRole);
     const extraContexts = [];
     for (const focus of RESEARCH_MEMORY_FOCUS_QUERIES) {
-      const focused = await fetchReviewerMemoryContext(ids, `${stepName}:${focus.name}`, 8, queryText, focus.text);
+      // Stage 19I6: focused retrieval queries are still part of the same
+      // agent step. Keep them under the canonical agent role instead of
+      // reclassifying a synthesis/rebuttal focus query as a critic/reviewer
+      // context just because its focus label contains "reviewer-negative".
+      const focused = await fetchReviewerMemoryContext(ids, `${stepName}:${focus.name}`, 8, queryText, focus.text, canonicalAgentRole);
       extraContexts.push(focused);
     }
     const ctx = mergeMemoryContexts([primary, ...extraContexts], Math.max(limit, 24));
@@ -942,7 +947,7 @@
           payload.draftExcerpt
         ].join('\n');
         const stepName = `simulated_review_${reviewer.index}`;
-        const memoryContext = await loadReviewerMemoryContext(stepName, 10, `${reviewer.name} ${reviewer.style}\n${instructions}\n${input}`);
+        const memoryContext = await loadReviewerMemoryContext(stepName, 10, `${reviewer.name} ${reviewer.style}\n${instructions}\n${input}`, 'critic');
         const memoryBlock = memoryContextMarkdown(memoryContext);
         const text = await askAI(
           memoryBlock ? `${instructions}
@@ -993,7 +998,7 @@ ${input}` : input,
     ].join('\n');
     try {
       const stepName = 'review_rebuttal';
-      const memoryContext = await loadReviewerMemoryContext(stepName, 12, `${instructions}\n${input}`);
+      const memoryContext = await loadReviewerMemoryContext(stepName, 12, `${instructions}\n${input}`, 'defender');
       const memoryBlock = memoryContextMarkdown(memoryContext);
       lastRebuttal = (await askAI(
         memoryBlock ? `${instructions}
@@ -1139,7 +1144,7 @@ ${input}` : input,
     ].join('\n');
     try {
       const stepName = 'final_synthesis';
-      const memoryContext = await loadReviewerMemoryContext(stepName, 14, `${instructions}\n${input}`);
+      const memoryContext = await loadReviewerMemoryContext(stepName, 14, `${instructions}\n${input}`, 'editor');
       const memoryBlock = memoryContextMarkdown(memoryContext);
       lastSynthesis = (await askAI(
         memoryBlock ? `${instructions}
@@ -1258,7 +1263,7 @@ ${input}` : input,
       '  <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
-      '<div class="settings-note">Stage 19I2 keeps reviewer/rebuttal memories scoped by stable project and paper identity and logs role-specific context usage. The final synthesis is memory-aware and should produce source-aware <code>\\laiold</code>/<code>\\lai</code> actionable edits where possible; it still does not overwrite source automatically.</div>',
+      '<div class="settings-note">Stage 19I6 keeps reviewer/rebuttal memories scoped by stable project and paper identity and logs role-specific context usage. The final synthesis is memory-aware and should produce source-aware <code>\\laiold</code>/<code>\\lai</code> actionable edits where possible; it still does not overwrite source automatically.</div>',
       '<div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator ready.</div>',
       '<pre id="reviewerRebuttalOutput" class="devils-output"></pre>'
     ].join('');
