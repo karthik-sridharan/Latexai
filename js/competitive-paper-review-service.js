@@ -1,5 +1,5 @@
 /* Latexai Stage 19F CompetitivePaperReviewService
- * Stage: stage19f-agent-run-logging-20260526-1
+ * Stage: stage19g-edit-outcome-reward-logging-20260526-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19f-agent-run-logging-20260526-1';
+  const STAGE = 'stage19g-edit-outcome-reward-logging-20260526-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -930,7 +930,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19f-agent-run-logging',
+        identityStage: 'stage19g-edit-outcome-reward-logging',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -1177,7 +1177,7 @@
         stepName: details.stepName || '',
         provider: details.provider || currentAiProvider(),
         model: details.model || currentAiModel(),
-        promptTemplateId: details.promptTemplateId || `competitive-review:${details.stepName || 'unknown'}:stage19f`,
+        promptTemplateId: details.promptTemplateId || `competitive-review:${details.stepName || 'unknown'}:stage19g`,
         promptText: details.instructions || '',
         inputText: details.input || '',
         outputText: details.output || '',
@@ -1214,6 +1214,35 @@
   async function markMemoryUse(stepName, outcome, note = '') {
     const facts = Array.isArray(lastMemoryContextByStep[stepName]?.facts) ? lastMemoryContextByStep[stepName].facts : [];
     await Promise.all(facts.slice(0, 8).map((fact) => memoryPost('/use', { memoryId: fact.id, taskType: stepName, agentId: 'competitive-review-agent', outcome: outcome || 'used', note, metadata: { stage: STAGE } })));
+  }
+
+
+  async function logCompetitiveRewardEvent(eventType, rewardValue, options = {}) {
+    try {
+      return await NS.RewardLoggingService?.logReward?.(eventType, rewardValue, {
+        workflow: options.workflow || 'competitive-review',
+        stepName: options.stepName || eventType,
+        memoryContext: options.memoryContext || lastMemoryContextByStep[options.stepName || eventType] || {},
+        relatedAgentRunId: options.relatedAgentRunId || '',
+        relatedActionId: options.relatedActionId || '',
+        note: options.note || '',
+        metadata: { stage: STAGE, ...(options.metadata || {}) }
+      });
+    } catch (_err) { return null; }
+  }
+
+  async function logCompetitiveEditOutcome(actionType, result = {}, options = {}) {
+    try {
+      return await NS.RewardLoggingService?.logEditOutcome?.(actionType, {
+        ...result,
+        workflow: options.workflow || 'competitive-review',
+        stepName: options.stepName || actionType,
+        source: options.source || 'competitive-paper-review-service',
+        memoryContext: options.memoryContext || lastMemoryContextByStep[options.stepName || actionType] || {},
+        note: options.note || '',
+        metadata: { stage: STAGE, ...(options.metadata || {}) }
+      });
+    } catch (_err) { return null; }
   }
 
   function summarizeMemoryText(text, max = 1400) {
@@ -1927,6 +1956,7 @@ ${input}` : input,
       });
       await markMemoryUse('competitive-web-review-improvement', lastReport ? 'success' : 'used', lastReport ? 'Competitive review completed with memory context.' : 'Competitive review returned empty report.');
       await saveCompetitiveMemory('final_review', lastReport, payload, { sourceLedgerCount: lastSourceLedger.length, hasActionableEdits: /latexai_actionable_edits/i.test(lastReport) });
+      await logCompetitiveRewardEvent('competitive_review_completed', lastReport ? 0.35 : -0.25, { stepName: 'competitive-web-review-improvement', memoryContext, note: lastReport ? 'Full cited competitive review completed.' : 'Competitive review returned empty output.', metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastReport), sourceLedgerCount: lastSourceLedger.length } });
       buildEditImpactMap(lastReport);
       renderEditImpactMap();
       setOutput(lastReport || '(AI returned empty report.)');
@@ -2729,6 +2759,7 @@ ${input}` : input,
       const result = { ok: false, applied: 0, skipped: 0, source: parsed.source, rewriteAttempted: Boolean(rewrite?.stepName), rewriteError: rewrite?.error || '' };
       await markMemoryUse('competitive-lai-insert', 'failure', 'No exact actionable edit JSON or laiold/lai pairs found for insertion.');
       await savePaperEditMemory('competitive-lai-insert', result, { reason: 'no_actionable_edits' });
+      await logCompetitiveEditOutcome('competitive_lai_insert', result, { stepName: 'competitive-lai-insert', memoryContext, note: 'No exact actionable edit JSON or laiold/lai pairs found.', metadata: { reason: 'no_actionable_edits' } });
       return result;
     }
 
@@ -2785,6 +2816,7 @@ ${input}` : input,
     const result = { ok: applied > 0 && combinedValidation.ok, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()], validation: combinedValidation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-lai-insert', applied > 0 ? 'success' : 'failure', `Applied ${applied} competitive lai edits; skipped ${skipped}.`);
     await savePaperEditMemory('competitive-lai-insert', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: Boolean(combinedValidation.ok), validationWarnings: combinedValidation.warnings.length, validationErrors: combinedValidation.errors.length });
+    await logCompetitiveEditOutcome('competitive_lai_insert', { ...result, accepted: applied > 0, rewardValue: applied > 0 && combinedValidation.ok ? 1.1 : -0.8, rewardLabel: applied > 0 && combinedValidation.ok ? 'positive' : 'negative', editMode: 'inline-lai', validation: combinedValidation }, { stepName: 'competitive-lai-insert', memoryContext, note: `Applied ${applied}; skipped ${skipped}.`, metadata: { finalRewriteOk: Boolean(rewrite?.ok) } });
     return result;
   }
 
@@ -2815,6 +2847,7 @@ ${input}` : input,
       const result = { ok: false, path: active.path, mode: 'append-lai-plan', validation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
       await markMemoryUse('competitive-lai-append-plan', 'failure', `Append lai plan blocked by Stage 19B safety pass: ${validation.errors.join('; ')}`);
       await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: false, validationErrors: validation.errors.length, validationWarnings: validation.warnings.length });
+      await logCompetitiveEditOutcome('competitive_lai_append_plan', { ...result, accepted: false, rewardValue: -1.0, rewardLabel: 'negative', editMode: 'append-lai-plan', validation }, { stepName: 'competitive-lai-append-plan', memoryContext, note: `Append blocked by safety pass: ${validation.errors.join('; ')}`, metadata: { finalRewriteOk: Boolean(rewrite?.ok) } });
       return result;
     }
     const next = insertBeforeEndDocument(active.text, insertion);
@@ -2829,6 +2862,7 @@ ${input}` : input,
     const result = { ok: true, path: active.path, mode: 'append-lai-plan', validation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-lai-append-plan', 'success', `Appended competitive lai plan to ${active.path}.`);
     await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: Boolean(validation.ok), validationWarnings: validation.warnings.length, validationErrors: validation.errors.length });
+    await logCompetitiveEditOutcome('competitive_lai_append_plan', { ...result, accepted: true, rewardValue: validation.ok ? 0.9 : 0.35, rewardLabel: validation.ok ? 'positive' : 'neutral', editMode: 'append-lai-plan', validation }, { stepName: 'competitive-lai-append-plan', memoryContext, note: `Appended competitive lai plan to ${active.path}.`, metadata: { finalRewriteOk: Boolean(rewrite?.ok) } });
     return result;
   }
 

@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19e5-github-project-state-export-refresh-fix-20260525-1';
+  const STAGE = 'stage19g-edit-outcome-reward-logging-20260526-1';
 
   const git = {
     setupOpen: false,
@@ -21,6 +21,12 @@
     commitMessage: '',
     status: 'GitHub sync ready.'
   };
+
+
+  function logGithubReward(kind, result, options = {}) {
+    try { return NS.RewardLoggingService?.logGithubOutcome?.(kind, result || {}, { metadata: { stage: STAGE, ...(options.metadata || {}) }, ...options }); }
+    catch (_err) { return null; }
+  }
 
 
   function settingsGithubBackend() {
@@ -612,6 +618,7 @@ Root: ${rootFile}`;
 Repo: ${git.owner}/${git.repo}
 Files: ${fileCount}
 Root: ${rootFile}`);
+      logGithubReward('open_project', { ok: true, fileCount, commitSha: github.headSha || '' }, { rewardValue: 0.35, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' } });
       return { ok: true, project: loadedProject, result };
     } catch (err) {
       const message = err?.message || String(err);
@@ -620,6 +627,7 @@ ${message}`;
       render();
       alert(`GitHub load failed:
 ${message}`);
+      logGithubReward('open_project', { ok: false, error: message }, { rewardValue: -0.55, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' } });
       return { ok: false, error: message };
     }
   }
@@ -690,6 +698,7 @@ ${message}`);
         donePrefix: 'Saved'
       });
       W.LuminaLatex.Main?.toast?.(`Saved to GitHub: ${(result.commitSha || '').slice(0, 7) || 'commit created'}`);
+      logGithubReward('save_github', result, { rewardValue: 0.65, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main' } });
       return result;
     } catch (err) {
       git.status = `GitHub save failed:\n${err.message || err}`;
@@ -722,6 +731,7 @@ ${message}`);
       if (label === null) return { ok: false, cancelled: true };
       const result = await createCheckpointToGithub({ label: label || 'manual checkpoint' });
       W.LuminaLatex.Main?.toast?.(`Checkpoint saved: ${(result.commitSha || '').slice(0, 7) || 'commit created'}`);
+      logGithubReward('checkpoint', result, { rewardValue: 0.7, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main', checkpointLabel: label || '' } });
       return result;
     } catch (err) {
       git.status = `Checkpoint failed:\n${err.message || err}`;
@@ -745,6 +755,7 @@ ${message}`);
         donePrefix: 'Auto-checkpoint created for',
         updateStatus: options.updateStatus !== false
       });
+      logGithubReward('auto_checkpoint', result, { rewardValue: 0.55, metadata: { reason } });
       return { ok: true, result, commitSha: result.commitSha || '' };
     } catch (err) {
       const message = err?.message || String(err);

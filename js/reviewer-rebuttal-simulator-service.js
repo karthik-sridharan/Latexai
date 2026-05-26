@@ -1,5 +1,5 @@
 /* Latexai Stage 19F ReviewerRebuttalSimulatorService
- * Stage: stage19f-agent-run-logging-20260526-1
+ * Stage: stage19g-edit-outcome-reward-logging-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19f-agent-run-logging-20260526-1';
+  const STAGE = 'stage19g-edit-outcome-reward-logging-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -215,7 +215,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19f-agent-run-logging',
+        identityStage: 'stage19g-edit-outcome-reward-logging',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -455,7 +455,7 @@
         stepName: details.stepName || details.taskType || '',
         provider: details.provider || pm.provider,
         model: details.model || pm.model,
-        promptTemplateId: details.promptTemplateId || `reviewer-rebuttal:${details.stepName || details.taskType || 'unknown'}:stage19f`,
+        promptTemplateId: details.promptTemplateId || `reviewer-rebuttal:${details.stepName || details.taskType || 'unknown'}:stage19g`,
         promptText: details.instructions || '',
         inputText: details.input || '',
         outputText: details.output || '',
@@ -499,6 +499,35 @@
       note,
       metadata: { stage: STAGE }
     })));
+  }
+
+
+  async function logReviewerRewardEvent(eventType, rewardValue, options = {}) {
+    try {
+      return await NS.RewardLoggingService?.logReward?.(eventType, rewardValue, {
+        workflow: options.workflow || 'reviewer-rebuttal-simulator',
+        stepName: options.stepName || eventType,
+        memoryContext: options.memoryContext || lastMemoryContextByStep[options.stepName || eventType] || {},
+        relatedActionId: options.relatedActionId || '',
+        relatedAgentRunId: options.relatedAgentRunId || '',
+        note: options.note || '',
+        metadata: { stage: STAGE, ...(options.metadata || {}) }
+      });
+    } catch (_err) { return null; }
+  }
+
+  async function logReviewerEditOutcome(actionType, result = {}, options = {}) {
+    try {
+      return await NS.RewardLoggingService?.logEditOutcome?.(actionType, {
+        ...result,
+        workflow: options.workflow || 'reviewer-rebuttal-simulator',
+        stepName: options.stepName || actionType,
+        source: 'reviewer-rebuttal-simulator-service',
+        memoryContext: options.memoryContext || lastMemoryContextByStep[options.stepName || actionType] || {},
+        note: options.note || '',
+        metadata: { stage: STAGE, ...(options.metadata || {}) }
+      });
+    } catch (_err) { return null; }
   }
 
   function summarizeMemoryText(text, max = 1400) {
@@ -855,6 +884,7 @@ ${input}` : input,
       )).trim();
       await markMemoryUse(stepName, lastRebuttal ? 'success' : 'used', lastRebuttal ? 'Rebuttal completed with memory context.' : 'Rebuttal returned empty text.');
       await saveReviewerMemory('rebuttal', lastRebuttal, payload);
+      await logReviewerRewardEvent('reviewer_rebuttal_completed', lastRebuttal ? 0.3 : -0.2, { stepName, memoryContext, note: lastRebuttal ? 'AI rebuttal completed.' : 'AI rebuttal returned empty text.' });
       setOutput(fullReport());
       setStatus('AI rebuttal complete.');
       return { ok: true, rebuttal: lastRebuttal };
@@ -923,12 +953,15 @@ ${input}` : input,
       )).trim();
       await markMemoryUse(stepName, lastSynthesis ? 'success' : 'used', lastSynthesis ? 'Final synthesis completed with memory context.' : 'Final synthesis returned empty text.');
       await saveReviewerMemory('final_synthesis', lastSynthesis, payload);
+      const synthesisResult = { ok: Boolean(lastSynthesis), accepted: Boolean(lastSynthesis), mode: 'reviewer-final-synthesis', rewardValue: lastSynthesis ? 0.75 : -0.35, rewardLabel: lastSynthesis ? 'positive' : 'negative', note: lastSynthesis ? 'Reviewer/rebuttal final synthesis completed.' : 'Reviewer/rebuttal final synthesis returned empty text.' };
+      await logReviewerEditOutcome('reviewer_rebuttal_final_synthesis', synthesisResult, { stepName, memoryContext, metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastSynthesis || ''), synthesisChars: String(lastSynthesis || '').length } });
       setOutput(fullReport());
       setStatus('Final synthesis complete.');
       return { ok: true, synthesis: lastSynthesis };
     } catch (err) {
       const message = err?.message || String(err);
       setStatus(`Final synthesis failed: ${message}`);
+      try { await logReviewerEditOutcome('reviewer_rebuttal_final_synthesis', { ok: false, accepted: false, rewardValue: -0.9, rewardLabel: 'negative', note: `Final synthesis failed: ${message}`, metadata: { error: message } }, { stepName: 'final_synthesis' }); } catch (_ignored) {}
       setOutput(fullReport());
       return { ok: false, error: message };
     }
