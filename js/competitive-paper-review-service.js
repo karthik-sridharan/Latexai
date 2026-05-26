@@ -1,5 +1,5 @@
 /* Latexai Stage 19F CompetitivePaperReviewService
- * Stage: stage19g-edit-outcome-reward-logging-20260526-1
+ * Stage: stage19h-debate-trajectory-logging-20260526-1
  *
  * Competitive paper comparison workflow.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19g-edit-outcome-reward-logging-20260526-1';
+  const STAGE = 'stage19h-debate-trajectory-logging-20260526-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -930,7 +930,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19g-edit-outcome-reward-logging',
+        identityStage: 'stage19h-debate-trajectory-logging',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -1243,6 +1243,47 @@
         metadata: { stage: STAGE, ...(options.metadata || {}) }
       });
     } catch (_err) { return null; }
+  }
+
+
+  async function logCompetitiveTrajectory(status, payload, extra = {}) {
+    try {
+      const contexts = Object.values(lastMemoryContextByStep || {});
+      const memoryIds = [];
+      contexts.forEach((ctx) => memoryIdsFromContext(ctx).forEach((id) => memoryIds.push(id)));
+      return await NS.DebateTrajectoryLoggingService?.logTrajectory?.({
+        workflow: 'competitive-review',
+        trajectoryType: 'competitive_full_cited_review',
+        title: `Competitive review trajectory: ${payload?.targetVenue || 'paper'}`,
+        status: status || (lastReport ? 'success' : 'unknown'),
+        branchLabel: `${(payload?.competitorUrls || []).length || 0} competitor seeds -> full cited review`,
+        rootStateText: payload?.draftExcerpt || '',
+        finalScore: lastReport ? 0.35 : -0.25,
+        memoryIds,
+        memoryContexts: contexts,
+        steps: [{
+          stepIndex: 0,
+          stepName: 'competitive-web-review-improvement',
+          agentRole: 'competitive_reviewer_agent',
+          actionType: 'full_cited_competitive_review',
+          status: lastReport ? 'success' : 'empty',
+          summary: String(lastReport || extra.error || '').replace(/```[\s\S]*?```/g, '[structured block omitted]').replace(/\s+/g, ' ').trim().slice(0, 1400),
+          memoryIds
+        }],
+        outcomes: [{
+          outcomeType: 'competitive_full_cited_review',
+          status: lastReport ? 'success' : 'empty',
+          score: lastReport ? 0.35 : -0.25,
+          rewardValue: lastReport ? 0.35 : -0.25,
+          rewardLabel: lastReport ? 'positive' : 'negative',
+          summary: lastReport ? 'Full cited competitive review completed.' : 'Competitive review returned empty output.'
+        }],
+        metadata: { stage: STAGE, sourceLedgerCount: Array.isArray(lastSourceLedger) ? lastSourceLedger.length : 0, hasActionableEdits: /latexai_actionable_edits/i.test(lastReport || ''), ...(extra.metadata || {}) }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai debate trajectory logging] competitive trajectory failed', err); } catch (_ignored) {}
+      return null;
+    }
   }
 
   function summarizeMemoryText(text, max = 1400) {
@@ -1957,6 +1998,7 @@ ${input}` : input,
       await markMemoryUse('competitive-web-review-improvement', lastReport ? 'success' : 'used', lastReport ? 'Competitive review completed with memory context.' : 'Competitive review returned empty report.');
       await saveCompetitiveMemory('final_review', lastReport, payload, { sourceLedgerCount: lastSourceLedger.length, hasActionableEdits: /latexai_actionable_edits/i.test(lastReport) });
       await logCompetitiveRewardEvent('competitive_review_completed', lastReport ? 0.35 : -0.25, { stepName: 'competitive-web-review-improvement', memoryContext, note: lastReport ? 'Full cited competitive review completed.' : 'Competitive review returned empty output.', metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastReport), sourceLedgerCount: lastSourceLedger.length } });
+      await logCompetitiveTrajectory(lastReport ? 'success' : 'empty', payload, { metadata: { sourceLedgerCount: lastSourceLedger.length } });
       buildEditImpactMap(lastReport);
       renderEditImpactMap();
       setOutput(lastReport || '(AI returned empty report.)');

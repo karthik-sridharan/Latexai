@@ -1,5 +1,5 @@
 /* Latexai Stage 19F ReviewerRebuttalSimulatorService
- * Stage: stage19g-edit-outcome-reward-logging-20260526-1
+ * Stage: stage19h-debate-trajectory-logging-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19g-edit-outcome-reward-logging-20260526-1';
+  const STAGE = 'stage19h-debate-trajectory-logging-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -215,7 +215,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19g-edit-outcome-reward-logging',
+        identityStage: 'stage19h-debate-trajectory-logging',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -647,7 +647,7 @@
         context: { workflow: 'reviewer-rebuttal-simulator', stage: STAGE }
       });
       text = NS.AIProvider.extractText ? NS.AIProvider.extractText(response) : String(response || '');
-      await logReviewerAgentRun({
+      const loggedRun = await logReviewerAgentRun({
         ...logDetails,
         taskType: task,
         provider: pm.provider,
@@ -658,9 +658,20 @@
         status: text && text.trim() ? 'success' : 'empty',
         latencyMs: Date.now() - startedAt
       });
+      if (loggedRun?.runId || loggedRun?.id) {
+        trajectoryAgentRuns.push({
+          runId: loggedRun.runId || loggedRun.id,
+          contextBundleId: loggedRun.contextBundleId || '',
+          outputId: loggedRun.outputId || '',
+          stepName: logDetails.stepName || task,
+          agentRole: logDetails.agentRole || agentRoleForReviewerStep(logDetails.stepName, task),
+          taskType: task,
+          status: text && text.trim() ? 'success' : 'empty'
+        });
+      }
       return text;
     } catch (err) {
-      await logReviewerAgentRun({
+      const loggedRun = await logReviewerAgentRun({
         ...logDetails,
         taskType: task,
         provider: pm.provider,
@@ -672,6 +683,17 @@
         latencyMs: Date.now() - startedAt,
         error: err?.message || String(err)
       });
+      if (loggedRun?.runId || loggedRun?.id) {
+        trajectoryAgentRuns.push({
+          runId: loggedRun.runId || loggedRun.id,
+          contextBundleId: loggedRun.contextBundleId || '',
+          outputId: loggedRun.outputId || '',
+          stepName: logDetails.stepName || task,
+          agentRole: logDetails.agentRole || agentRoleForReviewerStep(logDetails.stepName, task),
+          taskType: task,
+          status: 'failure'
+        });
+      }
       throw err;
     }
   }
@@ -787,6 +809,7 @@
 
   async function runReviews() {
     cancelled = false;
+    trajectoryAgentRuns = [];
     lastReviews = [];
     lastRebuttal = '';
     lastSynthesis = '';
@@ -908,6 +931,83 @@ ${input}` : input,
     }
   }
 
+
+  async function logReviewerTrajectory(status, payload, extra = {}) {
+    try {
+      const contexts = Object.values(lastMemoryContextByStep || {});
+      const steps = [];
+      (lastReviews || []).forEach((review, i) => {
+        const run = trajectoryAgentRuns.find((r) => r.stepName === `simulated_review_${i + 1}`) || {};
+        steps.push({
+          stepIndex: i,
+          stepName: `simulated_review_${i + 1}`,
+          agentRole: 'simulated_reviewer_agent',
+          actionType: 'simulate_review',
+          agentRunId: run.runId || '',
+          contextBundleId: run.contextBundleId || '',
+          status: review?.text ? 'success' : 'empty',
+          summary: `${review?.name || `Reviewer ${i + 1}`}: ${summarizeMemoryText(review?.text || '', 1000)}`,
+          memoryIds: memoryIdsFromContext(lastMemoryContextByStep[`simulated_review_${i + 1}`] || {})
+        });
+      });
+      const rebuttalRun = trajectoryAgentRuns.find((r) => r.stepName === 'rebuttal') || {};
+      if (lastRebuttal || rebuttalRun.runId) {
+        steps.push({
+          stepIndex: steps.length,
+          stepName: 'rebuttal',
+          agentRole: 'defender_rebuttal_agent',
+          actionType: 'generate_rebuttal',
+          agentRunId: rebuttalRun.runId || '',
+          contextBundleId: rebuttalRun.contextBundleId || '',
+          status: lastRebuttal ? 'success' : 'empty',
+          summary: summarizeMemoryText(lastRebuttal || '', 1200),
+          memoryIds: memoryIdsFromContext(lastMemoryContextByStep.rebuttal || {})
+        });
+      }
+      const synthesisRun = trajectoryAgentRuns.find((r) => r.stepName === 'final_synthesis') || {};
+      if (lastSynthesis || synthesisRun.runId || extra.includeFailedSynthesis) {
+        steps.push({
+          stepIndex: steps.length,
+          stepName: 'final_synthesis',
+          agentRole: 'editor_synthesis_agent',
+          actionType: 'synthesize_revision_plan',
+          agentRunId: synthesisRun.runId || '',
+          contextBundleId: synthesisRun.contextBundleId || '',
+          status: lastSynthesis ? 'success' : status || 'unknown',
+          summary: summarizeMemoryText(lastSynthesis || extra.error || '', 1400),
+          memoryIds: memoryIdsFromContext(lastMemoryContextByStep.final_synthesis || {})
+        });
+      }
+      const agentRunIds = trajectoryAgentRuns.map((r) => r.runId).filter(Boolean);
+      const contextBundleIds = trajectoryAgentRuns.map((r) => r.contextBundleId).filter(Boolean);
+      return await NS.DebateTrajectoryLoggingService?.logTrajectory?.({
+        workflow: 'reviewer-rebuttal-simulator',
+        trajectoryType: 'reviewer_rebuttal_final_synthesis',
+        title: `Reviewer/rebuttal trajectory: ${payload?.targetVenue || payload?.paperGoal || 'paper revision'}`,
+        status: status || (lastSynthesis ? 'success' : 'unknown'),
+        branchLabel: `${(payload?.reviewers || []).length || (lastReviews || []).length} reviewers -> rebuttal -> synthesis`,
+        rootStateText: payload?.draftExcerpt || '',
+        finalScore: lastSynthesis ? 0.75 : -0.35,
+        agentRunIds,
+        contextBundleIds,
+        memoryContexts: contexts,
+        steps,
+        outcomes: [{
+          outcomeType: 'reviewer_rebuttal_final_synthesis',
+          status: lastSynthesis ? 'success' : 'failure',
+          score: lastSynthesis ? 0.75 : -0.35,
+          rewardValue: lastSynthesis ? 0.75 : -0.9,
+          rewardLabel: lastSynthesis ? 'positive' : 'negative',
+          summary: lastSynthesis ? 'Final synthesis completed.' : `Final synthesis failed or returned empty output.${extra.error ? ` ${extra.error}` : ''}`
+        }],
+        metadata: { stage: STAGE, reviewerCount: (payload?.reviewers || []).length || (lastReviews || []).length, hasRebuttal: Boolean(lastRebuttal), hasSynthesis: Boolean(lastSynthesis), ...(extra.metadata || {}) }
+      });
+    } catch (err) {
+      try { console.warn('[Latexai debate trajectory logging] reviewer/rebuttal trajectory failed', err); } catch (_ignored) {}
+      return null;
+    }
+  }
+
   async function synthesizeFinalRevision() {
     const payload = lastPayload || buildPayload();
     if (!lastReviews.length) await runReviews();
@@ -955,6 +1055,7 @@ ${input}` : input,
       await saveReviewerMemory('final_synthesis', lastSynthesis, payload);
       const synthesisResult = { ok: Boolean(lastSynthesis), accepted: Boolean(lastSynthesis), mode: 'reviewer-final-synthesis', rewardValue: lastSynthesis ? 0.75 : -0.35, rewardLabel: lastSynthesis ? 'positive' : 'negative', note: lastSynthesis ? 'Reviewer/rebuttal final synthesis completed.' : 'Reviewer/rebuttal final synthesis returned empty text.' };
       await logReviewerEditOutcome('reviewer_rebuttal_final_synthesis', synthesisResult, { stepName, memoryContext, metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastSynthesis || ''), synthesisChars: String(lastSynthesis || '').length } });
+      await logReviewerTrajectory(lastSynthesis ? 'success' : 'empty', payload, { metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastSynthesis || ''), synthesisChars: String(lastSynthesis || '').length } });
       setOutput(fullReport());
       setStatus('Final synthesis complete.');
       return { ok: true, synthesis: lastSynthesis };
@@ -962,6 +1063,7 @@ ${input}` : input,
       const message = err?.message || String(err);
       setStatus(`Final synthesis failed: ${message}`);
       try { await logReviewerEditOutcome('reviewer_rebuttal_final_synthesis', { ok: false, accepted: false, rewardValue: -0.9, rewardLabel: 'negative', note: `Final synthesis failed: ${message}`, metadata: { error: message } }, { stepName: 'final_synthesis' }); } catch (_ignored) {}
+      try { await logReviewerTrajectory('failure', lastPayload || payload, { includeFailedSynthesis: true, error: message, metadata: { error: message } }); } catch (_ignored) {}
       setOutput(fullReport());
       return { ok: false, error: message };
     }

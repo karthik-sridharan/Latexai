@@ -1,5 +1,5 @@
 /* Latexai Stage 19G RewardLoggingService
- * Stage: stage19g-edit-outcome-reward-logging-20260526-1
+ * Stage: stage19h-debate-trajectory-logging-20260526-1
  *
  * Hidden frontend reward/outcome logger. It records lightweight training signals
  * for future AlphaGo-style debate/context-policy learning without adding UI.
@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19g-edit-outcome-reward-logging-20260526-1';
+  const STAGE = 'stage19h-debate-trajectory-logging-20260526-1';
   const LAST_ACTION_KEY = 'latexai:stage19g:last-ai-action';
 
   function memoryEnabled() {
