@@ -454,7 +454,7 @@
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
 <script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19i-agent-role-specific-context-policy-1"></script>
 <script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19i5-role-classification-fix-20260526-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19i6-explicit-role-context-fix-20260526-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
@@ -500,7 +500,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19i5-role-classification-fix-20260526-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19i6-explicit-role-context-fix-20260526-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -557,7 +557,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19i5-role-classification-fix-20260526-1&watchdog=' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19i6-explicit-role-context-fix-20260526-1&watchdog=' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
