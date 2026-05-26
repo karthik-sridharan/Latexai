@@ -1,5 +1,5 @@
-/* Latexai Stage 19I8 DevilsAdvocateDebateService
- * Stage: stage19i8-devils-advocate-memory-trajectory-wiring-20260526-1
+/* Latexai Stage 19I9 DevilsAdvocateDebateService
+ * Stage: stage19i9-devils-advocate-start-marker-diagnostics-20260526-1
  *
  * Devil's advocate paper debate workflow:
  * - one AI agent argues for the current draft;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i8-devils-advocate-memory-trajectory-wiring-20260526-1';
+  const STAGE = 'stage19i9-devils-advocate-start-marker-diagnostics-20260526-1';
   const PROMPT_PATH = 'prompt/ai-devils-advocate-debate.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('devils-advocate-debate-service')) {
@@ -162,7 +162,7 @@
         workflow: DEVIL_WORKFLOW,
         query: query.slice(0, 12000),
         limit: role === 'synthesizer' ? 26 : 22,
-        metadata: { stage: STAGE, contextPolicy: 'stage19i8-devils-advocate-agent-role-specific' }
+        metadata: { stage: STAGE, contextPolicy: 'stage19i9-devils-advocate-agent-role-specific-start-marker' }
       });
       const ctx = json?.context || { facts: [], summaries: [], graphEdges: [] };
       lastMemoryContextByStep[stepName] = ctx;
@@ -203,6 +203,31 @@
     return lines.join('\n');
   }
 
+  async function logDevilStartMarker(payload) {
+    // Stage 19I9: send a very early, lightweight context request so Neon proves
+    // that the Devil's Advocate workflow is wired before any long AI calls begin.
+    // This creates an agent_context_usage_stats row with workflow=devils-advocate-paper-debate.
+    try {
+      if (!memoryEnabled()) {
+        setStatus('Starting paper debate... memory logging is disabled in this browser.');
+        return null;
+      }
+      const markerAgent = { role: 'advocate', provider: 'diagnostic', model: 'diagnostic' };
+      const markerStep = 'devils_advocate_start_marker';
+      const markerInput = [
+        'Stage 19I9 Devil\'s Advocate start marker.',
+        `Topic: ${payload?.topic || ''}`,
+        `Venue: ${payload?.targetVenue || ''}`,
+        String(payload?.draftExcerpt || '').slice(0, 2500)
+      ].join('\n');
+      return await fetchDebateMemoryContext(payload, markerAgent, markerStep, markerInput);
+    } catch (err) {
+      try { console.warn('[Latexai devil debate start-marker logging] failed', err); } catch (_ignored) {}
+      setStatus(`Starting paper debate... memory start marker failed: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
   async function logDevilAgentRun(details) {
     if (!memoryEnabled()) return null;
     try {
@@ -223,7 +248,7 @@
         stepName: details.stepName || '',
         provider: details.provider || details.agent?.provider || '',
         model: details.model || details.agent?.model || '',
-        promptTemplateId: details.promptTemplateId || `devils-advocate:${details.stepName || 'unknown'}:stage19i8`,
+        promptTemplateId: details.promptTemplateId || `devils-advocate:${details.stepName || 'unknown'}:stage19i9`,
         promptText: details.instructions || '',
         inputText: details.input || '',
         outputText: details.output || '',
@@ -240,7 +265,7 @@ ${details.output || ''}`),
             memorySummaries: Array.isArray(ctx?.summaries) ? ctx.summaries.length : 0,
             graphEdges: Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.length : 0,
             agentContextProfile: ctx?.agentContextProfile || null,
-            contextPolicy: 'stage19i8-devils-advocate-agent-role-specific'
+            contextPolicy: 'stage19i9-devils-advocate-agent-role-specific-start-marker'
           }
         },
         output: { text: details.output || '', summary: summarizeMemoryText(details.output || '', 1200) },
@@ -636,6 +661,9 @@ ${details.output || ''}`),
     }
 
     lastPayload = payload;
+    setStatus('Starting paper debate: sending Devil\'s Advocate memory/logging start marker...');
+    const startMarkerContext = await logDevilStartMarker(payload);
+    if (startMarkerContext) trajectoryMemoryContexts.push(startMarkerContext);
     const developerPrompt = await loadPrompt();
 
     setStatus(`Starting ${payload.rounds}-round paper debate...`);
