@@ -1,5 +1,5 @@
 /* Latexai Stage 19H DebateTrajectoryLoggingService
- * Stage: stage19h-debate-trajectory-logging-20260526-1
+ * Stage: stage19i-agent-role-specific-context-policy-20260526-1
  *
  * Hidden logger that links agent runs, contexts, memory ids, edit outcomes,
  * and rewards into full debate/revision trajectories.  This is the first
@@ -10,7 +10,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19h-debate-trajectory-logging-20260526-1';
+  const STAGE = 'stage19i-agent-role-specific-context-policy-20260526-1';
 
   function clean(value) { return String(value || '').trim(); }
 

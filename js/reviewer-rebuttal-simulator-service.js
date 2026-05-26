@@ -1,5 +1,5 @@
 /* Latexai Stage 19F ReviewerRebuttalSimulatorService
- * Stage: stage19h-debate-trajectory-logging-20260526-1
+ * Stage: stage19i-agent-role-specific-context-policy-20260526-1
  *
  * Foundation workflow:
  * - user chooses 2-4 configurable reviewers;
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19h-debate-trajectory-logging-20260526-1';
+  const STAGE = 'stage19i-agent-role-specific-context-policy-20260526-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -215,7 +215,7 @@
       documentFingerprint: snapshot.documentFingerprint,
       sourceHash: snapshot.sourceHash,
       identityMetadata: {
-        identityStage: 'stage19h-debate-trajectory-logging',
+        identityStage: 'stage19i-agent-role-specific-context-policy',
         projectLabel: snapshot.projectLabel,
         titleGuess: snapshot.titleGuess,
         documentFingerprint: snapshot.documentFingerprint,
@@ -323,12 +323,31 @@
   }
 
   async function fetchReviewerMemoryContext(ids, stepName, limit, queryText, focusText = '') {
-    const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
     const q = memorySemanticQuery(stepName, queryText, focusText);
+    const agentRole = agentRoleForReviewerStep(stepName, stepName);
+    const payload = {
+      userId: ids.userId,
+      projectId: ids.projectId,
+      paperId: ids.paperId,
+      sectionId: ids.sectionId,
+      sessionId: ids.sessionId,
+      agentRole,
+      taskType: stepName,
+      workflow: 'reviewer-rebuttal-simulator',
+      query: q.slice(0, 12000),
+      limit: Math.max(1, Number(limit) || 12),
+      metadata: { stage: STAGE, focusText: focusText.slice(0, 1200), contextPolicy: 'stage19i-agent-role-specific' }
+    };
+    const json = await memoryPost('/agent-context', payload);
+    if (json?.context) return json.context;
+    // Backward-compatible fallback for older memory backends.
+    const qs = new URLSearchParams({ userId: ids.userId, projectId: ids.projectId, paperId: ids.paperId, sessionId: ids.sessionId, task: stepName, limit: String(limit) });
     if (q) qs.set('q', q.slice(0, 12000));
     if (ids.sectionId) qs.set('sectionId', ids.sectionId);
-    const json = await memoryFetch(`/context?${qs.toString()}`);
-    return json?.context || { facts: [], summaries: [], graphEdges: [] };
+    const fallback = await memoryFetch(`/context?${qs.toString()}`);
+    const ctx = fallback?.context || { facts: [], summaries: [], graphEdges: [] };
+    ctx.agentContextProfile = { requestedRole: agentRole, fallback: true, profileVersion: 'stage19i-fallback' };
+    return ctx;
   }
 
   async function loadReviewerMemoryContext(stepName, limit = 10, queryText = '') {
@@ -468,7 +487,9 @@
           metadata: {
             memoryFacts: Array.isArray(ctx?.facts) ? ctx.facts.length : 0,
             memorySummaries: Array.isArray(ctx?.summaries) ? ctx.summaries.length : 0,
-            graphEdges: Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.length : 0
+            graphEdges: Array.isArray(ctx?.graphEdges) ? ctx.graphEdges.length : 0,
+            agentContextProfile: ctx?.agentContextProfile || null,
+            contextPolicy: 'stage19i-agent-role-specific'
           }
         },
         output: {

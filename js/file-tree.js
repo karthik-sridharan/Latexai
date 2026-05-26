@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19h-debate-trajectory-logging-20260526-1';
+  const STAGE = 'stage19i-agent-role-specific-context-policy-20260526-1';
 
   const git = {
     setupOpen: false,

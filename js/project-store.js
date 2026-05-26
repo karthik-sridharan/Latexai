@@ -19,7 +19,7 @@
   }
 
 
-  const STAGE19H2 = 'stage19h2-github-load-storage-quota-fix-20260526-1';
+  const STAGE19H2 = 'stage19i-agent-role-specific-context-policy-20260526-1';
   const LOCAL_STORAGE_SOFT_LIMIT_BYTES = 4_000_000;
   const LOCAL_STORAGE_HARD_LIMIT_BYTES = 4_800_000;
   const LOCAL_STORAGE_LARGE_FILE_BYTES = 750_000;
