@@ -221,6 +221,66 @@
         <div id="debugStatus" class="status">Run a debug request to see selected memories and bandit score components.</div>
       </section>
 
+      <section class="card wide">
+        <h2>Offline backend simulator</h2>
+        <p class="small">Run synthetic API-call and memory-store simulations on the backend. This does not call an LLM and does not write to Neon.</p>
+        <div class="triple">
+          <div>
+            <label for="simRounds">Simulated AI calls / rounds</label>
+            <input id="simRounds" type="number" min="1" max="5000" step="1" value="250" />
+          </div>
+          <div>
+            <label for="simMemoryCount">Total synthetic memories</label>
+            <input id="simMemoryCount" type="number" min="8" max="1000" step="1" value="80" />
+          </div>
+          <div>
+            <label for="simInitialMemoryCount">Initial active memories</label>
+            <input id="simInitialMemoryCount" type="number" min="4" max="1000" step="1" value="30" />
+          </div>
+        </div>
+        <div class="triple">
+          <div>
+            <label for="simGrowthEvery">Grow action set every N rounds</label>
+            <input id="simGrowthEvery" type="number" min="0" max="10000" step="1" value="25" />
+          </div>
+          <div>
+            <label for="simMemoriesPerGrowth">New memories per growth</label>
+            <input id="simMemoriesPerGrowth" type="number" min="0" max="100" step="1" value="4" />
+          </div>
+          <div>
+            <label for="simSeed">Seed</label>
+            <input id="simSeed" type="number" min="0" max="2147483647" step="1" value="12345" />
+          </div>
+        </div>
+        <div class="triple">
+          <div>
+            <label for="simRewardNoise">Reward noise</label>
+            <input id="simRewardNoise" type="number" min="0" max="2" step="0.01" value="0.18" />
+          </div>
+          <div>
+            <label for="simTaskDrift">Task drift probability</label>
+            <input id="simTaskDrift" type="number" min="0" max="1" step="0.01" value="0.08" />
+          </div>
+          <div>
+            <label for="simPolicies">Policies to compare</label>
+            <input id="simPolicies" value="greedy,epsilon_greedy,ucb,thompson,softmax" />
+          </div>
+        </div>
+        <div class="buttons">
+          <button id="runSimulation">Run offline simulation</button>
+          <button id="copySimulationPayload" class="secondary">Copy simulation payload</button>
+        </div>
+        <div id="simulationStatus" class="status">Run the simulator to compare policies without using paid model calls.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Simulation result</h2>
+        <div id="simulationSummary" class="small">No simulation yet.</div>
+        <div id="simulationTableWrap"></div>
+        <h2 style="margin-top:16px">Simulation raw JSON</h2>
+        <pre id="simulationRawJson">{}</pre>
+      </section>
+
       <section class="card">
         <h2>Current localStorage keys</h2>
         <table>
@@ -469,6 +529,79 @@
       const rows = Object.entries(KEYS).map(([name, key]) => '<tr><th>' + esc(name) + '</th><td class="mono">' + esc(key) + '</td><td>' + esc(lsGet(key, '')) + '</td></tr>').join('');
       $('settingsTable').innerHTML = rows;
     }
+    function currentSimulationPayload() {
+      const p = currentParams();
+      const policies = clean($('simPolicies').value) || 'greedy,epsilon_greedy,ucb,thompson,softmax';
+      return {
+        policies,
+        rounds: Math.round(number('simRounds', 250, 1, 5000)),
+        memoryCount: Math.round(number('simMemoryCount', 80, 8, 1000)),
+        initialMemoryCount: Math.round(number('simInitialMemoryCount', 30, 4, 1000)),
+        growthEvery: Math.round(number('simGrowthEvery', 25, 0, 10000)),
+        memoriesPerGrowth: Math.round(number('simMemoriesPerGrowth', 4, 0, 100)),
+        seed: Math.round(number('simSeed', 12345, 0, 2147483647)),
+        topK: Math.round(number('topK', 6, 1, 24)),
+        explorationPoolSize: Math.round(number('poolSize', 24, 6, 200)),
+        epsilon: p.epsilon,
+        ucbBeta: p.ucbBeta,
+        thompsonAlpha: p.thompsonAlpha,
+        softmaxTemperature: p.softmaxTemperature,
+        rewardNoise: number('simRewardNoise', 0.18, 0, 2),
+        taskDrift: number('simTaskDrift', 0.08, 0, 1)
+      };
+    }
+    async function runSimulation() {
+      saveBackend();
+      savePolicy();
+      const payload = currentSimulationPayload();
+      setStatus('simulationStatus', 'Running offline backend simulation...', null);
+      try {
+        const json = await memoryFetch('/debug/simulate-bandit', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        renderSimulation(json);
+        const best = json && json.summary ? json.summary.bestPolicyByAvgReward : '?';
+        setStatus('simulationStatus', 'Simulation OK. Best policy by average reward: ' + best + '.', 'good');
+      } catch (err) {
+        setStatus('simulationStatus', 'Simulation failed: ' + (err && err.message ? err.message : err), 'bad');
+      }
+    }
+    function renderSimulation(json) {
+      $('simulationRawJson').textContent = JSON.stringify(json, null, 2);
+      const results = Array.isArray(json.results) ? json.results : [];
+      const params = json.parameters || {};
+      $('simulationSummary').textContent = 'Rounds: ' + (params.rounds || '?') +
+        ' | memories: ' + (params.memoryCount || '?') +
+        ' | growth: +' + (params.memoriesPerGrowth || 0) + ' every ' + (params.growthEvery || 0) +
+        ' | best by reward: ' + ((json.summary || {}).bestPolicyByAvgReward || '?') +
+        ' | best by regret: ' + ((json.summary || {}).bestPolicyByRegret || '?');
+      if (!results.length) {
+        $('simulationTableWrap').innerHTML = '<p class="small">No simulation rows returned.</p>';
+        return;
+      }
+      const rows = results.map((r, idx) => '<tr>' +
+        '<td>' + (idx + 1) + '</td>' +
+        '<td><span class="pill">' + esc(r.policy) + '</span></td>' +
+        '<td>' + esc(r.avgRewardPerRound) + '</td>' +
+        '<td>' + esc(r.regret) + '</td>' +
+        '<td>' + esc(r.successRate) + '</td>' +
+        '<td>' + esc(r.failureRate) + '</td>' +
+        '<td>' + esc(r.explorationRate) + '</td>' +
+        '<td>' + esc(r.uniqueMemoriesSelected) + '</td>' +
+        '<td>' + esc(r.finalActiveMemories) + '</td>' +
+        '</tr>').join('');
+      $('simulationTableWrap').innerHTML = '<table><thead><tr><th>#</th><th>policy</th><th>avg reward</th><th>regret</th><th>success</th><th>failure</th><th>explore</th><th>unique memories</th><th>final active</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+    async function copySimulationPayload() {
+      const payload = currentSimulationPayload();
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+        setStatus('simulationStatus', 'Copied simulation payload.', 'good');
+      } catch (_err) {
+        setStatus('simulationStatus', JSON.stringify(payload, null, 2), 'warn');
+      }
+    }
     async function copyDebugUrl() {
       const url = debugUrl();
       try {
@@ -484,6 +617,8 @@
     $('resetDefaults').addEventListener('click', resetDefaults);
     $('runDebug').addEventListener('click', runDebug);
     $('copyCurl').addEventListener('click', copyDebugUrl);
+    $('runSimulation').addEventListener('click', runSimulation);
+    $('copySimulationPayload').addEventListener('click', copySimulationPayload);
     $('refreshTable').addEventListener('click', refreshTable);
     load();
   })();
