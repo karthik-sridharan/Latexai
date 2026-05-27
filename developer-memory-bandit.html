@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Latexai Developer: Memory Bandit Console</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --line: #374151;
+      --accent: #60a5fa;
+      --good: #34d399;
+      --bad: #fb7185;
+      --warn: #fbbf24;
+      --input: #0b1220;
+      --shadow: rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 10% 0%, #1e3a8a 0, transparent 32rem), var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 22px 24px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      background: rgba(15,23,42,.84);
+      backdrop-filter: blur(14px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 { margin: 0 0 6px; font-size: 1.35rem; letter-spacing: -.02em; }
+    header p { margin: 0; color: var(--muted); max-width: 72rem; }
+    main { padding: 18px 24px 40px; max-width: 1180px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .card {
+      background: rgba(17,24,39,.92);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px;
+      box-shadow: 0 14px 40px var(--shadow);
+      padding: 16px;
+    }
+    .card h2 { margin: 0 0 10px; font-size: 1.02rem; }
+    .wide { grid-column: 1 / -1; }
+    label { display: block; font-size: .86rem; color: var(--muted); margin: 12px 0 6px; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--input);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 11px;
+      font: inherit;
+      outline: none;
+    }
+    input[type="checkbox"] { width: auto; vertical-align: middle; margin-right: 8px; }
+    input[type="range"] { padding: 0; accent-color: var(--accent); }
+    textarea { min-height: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: .86rem; }
+    .row { display: grid; grid-template-columns: 1fr 95px; gap: 10px; align-items: end; }
+    .triple { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    button, a.button {
+      border: 1px solid rgba(255,255,255,.12);
+      background: #2563eb;
+      color: white;
+      border-radius: 999px;
+      padding: 9px 13px;
+      font: inherit;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    button.secondary, a.secondary { background: #374151; }
+    button.warn { background: #92400e; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(31,41,55,.88);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+    .status.good { color: var(--good); border-color: rgba(52,211,153,.35); }
+    .status.bad { color: var(--bad); border-color: rgba(251,113,133,.35); }
+    .status.warn { color: var(--warn); border-color: rgba(251,191,36,.35); }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .pill { display: inline-block; padding: 2px 7px; border-radius: 999px; background: rgba(96,165,250,.14); color: #bfdbfe; border: 1px solid rgba(96,165,250,.22); font-size: .78rem; }
+    .small { color: var(--muted); font-size: .83rem; }
+    pre {
+      max-height: 420px;
+      overflow: auto;
+      background: #020617;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: .82rem;
+    }
+    @media (max-width: 820px) {
+      .grid, .triple, .row { grid-template-columns: 1fr; }
+      header, main { padding-left: 14px; padding-right: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Latexai Developer: Memory Bandit Console</h1>
+    <p>Choose the memory-learning policy and tune contextual bandit hyperparameters from the browser. Settings are stored in this origin's localStorage and are used by the main Latexai app on the same deployment.</p>
+  </header>
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>Backend and memory status</h2>
+        <label for="backendUrl">Memory backend URL</label>
+        <input id="backendUrl" autocomplete="off" placeholder="https://.../api/lumina/memory" />
+        <label for="proxyToken">Memory proxy token / Authorization bearer token</label>
+        <input id="proxyToken" autocomplete="off" placeholder="optional" />
+        <label><input id="memoryEnabled" type="checkbox" /> Enable memory for Latexai AI calls</label>
+        <div class="buttons">
+          <button id="saveBackend">Save backend settings</button>
+          <button id="testHealth" class="secondary">Test health</button>
+          <a id="openMainApp" class="button secondary" href="index.html">Open main app</a>
+        </div>
+        <div id="backendStatus" class="status">Not checked.</div>
+      </section>
+
+      <section class="card">
+        <h2>Selection policy</h2>
+        <label for="policy">Memory selection algorithm</label>
+        <select id="policy">
+          <option value="greedy">greedy — learned score only</option>
+          <option value="epsilon_greedy">epsilon_greedy — mostly greedy, sometimes explore</option>
+          <option value="ucb">ucb — learned score plus uncertainty bonus</option>
+          <option value="thompson">thompson — randomized Beta posterior exploration</option>
+          <option value="softmax">softmax — probabilistic sampling from scores</option>
+        </select>
+        <div class="triple">
+          <div>
+            <label for="topK">Top-K memories</label>
+            <input id="topK" type="number" min="1" max="24" step="1" />
+          </div>
+          <div>
+            <label for="poolSize">Exploration pool</label>
+            <input id="poolSize" type="number" min="6" max="200" step="1" />
+          </div>
+          <div>
+            <label for="queryLimit">Debug limit</label>
+            <input id="queryLimit" type="number" min="1" max="100" step="1" />
+          </div>
+        </div>
+        <div class="buttons">
+          <button id="savePolicy">Save policy</button>
+          <button id="resetDefaults" class="warn">Reset defaults</button>
+        </div>
+        <div id="policyStatus" class="status">Loaded local settings.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Hyperparameters</h2>
+        <div class="grid">
+          <div>
+            <label for="epsilon">Epsilon-greedy epsilon <span id="epsilonVal" class="pill"></span></label>
+            <div class="row"><input id="epsilon" type="range" min="0" max="0.5" step="0.01" /><input id="epsilonNum" type="number" min="0" max="0.5" step="0.01" /></div>
+            <p class="small">Probability of replacing greedy memories with under-tested relevant memories.</p>
+          </div>
+          <div>
+            <label for="ucbBeta">UCB beta <span id="ucbBetaVal" class="pill"></span></label>
+            <div class="row"><input id="ucbBeta" type="range" min="0" max="2" step="0.01" /><input id="ucbBetaNum" type="number" min="0" max="2" step="0.01" /></div>
+            <p class="small">Strength of the uncertainty/exploration bonus. Default policy uses this.</p>
+          </div>
+          <div>
+            <label for="thompsonAlpha">Thompson alpha <span id="thompsonAlphaVal" class="pill"></span></label>
+            <div class="row"><input id="thompsonAlpha" type="range" min="0" max="2" step="0.01" /><input id="thompsonAlphaNum" type="number" min="0" max="2" step="0.01" /></div>
+            <p class="small">How much the Beta posterior sample perturbs the learned score.</p>
+          </div>
+          <div>
+            <label for="softmaxTemp">Softmax temperature <span id="softmaxTempVal" class="pill"></span></label>
+            <div class="row"><input id="softmaxTemp" type="range" min="0.03" max="5" step="0.01" /><input id="softmaxTempNum" type="number" min="0.03" max="5" step="0.01" /></div>
+            <p class="small">Lower is greedier; higher samples more diverse memories.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Debug request</h2>
+        <div class="triple">
+          <div>
+            <label for="agentRole">Agent role</label>
+            <input id="agentRole" value="editor" />
+          </div>
+          <div>
+            <label for="taskType">Task type</label>
+            <input id="taskType" value="debug_context_scores" />
+          </div>
+          <div>
+            <label for="workflow">Workflow</label>
+            <input id="workflow" value="debug" />
+          </div>
+        </div>
+        <label for="query">Query / current AI task text</label>
+        <textarea id="query">clarity theorem assumptions citation coverage</textarea>
+        <div class="buttons">
+          <button id="runDebug">Run context-score debug</button>
+          <button id="copyCurl" class="secondary">Copy debug URL</button>
+        </div>
+        <div id="debugStatus" class="status">Run a debug request to see selected memories and bandit score components.</div>
+      </section>
+
+      <section class="card">
+        <h2>Current localStorage keys</h2>
+        <table>
+          <tbody id="settingsTable"></tbody>
+        </table>
+        <div class="buttons">
+          <button id="refreshTable" class="secondary">Refresh table</button>
+        </div>
+      </section>
+
+      <section class="card wide">
+        <h2>Selection result</h2>
+        <div id="resultSummary" class="small">No result yet.</div>
+        <div id="resultTableWrap"></div>
+        <h2 style="margin-top:16px">Raw JSON</h2>
+        <pre id="rawJson">{}</pre>
+      </section>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    'use strict';
+    const DEFAULT_BACKEND = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/memory';
+    const KEYS = {
+      memoryEnabled: 'latexai:memory-enabled',
+      backendUrl: 'lumina-latex.memory.backendUrl',
+      proxyToken: 'lumina-latex.memory.proxyToken',
+      policy: 'latexai:memory-selection-policy',
+      epsilon: 'latexai:memory-bandit-epsilon',
+      ucbBeta: 'latexai:memory-bandit-ucb-beta',
+      thompsonAlpha: 'latexai:memory-bandit-thompson-alpha',
+      softmaxTemp: 'latexai:memory-bandit-softmax-temperature',
+      poolSize: 'latexai:memory-bandit-exploration-pool-size',
+      topK: 'latexai:memory-bandit-top-k',
+      queryLimit: 'latexai:memory-bandit-debug-limit'
+    };
+    const DEFAULTS = {
+      memoryEnabled: 'true',
+      policy: 'ucb',
+      epsilon: '0.10',
+      ucbBeta: '0.20',
+      thompsonAlpha: '0.25',
+      softmaxTemp: '0.25',
+      poolSize: '24',
+      topK: '6',
+      queryLimit: '8'
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const clean = (value) => String(value == null ? '' : value).trim();
+    function lsGet(key, fallback) {
+      try { const value = localStorage.getItem(key); return value == null || value === '' ? fallback : value; } catch (_err) { return fallback; }
+    }
+    function lsSet(key, value) {
+      try { localStorage.setItem(key, String(value)); } catch (_err) {}
+    }
+    function normalizeBase(value) {
+      const raw = clean(value) || DEFAULT_BACKEND;
+      try {
+        const url = new URL(raw, window.location.href);
+        url.hash = '';
+        url.search = '';
+        url.pathname = url.pathname
+          .replace(/\/api\/lumina\/memory(?:\/.+)?\/?$/i, '/api/lumina/memory')
+          .replace(/\/api\/lumina\/ai(?:\/.+)?\/?$/i, '/api/lumina/memory')
+          .replace(/\/api\/lumina\/latex\/compile(?:\/.+)?\/?$/i, '/api/lumina/memory');
+        if (!/\/api\/lumina\/memory\/?$/i.test(url.pathname)) url.pathname = url.pathname.replace(/\/+$/, '') + '/api/lumina/memory';
+        return url.href.replace(/\/$/, '');
+      } catch (_err) {
+        return raw.replace(/\/api\/lumina\/memory(?:\/.+)?\/?$/i, '/api/lumina/memory').replace(/\/$/, '');
+      }
+    }
+    function number(id, fallback, lo, hi) {
+      const value = Number($(id).value);
+      if (!Number.isFinite(value)) return fallback;
+      return Math.max(lo, Math.min(hi, value));
+    }
+    function setStatus(id, text, kind) {
+      const el = $(id);
+      el.className = 'status' + (kind ? ' ' + kind : '');
+      el.textContent = text;
+    }
+    function headers(hasBody) {
+      const h = {};
+      const token = clean($('proxyToken').value);
+      if (token) h.Authorization = 'Bearer ' + token;
+      if (hasBody) h['Content-Type'] = 'application/json';
+      return h;
+    }
+    async function memoryFetch(path, options) {
+      const base = normalizeBase($('backendUrl').value);
+      const res = await fetch(base + path, { ...(options || {}), headers: { ...headers(Boolean(options && options.body)), ...((options || {}).headers || {}) } });
+      const text = await res.text().catch(() => '');
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
+      if (!res.ok || json.ok === false) throw new Error(json.detail || json.message || json.raw || ('HTTP ' + res.status));
+      return json;
+    }
+    function syncPair(rangeId, numId, valId) {
+      const range = $(rangeId), num = $(numId), val = $(valId);
+      const update = (source) => {
+        const v = source.value;
+        range.value = v;
+        num.value = v;
+        val.textContent = v;
+      };
+      range.addEventListener('input', () => update(range));
+      num.addEventListener('input', () => update(num));
+      update(range);
+    }
+    function load() {
+      $('backendUrl').value = normalizeBase(lsGet(KEYS.backendUrl, DEFAULT_BACKEND));
+      $('proxyToken').value = lsGet(KEYS.proxyToken, '');
+      $('memoryEnabled').checked = lsGet(KEYS.memoryEnabled, DEFAULTS.memoryEnabled) !== 'false';
+      $('policy').value = lsGet(KEYS.policy, DEFAULTS.policy).replace(/-/g, '_');
+      $('topK').value = lsGet(KEYS.topK, DEFAULTS.topK);
+      $('poolSize').value = lsGet(KEYS.poolSize, DEFAULTS.poolSize);
+      $('queryLimit').value = lsGet(KEYS.queryLimit, DEFAULTS.queryLimit);
+      $('epsilon').value = $('epsilonNum').value = lsGet(KEYS.epsilon, DEFAULTS.epsilon);
+      $('ucbBeta').value = $('ucbBetaNum').value = lsGet(KEYS.ucbBeta, DEFAULTS.ucbBeta);
+      $('thompsonAlpha').value = $('thompsonAlphaNum').value = lsGet(KEYS.thompsonAlpha, DEFAULTS.thompsonAlpha);
+      $('softmaxTemp').value = $('softmaxTempNum').value = lsGet(KEYS.softmaxTemp, DEFAULTS.softmaxTemp);
+      syncPair('epsilon', 'epsilonNum', 'epsilonVal');
+      syncPair('ucbBeta', 'ucbBetaNum', 'ucbBetaVal');
+      syncPair('thompsonAlpha', 'thompsonAlphaNum', 'thompsonAlphaVal');
+      syncPair('softmaxTemp', 'softmaxTempNum', 'softmaxTempVal');
+      refreshTable();
+    }
+    function saveBackend() {
+      lsSet(KEYS.backendUrl, normalizeBase($('backendUrl').value));
+      lsSet(KEYS.proxyToken, clean($('proxyToken').value));
+      lsSet(KEYS.memoryEnabled, $('memoryEnabled').checked ? 'true' : 'false');
+      setStatus('backendStatus', 'Saved backend settings. Main Latexai app will use these on the same origin.', 'good');
+      refreshTable();
+    }
+    function savePolicy() {
+      const policy = clean($('policy').value) || 'ucb';
+      lsSet(KEYS.policy, policy);
+      lsSet(KEYS.topK, Math.round(number('topK', 6, 1, 24)));
+      lsSet(KEYS.poolSize, Math.round(number('poolSize', 24, 6, 200)));
+      lsSet(KEYS.queryLimit, Math.round(number('queryLimit', 8, 1, 100)));
+      lsSet(KEYS.epsilon, number('epsilonNum', 0.10, 0, 0.50).toFixed(2));
+      lsSet(KEYS.ucbBeta, number('ucbBetaNum', 0.20, 0, 2).toFixed(2));
+      lsSet(KEYS.thompsonAlpha, number('thompsonAlphaNum', 0.25, 0, 2).toFixed(2));
+      lsSet(KEYS.softmaxTemp, number('softmaxTempNum', 0.25, 0.03, 5).toFixed(2));
+      setStatus('policyStatus', 'Saved policy settings. The next main-app AI call will send these to /ranked-context.', 'good');
+      refreshTable();
+    }
+    function resetDefaults() {
+      Object.values(KEYS).forEach((key) => { try { localStorage.removeItem(key); } catch (_err) {} });
+      load();
+      setStatus('policyStatus', 'Reset to defaults: policy=ucb, topK=6, epsilon=0.10, ucbBeta=0.20.', 'warn');
+      setStatus('backendStatus', 'Backend URL reset to default display value; click Save backend settings to persist.', 'warn');
+    }
+    async function testHealth() {
+      saveBackend();
+      setStatus('backendStatus', 'Testing memory backend health...', null);
+      try {
+        const json = await memoryFetch('/health');
+        setStatus('backendStatus', 'Health OK:\n' + JSON.stringify(json, null, 2), 'good');
+      } catch (err) {
+        setStatus('backendStatus', 'Health failed: ' + (err && err.message ? err.message : err), 'bad');
+      }
+    }
+    function currentParams() {
+      return {
+        memorySelectionPolicy: clean($('policy').value) || 'ucb',
+        epsilon: number('epsilonNum', 0.10, 0, 0.50),
+        ucbBeta: number('ucbBetaNum', 0.20, 0, 2),
+        thompsonAlpha: number('thompsonAlphaNum', 0.25, 0, 2),
+        softmaxTemperature: number('softmaxTempNum', 0.25, 0.03, 5),
+        explorationPoolSize: Math.round(number('poolSize', 24, 6, 200)),
+        limit: Math.round(number('queryLimit', 8, 1, 100)),
+        agentRole: clean($('agentRole').value) || 'editor',
+        taskType: clean($('taskType').value) || 'debug_context_scores',
+        workflow: clean($('workflow').value) || 'debug',
+        query: clean($('query').value) || 'clarity'
+      };
+    }
+    function debugUrl() {
+      const base = normalizeBase($('backendUrl').value);
+      const params = new URLSearchParams();
+      const p = currentParams();
+      Object.keys(p).forEach((key) => params.set(key, p[key]));
+      return base + '/debug/context-scores?' + params.toString();
+    }
+    async function runDebug() {
+      saveBackend();
+      savePolicy();
+      const url = debugUrl();
+      setStatus('debugStatus', 'Running debug request...\n' + url, null);
+      try {
+        const res = await fetch(url, { headers: headers(false) });
+        const text = await res.text().catch(() => '');
+        let json = {};
+        try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
+        if (!res.ok || json.ok === false) throw new Error(json.detail || json.message || json.raw || ('HTTP ' + res.status));
+        renderResult(json);
+        setStatus('debugStatus', 'Debug request OK. See selection result below.', 'good');
+      } catch (err) {
+        setStatus('debugStatus', 'Debug request failed: ' + (err && err.message ? err.message : err), 'bad');
+      }
+    }
+    function pickArray(json) {
+      const d = json && json.debug ? json.debug : json;
+      return d.items || d.memories || d.selectedMemories || d.contextItems || d.candidateDebug || d.candidates || [];
+    }
+    function renderResult(json) {
+      $('rawJson').textContent = JSON.stringify(json, null, 2);
+      const d = json.debug || json;
+      const audit = d.banditAudit || d.contextualBanditAudit || d.selectionAudit || d.audit || {};
+      $('resultSummary').textContent = 'Policy: ' + (audit.policy || currentParams().memorySelectionPolicy) +
+        ' | selected: ' + (audit.selectedCount == null ? '?' : audit.selectedCount) +
+        ' | candidates: ' + (audit.candidateCount == null ? '?' : audit.candidateCount) +
+        ' | exploration selected: ' + (audit.explorationSelectedCount == null ? '?' : audit.explorationSelectedCount);
+      const items = pickArray(json);
+      if (!Array.isArray(items) || !items.length) {
+        $('resultTableWrap').innerHTML = '<p class="small">No candidate rows returned.</p>';
+        return;
+      }
+      const rows = items.slice(0, 30).map((it) => {
+        const pol = it.learnedContextPolicy || {};
+        const b = pol.contextualBandit || it.contextualBandit || {};
+        const id = it.memoryId || it.memory_id || it.id || '';
+        const selected = b.selected || it.contextualBanditSelected || false;
+        const title = it.key || it.title || it.summary || it.value || '';
+        return '<tr>' +
+          '<td>' + (selected ? '<span class="pill">selected</span>' : '') + '</td>' +
+          '<td class="mono">' + esc(id).slice(0, 26) + '</td>' +
+          '<td>' + esc(String(title).slice(0, 170)) + '</td>' +
+          '<td>' + esc(b.baseScore ?? it.learnedContextScore ?? '') + '</td>' +
+          '<td>' + esc(b.finalBanditScore ?? it.contextualBanditScore ?? '') + '</td>' +
+          '<td>' + esc(b.explorationBonus ?? '') + '</td>' +
+          '<td>' + esc(b.timesUsed ?? '') + '</td>' +
+          '<td>' + esc(b.avgReward ?? '') + '</td>' +
+          '<td>' + esc(b.wasExploration ?? '') + '</td>' +
+        '</tr>';
+      }).join('');
+      $('resultTableWrap').innerHTML = '<table><thead><tr><th></th><th>memory</th><th>summary</th><th>base</th><th>bandit</th><th>explore bonus</th><th>used</th><th>avg reward</th><th>explore?</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+    function esc(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    }
+    function refreshTable() {
+      const rows = Object.entries(KEYS).map(([name, key]) => '<tr><th>' + esc(name) + '</th><td class="mono">' + esc(key) + '</td><td>' + esc(lsGet(key, '')) + '</td></tr>').join('');
+      $('settingsTable').innerHTML = rows;
+    }
+    async function copyDebugUrl() {
+      const url = debugUrl();
+      try {
+        await navigator.clipboard.writeText(url);
+        setStatus('debugStatus', 'Copied debug URL:\n' + url, 'good');
+      } catch (_err) {
+        setStatus('debugStatus', 'Debug URL:\n' + url, 'warn');
+      }
+    }
+    $('saveBackend').addEventListener('click', saveBackend);
+    $('testHealth').addEventListener('click', testHealth);
+    $('savePolicy').addEventListener('click', savePolicy);
+    $('resetDefaults').addEventListener('click', resetDefaults);
+    $('runDebug').addEventListener('click', runDebug);
+    $('copyCurl').addEventListener('click', copyDebugUrl);
+    $('refreshTable').addEventListener('click', refreshTable);
+    load();
+  })();
+  </script>
+</body>
+</html>
