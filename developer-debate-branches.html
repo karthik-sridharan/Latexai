@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Latexai Developer: Debate Branch Generator + Evaluator</title>
+  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout</title>
   <style>
     :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
     * { box-sizing: border-box; }
@@ -42,8 +42,8 @@
 </head>
 <body>
   <header>
-    <h1>Latexai Developer: Debate Branch Generator + Evaluator</h1>
-    <p>Generate and value-score candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, and a cheap branch evaluator.</p>
+    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout</h1>
+    <p>Generate, value-score, and shallow-rollout candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, and a cheap rollout simulator.</p>
   </header>
   <main>
     <div class="grid">
@@ -84,6 +84,11 @@
             <input id="contextLimit" type="number" min="1" max="40" step="1" />
           </div>
         </div>
+        <div class="triple">
+          <div><label for="rolloutDepth">Rollout depth</label><input id="rolloutDepth" type="number" min="1" max="4" step="1" /></div>
+          <div><label for="branchLimit">Rollout branch limit</label><input id="branchLimit" type="number" min="1" max="24" step="1" /></div>
+          <div><label for="recordRollout">Record rollout trajectory</label><select id="recordRollout"><option value="false">false</option><option value="true">true</option></select></div>
+        </div>
         <div class="quad">
           <div><label for="epsilon">epsilon</label><input id="epsilon" type="number" min="0" max="0.5" step="0.01" /></div>
           <div><label for="ucbBeta">ucbBeta</label><input id="ucbBeta" type="number" min="0" max="2" step="0.01" /></div>
@@ -123,8 +128,11 @@ The proof follows from concentration.
           <button id="runBranches">Generate branches</button>
           <button id="evaluateBranches" class="secondary">Evaluate current branches</button>
           <button id="generateEvaluate" class="secondary">Generate + evaluate</button>
+          <button id="rolloutBranches" class="secondary">Rollout current evaluated branches</button>
+          <button id="generateEvaluateRollout" class="secondary">Generate + evaluate + rollout</button>
           <button id="copyCurl" class="secondary">Copy branch curl</button>
           <button id="copyEvalCurl" class="secondary">Copy eval curl</button>
+          <button id="copyRolloutCurl" class="secondary">Copy rollout curl</button>
           <button id="loadSample" class="secondary">Load sample</button>
         </div>
         <div id="runStatus" class="status">Ready.</div>
@@ -141,6 +149,11 @@ The proof follows from concentration.
       </section>
 
       <section class="card wide">
+        <h2>Shallow branch rollouts</h2>
+        <div id="rolloutTable" class="status">No rollouts yet.</div>
+      </section>
+
+      <section class="card wide">
         <h2>Raw JSON</h2>
         <pre id="rawJson">{}</pre>
       </section>
@@ -150,7 +163,7 @@ The proof follows from concentration.
 (function(){
   const $ = (id) => document.getElementById(id);
   const DEFAULTS = {
-    policy: 'ucb', limit: '8', contextLimit: '12', epsilon: '0.10', ucbBeta: '0.20', thompsonAlpha: '0.25', softmaxTemp: '0.25'
+    policy: 'ucb', limit: '8', contextLimit: '12', rolloutDepth: '2', branchLimit: '8', epsilon: '0.10', ucbBeta: '0.20', thompsonAlpha: '0.25', softmaxTemp: '0.25'
   };
   function getStored(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch(_) { return fallback; } }
   function setStored(key, value) { try { localStorage.setItem(key, value); } catch(_) {} }
@@ -172,6 +185,7 @@ The proof follows from concentration.
   }
   let lastBranchData = null;
   let lastEvaluationData = null;
+  let lastRolloutData = null;
   function payload() {
     return {
       workflow: $('workflow').value || 'latex-paper-debate',
@@ -183,6 +197,8 @@ The proof follows from concentration.
       latexSource: $('latexSource').value || '',
       limit: Number($('limit').value || 8),
       contextLimit: Number($('contextLimit').value || 12),
+      rolloutDepth: Number($('rolloutDepth').value || 2),
+      branchLimit: Number($('branchLimit').value || $('limit').value || 8),
       includeMemoryContext: $('includeMemory').checked,
       recordContextSelection: $('recordContext').checked,
       recordTrajectory: $('recordTrajectory').checked,
@@ -199,6 +215,9 @@ The proof follows from concentration.
     $('policy').value = getStored('latexai:memory-selection-policy', DEFAULTS.policy);
     $('limit').value = getStored('latexai:debate-branch-limit', DEFAULTS.limit);
     $('contextLimit').value = getStored('latexai:debate-branch-context-limit', DEFAULTS.contextLimit);
+    $('rolloutDepth').value = getStored('latexai:debate-rollout-depth', DEFAULTS.rolloutDepth);
+    $('branchLimit').value = getStored('latexai:debate-rollout-branch-limit', DEFAULTS.branchLimit);
+    $('recordRollout').value = getStored('latexai:debate-rollout-record-trajectory', 'false');
     $('epsilon').value = getStored('latexai:memory-bandit-epsilon', DEFAULTS.epsilon);
     $('ucbBeta').value = getStored('latexai:memory-bandit-ucb-beta', DEFAULTS.ucbBeta);
     $('thompsonAlpha').value = getStored('latexai:memory-bandit-thompson-alpha', DEFAULTS.thompsonAlpha);
@@ -213,6 +232,9 @@ The proof follows from concentration.
     setStored('latexai:memory-selection-policy', $('policy').value || 'ucb');
     setStored('latexai:debate-branch-limit', $('limit').value || DEFAULTS.limit);
     setStored('latexai:debate-branch-context-limit', $('contextLimit').value || DEFAULTS.contextLimit);
+    setStored('latexai:debate-rollout-depth', $('rolloutDepth').value || DEFAULTS.rolloutDepth);
+    setStored('latexai:debate-rollout-branch-limit', $('branchLimit').value || DEFAULTS.branchLimit);
+    setStored('latexai:debate-rollout-record-trajectory', $('recordRollout').value || 'false');
     setStored('latexai:memory-bandit-epsilon', $('epsilon').value || DEFAULTS.epsilon);
     setStored('latexai:memory-bandit-ucb-beta', $('ucbBeta').value || DEFAULTS.ucbBeta);
     setStored('latexai:memory-bandit-thompson-alpha', $('thompsonAlpha').value || DEFAULTS.thompsonAlpha);
@@ -285,6 +307,67 @@ The proof follows from concentration.
     html += '</tbody></table>';
     $('evaluationTable').innerHTML = html;
   }
+  function rolloutPayload(useLastEvaluations) {
+    const body = evaluationPayload(false);
+    body.rolloutDepth = Number($('rolloutDepth').value || 2);
+    body.branchLimit = Number($('branchLimit').value || $('limit').value || 8);
+    body.recordRolloutTrajectory = $('recordRollout').value === 'true';
+    if (useLastEvaluations && lastEvaluationData) {
+      const evals = lastEvaluationData.evaluations || lastEvaluationData.branches || [];
+      if (Array.isArray(evals) && evals.length) {
+        body.evaluations = evals;
+        body.branches = evals;
+      }
+    } else if (useLastEvaluations && lastBranchData && Array.isArray(lastBranchData.branches) && lastBranchData.branches.length) {
+      body.branches = lastBranchData.branches;
+    }
+    return body;
+  }
+  function renderRollouts(data) {
+    const rollouts = (data && (data.rollouts || data.branches)) || [];
+    if (!rollouts.length) { $('rolloutTable').innerHTML = '<div class="status warn">No rollouts returned.</div>'; return; }
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    let html = '<table><thead><tr><th>#</th><th>Branch</th><th>Final value</th><th>Recommendation</th><th>Improve / Fail</th><th>Edit / Review yield</th><th>Trace</th></tr></thead><tbody>';
+    rollouts.forEach((b, i) => {
+      const trace = (b.rolloutTrace || []).slice(0, 5).map(w => '• ' + esc(w)).join('<br>');
+      const steps = (b.simulatedSteps || []).map(s => '<span class="pill">' + esc(s.stepName) + ': ' + esc(s.status) + '</span>').join(' ');
+      html += '<tr>' +
+        '<td>' + (i+1) + '</td>' +
+        '<td><strong>' + esc(b.title) + '</strong><br><span class="small">' + esc(b.branchType) + '</span><br>' + steps + '</td>' +
+        '<td><span class="pill">value ' + esc(b.predictedFinalValue) + '</span><br><span class="small">delta ' + esc(b.cumulativeStateDelta) + '</span></td>' +
+        '<td><span class="pill">' + esc(b.recommendedRealAgentRun) + '</span></td>' +
+        '<td><span class="small">improve ' + esc(b.improvementProbability) + '<br>fail ' + esc(b.failureProbability) + '</span></td>' +
+        '<td><span class="small">edit ' + esc(b.expectedEditYield) + '<br>review ' + esc(b.expectedReviewerImpact) + '</span></td>' +
+        '<td>' + (trace || '<span class="small">none</span>') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    $('rolloutTable').innerHTML = html;
+  }
+  async function rolloutBranches(useLastEvaluations) {
+    saveSettings();
+    const root = apiRoot();
+    if (!memoryBase()) { setStatus($('runStatus'), 'Missing backend URL.', 'bad'); return; }
+    const body = rolloutPayload(useLastEvaluations !== false);
+    setStatus($('runStatus'), useLastEvaluations && (body.evaluations || body.branches) ? 'Rolling out current evaluated branches without model calls...' : 'Generating, evaluating, and rolling out branches without model calls...', 'warn');
+    try {
+      const res = await fetch(root + '/debate/rollout-branches', {method: 'POST', headers: authHeaders(), body: JSON.stringify(body)});
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) {}
+      lastRolloutData = data;
+      $('rawJson').textContent = data ? JSON.stringify(data, null, 2) : text;
+      if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text);
+      renderRollouts(data);
+      if (data && Array.isArray(data.branches)) {
+        renderBranches({branches: data.branches});
+        renderEvaluations({branches: data.branches});
+      }
+      setStatus($('runStatus'), 'Simulated shallow rollouts for ' + (((data && (data.rollouts || data.branches)) || []).length) + ' branches. No LLM call was made.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Branch rollout failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
   async function evaluateBranches(useLastBranches) {
     saveSettings();
     const root = apiRoot();
@@ -336,6 +419,11 @@ The proof follows from concentration.
     const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/evaluate-branches') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(evaluationPayload(true), null, 2));
     try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied evaluation curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
   }
+  async function copyRolloutCurl() {
+    saveSettings();
+    const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/rollout-branches') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(rolloutPayload(true), null, 2));
+    try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied rollout curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
+  }
   function loadSample() {
     $('query').value = 'novelty theorem assumptions citation coverage clarity limitations';
     $('paperSummary').value = 'A theory paper proposing a new estimator with an asymptotic optimality theorem. The draft needs stronger positioning and precise assumptions.';
@@ -347,8 +435,11 @@ The proof follows from concentration.
   $('runBranches').addEventListener('click', runBranches);
   $('evaluateBranches').addEventListener('click', () => evaluateBranches(true));
   $('generateEvaluate').addEventListener('click', () => evaluateBranches(false));
+  $('rolloutBranches').addEventListener('click', () => rolloutBranches(true));
+  $('generateEvaluateRollout').addEventListener('click', () => rolloutBranches(false));
   $('copyCurl').addEventListener('click', copyCurl);
   $('copyEvalCurl').addEventListener('click', copyEvalCurl);
+  $('copyRolloutCurl').addEventListener('click', copyRolloutCurl);
   $('loadSample').addEventListener('click', loadSample);
   loadSettings();
 })();
