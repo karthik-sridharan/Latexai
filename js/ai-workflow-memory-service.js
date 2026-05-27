@@ -1,5 +1,5 @@
-/* Latexai Stage 19I11 AIWorkflowMemoryService
- * Stage: stage19i11-ai-workflow-memory-wiring-completion-20260526-1
+/* Latexai Stage 19J AIWorkflowMemoryService
+ * Stage: stage19j-ranked-context-frontend-wiring-20260526-1
  *
  * Generic hidden memory/Neon wiring for AI workflows that were not explicitly
  * wired in stages 19F--19I10. This wraps LuminaLatex.AIProvider.ask and logs
@@ -18,7 +18,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i11-ai-workflow-memory-wiring-completion-20260526-1';
+  const STAGE = 'stage19j-ranked-context-frontend-wiring-20260526-1';
   const LAST_AGENT_RUN_KEY = 'latexai:stage19i11:last-generic-agent-run';
   const STAGE19I12_LAST_AGENT_RUN_KEY = 'latexai:stage19i12:last-generic-agent-run';
   const WIRED_WORKFLOW_RE = /(competitive[-_ ]review|competitive[-_ ]web[-_ ]review|reviewer[-_ ]rebuttal|devils?[-_ ]advocate)/i;
@@ -175,12 +175,13 @@
 
   function memoryIdsFromAgentContext(contextJson) {
     const items = [];
-    const buckets = [contextJson?.items, contextJson?.facts, contextJson?.memories, contextJson?.selectedFacts, contextJson?.contextItems];
+    const buckets = [contextJson?.selectedMemoryIds, contextJson?.items, contextJson?.facts, contextJson?.memories, contextJson?.selectedFacts, contextJson?.contextItems, contextJson?.context?.items, contextJson?.context?.facts, contextJson?.context?.memories, contextJson?.context?.selectedFacts];
     buckets.forEach((bucket) => {
       if (!Array.isArray(bucket)) return;
       bucket.forEach((item) => {
         if (typeof item === 'string') items.push(item);
         else if (item?.memoryId) items.push(String(item.memoryId));
+        else if (item?.memory_id) items.push(String(item.memory_id));
         else if (item?.id) items.push(String(item.id));
       });
     });
@@ -238,10 +239,16 @@
         limit: 6,
         metadata: { stage: STAGE, genericAiWorkflowMemoryWiring: true, ...(ids.identityMetadata || {}) }
       };
+      try {
+        const ranked = await memoryPost('/ranked-context', req);
+        if (ranked?.ok !== false) return ranked || null;
+      } catch (rankedErr) {
+        try { console.warn('[Latexai 19J AI workflow memory] ranked-context unavailable, falling back to agent-context', rankedErr); } catch (_ignored) {}
+      }
       const json = await memoryPost('/agent-context', req);
       return json || null;
     } catch (err) {
-      try { console.warn('[Latexai 19I11 AI workflow memory] agent-context failed', err); } catch (_ignored) {}
+      try { console.warn('[Latexai 19J AI workflow memory] context retrieval failed', err); } catch (_ignored) {}
       return null;
     }
   }
@@ -274,10 +281,14 @@
         latencyMs: Date.now() - startedAt,
         tokenEstimate: Math.round((summarizeInput(payload, meta).length + outputText.length) / 4),
         contextBundle: {
-          source: 'stage19i11-generic-wrapper',
+          id: contextJson?.contextBundleId || contextJson?.bundleId || '',
+          source: 'stage19j-ranked-context-generic-wrapper',
           agentContextResponse: contextJson || null,
           memoryIds,
-          items: Array.isArray(contextJson?.items) ? contextJson.items : []
+          contextText: Array.isArray(contextJson?.items || contextJson?.context?.items)
+            ? (contextJson?.items || contextJson?.context?.items).slice(0, 8).map((item, idx) => `[${idx + 1}] ${item.summary || item.value || item.key || item.id || ''}`).join('\n\n').slice(0, 12000)
+            : '',
+          items: Array.isArray(contextJson?.items) ? contextJson.items : (Array.isArray(contextJson?.context?.items) ? contextJson.context.items : [])
         },
         memoryIds,
         metadata: {
@@ -303,7 +314,7 @@
       }
       return saved;
     } catch (err) {
-      try { console.warn('[Latexai 19I11 AI workflow memory] agent-run failed', err); } catch (_ignored) {}
+      try { console.warn('[Latexai 19J AI workflow memory] agent-run failed', err); } catch (_ignored) {}
       return null;
     }
   }
@@ -324,7 +335,9 @@
           memoryIds,
           contextBundleId: contextJson.contextBundleId || contextJson.bundleId || '',
           selectedCount: memoryIds.length,
-          items: Array.isArray(contextJson.items) ? contextJson.items.slice(0, 6) : []
+          rankedContext: /stage19j|ranked-context|learned-context/i.test(String(contextJson.retrievalMode || contextJson.policyVersion || '')),
+          policyVersion: contextJson.policyVersion || contextJson.context?.learnedContextPolicy?.version || '',
+          items: Array.isArray(contextJson.items) ? contextJson.items.slice(0, 6) : (Array.isArray(contextJson.context?.items) ? contextJson.context.items.slice(0, 6) : [])
         }
       }
     };
