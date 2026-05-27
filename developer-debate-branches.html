@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout</title>
+  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector</title>
   <style>
     :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
     * { box-sizing: border-box; }
@@ -42,8 +42,8 @@
 </head>
 <body>
   <header>
-    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout</h1>
-    <p>Generate, value-score, and shallow-rollout candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, and a cheap rollout simulator.</p>
+    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector</h1>
+    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, and a real-agent run planner.</p>
   </header>
   <main>
     <div class="grid">
@@ -89,6 +89,11 @@
           <div><label for="branchLimit">Rollout branch limit</label><input id="branchLimit" type="number" min="1" max="24" step="1" /></div>
           <div><label for="recordRollout">Record rollout trajectory</label><select id="recordRollout"><option value="false">false</option><option value="true">true</option></select></div>
         </div>
+        <div class="triple">
+          <div><label for="selectionLimit">Selection limit</label><input id="selectionLimit" type="number" min="1" max="12" step="1" /></div>
+          <div><label for="recordSelection">Record selection trajectory</label><select id="recordSelection"><option value="false">false</option><option value="true">true</option></select></div>
+          <div><label for="plannerMode">Planner mode</label><select id="plannerMode"><option value="cheap_no_llm">cheap_no_llm</option><option value="prepare_real_run">prepare_real_run</option></select></div>
+        </div>
         <div class="quad">
           <div><label for="epsilon">epsilon</label><input id="epsilon" type="number" min="0" max="0.5" step="0.01" /></div>
           <div><label for="ucbBeta">ucbBeta</label><input id="ucbBeta" type="number" min="0" max="2" step="0.01" /></div>
@@ -130,9 +135,12 @@ The proof follows from concentration.
           <button id="generateEvaluate" class="secondary">Generate + evaluate</button>
           <button id="rolloutBranches" class="secondary">Rollout current evaluated branches</button>
           <button id="generateEvaluateRollout" class="secondary">Generate + evaluate + rollout</button>
+          <button id="selectBranch" class="secondary">Select best branch</button>
+          <button id="generateEvaluateRolloutSelect" class="secondary">Generate + evaluate + rollout + select</button>
           <button id="copyCurl" class="secondary">Copy branch curl</button>
           <button id="copyEvalCurl" class="secondary">Copy eval curl</button>
           <button id="copyRolloutCurl" class="secondary">Copy rollout curl</button>
+          <button id="copySelectCurl" class="secondary">Copy select curl</button>
           <button id="loadSample" class="secondary">Load sample</button>
         </div>
         <div id="runStatus" class="status">Ready.</div>
@@ -154,6 +162,11 @@ The proof follows from concentration.
       </section>
 
       <section class="card wide">
+        <h2>Selected execution plan</h2>
+        <div id="selectionTable" class="status">No branch selected yet.</div>
+      </section>
+
+      <section class="card wide">
         <h2>Raw JSON</h2>
         <pre id="rawJson">{}</pre>
       </section>
@@ -163,7 +176,7 @@ The proof follows from concentration.
 (function(){
   const $ = (id) => document.getElementById(id);
   const DEFAULTS = {
-    policy: 'ucb', limit: '8', contextLimit: '12', rolloutDepth: '2', branchLimit: '8', epsilon: '0.10', ucbBeta: '0.20', thompsonAlpha: '0.25', softmaxTemp: '0.25'
+    policy: 'ucb', limit: '8', contextLimit: '12', rolloutDepth: '2', branchLimit: '8', selectionLimit: '3', epsilon: '0.10', ucbBeta: '0.20', thompsonAlpha: '0.25', softmaxTemp: '0.25'
   };
   function getStored(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch(_) { return fallback; } }
   function setStored(key, value) { try { localStorage.setItem(key, value); } catch(_) {} }
@@ -186,6 +199,7 @@ The proof follows from concentration.
   let lastBranchData = null;
   let lastEvaluationData = null;
   let lastRolloutData = null;
+  let lastSelectionData = null;
   function payload() {
     return {
       workflow: $('workflow').value || 'latex-paper-debate',
@@ -218,6 +232,9 @@ The proof follows from concentration.
     $('rolloutDepth').value = getStored('latexai:debate-rollout-depth', DEFAULTS.rolloutDepth);
     $('branchLimit').value = getStored('latexai:debate-rollout-branch-limit', DEFAULTS.branchLimit);
     $('recordRollout').value = getStored('latexai:debate-rollout-record-trajectory', 'false');
+    $('selectionLimit').value = getStored('latexai:debate-selection-limit', DEFAULTS.selectionLimit);
+    $('recordSelection').value = getStored('latexai:debate-selection-record-trajectory', 'false');
+    $('plannerMode').value = getStored('latexai:debate-selection-planner-mode', 'cheap_no_llm');
     $('epsilon').value = getStored('latexai:memory-bandit-epsilon', DEFAULTS.epsilon);
     $('ucbBeta').value = getStored('latexai:memory-bandit-ucb-beta', DEFAULTS.ucbBeta);
     $('thompsonAlpha').value = getStored('latexai:memory-bandit-thompson-alpha', DEFAULTS.thompsonAlpha);
@@ -235,6 +252,9 @@ The proof follows from concentration.
     setStored('latexai:debate-rollout-depth', $('rolloutDepth').value || DEFAULTS.rolloutDepth);
     setStored('latexai:debate-rollout-branch-limit', $('branchLimit').value || DEFAULTS.branchLimit);
     setStored('latexai:debate-rollout-record-trajectory', $('recordRollout').value || 'false');
+    setStored('latexai:debate-selection-limit', $('selectionLimit').value || DEFAULTS.selectionLimit);
+    setStored('latexai:debate-selection-record-trajectory', $('recordSelection').value || 'false');
+    setStored('latexai:debate-selection-planner-mode', $('plannerMode').value || 'cheap_no_llm');
     setStored('latexai:memory-bandit-epsilon', $('epsilon').value || DEFAULTS.epsilon);
     setStored('latexai:memory-bandit-ucb-beta', $('ucbBeta').value || DEFAULTS.ucbBeta);
     setStored('latexai:memory-bandit-thompson-alpha', $('thompsonAlpha').value || DEFAULTS.thompsonAlpha);
@@ -409,6 +429,73 @@ The proof follows from concentration.
       setStatus($('runStatus'), 'Branch generation failed: ' + String(err && err.message || err), 'bad');
     }
   }
+
+  function selectionPayload(useLastRollouts) {
+    const body = rolloutPayload(false);
+    body.selectionLimit = Number($('selectionLimit').value || 3);
+    body.recordSelectionTrajectory = $('recordSelection').value === 'true';
+    body.plannerMode = $('plannerMode').value || 'cheap_no_llm';
+    if (useLastRollouts && lastRolloutData) {
+      const rollouts = lastRolloutData.rollouts || lastRolloutData.branches || [];
+      if (Array.isArray(rollouts) && rollouts.length) {
+        body.rollouts = rollouts;
+        body.branches = rollouts;
+      }
+    } else if (useLastRollouts && lastEvaluationData) {
+      const evals = lastEvaluationData.evaluations || lastEvaluationData.branches || [];
+      if (Array.isArray(evals) && evals.length) {
+        body.evaluations = evals;
+        body.branches = evals;
+      }
+    }
+    return body;
+  }
+  function renderSelection(data) {
+    const selected = data && data.selectedBranch;
+    const plan = data && data.executionPlan;
+    const esc = (x) => String(x == null ? '' : x).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    if (!selected || !plan) { $('selectionTable').innerHTML = '<div class="status warn">No selected branch returned.</div>'; return; }
+    const reasons = (selected.selectionReason || []).map(w => '• ' + esc(w)).join('<br>');
+    const steps = (plan.steps || []).map(s => '<tr><td>' + esc(s.stepIndex) + '</td><td><strong>' + esc(s.agentRole) + '</strong><br><span class="small">' + esc(s.taskType) + '</span></td><td>' + (s.targetSections || []).map(t => '<span class="pill">' + esc(t) + '</span>').join(' ') + '</td><td><span class="small">' + esc(s.expectedOutput) + '</span></td></tr>').join('');
+    const cost = plan.estimatedCost || {};
+    let html = '<div class="status good">Selected branch: <strong>' + esc(selected.title) + '</strong> — selection score ' + esc(selected.selectionScore) + '</div>';
+    html += '<table><tbody>' +
+      '<tr><th>Branch type</th><td>' + esc(selected.branchType) + '</td><th>Recommendation</th><td>' + esc(selected.recommendedRealAgentRun || selected.recommendedAction) + '</td></tr>' +
+      '<tr><th>Predicted value</th><td>' + esc(selected.predictedFinalValue || selected.valueScore) + '</td><th>Failure probability</th><td>' + esc(selected.failureProbability) + '</td></tr>' +
+      '<tr><th>Memory IDs</th><td colspan="3">' + ((plan.memoryIdsToUse || []).map(m => '<span class="pill">' + esc(m) + '</span>').join(' ') || '<span class="small">none</span>') + '</td></tr>' +
+      '<tr><th>Cost estimate</th><td colspan="3">' + esc(cost.costLevel) + ' — ' + esc(cost.estimatedTotalTokens) + ' total tokens, ' + esc(cost.agentCount) + ' agents</td></tr>' +
+      '<tr><th>Why selected</th><td colspan="3">' + (reasons || '<span class="small">none</span>') + '</td></tr>' +
+      '</tbody></table>';
+    html += '<h3>Planned real-agent sequence</h3><table><thead><tr><th>#</th><th>Agent / task</th><th>Targets</th><th>Expected output</th></tr></thead><tbody>' + steps + '</tbody></table>';
+    html += '<details><summary>Real-agent-run payload preview</summary><pre>' + esc(JSON.stringify(data.realAgentRunPayload || {}, null, 2)) + '</pre></details>';
+    $('selectionTable').innerHTML = html;
+  }
+  async function selectBranch(useLastRollouts) {
+    saveSettings();
+    const root = apiRoot();
+    if (!memoryBase()) { setStatus($('runStatus'), 'Missing backend URL.', 'bad'); return; }
+    const body = selectionPayload(useLastRollouts !== false);
+    setStatus($('runStatus'), useLastRollouts && (body.rollouts || body.branches || body.evaluations) ? 'Selecting best current branch and planning real-agent run without model calls...' : 'Generating, evaluating, rolling out, and selecting a branch without model calls...', 'warn');
+    try {
+      const res = await fetch(root + '/debate/select-branch', {method: 'POST', headers: authHeaders(), body: JSON.stringify(body)});
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) {}
+      lastSelectionData = data;
+      $('rawJson').textContent = data ? JSON.stringify(data, null, 2) : text;
+      if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text);
+      renderSelection(data);
+      if (data && Array.isArray(data.branches)) {
+        renderRollouts({rollouts: data.branches});
+        renderEvaluations({branches: data.branches});
+        renderBranches({branches: data.branches});
+      }
+      setStatus($('runStatus'), 'Selected branch and prepared real-agent execution plan. No LLM call was made.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Branch selection failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
+
   async function copyCurl() {
     saveSettings();
     const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/branches') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(payload(), null, 2));
@@ -424,6 +511,11 @@ The proof follows from concentration.
     const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/rollout-branches') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(rolloutPayload(true), null, 2));
     try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied rollout curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
   }
+  async function copySelectCurl() {
+    saveSettings();
+    const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/select-branch') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(selectionPayload(true), null, 2));
+    try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied selection curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
+  }
   function loadSample() {
     $('query').value = 'novelty theorem assumptions citation coverage clarity limitations';
     $('paperSummary').value = 'A theory paper proposing a new estimator with an asymptotic optimality theorem. The draft needs stronger positioning and precise assumptions.';
@@ -437,9 +529,12 @@ The proof follows from concentration.
   $('generateEvaluate').addEventListener('click', () => evaluateBranches(false));
   $('rolloutBranches').addEventListener('click', () => rolloutBranches(true));
   $('generateEvaluateRollout').addEventListener('click', () => rolloutBranches(false));
+  $('selectBranch').addEventListener('click', () => selectBranch(true));
+  $('generateEvaluateRolloutSelect').addEventListener('click', () => selectBranch(false));
   $('copyCurl').addEventListener('click', copyCurl);
   $('copyEvalCurl').addEventListener('click', copyEvalCurl);
   $('copyRolloutCurl').addEventListener('click', copyRolloutCurl);
+  $('copySelectCurl').addEventListener('click', copySelectCurl);
   $('loadSample').addEventListener('click', loadSample);
   loadSettings();
 })();
