@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector</title>
+  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents</title>
   <style>
     :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
     * { box-sizing: border-box; }
@@ -42,8 +42,8 @@
 </head>
 <body>
   <header>
-    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector</h1>
-    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, and a real-agent run planner.</p>
+    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents</h1>
+    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, a real-agent run planner, and an optional Stage 19M frontend real-agent runner.</p>
   </header>
   <main>
     <div class="grid">
@@ -51,8 +51,17 @@
         <h2>Backend</h2>
         <label for="backendUrl">Memory backend URL</label>
         <input id="backendUrl" placeholder="https://.../api/lumina/memory" />
-        <label for="proxyToken">Proxy token / bearer token</label>
+        <label for="proxyToken">Memory proxy token / bearer token</label>
         <input id="proxyToken" placeholder="optional" />
+        <label for="aiProxyUrl">AI proxy URL for real-agent runs</label>
+        <input id="aiProxyUrl" placeholder="https://.../api/lumina/ai" />
+        <label for="aiProxyToken">AI proxy token / bearer token</label>
+        <input id="aiProxyToken" placeholder="optional" />
+        <div class="triple">
+          <div><label for="realProvider">Real-run provider</label><input id="realProvider" placeholder="openai" /></div>
+          <div><label for="realModel">Real-run model</label><input id="realModel" placeholder="gpt-4.1-mini" /></div>
+          <div><label for="realDryRun">Real agent mode</label><select id="realDryRun"><option value="true">dry_run_no_model_calls</option><option value="false">call_ai_proxy_expensive</option></select></div>
+        </div>
         <div class="buttons">
           <button id="saveBackend">Save backend settings</button>
           <button id="testHealth" class="secondary">Test health</button>
@@ -141,6 +150,8 @@ The proof follows from concentration.
           <button id="copyEvalCurl" class="secondary">Copy eval curl</button>
           <button id="copyRolloutCurl" class="secondary">Copy rollout curl</button>
           <button id="copySelectCurl" class="secondary">Copy select curl</button>
+          <button id="runRealAgents" class="warn">Run selected branch with real agents</button>
+          <button id="copyRealRunCurl" class="secondary">Copy real-run record curl</button>
           <button id="loadSample" class="secondary">Load sample</button>
         </div>
         <div id="runStatus" class="status">Ready.</div>
@@ -167,6 +178,12 @@ The proof follows from concentration.
       </section>
 
       <section class="card wide">
+        <h2>Stage 19M real-agent branch run</h2>
+        <div class="status warn">Default mode is dry run. Switch Real agent mode to call_ai_proxy_expensive only when you are ready to spend model calls.</div>
+        <div id="realRunTable" class="status">No real-agent branch run yet.</div>
+      </section>
+
+      <section class="card wide">
         <h2>Selector field check</h2>
         <div id="selectorFieldCheck" class="status">Run Select best branch or Generate + evaluate + rollout + select.</div>
       </section>
@@ -181,7 +198,7 @@ The proof follows from concentration.
 (function(){
   const $ = (id) => document.getElementById(id);
   const DEFAULTS = {
-    policy: 'ucb', limit: '8', contextLimit: '12', rolloutDepth: '2', branchLimit: '8', selectionLimit: '3', epsilon: '0.10', ucbBeta: '0.20', thompsonAlpha: '0.25', softmaxTemp: '0.25'
+    policy: 'ucb', limit: '8', contextLimit: '12', rolloutDepth: '2', branchLimit: '8', selectionLimit: '3', epsilon: '0.10', ucbBeta: '0.20', thompsonAlpha: '0.25', softmaxTemp: '0.25', realProvider: 'openai', realModel: 'gpt-4.1-mini'
   };
   function getStored(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch(_) { return fallback; } }
   function setStored(key, value) { try { localStorage.setItem(key, value); } catch(_) {} }
@@ -201,10 +218,28 @@ The proof follows from concentration.
     if (token) { h.Authorization = 'Bearer ' + token; h['X-Lumina-Token'] = token; }
     return h;
   }
+
+  function aiProxyUrl() {
+    return (($('aiProxyUrl') && $('aiProxyUrl').value) || getStored('lumina-latex.ai.proxyUrl', '') || getStored('latexai:ai-proxy-url', '') || '').trim().replace(/\/+$/, '');
+  }
+  function aiAuthHeaders() {
+    const token = (($('aiProxyToken') && $('aiProxyToken').value) || getStored('lumina-latex.ai.proxyToken', '') || getStored('latexai:ai-proxy-token', '') || '').trim();
+    const h = {'Content-Type': 'application/json'};
+    if (token) h.Authorization = 'Bearer ' + token;
+    return h;
+  }
+  function extractAiText(data) {
+    if (typeof data?.text === 'string') return data.text;
+    if (typeof data?.output_text === 'string') return data.output_text;
+    if (typeof data?.message === 'string') return data.message;
+    if (Array.isArray(data?.output)) return data.output.flatMap(item => item.content || []).map(c => c.text || '').join('\n').trim();
+    return JSON.stringify(data, null, 2);
+  }
   let lastBranchData = null;
   let lastEvaluationData = null;
   let lastRolloutData = null;
   let lastSelectionData = null;
+  let lastRealRunData = null;
   function payload() {
     return {
       workflow: $('workflow').value || 'latex-paper-debate',
@@ -231,6 +266,11 @@ The proof follows from concentration.
   function loadSettings() {
     $('backendUrl').value = getStored('latexai:memory-backend-url', '');
     $('proxyToken').value = getStored('latexai:memory-proxy-token', '');
+    $('aiProxyUrl').value = getStored('latexai:ai-proxy-url', getStored('lumina-latex.ai.proxyUrl', ''));
+    $('aiProxyToken').value = getStored('latexai:ai-proxy-token', getStored('lumina-latex.ai.proxyToken', ''));
+    $('realProvider').value = getStored('latexai:real-agent-provider', DEFAULTS.realProvider);
+    $('realModel').value = getStored('latexai:real-agent-model', DEFAULTS.realModel);
+    $('realDryRun').value = getStored('latexai:real-agent-dry-run', 'true');
     $('policy').value = getStored('latexai:memory-selection-policy', DEFAULTS.policy);
     $('limit').value = getStored('latexai:debate-branch-limit', DEFAULTS.limit);
     $('contextLimit').value = getStored('latexai:debate-branch-context-limit', DEFAULTS.contextLimit);
@@ -251,6 +291,11 @@ The proof follows from concentration.
   function saveSettings() {
     setStored('latexai:memory-backend-url', memoryBase());
     setStored('latexai:memory-proxy-token', $('proxyToken').value || '');
+    setStored('latexai:ai-proxy-url', $('aiProxyUrl').value || '');
+    setStored('latexai:ai-proxy-token', $('aiProxyToken').value || '');
+    setStored('latexai:real-agent-provider', $('realProvider').value || DEFAULTS.realProvider);
+    setStored('latexai:real-agent-model', $('realModel').value || DEFAULTS.realModel);
+    setStored('latexai:real-agent-dry-run', $('realDryRun').value || 'true');
     setStored('latexai:memory-selection-policy', $('policy').value || 'ucb');
     setStored('latexai:debate-branch-limit', $('limit').value || DEFAULTS.limit);
     setStored('latexai:debate-branch-context-limit', $('contextLimit').value || DEFAULTS.contextLimit);
@@ -525,9 +570,92 @@ The proof follows from concentration.
         renderBranches({branches: data.branches});
       }
       setStatus($('runStatus'), 'Selected branch and prepared real-agent execution plan. No LLM call was made.', 'good');
+      return data;
     } catch (err) {
       setStatus($('runStatus'), 'Branch selection failed: ' + String(err && err.message || err), 'bad');
+      throw err;
     }
+  }
+
+  function selectedRealPayload() {
+    return (lastSelectionData && (lastSelectionData.realAgentRunPayload || lastSelectionData.real_agent_run_payload)) || null;
+  }
+
+  function renderRealRun(data) {
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    if (!data || data.ok === false) { $('realRunTable').innerHTML = '<div class="status bad">No real-agent run result.</div>'; return; }
+    const outputs = Array.isArray(data.agentOutputs) ? data.agentOutputs : [];
+    const lai = Array.isArray(data.visibleLaiBlocks) ? data.visibleLaiBlocks : (Array.isArray(data.latexEditBlocks) ? data.latexEditBlocks : []);
+    let html = '<div class="status good"><strong>Stage 19M run recorded.</strong> runId=' + esc(data.runId) + ' · dryRun=' + esc(data.dryRun) + ' · visible \lai blocks=' + esc(lai.length) + '</div>';
+    html += '<table><thead><tr><th>#</th><th>Agent</th><th>Provider/model</th><th>Output summary</th></tr></thead><tbody>';
+    outputs.forEach((o, i) => { const text = String(o.outputText || o.text || '').slice(0, 700); html += '<tr><td>' + (i+1) + '</td><td><strong>' + esc(o.agentRole || o.role) + '</strong><br><span class="small">' + esc(o.taskType || o.task) + '</span></td><td>' + esc(o.provider || '') + ' / ' + esc(o.model || '') + '</td><td>' + esc(text) + '</td></tr>'; });
+    html += '</tbody></table>';
+    if (lai.length) html += '<h3>visible \lai edit blocks</h3><pre>' + esc(lai.join('\n\n')) + '</pre>';
+    html += '<details><summary><strong>Final output</strong></summary><pre>' + esc(data.finalOutput || '') + '</pre></details>';
+    if (data.trajectory) html += '<details><summary><strong>Trajectory record</strong></summary><pre>' + esc(JSON.stringify(data.trajectory, null, 2)) + '</pre></details>';
+    $('realRunTable').innerHTML = html;
+  }
+
+  async function callAiForStep(step, priorOutputs, runPayload) {
+    const dry = $('realDryRun').value !== 'false';
+    const provider = ($('realProvider').value || DEFAULTS.realProvider).trim();
+    const model = ($('realModel').value || DEFAULTS.realModel).trim();
+    const prompt = step.promptSeed || ('Execute branch step for ' + (step.agentRole || 'agent'));
+    if (dry) {
+      const role = step.agentRole || 'agent';
+      const isFinal = /editor|final|synth/i.test(role) && priorOutputs.length > 0;
+      return { stepIndex: step.stepIndex, agentRole: role, taskType: step.taskType, provider: 'dry-run', model: 'dry-run', promptSeed: prompt, dryRun: true, latencyMs: 0, outputText: isFinal ? '[DRY RUN] Final visible edit draft for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\n\\lai{Add the selected branch improvement here after reviewing real agent outputs.}' : '[DRY RUN] ' + role + ' would analyze this branch and pass concise findings to the next agent.' };
+    }
+    const url = aiProxyUrl();
+    if (!url) throw new Error('Missing AI proxy URL. Set AI proxy URL or switch Real agent mode back to dry_run_no_model_calls.');
+    const body = { schema: 'lumina-latex-ai-request-v1', provider, model, task: 'latex-paper-debate-real-agent-branch-run', payload: { prompt, branch: runPayload?.selectedBranch, executionPlan: runPayload?.executionPlan, priorOutputs, latexSource: $('latexSource').value || '', reviewText: $('reviewText').value || '', paperSummary: $('paperSummary').value || '' }, context: { workflow: 'latex-paper-debate-real-agent-run', agentRole: step.agentRole || 'agent', stage: 'stage19m-real-agent-branch-runner-frontend-20260527-1' }, client: { app: 'latexai-dev-debate-branches', stage: 'stage19m', sentAt: new Date().toISOString() } };
+    const start = Date.now();
+    const res = await fetch(url, { method: 'POST', headers: aiAuthHeaders(), body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data?.error?.message || data?.message || ('AI proxy failed HTTP ' + res.status));
+    return { stepIndex: step.stepIndex, agentRole: step.agentRole, taskType: step.taskType, provider, model, promptSeed: prompt, dryRun: false, latencyMs: Date.now() - start, outputText: extractAiText(data), rawResponse: data };
+  }
+
+  async function runRealAgents() {
+    saveSettings();
+    let runPayload = selectedRealPayload();
+    if (!runPayload) {
+      setStatus($('runStatus'), 'No selected branch yet; selecting first...', 'warn');
+      const selected = await selectBranch(true);
+      runPayload = selected && selected.realAgentRunPayload;
+    }
+    if (!runPayload || !runPayload.executionPlan) { setStatus($('runStatus'), 'No realAgentRunPayload/executionPlan available. Click Generate + evaluate + rollout + select first.', 'bad'); return; }
+    const steps = Array.isArray(runPayload.executionPlan.steps) ? runPayload.executionPlan.steps : [];
+    if (!steps.length) { setStatus($('runStatus'), 'Selected plan has no execution steps.', 'bad'); return; }
+    const dry = $('realDryRun').value !== 'false';
+    if (!dry && !confirm('This will call the configured AI proxy for ' + steps.length + ' agent steps. Continue?')) return;
+    const outputs = [];
+    try {
+      for (const step of steps) {
+        setStatus($('runStatus'), (dry ? 'Dry-running' : 'Calling AI for') + ' step ' + step.stepIndex + ' / ' + steps.length + ': ' + (step.agentRole || 'agent'), 'warn');
+        const out = await callAiForStep(step, outputs, runPayload);
+        outputs.push(out);
+      }
+      const recordBody = { workflow: 'latex-paper-debate-real-agent-run', runMode: dry ? 'dry_run' : 'frontend_ai_proxy_outputs', dryRun: dry, recordTrajectory: true, provider: $('realProvider').value || '', model: $('realModel').value || '', realAgentRunPayload: runPayload, executionPlan: runPayload.executionPlan, selectedBranch: runPayload.selectedBranch, latexSource: $('latexSource').value || '', reviewText: $('reviewText').value || '', paperSummary: $('paperSummary').value || '', query: $('query').value || '', agentOutputs: outputs };
+      const res = await fetch(apiRoot() + '/debate/run-real-agent-branch', { method: 'POST', headers: authHeaders(), body: JSON.stringify(recordBody) });
+      const text = await res.text();
+      let data = null; try { data = JSON.parse(text); } catch (_) {}
+      lastRealRunData = data;
+      $('rawJson').textContent = data ? JSON.stringify(data, null, 2) : text;
+      if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text);
+      renderRealRun(data);
+      setStatus($('runStatus'), (dry ? 'Dry-run' : 'Real-agent run') + ' completed and recorded.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Real-agent branch run failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
+
+  async function copyRealRunCurl() {
+    saveSettings();
+    const runPayload = selectedRealPayload() || {};
+    const body = { dryRun: true, recordTrajectory: false, realAgentRunPayload: runPayload, executionPlan: runPayload.executionPlan, selectedBranch: runPayload.selectedBranch, latexSource: $('latexSource').value || '', reviewText: $('reviewText').value || '', paperSummary: $('paperSummary').value || '', query: $('query').value || '' };
+    const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/run-real-agent-branch') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(body, null, 2));
+    try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied real-agent run record curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
   }
 
   async function copyCurl() {
@@ -569,6 +697,8 @@ The proof follows from concentration.
   $('copyEvalCurl').addEventListener('click', copyEvalCurl);
   $('copyRolloutCurl').addEventListener('click', copyRolloutCurl);
   $('copySelectCurl').addEventListener('click', copySelectCurl);
+  $('runRealAgents').addEventListener('click', runRealAgents);
+  $('copyRealRunCurl').addEventListener('click', copyRealRunCurl);
   $('loadSample').addEventListener('click', loadSample);
   loadSettings();
 })();
