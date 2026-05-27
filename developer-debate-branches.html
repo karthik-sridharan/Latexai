@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Latexai Developer: Debate Branch Generator</title>
+  <title>Latexai Developer: Debate Branch Generator + Evaluator</title>
   <style>
     :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
     * { box-sizing: border-box; }
@@ -42,8 +42,8 @@
 </head>
 <body>
   <header>
-    <h1>Latexai Developer: Debate Branch Generator</h1>
-    <p>Generate candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus the ranked memory context and contextual bandit policy.</p>
+    <h1>Latexai Developer: Debate Branch Generator + Evaluator</h1>
+    <p>Generate and value-score candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, and a cheap branch evaluator.</p>
   </header>
   <main>
     <div class="grid">
@@ -121,7 +121,10 @@ The proof follows from concentration.
 \\end{proof}</textarea>
         <div class="buttons">
           <button id="runBranches">Generate branches</button>
-          <button id="copyCurl" class="secondary">Copy curl</button>
+          <button id="evaluateBranches" class="secondary">Evaluate current branches</button>
+          <button id="generateEvaluate" class="secondary">Generate + evaluate</button>
+          <button id="copyCurl" class="secondary">Copy branch curl</button>
+          <button id="copyEvalCurl" class="secondary">Copy eval curl</button>
           <button id="loadSample" class="secondary">Load sample</button>
         </div>
         <div id="runStatus" class="status">Ready.</div>
@@ -130,6 +133,11 @@ The proof follows from concentration.
       <section class="card wide">
         <h2>Branch candidates</h2>
         <div id="branchTable" class="status">No results yet.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Branch value evaluations</h2>
+        <div id="evaluationTable" class="status">No evaluations yet.</div>
       </section>
 
       <section class="card wide">
@@ -162,6 +170,8 @@ The proof follows from concentration.
     if (token) { h.Authorization = 'Bearer ' + token; h['X-Lumina-Token'] = token; }
     return h;
   }
+  let lastBranchData = null;
+  let lastEvaluationData = null;
   function payload() {
     return {
       workflow: $('workflow').value || 'latex-paper-debate',
@@ -245,6 +255,57 @@ The proof follows from concentration.
     html += '</tbody></table>';
     $('branchTable').innerHTML = html;
   }
+  function evaluationPayload(useLastBranches) {
+    const body = payload();
+    body.recordEvaluationTrajectory = false;
+    if (useLastBranches && lastBranchData && Array.isArray(lastBranchData.branches) && lastBranchData.branches.length) {
+      body.branches = lastBranchData.branches;
+      body.contextBundleId = lastBranchData.contextBundleId || '';
+      body.selectedMemoryIds = lastBranchData.selectedMemoryIds || [];
+    }
+    return body;
+  }
+  function renderEvaluations(data) {
+    const evaluations = (data && (data.evaluations || data.branches)) || [];
+    if (!evaluations.length) { $('evaluationTable').innerHTML = '<div class="status warn">No branch evaluations returned.</div>'; return; }
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    let html = '<table><thead><tr><th>#</th><th>Branch</th><th>Value</th><th>Recommendation</th><th>Gain / Impact</th><th>Risk / Cost</th><th>Why</th></tr></thead><tbody>';
+    evaluations.forEach((b, i) => {
+      const why = (b.why || []).slice(0, 5).map(w => '• ' + esc(w)).join('<br>');
+      html += '<tr>' +
+        '<td>' + (i+1) + '</td>' +
+        '<td><strong>' + esc(b.title) + '</strong><br><span class="small">' + esc(b.branchType) + '</span></td>' +
+        '<td><span class="pill">value ' + esc(b.valueScore) + '</span><br><span class="small">conf ' + esc(b.confidence) + '</span></td>' +
+        '<td><span class="pill">' + esc(b.recommendedAction) + '</span></td>' +
+        '<td><span class="small">gain ' + esc(b.expectedGain) + '<br>review ' + esc(b.reviewerImpact) + '<br>memory ' + esc(b.memorySupport) + '</span></td>' +
+        '<td><span class="small">risk penalty ' + esc(b.riskPenalty) + '<br>cost penalty ' + esc(b.costPenalty) + '</span></td>' +
+        '<td>' + (why || '<span class="small">none</span>') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    $('evaluationTable').innerHTML = html;
+  }
+  async function evaluateBranches(useLastBranches) {
+    saveSettings();
+    const root = apiRoot();
+    if (!memoryBase()) { setStatus($('runStatus'), 'Missing backend URL.', 'bad'); return; }
+    const body = evaluationPayload(useLastBranches !== false);
+    setStatus($('runStatus'), useLastBranches && body.branches ? 'Evaluating current generated branches without model calls...' : 'Generating then evaluating branches without model calls...', 'warn');
+    try {
+      const res = await fetch(root + '/debate/evaluate-branches', {method: 'POST', headers: authHeaders(), body: JSON.stringify(body)});
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) {}
+      lastEvaluationData = data;
+      $('rawJson').textContent = data ? JSON.stringify(data, null, 2) : text;
+      if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text);
+      renderEvaluations(data);
+      if (data && Array.isArray(data.branches)) renderBranches({branches: data.branches});
+      setStatus($('runStatus'), 'Evaluated ' + (((data && (data.evaluations || data.branches)) || []).length) + ' branches. No LLM call was made.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Branch evaluation failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
   async function runBranches() {
     saveSettings();
     const root = apiRoot();
@@ -257,6 +318,7 @@ The proof follows from concentration.
       let data = null;
       try { data = JSON.parse(text); } catch (_) {}
       $('rawJson').textContent = data ? JSON.stringify(data, null, 2) : text;
+      lastBranchData = data;
       if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text);
       renderBranches(data);
       setStatus($('runStatus'), 'Generated ' + ((data.branches || []).length) + ' branches. No LLM call was made.', 'good');
@@ -269,6 +331,11 @@ The proof follows from concentration.
     const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/branches') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(payload(), null, 2));
     try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
   }
+  async function copyEvalCurl() {
+    saveSettings();
+    const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/evaluate-branches') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(evaluationPayload(true), null, 2));
+    try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied evaluation curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
+  }
   function loadSample() {
     $('query').value = 'novelty theorem assumptions citation coverage clarity limitations';
     $('paperSummary').value = 'A theory paper proposing a new estimator with an asymptotic optimality theorem. The draft needs stronger positioning and precise assumptions.';
@@ -278,7 +345,10 @@ The proof follows from concentration.
   $('saveBackend').addEventListener('click', () => { saveSettings(); setStatus($('backendStatus'), 'Saved settings.', 'good'); });
   $('testHealth').addEventListener('click', testHealth);
   $('runBranches').addEventListener('click', runBranches);
+  $('evaluateBranches').addEventListener('click', () => evaluateBranches(true));
+  $('generateEvaluate').addEventListener('click', () => evaluateBranches(false));
   $('copyCurl').addEventListener('click', copyCurl);
+  $('copyEvalCurl').addEventListener('click', copyEvalCurl);
   $('loadSample').addEventListener('click', loadSample);
   loadSettings();
 })();
