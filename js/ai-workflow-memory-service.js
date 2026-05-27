@@ -1,5 +1,5 @@
 /* Latexai Stage 19J AIWorkflowMemoryService
- * Stage: stage19j-ranked-context-frontend-wiring-20260526-1
+ * Stage: stage19l0-contextual-bandit-memory-selection-frontend-20260526-1
  *
  * Generic hidden memory/Neon wiring for AI workflows that were not explicitly
  * wired in stages 19F--19I10. This wraps LuminaLatex.AIProvider.ask and logs
@@ -18,7 +18,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19j-ranked-context-frontend-wiring-20260526-1';
+  const STAGE = 'stage19l0-contextual-bandit-memory-selection-frontend-20260526-1';
   const LAST_AGENT_RUN_KEY = 'latexai:stage19i11:last-generic-agent-run';
   const STAGE19I12_LAST_AGENT_RUN_KEY = 'latexai:stage19i12:last-generic-agent-run';
   const WIRED_WORKFLOW_RE = /(competitive[-_ ]review|competitive[-_ ]web[-_ ]review|reviewer[-_ ]rebuttal|devils?[-_ ]advocate)/i;
@@ -221,10 +221,37 @@
     return null;
   }
 
+  function numberFromLocalStorage(key, fallback, lo, hi) {
+    try {
+      const raw = W.localStorage?.getItem?.(key);
+      if (raw === null || raw === undefined || raw === '') return fallback;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) return fallback;
+      return Math.max(lo, Math.min(hi, value));
+    } catch (_err) {
+      return fallback;
+    }
+  }
+
+  function contextualBanditConfig() {
+    let policy = 'ucb';
+    try { policy = clean(W.localStorage?.getItem?.('latexai:memory-selection-policy') || 'ucb').toLowerCase().replace(/-/g, '_') || 'ucb'; } catch (_err) {}
+    if (!/^(greedy|epsilon_greedy|ucb|thompson|softmax)$/.test(policy)) policy = 'ucb';
+    return {
+      memorySelectionPolicy: policy,
+      epsilon: numberFromLocalStorage('latexai:memory-bandit-epsilon', 0.10, 0, 0.50),
+      ucbBeta: numberFromLocalStorage('latexai:memory-bandit-ucb-beta', 0.20, 0, 2.0),
+      thompsonAlpha: numberFromLocalStorage('latexai:memory-bandit-thompson-alpha', 0.25, 0, 2.0),
+      softmaxTemperature: numberFromLocalStorage('latexai:memory-bandit-softmax-temperature', 0.25, 0.03, 5.0),
+      explorationPoolSize: Math.round(numberFromLocalStorage('latexai:memory-bandit-exploration-pool-size', 24, 6, 200))
+    };
+  }
+
   async function requestRoleContext(payload, meta, inferred) {
     try {
       const ids = projectIdentity();
       const query = summarizeInput(payload, meta) || `${inferred.workflow} ${inferred.taskType}`;
+      const bandit = contextualBanditConfig();
       const req = {
         scope: 'paper',
         userId: ids.userId,
@@ -237,18 +264,19 @@
         agentRole: inferred.agentRole,
         query,
         limit: 6,
-        metadata: { stage: STAGE, genericAiWorkflowMemoryWiring: true, ...(ids.identityMetadata || {}) }
+        ...bandit,
+        metadata: { stage: STAGE, genericAiWorkflowMemoryWiring: true, contextualBanditMemorySelection: true, ...bandit, ...(ids.identityMetadata || {}) }
       };
       try {
         const ranked = await memoryPost('/ranked-context', req);
         if (ranked?.ok !== false) return ranked || null;
       } catch (rankedErr) {
-        try { console.warn('[Latexai 19J AI workflow memory] ranked-context unavailable, falling back to agent-context', rankedErr); } catch (_ignored) {}
+        try { console.warn('[Latexai 19L0 AI workflow memory] ranked/contextual-bandit unavailable, falling back to agent-context', rankedErr); } catch (_ignored) {}
       }
       const json = await memoryPost('/agent-context', req);
       return json || null;
     } catch (err) {
-      try { console.warn('[Latexai 19J AI workflow memory] context retrieval failed', err); } catch (_ignored) {}
+      try { console.warn('[Latexai 19L0 AI workflow memory] context retrieval failed', err); } catch (_ignored) {}
       return null;
     }
   }
@@ -282,7 +310,7 @@
         tokenEstimate: Math.round((summarizeInput(payload, meta).length + outputText.length) / 4),
         contextBundle: {
           id: contextJson?.contextBundleId || contextJson?.bundleId || '',
-          source: 'stage19j-ranked-context-generic-wrapper',
+          source: 'stage19l0-contextual-bandit-generic-wrapper',
           agentContextResponse: contextJson || null,
           memoryIds,
           contextText: Array.isArray(contextJson?.items || contextJson?.context?.items)
@@ -335,7 +363,7 @@
           memoryIds,
           contextBundleId: contextJson.contextBundleId || contextJson.bundleId || '',
           selectedCount: memoryIds.length,
-          rankedContext: /stage19j|ranked-context|learned-context/i.test(String(contextJson.retrievalMode || contextJson.policyVersion || '')),
+          rankedContext: /stage19j|stage19l0|ranked-context|learned-context|contextual-bandit/i.test(String(contextJson.retrievalMode || contextJson.policyVersion || '')),
           policyVersion: contextJson.policyVersion || contextJson.context?.learnedContextPolicy?.version || '',
           items: Array.isArray(contextJson.items) ? contextJson.items.slice(0, 6) : (Array.isArray(contextJson.context?.items) ? contextJson.context.items.slice(0, 6) : [])
         }
