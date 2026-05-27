@@ -1,5 +1,5 @@
-/* Latexai Stage 19G RewardLoggingService
- * Stage: stage19i-agent-role-specific-context-policy-20260526-1
+/* Latexai Stage 19K RewardLoggingService
+ * Stage: stage19k-memory-feedback-loop-frontend-20260526-1
  *
  * Hidden frontend reward/outcome logger. It records lightweight training signals
  * for future AlphaGo-style debate/context-policy learning without adding UI.
@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i-agent-role-specific-context-policy-20260526-1';
+  const STAGE = 'stage19k-memory-feedback-loop-frontend-20260526-1';
   const LAST_ACTION_KEY = 'latexai:stage19g:last-ai-action';
 
   function memoryEnabled() {
@@ -98,6 +98,66 @@
     return normalizeMemoryIds(ctx?.memoryIds || ctx?.memory_ids || ctx?.facts || []);
   }
 
+  function mergeMemoryIds(...values) {
+    const out = [];
+    values.forEach((value) => normalizeMemoryIds(value).forEach((id) => out.push(id)));
+    return Array.from(new Set(out.filter(Boolean)));
+  }
+
+  function lastAgentRun(maxAgeMs = 30 * 60 * 1000) {
+    try { return NS.AIWorkflowMemoryService?.getLastAgentRun?.(maxAgeMs) || null; } catch (_err) { return null; }
+  }
+
+  function outcomeFromReward({ accepted, rewardValue, status }) {
+    if (accepted === true) return 'success';
+    if (accepted === false) return 'failure';
+    const text = clean(status).toLowerCase();
+    if (/^(success|succeeded|accepted|applied|saved|completed|ok|positive)$/.test(text)) return 'success';
+    if (/^(failure|failed|rejected|discarded|error|negative)$/.test(text)) return 'failure';
+    if (Number(rewardValue) >= 0.20) return 'success';
+    if (Number(rewardValue) <= -0.20) return 'failure';
+    return 'neutral';
+  }
+
+  async function logContextFeedback(options = {}) {
+    if (!memoryEnabled()) return null;
+    try {
+      const ids = projectIdentity();
+      const run = options.agentRun || lastAgentRun();
+      const memoryIds = mergeMemoryIds(options.memoryIds, memoryIdsFromContext(options.memoryContext), run?.memoryIds);
+      const contextBundleId = options.contextBundleId || run?.contextBundleId || '';
+      const agentRunId = options.agentRunId || run?.runId || run?.id || '';
+      if (!memoryIds.length && !contextBundleId && !agentRunId) return null;
+      const rewardValue = typeof options.rewardValue === 'number' ? options.rewardValue : 0;
+      const payload = {
+        scope: options.scope || 'paper',
+        userId: ids.userId,
+        projectId: ids.projectId,
+        paperId: ids.paperId,
+        sectionId: options.sectionId || options.path || ids.sectionId,
+        sessionId: ids.sessionId,
+        workflow: options.workflow || run?.workflow || '',
+        stepName: options.stepName || options.actionType || run?.taskType || '',
+        agentRole: options.agentRole || run?.agentRole || 'editor',
+        taskType: options.taskType || run?.taskType || options.stepName || '',
+        agentRunId,
+        contextBundleId,
+        memoryIds,
+        accepted: options.accepted,
+        rewardValue,
+        rewardLabel: options.rewardLabel || (rewardValue > 0 ? 'positive' : rewardValue < 0 ? 'negative' : 'neutral'),
+        outcome: options.outcome || outcomeFromReward({ accepted: options.accepted, rewardValue, status: options.rewardLabel || options.status }),
+        sourceEventId: options.sourceEventId || options.editOutcomeId || options.rewardEventId || options.actionId || '',
+        note: options.note || '',
+        metadata: { stage: STAGE, memoryFeedbackLoop: true, ...(ids.identityMetadata || {}), ...(options.metadata || {}) }
+      };
+      return await memoryPost('/context-feedback', payload);
+    } catch (err) {
+      try { console.warn('[Latexai 19K context feedback] update failed', err); } catch (_ignored) {}
+      return null;
+    }
+  }
+
   function rewardForValidation(validation, base = 0) {
     if (!validation) return base;
     const errors = validation.errors?.length || 0;
@@ -138,7 +198,8 @@
         rewardLabel: options.rewardLabel || (rewardValue > 0 ? 'positive' : rewardValue < 0 ? 'negative' : 'neutral'),
         relatedActionId: options.relatedActionId || options.actionId || '',
         relatedAgentRunId: options.relatedAgentRunId || options.agentRunId || '',
-        memoryIds: normalizeMemoryIds(options.memoryIds || memoryIdsFromContext(options.memoryContext)),
+        contextBundleId: options.contextBundleId || '',
+        memoryIds: mergeMemoryIds(options.memoryIds, memoryIdsFromContext(options.memoryContext)),
         note: options.note || '',
         metadata: { stage: STAGE, ...(ids.identityMetadata || {}), ...(options.metadata || {}) }
       };
@@ -157,6 +218,10 @@
         ? outcome.rewardValue
         : rewardForValidation(outcome.validation, outcome.ok === false ? -0.6 : 0.5);
       const actionId = outcome.actionId || `${actionType}:${Date.now().toString(36)}:${stableHash(JSON.stringify(outcome).slice(0, 2000))}`;
+      const run = lastAgentRun();
+      const memoryIds = mergeMemoryIds(outcome.memoryIds, memoryIdsFromContext(outcome.memoryContext), run?.memoryIds);
+      const agentRunId = outcome.agentRunId || run?.runId || run?.id || '';
+      const contextBundleId = outcome.contextBundleId || run?.contextBundleId || '';
       const payload = {
         scope: outcome.scope || 'paper',
         userId: ids.userId,
@@ -168,8 +233,8 @@
         stepName: outcome.stepName || actionType,
         actionType,
         actionId,
-        agentRunId: outcome.agentRunId || '',
-        contextBundleId: outcome.contextBundleId || '',
+        agentRunId,
+        contextBundleId,
         source: outcome.source || 'latexai-frontend',
         editMode: outcome.editMode || outcome.mode || '',
         path: outcome.path || (Array.isArray(outcome.paths) ? outcome.paths.join(',') : ''),
@@ -180,7 +245,8 @@
         rewardValue,
         rewardLabel: outcome.rewardLabel || (rewardValue > 0 ? 'positive' : rewardValue < 0 ? 'negative' : 'neutral'),
         note: outcome.note || '',
-        metadata: { stage: STAGE, ...(ids.identityMetadata || {}), ...(outcome.metadata || {}) }
+        memoryIds,
+        metadata: { stage: STAGE, memoryFeedbackLoop: true, ...(ids.identityMetadata || {}), ...(outcome.metadata || {}) }
       };
       const saved = await memoryPost('/edit-outcome', payload);
       await logReward(`${actionType}:${payload.rewardLabel}`, rewardValue, {
@@ -188,9 +254,29 @@
         stepName: payload.stepName,
         relatedActionId: actionId,
         relatedAgentRunId: payload.agentRunId,
-        memoryIds: outcome.memoryIds,
+        contextBundleId: payload.contextBundleId,
+        memoryIds,
         memoryContext: outcome.memoryContext,
         note: outcome.note || '',
+        metadata: { actionType, validationStatus: payload.validationStatus, compileStatus: payload.compileStatus, githubStatus: payload.githubStatus }
+      });
+      await logContextFeedback({
+        actionType,
+        actionId,
+        sourceEventId: saved?.id || actionId,
+        editOutcomeId: saved?.id || '',
+        workflow: payload.workflow,
+        stepName: payload.stepName,
+        agentRole: outcome.agentRole || run?.agentRole || '',
+        taskType: outcome.taskType || run?.taskType || payload.stepName,
+        agentRunId: payload.agentRunId,
+        contextBundleId: payload.contextBundleId,
+        memoryIds,
+        accepted: payload.accepted,
+        rewardValue,
+        rewardLabel: payload.rewardLabel,
+        note: outcome.note || '',
+        path: payload.path,
         metadata: { actionType, validationStatus: payload.validationStatus, compileStatus: payload.compileStatus, githubStatus: payload.githubStatus }
       });
       rememberAction({ actionType, actionId, workflow: payload.workflow, stepName: payload.stepName, rewardValue, path: payload.path });
@@ -254,6 +340,7 @@
     logEditOutcome,
     logGithubOutcome,
     logCompileOutcome,
+    logContextFeedback,
     rememberAction,
     lastAction,
     init
