@@ -167,6 +167,11 @@ The proof follows from concentration.
       </section>
 
       <section class="card wide">
+        <h2>Selector field check</h2>
+        <div id="selectorFieldCheck" class="status">Run Select best branch or Generate + evaluate + rollout + select.</div>
+      </section>
+
+      <section class="card wide">
         <h2>Raw JSON</h2>
         <pre id="rawJson">{}</pre>
       </section>
@@ -451,25 +456,54 @@ The proof follows from concentration.
     return body;
   }
   function renderSelection(data) {
-    const selected = data && data.selectedBranch;
-    const plan = data && data.executionPlan;
     const esc = (x) => String(x == null ? '' : x).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-    if (!selected || !plan) { $('selectionTable').innerHTML = '<div class="status warn">No selected branch returned.</div>'; return; }
-    const reasons = (selected.selectionReason || []).map(w => '• ' + esc(w)).join('<br>');
-    const steps = (plan.steps || []).map(s => '<tr><td>' + esc(s.stepIndex) + '</td><td><strong>' + esc(s.agentRole) + '</strong><br><span class="small">' + esc(s.taskType) + '</span></td><td>' + (s.targetSections || []).map(t => '<span class="pill">' + esc(t) + '</span>').join(' ') + '</td><td><span class="small">' + esc(s.expectedOutput) + '</span></td></tr>').join('');
-    const cost = plan.estimatedCost || {};
-    let html = '<div class="status good">Selected branch: <strong>' + esc(selected.title) + '</strong> — selection score ' + esc(selected.selectionScore) + '</div>';
+    const selected = data && (data.selectedBranch || (Array.isArray(data.selectedBranches) ? data.selectedBranches[0] : null));
+    const plan = data && (data.executionPlan || (data.realAgentRunPayload && data.realAgentRunPayload.executionPlan) || null);
+    const payload = data && (data.realAgentRunPayload || data.real_agent_run_payload || null);
+    const payloadBranch = payload && (payload.selectedBranch || payload.branch || null);
+    const effectiveSelected = selected || payloadBranch;
+
+    const keyRows = [
+      ['stage', data && data.stage],
+      ['selectedBranch', !!selected],
+      ['selectedBranches', Array.isArray(data && data.selectedBranches) ? data.selectedBranches.length : 0],
+      ['executionPlan', !!plan],
+      ['realAgentRunPayload', !!payload],
+      ['branches', Array.isArray(data && data.branches) ? data.branches.length : 0],
+      ['trajectory', !!(data && data.trajectory)]
+    ].map(([k,v]) => '<tr><th>' + esc(k) + '</th><td>' + esc(v) + '</td></tr>').join('');
+    if ($('selectorFieldCheck')) {
+      $('selectorFieldCheck').innerHTML = '<table><tbody>' + keyRows + '</tbody></table>';
+    }
+
+    if (!effectiveSelected) {
+      $('selectionTable').innerHTML = '<div class="status warn">No selectedBranch returned. The request may have called rollout/evaluate instead of select-branch. Check Selector field check below and Raw JSON.</div>';
+      return;
+    }
+
+    const reasonsRaw = effectiveSelected.selectionReason || effectiveSelected.reasons || (data && data.selectionReason) || [];
+    const reasons = (Array.isArray(reasonsRaw) ? reasonsRaw : [reasonsRaw]).filter(Boolean).map(w => '• ' + esc(w)).join('<br>');
+    const stepsRaw = (plan && (plan.steps || plan.agentSequence)) || (payload && payload.agentSequence) || [];
+    const steps = (Array.isArray(stepsRaw) ? stepsRaw : []).map((s, idx) => '<tr><td>' + esc(s.stepIndex || s.step || (idx + 1)) + '</td><td><strong>' + esc(s.agentRole || s.role || s.agent || '') + '</strong><br><span class="small">' + esc(s.taskType || s.task || '') + '</span></td><td>' + ((s.targetSections || s.targets || []).map(t => '<span class="pill">' + esc(t) + '</span>').join(' ') || '<span class="small">none</span>') + '</td><td><span class="small">' + esc(s.expectedOutput || s.output || '') + '</span></td></tr>').join('');
+    const cost = (plan && plan.estimatedCost) || (payload && payload.estimatedCost) || {};
+    const memoryIds = (plan && plan.memoryIdsToUse) || (payload && payload.memoryIdsToUse) || effectiveSelected.memoryIdsToUse || effectiveSelected.memoryIdsUsed || [];
+    const latexTargets = (plan && plan.latexEditTargets) || (payload && payload.latexEditTargets) || [];
+
+    let html = '<div class="status good"><strong>selectedBranch</strong>: <strong>' + esc(effectiveSelected.title || effectiveSelected.branchTitle || effectiveSelected.branchId || 'selected branch') + '</strong> — selection score ' + esc(effectiveSelected.selectionScore || effectiveSelected.score || effectiveSelected.predictedFinalValue || '') + '</div>';
     html += '<table><tbody>' +
-      '<tr><th>Branch type</th><td>' + esc(selected.branchType) + '</td><th>Recommendation</th><td>' + esc(selected.recommendedRealAgentRun || selected.recommendedAction) + '</td></tr>' +
-      '<tr><th>Predicted value</th><td>' + esc(selected.predictedFinalValue || selected.valueScore) + '</td><th>Failure probability</th><td>' + esc(selected.failureProbability) + '</td></tr>' +
-      '<tr><th>Memory IDs</th><td colspan="3">' + ((plan.memoryIdsToUse || []).map(m => '<span class="pill">' + esc(m) + '</span>').join(' ') || '<span class="small">none</span>') + '</td></tr>' +
-      '<tr><th>Cost estimate</th><td colspan="3">' + esc(cost.costLevel) + ' — ' + esc(cost.estimatedTotalTokens) + ' total tokens, ' + esc(cost.agentCount) + ' agents</td></tr>' +
-      '<tr><th>Why selected</th><td colspan="3">' + (reasons || '<span class="small">none</span>') + '</td></tr>' +
+      '<tr><th>selectedBranch.branchId</th><td>' + esc(effectiveSelected.branchId || effectiveSelected.id) + '</td><th>selectedBranch.branchType</th><td>' + esc(effectiveSelected.branchType || effectiveSelected.type) + '</td></tr>' +
+      '<tr><th>Recommendation</th><td>' + esc(effectiveSelected.recommendedRealAgentRun || effectiveSelected.recommendedAction || effectiveSelected.recommendation) + '</td><th>Failure probability</th><td>' + esc(effectiveSelected.failureProbability) + '</td></tr>' +
+      '<tr><th>Predicted value</th><td>' + esc(effectiveSelected.predictedFinalValue || effectiveSelected.valueScore) + '</td><th>Improvement probability</th><td>' + esc(effectiveSelected.improvementProbability) + '</td></tr>' +
+      '<tr><th>memoryIdsToUse</th><td colspan="3">' + ((memoryIds || []).map(m => '<span class="pill">' + esc(m) + '</span>').join(' ') || '<span class="small">none</span>') + '</td></tr>' +
+      '<tr><th>estimatedCost</th><td colspan="3">' + esc(cost.costLevel) + ' — ' + esc(cost.estimatedTotalTokens) + ' total tokens, ' + esc(cost.agentCount) + ' agents</td></tr>' +
+      '<tr><th>selectionReason</th><td colspan="3">' + (reasons || '<span class="small">none</span>') + '</td></tr>' +
       '</tbody></table>';
-    html += '<h3>Planned real-agent sequence</h3><table><thead><tr><th>#</th><th>Agent / task</th><th>Targets</th><th>Expected output</th></tr></thead><tbody>' + steps + '</tbody></table>';
-    html += '<details><summary>Real-agent-run payload preview</summary><pre>' + esc(JSON.stringify(data.realAgentRunPayload || {}, null, 2)) + '</pre></details>';
+    html += '<h3>executionPlan.agentSequence</h3><table><thead><tr><th>#</th><th>Agent / task</th><th>Targets</th><th>Expected output</th></tr></thead><tbody>' + (steps || '<tr><td colspan="4" class="small">No steps returned.</td></tr>') + '</tbody></table>';
+    html += '<h3>latexEditTargets</h3>' + (Array.isArray(latexTargets) && latexTargets.length ? '<pre>' + esc(JSON.stringify(latexTargets, null, 2)) + '</pre>' : '<div class="small">No latexEditTargets returned.</div>');
+    html += '<details open><summary><strong>realAgentRunPayload</strong> preview</summary><pre>' + esc(JSON.stringify(payload || {}, null, 2)) + '</pre></details>';
     $('selectionTable').innerHTML = html;
   }
+
   async function selectBranch(useLastRollouts) {
     saveSettings();
     const root = apiRoot();
