@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Latexai Developer: Debate Branch Generator</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at 12% 0%, #1e3a8a 0, transparent 34rem), var(--bg); color:var(--text); line-height:1.45; }
+    header { padding:22px 24px 14px; border-bottom:1px solid rgba(255,255,255,.08); background:rgba(15,23,42,.86); backdrop-filter: blur(14px); position:sticky; top:0; z-index:10; }
+    h1 { margin:0 0 6px; font-size:1.35rem; letter-spacing:-.02em; }
+    header p { margin:0; color:var(--muted); max-width:78rem; }
+    main { padding:18px 24px 44px; max-width:1240px; margin:0 auto; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+    .card { background:rgba(17,24,39,.92); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:16px; box-shadow:0 14px 40px rgba(0,0,0,.32); }
+    .wide { grid-column:1 / -1; }
+    h2 { margin:0 0 10px; font-size:1.02rem; }
+    label { display:block; color:var(--muted); font-size:.86rem; margin:12px 0 6px; }
+    input, select, textarea { width:100%; border:1px solid var(--line); background:var(--input); color:var(--text); border-radius:10px; padding:10px 11px; font:inherit; outline:none; }
+    textarea { min-height:140px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:.85rem; }
+    input[type="checkbox"] { width:auto; margin-right:8px; vertical-align:middle; }
+    .triple { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+    .quad { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; }
+    .buttons { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+    button, a.button { border:1px solid rgba(255,255,255,.12); background:#2563eb; color:#fff; border-radius:999px; padding:9px 13px; font:inherit; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
+    button.secondary, a.secondary { background:#374151; }
+    button.warn { background:#92400e; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .status { margin-top:12px; padding:10px 12px; border-radius:12px; background:rgba(31,41,55,.88); border:1px solid var(--line); color:var(--muted); white-space:pre-wrap; }
+    .status.good { color:var(--good); border-color:rgba(52,211,153,.35); }
+    .status.bad { color:var(--bad); border-color:rgba(251,113,133,.35); }
+    .status.warn { color:var(--warn); border-color:rgba(251,191,36,.35); }
+    table { width:100%; border-collapse:collapse; font-size:.86rem; }
+    th, td { border-bottom:1px solid var(--line); padding:8px 6px; text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    .pill { display:inline-block; padding:2px 7px; border-radius:999px; background:rgba(96,165,250,.14); color:#bfdbfe; border:1px solid rgba(96,165,250,.22); font-size:.78rem; }
+    .small { color:var(--muted); font-size:.83rem; }
+    pre { max-height:460px; overflow:auto; background:#020617; border:1px solid var(--line); border-radius:12px; padding:12px; font-size:.82rem; }
+    @media (max-width:860px) { .grid, .triple, .quad { grid-template-columns:1fr; } header, main { padding-left:14px; padding-right:14px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Latexai Developer: Debate Branch Generator</h1>
+    <p>Generate candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus the ranked memory context and contextual bandit policy.</p>
+  </header>
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>Backend</h2>
+        <label for="backendUrl">Memory backend URL</label>
+        <input id="backendUrl" placeholder="https://.../api/lumina/memory" />
+        <label for="proxyToken">Proxy token / bearer token</label>
+        <input id="proxyToken" placeholder="optional" />
+        <div class="buttons">
+          <button id="saveBackend">Save backend settings</button>
+          <button id="testHealth" class="secondary">Test health</button>
+          <a href="developer-memory-bandit.html" class="button secondary">Memory bandit console</a>
+          <a href="index.html" class="button secondary">Main app</a>
+        </div>
+        <div id="backendStatus" class="status">Not checked.</div>
+      </section>
+
+      <section class="card">
+        <h2>Branch generation settings</h2>
+        <div class="triple">
+          <div>
+            <label for="policy">Memory selection policy</label>
+            <select id="policy">
+              <option value="greedy">greedy</option>
+              <option value="epsilon_greedy">epsilon_greedy</option>
+              <option value="ucb">ucb</option>
+              <option value="thompson">thompson</option>
+              <option value="softmax">softmax</option>
+            </select>
+          </div>
+          <div>
+            <label for="limit">Branches</label>
+            <input id="limit" type="number" min="1" max="24" step="1" />
+          </div>
+          <div>
+            <label for="contextLimit">Memory context limit</label>
+            <input id="contextLimit" type="number" min="1" max="40" step="1" />
+          </div>
+        </div>
+        <div class="quad">
+          <div><label for="epsilon">epsilon</label><input id="epsilon" type="number" min="0" max="0.5" step="0.01" /></div>
+          <div><label for="ucbBeta">ucbBeta</label><input id="ucbBeta" type="number" min="0" max="2" step="0.01" /></div>
+          <div><label for="thompsonAlpha">thompsonAlpha</label><input id="thompsonAlpha" type="number" min="0" max="2" step="0.01" /></div>
+          <div><label for="softmaxTemp">softmaxTemp</label><input id="softmaxTemp" type="number" min="0.03" max="5" step="0.01" /></div>
+        </div>
+        <label><input id="includeMemory" type="checkbox" /> Include ranked memory context</label>
+        <label><input id="recordContext" type="checkbox" /> Record context selection</label>
+        <label><input id="recordTrajectory" type="checkbox" /> Record generated branches as a debate trajectory</label>
+        <div class="status warn">Defaults avoid AI calls and avoid Neon writes except normal read/debug. Enable recording only when you want persistent trajectory traces.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Input state</h2>
+        <div class="triple">
+          <div><label for="workflow">Workflow</label><input id="workflow" value="latex-paper-debate" /></div>
+          <div><label for="agentRole">Agent role</label><input id="agentRole" value="synthesizer" /></div>
+          <div><label for="taskType">Task type</label><input id="taskType" value="debate_branch_generation" /></div>
+        </div>
+        <label for="query">Query / branch goal</label>
+        <textarea id="query">novelty theorem assumptions citation coverage clarity limitations</textarea>
+        <label for="paperSummary">Paper summary</label>
+        <textarea id="paperSummary">A draft paper that needs Devil's Advocate review and actionable LaTeX-visible improvement branches.</textarea>
+        <label for="reviewText">Review / report text</label>
+        <textarea id="reviewText">The novelty and theorem assumptions need sharper explanation. Related work and citation coverage may be incomplete. The introduction could be clearer.</textarea>
+        <label for="latexSource">LaTeX source excerpt</label>
+        <textarea id="latexSource">\\section{Introduction}
+We introduce a method and claim a new theorem.
+\\section{Main Results}
+\\begin{theorem}
+Under suitable conditions, the estimator is optimal.
+\\end{theorem}
+\\begin{proof}
+The proof follows from concentration.
+\\end{proof}</textarea>
+        <div class="buttons">
+          <button id="runBranches">Generate branches</button>
+          <button id="copyCurl" class="secondary">Copy curl</button>
+          <button id="loadSample" class="secondary">Load sample</button>
+        </div>
+        <div id="runStatus" class="status">Ready.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Branch candidates</h2>
+        <div id="branchTable" class="status">No results yet.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Raw JSON</h2>
+        <pre id="rawJson">{}</pre>
+      </section>
+    </div>
+  </main>
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const DEFAULTS = {
+    policy: 'ucb', limit: '8', contextLimit: '12', epsilon: '0.10', ucbBeta: '0.20', thompsonAlpha: '0.25', softmaxTemp: '0.25'
+  };
+  function getStored(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch(_) { return fallback; } }
+  function setStored(key, value) { try { localStorage.setItem(key, value); } catch(_) {} }
+  function memoryBase() {
+    let raw = ($('backendUrl').value || '').trim() || getStored('latexai:memory-backend-url', '');
+    return raw.replace(/\/+$/, '');
+  }
+  function apiRoot() {
+    const base = memoryBase();
+    if (/\/api\/lumina\/memory$/i.test(base)) return base.replace(/\/api\/lumina\/memory$/i, '/api/lumina');
+    if (/\/api\/lumina$/i.test(base)) return base;
+    return base + '/api/lumina';
+  }
+  function authHeaders() {
+    const token = ($('proxyToken').value || '').trim() || getStored('latexai:memory-proxy-token', '');
+    const h = {'Content-Type': 'application/json'};
+    if (token) { h.Authorization = 'Bearer ' + token; h['X-Lumina-Token'] = token; }
+    return h;
+  }
+  function payload() {
+    return {
+      workflow: $('workflow').value || 'latex-paper-debate',
+      agentRole: $('agentRole').value || 'synthesizer',
+      taskType: $('taskType').value || 'debate_branch_generation',
+      query: $('query').value || '',
+      paperSummary: $('paperSummary').value || '',
+      reviewText: $('reviewText').value || '',
+      latexSource: $('latexSource').value || '',
+      limit: Number($('limit').value || 8),
+      contextLimit: Number($('contextLimit').value || 12),
+      includeMemoryContext: $('includeMemory').checked,
+      recordContextSelection: $('recordContext').checked,
+      recordTrajectory: $('recordTrajectory').checked,
+      memorySelectionPolicy: $('policy').value || 'ucb',
+      epsilon: Number($('epsilon').value || 0.10),
+      ucbBeta: Number($('ucbBeta').value || 0.20),
+      thompsonAlpha: Number($('thompsonAlpha').value || 0.25),
+      softmaxTemperature: Number($('softmaxTemp').value || 0.25)
+    };
+  }
+  function loadSettings() {
+    $('backendUrl').value = getStored('latexai:memory-backend-url', '');
+    $('proxyToken').value = getStored('latexai:memory-proxy-token', '');
+    $('policy').value = getStored('latexai:memory-selection-policy', DEFAULTS.policy);
+    $('limit').value = getStored('latexai:debate-branch-limit', DEFAULTS.limit);
+    $('contextLimit').value = getStored('latexai:debate-branch-context-limit', DEFAULTS.contextLimit);
+    $('epsilon').value = getStored('latexai:memory-bandit-epsilon', DEFAULTS.epsilon);
+    $('ucbBeta').value = getStored('latexai:memory-bandit-ucb-beta', DEFAULTS.ucbBeta);
+    $('thompsonAlpha').value = getStored('latexai:memory-bandit-thompson-alpha', DEFAULTS.thompsonAlpha);
+    $('softmaxTemp').value = getStored('latexai:memory-bandit-softmax-temperature', DEFAULTS.softmaxTemp);
+    $('includeMemory').checked = getStored('latexai:debate-branch-include-memory', 'true') !== 'false';
+    $('recordContext').checked = getStored('latexai:debate-branch-record-context', 'false') === 'true';
+    $('recordTrajectory').checked = getStored('latexai:debate-branch-record-trajectory', 'false') === 'true';
+  }
+  function saveSettings() {
+    setStored('latexai:memory-backend-url', memoryBase());
+    setStored('latexai:memory-proxy-token', $('proxyToken').value || '');
+    setStored('latexai:memory-selection-policy', $('policy').value || 'ucb');
+    setStored('latexai:debate-branch-limit', $('limit').value || DEFAULTS.limit);
+    setStored('latexai:debate-branch-context-limit', $('contextLimit').value || DEFAULTS.contextLimit);
+    setStored('latexai:memory-bandit-epsilon', $('epsilon').value || DEFAULTS.epsilon);
+    setStored('latexai:memory-bandit-ucb-beta', $('ucbBeta').value || DEFAULTS.ucbBeta);
+    setStored('latexai:memory-bandit-thompson-alpha', $('thompsonAlpha').value || DEFAULTS.thompsonAlpha);
+    setStored('latexai:memory-bandit-softmax-temperature', $('softmaxTemp').value || DEFAULTS.softmaxTemp);
+    setStored('latexai:debate-branch-include-memory', String($('includeMemory').checked));
+    setStored('latexai:debate-branch-record-context', String($('recordContext').checked));
+    setStored('latexai:debate-branch-record-trajectory', String($('recordTrajectory').checked));
+  }
+  function setStatus(el, text, cls) { el.className = 'status' + (cls ? ' ' + cls : ''); el.textContent = text; }
+  async function testHealth() {
+    saveSettings();
+    const base = memoryBase();
+    if (!base) { setStatus($('backendStatus'), 'Missing backend URL.', 'bad'); return; }
+    setStatus($('backendStatus'), 'Checking...', 'warn');
+    try {
+      const res = await fetch(base + '/health', {headers: authHeaders()});
+      const text = await res.text();
+      setStatus($('backendStatus'), res.ok ? text : ('HTTP ' + res.status + ': ' + text), res.ok ? 'good' : 'bad');
+    } catch (err) {
+      setStatus($('backendStatus'), String(err && err.message || err), 'bad');
+    }
+  }
+  function renderBranches(data) {
+    const branches = (data && data.branches) || [];
+    if (!branches.length) { $('branchTable').innerHTML = '<div class="status warn">No branches returned.</div>'; return; }
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    let html = '<table><thead><tr><th>#</th><th>Branch</th><th>Score</th><th>Risk / Cost</th><th>Targets</th><th>Agent sequence</th><th>Memory support</th></tr></thead><tbody>';
+    branches.forEach((b, i) => {
+      const mem = (b.memoryEvidence || []).slice(0, 3).map(m => '<span class="pill">' + esc(m.key || m.memoryId) + '</span>').join(' ');
+      html += '<tr>' +
+        '<td>' + (i+1) + '</td>' +
+        '<td><strong>' + esc(b.title) + '</strong><br><span class="small">' + esc(b.branchType) + '</span><br>' + esc(b.rationale) + '<br><span class="small">' + esc(b.latexEditHint) + '</span></td>' +
+        '<td><span class="pill">rank ' + esc(b.rankScore) + '</span><br><span class="small">gain ' + esc(b.expectedGain) + '</span></td>' +
+        '<td>' + esc(b.riskLevel) + ' / ' + esc(b.estimatedCost) + '</td>' +
+        '<td>' + esc((b.targetSections || []).join(', ')) + '</td>' +
+        '<td>' + esc((b.suggestedAgentSequence || []).join(' → ')) + '</td>' +
+        '<td>' + (mem || '<span class="small">none</span>') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    $('branchTable').innerHTML = html;
+  }
+  async function runBranches() {
+    saveSettings();
+    const root = apiRoot();
+    if (!memoryBase()) { setStatus($('runStatus'), 'Missing backend URL.', 'bad'); return; }
+    const body = payload();
+    setStatus($('runStatus'), 'Generating branches without model calls...', 'warn');
+    try {
+      const res = await fetch(root + '/debate/branches', {method: 'POST', headers: authHeaders(), body: JSON.stringify(body)});
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) {}
+      $('rawJson').textContent = data ? JSON.stringify(data, null, 2) : text;
+      if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text);
+      renderBranches(data);
+      setStatus($('runStatus'), 'Generated ' + ((data.branches || []).length) + ' branches. No LLM call was made.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Branch generation failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
+  async function copyCurl() {
+    saveSettings();
+    const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/branches') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(payload(), null, 2));
+    try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
+  }
+  function loadSample() {
+    $('query').value = 'novelty theorem assumptions citation coverage clarity limitations';
+    $('paperSummary').value = 'A theory paper proposing a new estimator with an asymptotic optimality theorem. The draft needs stronger positioning and precise assumptions.';
+    $('reviewText').value = 'The novelty is not fully clear against related work. The theorem assumptions are underspecified. Citation coverage is thin. The introduction is hard to follow and limitations are missing.';
+    $('latexSource').value = '\\section{Introduction}\nWe propose a new estimator and claim asymptotic optimality.\n\\section{Related Work}\nPrior work studies related estimators.\n\\section{Main Results}\n\\begin{theorem}\nUnder suitable conditions, the estimator is optimal.\n\\end{theorem}\n\\begin{proof}\nThe proof follows from concentration and standard arguments.\n\\end{proof}\n\\section{Conclusion}\nWe conclude.';
+  }
+  $('saveBackend').addEventListener('click', () => { saveSettings(); setStatus($('backendStatus'), 'Saved settings.', 'good'); });
+  $('testHealth').addEventListener('click', testHealth);
+  $('runBranches').addEventListener('click', runBranches);
+  $('copyCurl').addEventListener('click', copyCurl);
+  $('loadSample').addEventListener('click', loadSample);
+  loadSettings();
+})();
+</script>
+</body>
+</html>
