@@ -1,5 +1,5 @@
 /* Latexai Stage 19J AIWorkflowMemoryService
- * Stage: stage19l0-contextual-bandit-memory-selection-frontend-20260526-1
+ * Stage: stage19l1-developer-memory-bandit-console-frontend-20260526-1
  *
  * Generic hidden memory/Neon wiring for AI workflows that were not explicitly
  * wired in stages 19F--19I10. This wraps LuminaLatex.AIProvider.ask and logs
@@ -18,7 +18,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19l0-contextual-bandit-memory-selection-frontend-20260526-1';
+  const STAGE = 'stage19l1-developer-memory-bandit-console-frontend-20260526-1';
   const LAST_AGENT_RUN_KEY = 'latexai:stage19i11:last-generic-agent-run';
   const STAGE19I12_LAST_AGENT_RUN_KEY = 'latexai:stage19i12:last-generic-agent-run';
   const WIRED_WORKFLOW_RE = /(competitive[-_ ]review|competitive[-_ ]web[-_ ]review|reviewer[-_ ]rebuttal|devils?[-_ ]advocate)/i;
@@ -243,7 +243,8 @@
       ucbBeta: numberFromLocalStorage('latexai:memory-bandit-ucb-beta', 0.20, 0, 2.0),
       thompsonAlpha: numberFromLocalStorage('latexai:memory-bandit-thompson-alpha', 0.25, 0, 2.0),
       softmaxTemperature: numberFromLocalStorage('latexai:memory-bandit-softmax-temperature', 0.25, 0.03, 5.0),
-      explorationPoolSize: Math.round(numberFromLocalStorage('latexai:memory-bandit-exploration-pool-size', 24, 6, 200))
+      explorationPoolSize: Math.round(numberFromLocalStorage('latexai:memory-bandit-exploration-pool-size', 24, 6, 200)),
+      topK: Math.round(numberFromLocalStorage('latexai:memory-bandit-top-k', 6, 1, 24))
     };
   }
 
@@ -263,7 +264,7 @@
         taskType: inferred.taskType,
         agentRole: inferred.agentRole,
         query,
-        limit: 6,
+        limit: Math.max(1, Math.min(24, Number(bandit.topK || 6))),
         ...bandit,
         metadata: { stage: STAGE, genericAiWorkflowMemoryWiring: true, contextualBanditMemorySelection: true, ...bandit, ...(ids.identityMetadata || {}) }
       };
