@@ -19,6 +19,8 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const STAGE = 'stage19i11-ai-workflow-memory-wiring-completion-20260526-1';
+  const LAST_AGENT_RUN_KEY = 'latexai:stage19i11:last-generic-agent-run';
+  const STAGE19I12_LAST_AGENT_RUN_KEY = 'latexai:stage19i12:last-generic-agent-run';
   const WIRED_WORKFLOW_RE = /(competitive[-_ ]review|competitive[-_ ]web[-_ ]review|reviewer[-_ ]rebuttal|devils?[-_ ]advocate)/i;
 
   function clean(value) { return String(value || '').trim(); }
@@ -185,6 +187,39 @@
     return Array.from(new Set(items.filter(Boolean)));
   }
 
+  function rememberLastAgentRun(saved, inferred, contextJson, memoryIds) {
+    if (!saved) return null;
+    const record = {
+      at: Date.now(),
+      stage: STAGE,
+      runId: saved.runId || saved.id || '',
+      id: saved.id || saved.runId || '',
+      contextBundleId: saved.contextBundleId || contextJson?.contextBundleId || contextJson?.bundleId || '',
+      outputId: saved.outputId || '',
+      workflow: inferred.workflow,
+      taskType: inferred.taskType,
+      agentRole: inferred.agentRole,
+      memoryIds: Array.from(new Set((memoryIds || []).filter(Boolean))),
+      status: saved.status || 'success'
+    };
+    try {
+      W.sessionStorage?.setItem?.(LAST_AGENT_RUN_KEY, JSON.stringify(record));
+      W.sessionStorage?.setItem?.(STAGE19I12_LAST_AGENT_RUN_KEY, JSON.stringify(record));
+    } catch (_err) {}
+    NS.__stage19i11LastGenericAgentRun = record;
+    return record;
+  }
+
+  function getLastAgentRun(maxAgeMs = 12 * 60 * 1000) {
+    const current = NS.__stage19i11LastGenericAgentRun;
+    if (current?.at && Date.now() - current.at <= maxAgeMs) return current;
+    try {
+      const parsed = JSON.parse(W.sessionStorage?.getItem?.(LAST_AGENT_RUN_KEY) || W.sessionStorage?.getItem?.(STAGE19I12_LAST_AGENT_RUN_KEY) || 'null');
+      if (parsed?.at && Date.now() - parsed.at <= maxAgeMs) return parsed;
+    } catch (_err) {}
+    return null;
+  }
+
   async function requestRoleContext(payload, meta, inferred) {
     try {
       const ids = projectIdentity();
@@ -254,6 +289,7 @@
         }
       };
       const saved = await memoryPost('/agent-run', req);
+      if (status === 'success') rememberLastAgentRun(saved, inferred, contextJson, memoryIds);
       if (status === 'success') {
         try {
           await NS.RewardLoggingService?.logReward?.('generic_ai_workflow_success', 0.15, {
@@ -338,7 +374,8 @@
     inferTaskType,
     inferAgentRole,
     shouldSkipGenericLogging,
-    requestRoleContext
+    requestRoleContext,
+    getLastAgentRun
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
