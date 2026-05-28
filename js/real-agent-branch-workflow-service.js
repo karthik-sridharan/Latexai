@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1B RealAgentBranchWorkflowService
- * Stage: stage19n1b-section-aware-debate-targets-20260528-1
+/* Latexai Stage 19N1C RealAgentBranchWorkflowService
+ * Stage: stage19n1c-enforced-multi-section-debate-edits-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1b-section-aware-debate-targets-20260528-1';
+  const STAGE = 'stage19n1c-enforced-multi-section-debate-edits-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -691,8 +691,8 @@
         'Full prior debate transcript:',
         transcript,
         '',
-        'Task: produce visible LaTeX edit blocks using \\lai{...}. Use \\laiold{...} only when you are explicitly replacing existing text. For pure additions, use only \\lai{...}. When multiple target sections are requested, produce section-labeled edits for multiple sections, e.g. \\paragraph{Target section: Related work} followed by \\lai{...}. Do not put all edits in the Introduction unless the debate concluded only the Introduction needs changes.',
-        'Do not put final edits after \\end{document}. Do not invent citations; use placeholder/search-target notes for unverified references. Avoid unescaped author-list ampersands; write \\& in text.'
+        'Task: produce final visible LaTeX edits using ONLY section-labeled \\lai{...} blocks. For EACH requested target section, output either (a) one concrete \\lai{\\paragraph{Target section: <exact section title>} ...} block, or (b) one \\lai{\\paragraph{Target section: <exact section title>} No edit needed here because ...} block. Do not output all edits under Introduction. Do not put section labels outside \\lai because the cleaner keeps only \\lai blocks.',
+        'Output format: start with % LATEXAI_MULTI_SECTION_EDIT_BEGIN, then one or more balanced \\lai{...} blocks with internal \\paragraph{Target section: ...} labels, then % LATEXAI_MULTI_SECTION_EDIT_END. Do not invent citations; use placeholder/search-target notes for unverified references. Avoid unescaped author-list ampersands; write \\& in text.'
       ].join('\n');
     }
 
@@ -871,6 +871,125 @@
     return data;
   }
 
+
+  function firstExistingSectionTitle(titles, source) {
+    const sections = topLevelSections(source);
+    for (const t of (titles || [])) {
+      const hit = sections.find((sec) => sectionMatches(sec, t));
+      if (hit) return hit.title;
+    }
+    return (sections[0] && sections[0].title) || '';
+  }
+
+  function laiBlocksForInsertion() {
+    const blocks = [];
+    const add = (arr) => { if (Array.isArray(arr)) arr.forEach((x) => { const v = String(x || '').trim(); if (v) blocks.push(v); }); };
+    add(lastCleanerData?.insertableLaiBlocks);
+    add(lastCleanerData?.validVisibleLaiBlocks);
+    if (!blocks.length) add(lastRealRunData?.insertableLaiBlocks);
+    if (!blocks.length) add(lastRealRunData?.visibleLaiBlocks);
+    if (!blocks.length && lastRealRunData?.finalOutput) {
+      const parsed = parseLatexMacroBlocks(lastRealRunData.finalOutput, 'lai').map((b) => b.raw);
+      add(parsed);
+    }
+    return Array.from(new Set(blocks));
+  }
+
+  function inferTargetFromLaiBlock(block, fallback) {
+    const s = String(block || '');
+    const pats = [
+      /Target\s+section\s*:\s*([^}\n\\]{2,120})/i,
+      /Target\s*:\s*([^}\n\\]{2,120})/i,
+      /section\s*[:=]\s*([^}\n\\]{2,120})/i
+    ];
+    for (const pat of pats) {
+      const m = s.match(pat);
+      if (m && m[1]) return normalizeSectionTitle(m[1].replace(/[.。]+$/g, ''));
+    }
+    return normalizeSectionTitle(fallback || '');
+  }
+
+  function insertBeforeEndDocument(source, addition) {
+    const s = String(source || '');
+    const end = findLastEndDocument(s);
+    const block = String(addition || '').trim();
+    if (!block) return s;
+    if (!end) return s.replace(/\s*$/, '') + '\n\n' + block + '\n';
+    return s.slice(0, end.index).replace(/\s+$/, '') + '\n\n' + block + '\n\n' + s.slice(end.index);
+  }
+
+  function buildAppendDraftFromBlocks(source, blocks, targets) {
+    const safeBlocks = (blocks || []).map((b) => String(b || '').trim()).filter(Boolean);
+    if (!safeBlocks.length) return source;
+    const header = [
+      '% --- Latexai appended multi-section Devil\'s Advocate suggestions ---',
+      '% These suggestions were inserted before \\end{document} so they compile.',
+      '% Review citation placeholders before accepting.',
+      ''
+    ].join('\n');
+    const targetNote = (targets && targets.length) ? '% Requested target sections: ' + targets.join(', ') + '\n' : '';
+    return insertBeforeEndDocument(source, header + targetNote + safeBlocks.join('\n\n'));
+  }
+
+  function buildTargetedDraftFromBlocks(source, blocks, targets) {
+    const s = String(source || '');
+    const sections = topLevelSections(s);
+    const safeBlocks = (blocks || []).map((b) => String(b || '').trim()).filter(Boolean);
+    if (!safeBlocks.length || !sections.length) return buildAppendDraftFromBlocks(s, safeBlocks, targets);
+    const groups = new Map();
+    safeBlocks.forEach((block, idx) => {
+      const fallback = targets && targets.length ? targets[Math.min(idx, targets.length - 1)] : '';
+      let target = inferTargetFromLaiBlock(block, fallback);
+      if (!target) target = firstExistingSectionTitle(targets, s) || sections[0].title;
+      const hit = sections.find((sec) => sectionMatches(sec, target));
+      const key = hit ? hit.title : target;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(block);
+    });
+    let out = s;
+    const insertions = [];
+    groups.forEach((bs, target) => {
+      const sec = sections.find((x) => sectionMatches(x, target));
+      const blockText = [
+        '',
+        '% --- Latexai targeted Devil\'s Advocate suggestion for section: ' + target + ' ---',
+        ...bs,
+        '% --- end Latexai targeted suggestion ---',
+        ''
+      ].join('\n');
+      if (sec) insertions.push({ index: sec.headerEnd, text: blockText, target });
+      else insertions.push({ index: findLastEndDocument(out)?.index ?? out.length, text: blockText, target });
+    });
+    insertions.sort((a, b) => b.index - a.index).forEach((ins) => { out = out.slice(0, ins.index) + ins.text + out.slice(ins.index); });
+    return out;
+  }
+
+  function enhanceInsertionDataWithMultiSectionDrafts(data) {
+    const source = getActiveSource();
+    const targets = desiredTargetSections(selectedRealPayload() || lastRealRunData || lastSelectionData || {});
+    const scope = inputValue('branchWorkflowSectionScope', 'salient');
+    if (scope === 'branch' && targets.length <= 1) return data;
+    const blocks = laiBlocksForInsertion();
+    if (!blocks.length) return data;
+    const targeted = normalizeLaiDraftForCompilation(buildTargetedDraftFromBlocks(source, blocks, targets), 'targeted');
+    const append = normalizeLaiDraftForCompilation(buildAppendDraftFromBlocks(source, blocks, targets), 'append');
+    const blockTargets = blocks.map((b, i) => inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '')).filter(Boolean);
+    return {
+      ...(data || {}),
+      targetedInsertionDraft: targeted,
+      appendOnlyDraft: append,
+      insertableLatexDraft: targeted,
+      targetSections: targets,
+      blockSectionTargets: blockTargets,
+      blockCount: blocks.length,
+      multiSectionFrontendInsertion: true,
+      warnings: [
+        ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
+        'Stage 19N1C frontend distributed cleaned \\lai blocks across section targets when labels were available. Use Section scope = salient/first6/whole for edits beyond Introduction.'
+      ]
+    };
+  }
+
   function insertionPayload() {
     const selected = lastSelectionData?.selectedBranch || lastRealRunData?.selectedBranch || selectedRealPayload()?.selectedBranch || {};
     const executionPlan = lastSelectionData?.executionPlan || lastRealRunData?.executionPlan || selectedRealPayload()?.executionPlan || {};
@@ -895,7 +1014,8 @@
     const chosenDraft = inputValue('branchWorkflowInsertMode', 'targeted') === 'append' ? appendDraft : normalizeLaiDraftForCompilation(targetedDraft, 'targeted');
     const body =
       '<div class="settings-note"><strong>safeToInsert:</strong> ' + esc(data?.safeToInsert) + ' · safeToAutoApply=' + esc(data?.safeToAutoApply) + ' · blocks=' + esc(data?.blockCount || 0) + '</div>' +
-      '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || 'append/end') + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
+      '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || (Array.isArray(data?.targetSections) ? data.targetSections.join(', ') : 'append/end')) + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
+      (data?.multiSectionFrontendInsertion ? '<div class="settings-note good">Multi-section frontend insertion is active. Block targets: ' + esc((data.blockSectionTargets || []).join(', ') || 'none inferred') + '</div>' : '') +
       '<div class="settings-note warn">The source editor shows raw <code>\\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
       '<details open><summary>Visual colored LAI preview</summary>' + renderLaiColorPreviewHtml(chosenDraft || targetedDraft || appendDraft) + '</details>' +
@@ -911,7 +1031,8 @@
     if (!lastCleanerData && lastRealRunData) await cleanLastRealRun();
     if (!lastCleanerData && !lastRealRunData) throw new Error('Run agents and clean result before previewing insertion.');
     status('Preparing targeted/append insertion preview...', 'warn');
-    const data = await backendPost('/debate/prepare-lai-insertion', insertionPayload());
+    let data = await backendPost('/debate/prepare-lai-insertion', insertionPayload());
+    data = enhanceInsertionDataWithMultiSectionDrafts(data);
     lastInsertionData = data;
     renderInsertion(data);
     status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '. Preview is shown in the dock above and in the output box below.', 'good');
@@ -1028,7 +1149,7 @@
     card.id = 'realAgentBranchCard';
     card.className = 'devils-debate-card real-agent-branch-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1B</div><h2>Devil’s Advocate branch runner</h2></div></div>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1C</div><h2>Devil’s Advocate branch runner</h2></div></div>',
       '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → section-aware synthesize/edit → clean LAI → insertion preview → reward feedback using the active editor source.</p>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
@@ -1038,7 +1159,7 @@
       '<label class="field">Insertion mode <select id="branchWorkflowInsertMode"><option value="targeted" selected>targeted section insertion</option><option value="append">append at end</option></select></label>',
       '</div>',
       '<div class="field-grid two">',
-      '<label class="field">Section scope <select id="branchWorkflowSectionScope"><option value="branch" selected>selected branch target only</option><option value="salient">salient sections</option><option value="first6">first 6 sections</option><option value="whole">whole paper outline</option></select></label>',
+      '<label class="field">Section scope <select id="branchWorkflowSectionScope"><option value="branch">selected branch target only</option><option value="salient" selected>salient sections</option><option value="first6">first 6 sections</option><option value="whole">whole paper outline</option></select></label>',
       '<div class="settings-note compact">Use <strong>salient/first6/whole</strong> when you want edits beyond Introduction. For multi-section edits, append mode is usually safest because it adds section-labeled \lai blocks before <code>\end{document}</code>.</div>',
       '</div>',
       '<div class="field-grid two">',
@@ -1065,7 +1186,7 @@
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1B ready. Configure debate rounds and section scope; choose salient/first6/whole for edits beyond Introduction.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1C ready. Default scope is salient sections; final editor is forced to produce section-labeled \lai blocks and targeted apply distributes labeled edits across sections.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
