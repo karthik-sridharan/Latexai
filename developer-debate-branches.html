@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner</title>
+  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner + LAI Insert Preview</title>
   <style>
     :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
     * { box-sizing: border-box; }
@@ -42,8 +42,8 @@
 </head>
 <body>
   <header>
-    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner</h1>
-    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, a real-agent run planner, an optional Stage 19M frontend real-agent runner, and a Stage 19M1 \lai result cleaner/validator.</p>
+    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner + LAI Insert Preview</h1>
+    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, a real-agent run planner, an optional Stage 19M frontend real-agent runner, a Stage 19M1 \lai result cleaner/validator, and a Stage 19M2 cleaned edit preview/insert-append workflow.</p>
   </header>
   <main>
     <div class="grid">
@@ -138,6 +138,11 @@ Under suitable conditions, the estimator is optimal.
 \\begin{proof}
 The proof follows from concentration.
 \\end{proof}</textarea>
+        <div class="triple">
+          <div><label for="laiInsertMode">Stage 19M2 LAI insertion mode</label><select id="laiInsertMode"><option value="targeted">targeted section insertion</option><option value="append">append at end</option></select></div>
+          <div><label for="laiTargetSection">Target section override</label><input id="laiTargetSection" placeholder="optional, e.g. Introduction" /></div>
+          <div><label for="laiOutcomeNote">Outcome note</label><input id="laiOutcomeNote" placeholder="optional note for reward/memory feedback" /></div>
+        </div>
         <div class="buttons">
           <button id="runBranches">Generate branches</button>
           <button id="evaluateBranches" class="secondary">Evaluate current branches</button>
@@ -154,6 +159,14 @@ The proof follows from concentration.
           <button id="copyRealRunCurl" class="secondary">Copy real-run record curl</button>
           <button id="cleanLastRealRun" class="secondary">Clean/validate last real-agent result</button>
           <button id="copyCleanCurl" class="secondary">Copy clean curl</button>
+          <button id="prepareLaiInsertion" class="secondary">Preview insert/append cleaned LAI</button>
+          <button id="copyPrepareCurl" class="secondary">Copy prepare-insertion curl</button>
+          <button id="copyTargetedDraft" class="secondary">Copy targeted draft</button>
+          <button id="copyAppendDraft" class="secondary">Copy append draft</button>
+          <button id="useTargetedDraft" class="secondary">Use targeted draft as source excerpt</button>
+          <button id="useAppendDraft" class="secondary">Use append draft as source excerpt</button>
+          <button id="recordLaiApplied" class="secondary">Record applied outcome</button>
+          <button id="recordLaiRejected" class="secondary">Record rejected outcome</button>
           <button id="loadSample" class="secondary">Load sample</button>
         </div>
         <div id="runStatus" class="status">Ready.</div>
@@ -188,6 +201,12 @@ The proof follows from concentration.
       <section class="card wide">
         <h2>Stage 19M1 \lai result cleaner / validator</h2>
         <div id="cleanerTable" class="status">No cleaned real-agent result yet.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Stage 19M2 cleaned LAI edit preview + insert/append workflow</h2>
+        <div class="status warn">This developer panel previews targeted and append-only drafts. It does not silently modify the main Latexai editor. Use the copy/apply-to-source-excerpt buttons for manual inspection.</div>
+        <div id="insertionTable" class="status">No insertion preview yet.</div>
       </section>
 
       <section class="card wide">
@@ -248,6 +267,7 @@ The proof follows from concentration.
   let lastSelectionData = null;
   let lastRealRunData = null;
   let lastCleanerData = null;
+  let lastInsertionData = null;
   function payload() {
     return {
       workflow: $('workflow').value || 'latex-paper-debate',
@@ -295,6 +315,9 @@ The proof follows from concentration.
     $('includeMemory').checked = getStored('latexai:debate-branch-include-memory', 'true') !== 'false';
     $('recordContext').checked = getStored('latexai:debate-branch-record-context', 'false') === 'true';
     $('recordTrajectory').checked = getStored('latexai:debate-branch-record-trajectory', 'false') === 'true';
+    $('laiInsertMode').value = getStored('latexai:lai-insert-mode', 'targeted');
+    $('laiTargetSection').value = getStored('latexai:lai-target-section', '');
+    $('laiOutcomeNote').value = getStored('latexai:lai-outcome-note', '');
   }
   function saveSettings() {
     setStored('latexai:memory-backend-url', memoryBase());
@@ -320,6 +343,9 @@ The proof follows from concentration.
     setStored('latexai:debate-branch-include-memory', String($('includeMemory').checked));
     setStored('latexai:debate-branch-record-context', String($('recordContext').checked));
     setStored('latexai:debate-branch-record-trajectory', String($('recordTrajectory').checked));
+    setStored('latexai:lai-insert-mode', $('laiInsertMode').value || 'targeted');
+    setStored('latexai:lai-target-section', $('laiTargetSection').value || '');
+    setStored('latexai:lai-outcome-note', $('laiOutcomeNote').value || '');
   }
   function setStatus(el, text, cls) { el.className = 'status' + (cls ? ' ' + cls : ''); el.textContent = text; }
   async function testHealth() {
@@ -712,6 +738,116 @@ The proof follows from concentration.
     try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied Stage 19M1 clean curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
   }
 
+  function insertionPayload() {
+    const runPayload = selectedRealPayload() || {};
+    const selectedBranch = (lastSelectionData && lastSelectionData.selectedBranch) || (lastRealRunData && lastRealRunData.selectedBranch) || runPayload.selectedBranch || {};
+    const executionPlan = (lastSelectionData && lastSelectionData.executionPlan) || (lastRealRunData && lastRealRunData.executionPlan) || runPayload.executionPlan || {};
+    return {
+      latexSource: $('latexSource').value || '',
+      insertMode: $('laiInsertMode').value || 'targeted',
+      targetSectionOverride: $('laiTargetSection').value || '',
+      cleanerResult: lastCleanerData || (lastRealRunData && lastRealRunData.laiValidation) || null,
+      realAgentRunResult: lastRealRunData || null,
+      selectedBranch,
+      executionPlan,
+      realAgentRunPayload: runPayload,
+      workflow: $('workflow').value || 'latex-paper-debate',
+      query: $('query').value || '',
+      paperSummary: $('paperSummary').value || '',
+      reviewText: $('reviewText').value || ''
+    };
+  }
+
+  function renderInsertion(data) {
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    if (!data || data.ok === false) { $('insertionTable').innerHTML = '<div class="status bad">No insertion preview.</div>'; return; }
+    const ds = data.diffSummary || {};
+    let html = '<div class="status good"><strong>Stage 19M2 insertion preview:</strong> blocks=' + esc(data.blockCount) + ' · mode=' + esc(data.insertMode) + ' · safeToInsert=' + esc(data.safeToInsert) + ' · safeToAutoApply=' + esc(data.safeToAutoApply) + '</div>';
+    if (Array.isArray(data.warnings) && data.warnings.length) html += '<div class="status warn"><strong>Warnings:</strong> ' + esc(data.warnings.join(', ')) + '</div>';
+    if (Array.isArray(data.missingCitationKeys) && data.missingCitationKeys.length) html += '<div class="status warn"><strong>Missing/unverified citation keys:</strong> ' + esc(data.missingCitationKeys.join(', ')) + '</div>';
+    html += '<details open><summary><strong>Diff summary</strong></summary><pre>' + esc(JSON.stringify(ds, null, 2)) + '</pre></details>';
+    if (Array.isArray(data.previewCards) && data.previewCards.length) html += '<details open><summary><strong>Cleaned block previews</strong></summary><pre>' + esc(JSON.stringify(data.previewCards, null, 2)) + '</pre></details>';
+    if (data.targetedInsertionDraft) html += '<details open><summary><strong>Targeted insertion draft</strong></summary><pre>' + esc(data.targetedInsertionDraft) + '</pre></details>';
+    if (data.appendOnlyDraft) html += '<details><summary><strong>Append-only draft</strong></summary><pre>' + esc(data.appendOnlyDraft) + '</pre></details>';
+    $('insertionTable').innerHTML = html;
+  }
+
+  async function prepareLaiInsertion() {
+    saveSettings();
+    if (!lastCleanerData && !lastRealRunData) { setStatus($('runStatus'), 'No cleaned or real-agent result yet. Run real agents and/or Clean/validate first.', 'bad'); return; }
+    try {
+      setStatus($('runStatus'), 'Preparing Stage 19M2 targeted/append LAI insertion preview...', 'warn');
+      const res = await fetch(apiRoot() + '/debate/prepare-lai-insertion', { method: 'POST', headers: authHeaders(), body: JSON.stringify(insertionPayload()) });
+      const text = await res.text();
+      let data = null; try { data = JSON.parse(text); } catch (_) {}
+      if (!res.ok || !data) throw new Error('HTTP ' + res.status + ': ' + text);
+      lastInsertionData = data;
+      $('rawJson').textContent = JSON.stringify(data, null, 2);
+      renderInsertion(data);
+      setStatus($('runStatus'), 'Stage 19M2 prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Prepare insertion failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
+
+  async function copyPrepareCurl() {
+    saveSettings();
+    const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/prepare-lai-insertion') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(insertionPayload(), null, 2));
+    try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied Stage 19M2 prepare-insertion curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
+  }
+
+  async function copyDraft(which) {
+    const data = lastInsertionData;
+    if (!data) { setStatus($('runStatus'), 'No Stage 19M2 insertion preview yet.', 'bad'); return; }
+    const text = which === 'append' ? (data.appendOnlyDraft || '') : (data.targetedInsertionDraft || data.insertableLatexDraft || '');
+    try { await navigator.clipboard.writeText(text); setStatus($('runStatus'), 'Copied ' + which + ' draft.', 'good'); } catch (_) { setStatus($('runStatus'), text || 'Nothing to copy.', 'warn'); }
+  }
+
+  function useDraft(which) {
+    const data = lastInsertionData;
+    if (!data) { setStatus($('runStatus'), 'No Stage 19M2 insertion preview yet.', 'bad'); return; }
+    const text = which === 'append' ? (data.appendOnlyDraft || '') : (data.targetedInsertionDraft || data.insertableLatexDraft || '');
+    if (!text) { setStatus($('runStatus'), 'No draft text available.', 'bad'); return; }
+    $('latexSource').value = text;
+    setStatus($('runStatus'), 'Loaded ' + which + ' draft into the LaTeX source excerpt for inspection. Main editor was not modified.', 'good');
+  }
+
+  function memoryIdsForFeedback() {
+    const selected = (lastSelectionData && lastSelectionData.selectedBranch) || (lastRealRunData && lastRealRunData.selectedBranch) || {};
+    const ids = [];
+    if (Array.isArray(selected.memoryIdsUsed)) ids.push(...selected.memoryIdsUsed);
+    if (lastRealRunData && Array.isArray(lastRealRunData.contextBundleIds)) ids.push(...lastRealRunData.contextBundleIds);
+    return Array.from(new Set(ids.filter(Boolean)));
+  }
+
+  async function recordLaiOutcome(outcome) {
+    saveSettings();
+    const success = outcome === 'applied';
+    const body = {
+      memoryIds: memoryIdsForFeedback(),
+      outcome: success ? 'success' : 'failure',
+      accepted: success,
+      rewardValue: success ? 1.0 : -0.6,
+      workflow: 'latex-paper-debate-real-agent-run',
+      agentRole: 'editor',
+      taskType: 'cleaned_lai_edit_' + outcome,
+      stepName: 'stage19m2_lai_insert_preview',
+      sourceEventId: (lastRealRunData && lastRealRunData.runId) || (lastInsertionData && lastInsertionData.insertionVersion) || '',
+      note: $('laiOutcomeNote').value || ('Stage 19M2 user marked cleaned LAI edits as ' + outcome),
+      metadata: { stage: 'stage19m2', insertionVersion: lastInsertionData && lastInsertionData.insertionVersion, safeToInsert: lastInsertionData && lastInsertionData.safeToInsert }
+    };
+    try {
+      const res = await fetch(apiRoot() + '/memory/context-feedback', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      const text = await res.text();
+      let data = null; try { data = JSON.parse(text); } catch (_) {}
+      if (!res.ok || !data) throw new Error('HTTP ' + res.status + ': ' + text);
+      $('rawJson').textContent = JSON.stringify(data, null, 2);
+      setStatus($('runStatus'), 'Recorded Stage 19M2 outcome feedback: ' + outcome + ' updated=' + (data.updated || 0) + '.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Recording outcome failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
+
   async function copyRealRunCurl() {
     saveSettings();
     const runPayload = selectedRealPayload() || {};
@@ -763,6 +899,14 @@ The proof follows from concentration.
   $('copyRealRunCurl').addEventListener('click', copyRealRunCurl);
   $('cleanLastRealRun').addEventListener('click', cleanLastRealRun);
   $('copyCleanCurl').addEventListener('click', copyCleanCurl);
+  $('prepareLaiInsertion').addEventListener('click', prepareLaiInsertion);
+  $('copyPrepareCurl').addEventListener('click', copyPrepareCurl);
+  $('copyTargetedDraft').addEventListener('click', () => copyDraft('targeted'));
+  $('copyAppendDraft').addEventListener('click', () => copyDraft('append'));
+  $('useTargetedDraft').addEventListener('click', () => useDraft('targeted'));
+  $('useAppendDraft').addEventListener('click', () => useDraft('append'));
+  $('recordLaiApplied').addEventListener('click', () => recordLaiOutcome('applied'));
+  $('recordLaiRejected').addEventListener('click', () => recordLaiOutcome('rejected'));
   $('loadSample').addEventListener('click', loadSample);
   loadSettings();
 })();
