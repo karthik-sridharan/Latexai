@@ -13,5 +13,6 @@ Separate the plan by requested target section/unit wherever possible:
 3. edits to make now,
 4. points needing human/citation verification.
 
-Prepare the editor agent to produce visible \lai edits.
+Deduplicate aggressively: if multiple agents made the same point, list it once.
+Prepare the editor agent to produce final visible \lai edits, but do not output final \lai blocks yourself.
 Do not invent citations; mark uncertain citations as search/BibTeX targets.

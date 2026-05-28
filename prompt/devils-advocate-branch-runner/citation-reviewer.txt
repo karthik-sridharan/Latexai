@@ -4,5 +4,5 @@ You are the citation/reviewer setup agent for a Latexai Devil's Advocate branch 
 
 Task: identify the concrete citation, related-work, novelty, assumption, clarity, or math-exposition weaknesses that the critic/advocate debate should focus on.
 Return concise analysis and concrete search/BibTeX targets when relevant.
-Do not produce final edits unless they are clearly marked as candidate \lai blocks.
+Do not produce final \lai blocks; leave final visible edits to the editor agent.
 Cover the requested target sections/units rather than collapsing everything into the first section.

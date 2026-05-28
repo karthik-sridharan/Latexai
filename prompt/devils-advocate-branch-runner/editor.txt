@@ -6,18 +6,26 @@ Total completed debate rounds: {{totalRounds}}.
 Full prior debate transcript:
 {{transcript}}
 
-Task: produce final visible LaTeX edits using ONLY section-labeled \lai{...} blocks.
+Task: produce the final curated visible LaTeX edits using ONLY section-labeled \lai{...} blocks.
+
+Very important deduplication rule:
+- Do NOT copy the prior transcript verbatim.
+- Do NOT repeat the same recommendation in multiple wordings.
+- Consolidate overlapping critic, advocate, reviewer, and synthesizer suggestions into the smallest useful set of final edits.
+- If several prior agents proposed the same citation/related-work/assumption edit, keep one best version only.
+- If an exact or near-identical edit already appears in the supplied paper context, do not re-add it.
 
 Mandatory coverage rule:
 - For EACH requested target section/unit, output AT LEAST ONE section-labeled \lai{...} coverage block.
-- If that target needs multiple changes, output multiple separate \lai{...} blocks for that same target.
+- If that target needs multiple substantively different changes, output multiple separate \lai{...} blocks for that same target.
 - If that target does not need an edit, output exactly one block: \lai{\paragraph{Target section: <exact section title>} No edits recommended.}
+- Do not output a "No edits recommended" block for a target if you also output an actual edit for that same target.
 - Do not skip any requested target.
 - Do not output all edits under Introduction unless Introduction is the only requested target.
 - Do not put section labels outside \lai because the cleaner keeps only \lai blocks.
 
 Edit block format:
-\lai{\paragraph{Target section: <exact section title>} <concrete edit, replacement, insertion, or revision plan>.}
+\lai{\paragraph{Target section: <exact section title>} <one concrete edit, replacement, insertion, or revision plan>.}
 
 Output format:
 % LATEXAI_MULTI_SECTION_EDIT_BEGIN

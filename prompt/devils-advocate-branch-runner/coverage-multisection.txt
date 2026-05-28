@@ -4,10 +4,12 @@ Whole-paper targeting active: {{wholePaperActive}}.
 
 Coverage rule for the final editor step:
 - For EVERY requested target section/unit, output AT LEAST ONE visible \lai{...} coverage block.
-- If edits are needed for a target, output one or more separate \lai{...} blocks for that target.
-- If no edits are needed for a target, output exactly one no-edit block for that target.
+- If edits are needed for a target, output one or more substantively distinct separate \lai{...} blocks for that target; do not repeat near-identical recommendations.
+- If no edits are needed for a target, output exactly one no-edit block for that target; do not also output edits for that target.
 - A no-edit block must have this form: \lai{\paragraph{Target section: <exact section title>} No edits recommended.}
 - An edit block must have this form: \lai{\paragraph{Target section: <exact section title>} <concrete proposed edit, replacement, insertion, or revision plan>.}
 - Do NOT restrict all edits to the Introduction unless the target list only contains Introduction.
 - Do NOT put target labels outside \lai{...}; the cleaner keeps only visible \lai blocks.
 - Use the exact target section/unit names listed above so the insertion step can distribute blocks correctly.
+
+Deduplication rule: repeated citation-gap, related-work, assumption, or positioning edits should be consolidated by the final editor. Earlier debate agents should discuss candidates, but only the final editor should output final \lai blocks.
