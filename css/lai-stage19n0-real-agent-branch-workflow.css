@@ -184,7 +184,7 @@
   font: 12px/1.45 var(--mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 }
 
-/* Stage 19N1B: section-aware debate target UI */
+/* Stage 19N1C: enforced multi-section debate target UI */
 .real-agent-branch-card select#branchWorkflowSectionScope {
   min-width: 0;
 }
