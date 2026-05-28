@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents</title>
+  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner</title>
   <style>
     :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
     * { box-sizing: border-box; }
@@ -42,8 +42,8 @@
 </head>
 <body>
   <header>
-    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents</h1>
-    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, a real-agent run planner, and an optional Stage 19M frontend real-agent runner.</p>
+    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner</h1>
+    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, a real-agent run planner, an optional Stage 19M frontend real-agent runner, and a Stage 19M1 \lai result cleaner/validator.</p>
   </header>
   <main>
     <div class="grid">
@@ -152,6 +152,8 @@ The proof follows from concentration.
           <button id="copySelectCurl" class="secondary">Copy select curl</button>
           <button id="runRealAgents" class="warn">Run selected branch with real agents</button>
           <button id="copyRealRunCurl" class="secondary">Copy real-run record curl</button>
+          <button id="cleanLastRealRun" class="secondary">Clean/validate last real-agent result</button>
+          <button id="copyCleanCurl" class="secondary">Copy clean curl</button>
           <button id="loadSample" class="secondary">Load sample</button>
         </div>
         <div id="runStatus" class="status">Ready.</div>
@@ -181,6 +183,11 @@ The proof follows from concentration.
         <h2>Stage 19M real-agent branch run</h2>
         <div class="status warn">Default mode is dry run. Switch Real agent mode to call_ai_proxy_expensive only when you are ready to spend model calls.</div>
         <div id="realRunTable" class="status">No real-agent branch run yet.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Stage 19M1 \lai result cleaner / validator</h2>
+        <div id="cleanerTable" class="status">No cleaned real-agent result yet.</div>
       </section>
 
       <section class="card wide">
@@ -240,6 +247,7 @@ The proof follows from concentration.
   let lastRolloutData = null;
   let lastSelectionData = null;
   let lastRealRunData = null;
+  let lastCleanerData = null;
   function payload() {
     return {
       workflow: $('workflow').value || 'latex-paper-debate',
@@ -581,16 +589,45 @@ The proof follows from concentration.
     return (lastSelectionData && (lastSelectionData.realAgentRunPayload || lastSelectionData.real_agent_run_payload)) || null;
   }
 
+  function renderCleaner(data) {
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    if (!data || data.ok === false) { $('cleanerTable').innerHTML = '<div class="status bad">No cleaner result.</div>'; return; }
+    const valid = Array.isArray(data.validVisibleLaiBlocks) ? data.validVisibleLaiBlocks : (Array.isArray(data.cleanVisibleLaiBlocks) ? data.cleanVisibleLaiBlocks : []);
+    const insertable = Array.isArray(data.insertableLaiBlocks) ? data.insertableLaiBlocks : [];
+    const rejected = Array.isArray(data.rejectedLaiCandidates) ? data.rejectedLaiCandidates : [];
+    const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+    const citeKeys = Array.isArray(data.citationKeys) ? data.citationKeys : [];
+    let html = '<div class="status good"><strong>Stage 19M1 cleaner:</strong> valid=' + esc(valid.length) + ' · insertable=' + esc(insertable.length) + ' · rejected=' + esc(rejected.length) + ' · noLlmCall=' + esc(data.noLlmCall) + '</div>';
+    if (warnings.length) html += '<div class="status warn"><strong>Warnings:</strong> ' + esc(warnings.join(', ')) + '</div>';
+    if (citeKeys.length) html += '<h3>Citation keys detected</h3><pre>' + esc(citeKeys.join('\n')) + '</pre>';
+    if (insertable.length) html += '<h3>Insertable \\lai blocks</h3><pre>' + esc(insertable.join('\n\n')) + '</pre>';
+    else if (valid.length) html += '<h3>Valid \\lai blocks</h3><pre>' + esc(valid.join('\n\n')) + '</pre>';
+    if (data.insertableLatexDraft) html += '<details open><summary><strong>Insertable LaTeX draft</strong></summary><pre>' + esc(data.insertableLatexDraft) + '</pre></details>';
+    if (rejected.length) html += '<details><summary><strong>Rejected/malformed candidates</strong></summary><pre>' + esc(JSON.stringify(rejected, null, 2)) + '</pre></details>';
+    if (Array.isArray(data.blockDetails)) html += '<details><summary><strong>Validation details</strong></summary><pre>' + esc(JSON.stringify(data.blockDetails, null, 2)) + '</pre></details>';
+    $('cleanerTable').innerHTML = html;
+  }
+
   function renderRealRun(data) {
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     if (!data || data.ok === false) { $('realRunTable').innerHTML = '<div class="status bad">No real-agent run result.</div>'; return; }
     const outputs = Array.isArray(data.agentOutputs) ? data.agentOutputs : [];
-    const lai = Array.isArray(data.visibleLaiBlocks) ? data.visibleLaiBlocks : (Array.isArray(data.latexEditBlocks) ? data.latexEditBlocks : []);
-    let html = '<div class="status good"><strong>Stage 19M run recorded.</strong> runId=' + esc(data.runId) + ' · dryRun=' + esc(data.dryRun) + ' · visible \lai blocks=' + esc(lai.length) + '</div>';
+    const rawLai = Array.isArray(data.visibleLaiBlocks) ? data.visibleLaiBlocks : (Array.isArray(data.latexEditBlocks) ? data.latexEditBlocks : []);
+    const clean = data.laiValidation || null;
+    const cleanBlocks = Array.isArray(data.cleanVisibleLaiBlocks) ? data.cleanVisibleLaiBlocks : (clean && Array.isArray(clean.cleanVisibleLaiBlocks) ? clean.cleanVisibleLaiBlocks : []);
+    const insertable = Array.isArray(data.insertableLaiBlocks) ? data.insertableLaiBlocks : (clean && Array.isArray(clean.insertableLaiBlocks) ? clean.insertableLaiBlocks : []);
+    let html = '<div class="status good"><strong>Stage 19M run recorded.</strong> runId=' + esc(data.runId) + ' · dryRun=' + esc(data.dryRun) + ' · valid \\lai blocks=' + esc(cleanBlocks.length || rawLai.length) + ' · insertable=' + esc(insertable.length) + '</div>';
     html += '<table><thead><tr><th>#</th><th>Agent</th><th>Provider/model</th><th>Output summary</th></tr></thead><tbody>';
     outputs.forEach((o, i) => { const text = String(o.outputText || o.text || '').slice(0, 700); html += '<tr><td>' + (i+1) + '</td><td><strong>' + esc(o.agentRole || o.role) + '</strong><br><span class="small">' + esc(o.taskType || o.task) + '</span></td><td>' + esc(o.provider || '') + ' / ' + esc(o.model || '') + '</td><td>' + esc(text) + '</td></tr>'; });
     html += '</tbody></table>';
-    if (lai.length) html += '<h3>visible \lai edit blocks</h3><pre>' + esc(lai.join('\n\n')) + '</pre>';
+    if (insertable.length) html += '<h3>insertable \\lai edit blocks</h3><pre>' + esc(insertable.join('\n\n')) + '</pre>';
+    else if (cleanBlocks.length) html += '<h3>validated visible \\lai edit blocks</h3><pre>' + esc(cleanBlocks.join('\n\n')) + '</pre>';
+    else if (rawLai.length) html += '<h3>raw visible \\lai candidates</h3><pre>' + esc(rawLai.join('\n\n')) + '</pre>';
+    if (clean) {
+      html += '<details open><summary><strong>Stage 19M1 validation summary</strong></summary><pre>' + esc(JSON.stringify({cleanerVersion: clean.cleanerVersion, validBlockCount: clean.validBlockCount, insertableBlockCount: clean.insertableBlockCount, rejectedCandidateCount: clean.rejectedCandidateCount, citationKeys: clean.citationKeys, warnings: clean.warnings}, null, 2)) + '</pre></details>';
+      lastCleanerData = clean;
+      renderCleaner(clean);
+    }
     html += '<details><summary><strong>Final output</strong></summary><pre>' + esc(data.finalOutput || '') + '</pre></details>';
     if (data.trajectory) html += '<details><summary><strong>Trajectory record</strong></summary><pre>' + esc(JSON.stringify(data.trajectory, null, 2)) + '</pre></details>';
     $('realRunTable').innerHTML = html;
@@ -650,6 +687,31 @@ The proof follows from concentration.
     }
   }
 
+  async function cleanLastRealRun() {
+    saveSettings();
+    if (!lastRealRunData) { setStatus($('runStatus'), 'No real-agent result to clean yet. Run selected branch with real agents first.', 'bad'); return; }
+    try {
+      setStatus($('runStatus'), 'Cleaning and validating last real-agent \\lai output...', 'warn');
+      const res = await fetch(apiRoot() + '/debate/clean-real-agent-output', { method: 'POST', headers: authHeaders(), body: JSON.stringify(lastRealRunData) });
+      const text = await res.text();
+      let data = null; try { data = JSON.parse(text); } catch (_) {}
+      if (!res.ok || !data) throw new Error('HTTP ' + res.status + ': ' + text);
+      lastCleanerData = data;
+      $('rawJson').textContent = JSON.stringify(data, null, 2);
+      renderCleaner(data);
+      setStatus($('runStatus'), 'Stage 19M1 cleaner validated ' + (data.validBlockCount || 0) + ' block(s), insertable=' + (data.insertableBlockCount || 0) + '.', 'good');
+    } catch (err) {
+      setStatus($('runStatus'), 'Cleaner failed: ' + String(err && err.message || err), 'bad');
+    }
+  }
+
+  async function copyCleanCurl() {
+    saveSettings();
+    const body = lastRealRunData || { text: '\\lai{Example validated edit block.}' };
+    const cmd = 'curl -s ' + JSON.stringify(apiRoot() + '/debate/clean-real-agent-output') + ' -H ' + JSON.stringify('Content-Type: application/json') + ' -d ' + JSON.stringify(JSON.stringify(body, null, 2));
+    try { await navigator.clipboard.writeText(cmd); setStatus($('runStatus'), 'Copied Stage 19M1 clean curl command.', 'good'); } catch (_) { setStatus($('runStatus'), cmd, 'warn'); }
+  }
+
   async function copyRealRunCurl() {
     saveSettings();
     const runPayload = selectedRealPayload() || {};
@@ -699,6 +761,8 @@ The proof follows from concentration.
   $('copySelectCurl').addEventListener('click', copySelectCurl);
   $('runRealAgents').addEventListener('click', runRealAgents);
   $('copyRealRunCurl').addEventListener('click', copyRealRunCurl);
+  $('cleanLastRealRun').addEventListener('click', cleanLastRealRun);
+  $('copyCleanCurl').addEventListener('click', copyCleanCurl);
   $('loadSample').addEventListener('click', loadSample);
   loadSettings();
 })();
