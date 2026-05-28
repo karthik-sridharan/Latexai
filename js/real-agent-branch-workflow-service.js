@@ -1,5 +1,5 @@
-/* Latexai Stage 19N0 RealAgentBranchWorkflowService
- * Stage: stage19n0-main-editor-real-agent-branch-workflow-20260528-1
+/* Latexai Stage 19N1 RealAgentBranchWorkflowService
+ * Stage: stage19n1-configurable-debate-rounds-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n0f-escape-ai-latex-special-chars-20260528-1';
+  const STAGE = 'stage19n1-configurable-debate-rounds-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -419,23 +419,191 @@
     try { return JSON.stringify(data, null, 2); } catch (_err) { return String(data || ''); }
   }
 
+
+  function clampNumber(value, min, max, fallback) {
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function debateRoundCount() {
+    return clampNumber(inputValue('branchWorkflowDebateRounds', '1'), 1, 5, 1);
+  }
+
+  function summarizeOutputForTranscript(output, maxLen = 1800) {
+    const text = String(output?.outputText || '').trim();
+    if (!text) return '(no output text)';
+    return text.length > maxLen ? text.slice(0, maxLen) + '\n...[truncated]' : text;
+  }
+
+  function transcriptText(priorOutputs) {
+    const outs = Array.isArray(priorOutputs) ? priorOutputs : [];
+    if (!outs.length) return 'No prior debate turns yet.';
+    const chunks = outs.map((o, idx) => {
+      const round = o.debateRound ? ' round ' + o.debateRound : '';
+      return '[' + (idx + 1) + '] ' + (o.agentRole || 'agent') + round + ' — ' + (o.taskType || '') + '\n' + summarizeOutputForTranscript(o);
+    });
+    const joined = chunks.join('\n\n---\n\n');
+    const maxTotal = 9000;
+    if (joined.length <= maxTotal) return joined;
+    return joined.slice(0, 2500) + '\n\n...[middle of transcript truncated for prompt length]...\n\n' + joined.slice(-6500);
+  }
+
+  function baseBranchPromptContext(step, runPayload) {
+    const branch = runPayload?.selectedBranch || {};
+    const plan = runPayload?.executionPlan || {};
+    const memoryIds = Array.from(new Set([...(branch.memoryIdsUsed || []), ...(plan.memoryIdsToUse || [])].filter(Boolean)));
+    return [
+      'Branch title: ' + (branch.title || 'selected branch'),
+      'Branch type: ' + (branch.branchType || ''),
+      'Target sections: ' + ((branch.targetSections || plan.targetSections || []).join(', ') || 'none'),
+      'Rationale: ' + (branch.rationale || ''),
+      'Latex edit hint: ' + (branch.latexEditHint || ''),
+      'Memory ids to use: ' + (memoryIds.join(', ') || 'none'),
+      '',
+      'Paper summary:',
+      inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.'),
+      '',
+      'Review/report signal:',
+      inputValue('branchWorkflowReviewText', inputValue('branchWorkflowQuery', '')),
+      '',
+      'Relevant LaTeX excerpt:',
+      getActiveSource().slice(0, 12000)
+    ].join('\n');
+  }
+
+  function buildDebatePrompt(step, priorOutputs, runPayload) {
+    const role = String(step?.agentRole || 'agent');
+    const round = Number(step?.debateRound || 0);
+    const base = baseBranchPromptContext(step, runPayload);
+    const transcript = transcriptText(priorOutputs);
+    const totalRounds = debateRoundCount();
+    const previousInstruction = priorOutputs?.length
+      ? 'You MUST use the prior debate transcript below. Do not restart from scratch; respond to the strongest unresolved points, concessions, and proposed edits from previous turns.'
+      : 'This is the first substantive debate turn. Establish the strongest position for your role.';
+
+    if (/citation-reviewer|reviewer/.test(role) && !/critic|advocate/.test(role)) {
+      return [
+        'You are the citation/reviewer setup agent for a Latexai Devil\'s Advocate branch run.',
+        base,
+        '',
+        'Task: identify the concrete citation, related-work, novelty, assumption, or clarity weaknesses that the critic/advocate debate should focus on.',
+        'Return concise analysis and concrete search/BibTeX targets when relevant. Do not produce final edits unless they are clearly marked as candidate \\lai blocks.'
+      ].join('\n');
+    }
+
+    if (/critic/.test(role)) {
+      return [
+        'You are the CRITIC agent in a multi-round Latexai Devil\'s Advocate debate.',
+        'Debate round: ' + (round || 1) + ' of ' + totalRounds + '.',
+        base,
+        '',
+        'Prior debate transcript:',
+        transcript,
+        '',
+        previousInstruction,
+        round > 1
+          ? 'Round-' + round + ' critic task: attack the advocate\'s previous defense, identify what remains unproven or weak, sharpen failure modes, and point to specific places where the paper still needs visible \\lai edits. Avoid merely repeating round 1.'
+          : 'Round-1 critic task: make the strongest critique of this branch issue. Identify concrete weaknesses, missing assumptions/citations, or places where reviewers would object.',
+        'Return concise but actionable critique. Use bullet points. Do not write the final paper edit yet.'
+      ].join('\n');
+    }
+
+    if (/advocate|defender|for/.test(role)) {
+      return [
+        'You are the ADVOCATE / FOR-THE-PAPER agent in a multi-round Latexai Devil\'s Advocate debate.',
+        'Debate round: ' + (round || 1) + ' of ' + totalRounds + '.',
+        base,
+        '',
+        'Prior debate transcript:',
+        transcript,
+        '',
+        previousInstruction,
+        round > 1
+          ? 'Round-' + round + ' advocate task: respond directly to the latest critic points. Defend what is defensible, concede what should be fixed, and propose precise revisions that preserve the paper\'s strongest claims.'
+          : 'Round-1 advocate task: defend the current draft where reasonable, identify the best interpretation of its contribution, and propose minimal edits that address the critique without overstating claims.',
+        'Return a concise defense plus a list of concrete revision directions. Do not write the final paper edit yet.'
+      ].join('\n');
+    }
+
+    if (/synthesizer/.test(role)) {
+      return [
+        'You are the SYNTHESIZER agent after a multi-round Latexai Devil\'s Advocate debate.',
+        'Total completed debate rounds: ' + totalRounds + '.',
+        base,
+        '',
+        'Full prior debate transcript:',
+        transcript,
+        '',
+        'Task: synthesize the strongest critic and advocate points into a balanced improvement plan. Separate: (1) must-fix issues, (2) defensible claims, (3) edits to make now, (4) points needing human/citation verification.',
+        'Prepare the editor agent to produce visible \\lai edits. Do not invent citations; mark uncertain citations as search/BibTeX targets.'
+      ].join('\n');
+    }
+
+    if (/editor|final/.test(role)) {
+      return [
+        'You are the EDITOR agent. Produce the final actionable LaTeX edits after a multi-round Latexai Devil\'s Advocate debate.',
+        'Total completed debate rounds: ' + totalRounds + '.',
+        base,
+        '',
+        'Full prior debate transcript:',
+        transcript,
+        '',
+        'Task: produce visible LaTeX edit blocks using \\lai{...}. Use \\laiold{...} only when you are explicitly replacing existing text. For pure additions, use only \\lai{...}.',
+        'Do not put final edits after \\end{document}. Do not invent citations; use placeholder/search-target notes for unverified references. Avoid unescaped author-list ampersands; write \\& in text.'
+      ].join('\n');
+    }
+
+    return [step?.promptSeed || ('Execute branch step for ' + role), '', 'Prior debate transcript:', transcript].join('\n');
+  }
+
+  function findTemplateStep(steps, roleRegex, fallbackRole) {
+    const found = (Array.isArray(steps) ? steps : []).find((s) => roleRegex.test(String(s.agentRole || '')));
+    return found || { agentRole: fallbackRole, taskType: 'execute ' + fallbackRole + ' debate step', expectedOutput: 'analysis' };
+  }
+
+  function buildConfigurableDebateSteps(runPayload) {
+    const planSteps = runPayload?.executionPlan?.steps || [];
+    const rounds = debateRoundCount();
+    const out = [];
+    const branchType = runPayload?.selectedBranch?.branchType || 'branch';
+    const targetSections = runPayload?.executionPlan?.targetSections || runPayload?.selectedBranch?.targetSections || [];
+    const reviewer = planSteps.find((s) => /reviewer|citation-reviewer|theory-checker|detail-reviewer/i.test(String(s.agentRole || '')) && !/critic|advocate|synthesizer|editor/i.test(String(s.agentRole || '')));
+    if (reviewer) {
+      out.push({ ...reviewer, stepIndex: out.length + 1, debatePhase: 'setup', debateRound: 0, taskType: reviewer.taskType || ('setup review for ' + branchType), targetSections });
+    }
+    const criticT = findTemplateStep(planSteps, /critic/i, 'critic');
+    const advocateT = findTemplateStep(planSteps, /advocate|defender|for/i, 'advocate');
+    for (let r = 1; r <= rounds; r += 1) {
+      out.push({ ...criticT, agentRole: 'critic', stepIndex: out.length + 1, debatePhase: 'critic', debateRound: r, taskType: 'critic round ' + r + ': attack and sharpen ' + branchType, targetSections, expectedOutput: 'analysis' });
+      out.push({ ...advocateT, agentRole: 'advocate', stepIndex: out.length + 1, debatePhase: 'advocate', debateRound: r, taskType: 'advocate round ' + r + ': defend and refine ' + branchType, targetSections, expectedOutput: 'analysis' });
+    }
+    const synthT = findTemplateStep(planSteps, /synthesizer/i, 'synthesizer');
+    const editorT = findTemplateStep(planSteps, /editor|final/i, 'editor');
+    out.push({ ...synthT, agentRole: 'synthesizer', stepIndex: out.length + 1, debatePhase: 'synthesize', debateRound: rounds, taskType: 'synthesize ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'analysis' });
+    out.push({ ...editorT, agentRole: 'editor', stepIndex: out.length + 1, debatePhase: 'editor', debateRound: rounds, taskType: 'produce visible \\lai edits after ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'visible-lai-edits-and-implementation-plan' });
+    return out;
+  }
+
   async function callAiForStep(step, priorOutputs, runPayload) {
     const mode = inputValue('branchWorkflowRunMode', 'dry_run_no_model_calls');
     const dry = mode !== 'call_ai_proxy_expensive';
     const role = step.agentRole || 'agent';
-    const prompt = step.promptSeed || ('Execute branch step for ' + role);
+    const prompt = buildDebatePrompt(step, priorOutputs, runPayload);
     if (dry) {
       const isFinal = /editor|final|synth/i.test(role) && priorOutputs.length > 0;
       return {
         stepIndex: step.stepIndex,
         agentRole: role,
         taskType: step.taskType,
+        debateRound: step.debateRound || 0,
+        debatePhase: step.debatePhase || '',
         provider: 'dry-run',
         model: 'dry-run',
         promptSeed: prompt,
         dryRun: true,
         latencyMs: 0,
-        outputText: isFinal ? '[DRY RUN] Final visible edit draft for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\n\\lai{Add the selected branch improvement here after reviewing real agent outputs.}' : '[DRY RUN] ' + role + ' would analyze this branch and pass concise findings to the next agent.'
+        outputText: isFinal ? '[DRY RUN] Final visible edit draft after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\n\\lai{Add the selected branch improvement here after reviewing real agent outputs.}' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
       };
     }
 
@@ -463,6 +631,8 @@
       stepIndex: step.stepIndex,
       agentRole: role,
       taskType: step.taskType,
+      debateRound: step.debateRound || 0,
+      debatePhase: step.debatePhase || '',
       provider,
       model,
       promptSeed: prompt,
@@ -490,7 +660,7 @@
     const blocks = Array.isArray(data?.insertableLaiBlocks) ? data.insertableLaiBlocks : (Array.isArray(data?.visibleLaiBlocks) ? data.visibleLaiBlocks : []);
     renderSummary('Real-agent branch result',
       '<div class="settings-note"><strong>Run:</strong> ' + esc(data?.runId || '') + ' · dryRun=' + esc(data?.dryRun) + ' · outputs=' + esc(outputs.length) + '</div>' +
-      '<details open><summary>Agent outputs</summary><ol>' + outputs.map((o) => '<li><strong>' + esc(o.agentRole) + '</strong> (' + esc(o.provider) + '/' + esc(o.model) + ')<br><span class="small">' + esc(String(o.outputText || '').slice(0, 800)) + '</span></li>').join('') + '</ol></details>' +
+      '<details open><summary>Agent outputs</summary><ol>' + outputs.map((o) => '<li><strong>' + esc(o.agentRole) + (o.debateRound ? ' r' + esc(o.debateRound) : '') + '</strong> (' + esc(o.provider) + '/' + esc(o.model) + ')<br><span class="small">' + esc(String(o.outputText || '').slice(0, 800)) + '</span></li>').join('') + '</ol></details>' +
       (blocks.length ? '<details open><summary>Visible \\lai candidates</summary><pre>' + esc(blocks.join('\n\n')) + '</pre></details>' : '') +
       '<details><summary>Final output</summary><pre>' + esc(finalText) + '</pre></details>'
     );
@@ -503,10 +673,10 @@
       runPayload = selectedRealPayload();
     }
     if (!runPayload?.executionPlan?.steps?.length) throw new Error('No selected execution plan available.');
-    const steps = runPayload.executionPlan.steps;
+    const steps = buildConfigurableDebateSteps(runPayload);
     const mode = inputValue('branchWorkflowRunMode', 'dry_run_no_model_calls');
     const dry = mode !== 'call_ai_proxy_expensive';
-    if (!dry && !W.confirm('This will call the configured AI proxy for ' + steps.length + ' agent steps. Continue?')) return null;
+    if (!dry && !W.confirm('This will call the configured AI proxy for ' + steps.length + ' agent steps (' + debateRoundCount() + ' debate round(s) plus synthesis/editor). Continue?')) return null;
     const outputs = [];
     for (const step of steps) {
       status((dry ? 'Dry-running' : 'Calling AI for') + ' step ' + (step.stepIndex || outputs.length + 1) + '/' + steps.length + ': ' + (step.agentRole || 'agent'), 'warn');
@@ -519,15 +689,15 @@
       recordTrajectory: true,
       provider: inputValue('branchWorkflowProvider', $('aiProvider')?.value || 'openai'),
       model: inputValue('branchWorkflowModel', $('aiModel')?.value || 'gpt-4.1-mini'),
-      realAgentRunPayload: runPayload,
-      executionPlan: runPayload.executionPlan,
+      realAgentRunPayload: { ...runPayload, executionPlan: { ...(runPayload.executionPlan || {}), steps, debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' }, debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' },
+      executionPlan: { ...(runPayload.executionPlan || {}), steps, debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' },
       selectedBranch: runPayload.selectedBranch,
       latexSource: getActiveSource(),
       reviewText: inputValue('branchWorkflowReviewText', ''),
       paperSummary: inputValue('branchWorkflowPaperSummary', ''),
       query: inputValue('branchWorkflowQuery', ''),
       agentOutputs: outputs,
-      metadata: { frontendStage: STAGE, activePath: activePath() }
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' }
     };
     const data = await backendPost('/debate/run-real-agent-branch', body);
     lastRealRunData = data;
@@ -570,7 +740,7 @@
       realAgentRunResult: lastRealRunData || null,
       cleanerResult: lastCleanerData || null,
       cleanedLaiBlocks: lastCleanerData?.insertableLaiBlocks || lastCleanerData?.validVisibleLaiBlocks || lastRealRunData?.insertableLaiBlocks || lastRealRunData?.visibleLaiBlocks || [],
-      metadata: { frontendStage: STAGE, activePath: activePath() }
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' }
     };
   }
 
@@ -715,14 +885,18 @@
     card.id = 'realAgentBranchCard';
     card.className = 'devils-debate-card real-agent-branch-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N0</div><h2>Devil’s Advocate branch runner</h2></div></div>',
-      '<p class="devils-help">Run the verified branch planning → real-agent → clean LAI → insertion preview → reward feedback workflow using the active editor source.</p>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1</div><h2>Devil’s Advocate branch runner</h2></div></div>',
+      '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → synthesize/edit → clean LAI → insertion preview → reward feedback using the active editor source.</p>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
       '<label class="field">Paper summary <textarea id="branchWorkflowPaperSummary" rows="2" placeholder="Optional short paper summary"></textarea></label>',
       '<div class="field-grid two">',
       '<label class="field">Run mode <select id="branchWorkflowRunMode"><option value="dry_run_no_model_calls" selected>dry_run_no_model_calls</option><option value="call_ai_proxy_expensive">call_ai_proxy_expensive</option></select></label>',
       '<label class="field">Insertion mode <select id="branchWorkflowInsertMode"><option value="targeted" selected>targeted section insertion</option><option value="append">append at end</option></select></label>',
+      '</div>',
+      '<div class="field-grid two">',
+      '<label class="field">Debate rounds <input id="branchWorkflowDebateRounds" type="number" min="1" max="5" step="1" value="1" /></label>',
+      '<div class="settings-note compact">Each round runs <strong>critic → advocate</strong>. Round 2+ prompts include the prior debate transcript, reviewer setup, and all earlier critic/advocate outputs.</div>',
       '</div>',
       '<div class="field-grid two">',
       '<label class="field">Provider <input id="branchWorkflowProvider" type="text" value="openai" /></label>',
@@ -744,7 +918,7 @@
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N0e ready. Append drafts are moved before \end{document} so they compile.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1 ready. Configure debate rounds; round 2+ agents receive the prior debate transcript.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -782,7 +956,9 @@
     getLastRealRun: () => lastRealRunData,
     getLastCleaner: () => lastCleanerData,
     getLastInsertion: () => lastInsertionData,
-    getLastOutcome: () => lastOutcomeData
+    getLastOutcome: () => lastOutcomeData,
+    buildConfigurableDebateSteps,
+    buildDebatePrompt
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
