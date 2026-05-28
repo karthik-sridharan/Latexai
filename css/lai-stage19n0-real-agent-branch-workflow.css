@@ -1,0 +1,12 @@
+/* Latexai Stage 19N0 main-editor real-agent branch workflow */
+.real-agent-branch-card { margin-top: 1rem; border: 1px solid rgba(124, 155, 255, 0.28); }
+.real-agent-branch-card.is-busy { opacity: 0.82; }
+.real-agent-branch-card .field textarea { min-height: 4.5rem; }
+.branch-workflow-status.good { border-color: rgba(52, 211, 153, .42); color: #86efac; }
+.branch-workflow-status.warn { border-color: rgba(251, 191, 36, .42); color: #fde68a; }
+.branch-workflow-status.bad { border-color: rgba(248, 113, 113, .42); color: #fecaca; }
+.branch-workflow-output { max-height: 34rem; overflow: auto; white-space: normal; }
+.branch-workflow-output pre { white-space: pre-wrap; overflow: auto; }
+.branch-workflow-summary-title { font-weight: 800; margin-bottom: .45rem; color: #dbeafe; }
+.branch-workflow-list { margin: .5rem 0 .8rem 1.2rem; color: #cbd5e1; }
+.branch-workflow-list li { margin: .15rem 0; }
