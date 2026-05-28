@@ -1,6 +1,13 @@
 Section coverage mode: selected branch target only.
 Requested target sections/units: {{requestedTargets}}.
-If no edit is needed for a requested target, say so inside a visible \lai{...} block.
-For every requested target section/unit, the final editor step must provide at least one section-labeled coverage block.
+For every requested target section/unit, the final editor step must provide at least one patch-style coverage block.
 
-Deduplication rule: if multiple agents propose the same edit, the final editor should keep one best version only. Earlier debate agents should not output final \lai blocks.
+If no edit is needed, use exactly:
+\lai{%
+% Target section: <exact section title>
+\emph{No edits recommended.}
+}
+
+If an edit is needed, do NOT output advice text like "Insert after" or "Replace the paragraph with". Output actual LaTeX-ready inserted text or a true \laiold{old}\lai{new} replacement pair. Put the target label as a LaTeX comment inside the block.
+
+Deduplication rule: if multiple agents propose the same edit, the final editor should keep one best version only and should not output shorter paraphrases of the same recommendation. Earlier debate agents should not output final \lai or \laiold blocks.

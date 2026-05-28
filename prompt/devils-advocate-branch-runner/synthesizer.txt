@@ -14,5 +14,6 @@ Separate the plan by requested target section/unit wherever possible:
 4. points needing human/citation verification.
 
 Deduplicate aggressively: if multiple agents made the same point, list it once.
-Prepare the editor agent to produce final visible \lai edits, but do not output final \lai blocks yourself.
+Prepare the editor agent to produce final visible \lai edits, but do not output final \lai blocks yourself. Do not use literal final \lai syntax in your answer.
 Do not invent citations; mark uncertain citations as search/BibTeX targets.
+Important: Do not output literal final \lai{...} or \laiold{...} blocks. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final patch blocks.

@@ -3,13 +3,32 @@ Requested target sections/units: {{requestedTargets}}.
 Whole-paper targeting active: {{wholePaperActive}}.
 
 Coverage rule for the final editor step:
-- For EVERY requested target section/unit, output AT LEAST ONE visible \lai{...} coverage block.
-- If edits are needed for a target, output one or more substantively distinct separate \lai{...} blocks for that target; do not repeat near-identical recommendations.
+- For EVERY requested target section/unit, output AT LEAST ONE visible coverage/edit block.
+- If edits are needed for a target, output one or more substantively distinct PATCH-STYLE blocks for that target; normally no more than two non-overlapping blocks per target.
 - If no edits are needed for a target, output exactly one no-edit block for that target; do not also output edits for that target.
-- A no-edit block must have this form: \lai{\paragraph{Target section: <exact section title>} No edits recommended.}
-- An edit block must have this form: \lai{\paragraph{Target section: <exact section title>} <concrete proposed edit, replacement, insertion, or revision plan>.}
-- Do NOT restrict all edits to the Introduction unless the target list only contains Introduction.
-- Do NOT put target labels outside \lai{...}; the cleaner keeps only visible \lai blocks.
 - Use the exact target section/unit names listed above so the insertion step can distribute blocks correctly.
 
-Deduplication rule: repeated citation-gap, related-work, assumption, or positioning edits should be consolidated by the final editor. Earlier debate agents should discuss candidates, but only the final editor should output final \lai blocks.
+Patch-style block requirements:
+- DO NOT output review/advice prose such as "Add a paragraph...", "Insert after...", "Replace the current paragraph with...", or "Consider citing..." inside \lai.
+- Instead, output the actual LaTeX-ready text to insert, or a true replacement pair using \laiold{old text}\lai{new text}.
+- Put the target label as a LaTeX comment inside the block, not as visible paper text.
+
+Insertion block format:
+\lai{%
+% Target section: <exact section title>
+<actual LaTeX-ready text to insert in the paper>
+}
+
+Replacement block format:
+\laiold{<short exact old text being replaced>}\lai{%
+% Target section: <exact section title>
+<actual LaTeX-ready replacement text>
+}
+
+No-edit block format:
+\lai{%
+% Target section: <exact section title>
+\emph{No edits recommended.}
+}
+
+Deduplication rule: repeated citation-gap, related-work, assumption, novelty, limitation, or positioning edits should be consolidated by the final editor into one best patch per target whenever possible. Earlier debate agents should discuss candidates, but only the final editor should output final \lai or \laiold blocks.

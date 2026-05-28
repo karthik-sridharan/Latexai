@@ -15,3 +15,4 @@ Round-specific advocate task:
 
 Return a concise defense plus a list of concrete revision directions for each requested target section/unit.
 Do not write the final paper edit yet.
+Important: Do not output literal final \lai{...} or \laiold{...} blocks. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final patch blocks.

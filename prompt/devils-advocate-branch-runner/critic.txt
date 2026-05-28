@@ -18,3 +18,4 @@ Return concise but actionable critique.
 Use bullet points.
 Cover each requested target section/unit; do not collapse the critique into only the Introduction unless that is the only requested target.
 Do not write the final paper edit yet.
+Important: Do not output literal final \lai{...} or \laiold{...} blocks. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final patch blocks.
