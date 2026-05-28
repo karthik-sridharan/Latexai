@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1G RealAgentBranchWorkflowService
- * Stage: stage19n1f-structure-clean-target-dedupe-20260528-1
+/* Latexai Stage 19N1I RealAgentBranchWorkflowService
+ * Stage: stage19n1h-equation-coverage-edits-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1g-clean-previous-ai-patch-style-edits-20260528-1';
+  const STAGE = 'stage19n1i-temporary-agent-prompt-debug-tab-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -22,6 +22,9 @@
   let mounted = false;
   const PROMPT_TEMPLATE_ROOT = 'prompt/devils-advocate-branch-runner/';
   const promptTemplateCache = {};
+  let promptDebugWindow = null;
+  let promptDebugRunId = '';
+  let promptDebugEventCount = 0;
 
 
   function $(id) { return D.getElementById(id); }
@@ -29,6 +32,137 @@
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
   function getStored(key, fallback = '') { try { return W.localStorage?.getItem?.(key) || fallback; } catch (_err) { return fallback; } }
   function setStored(key, value) { try { W.localStorage?.setItem?.(key, String(value ?? '')); } catch (_err) {} }
+
+  function promptDebugEnabled() {
+    try {
+      const params = new URLSearchParams(W.location.search || '');
+      return ['laiPromptDebug', 'debugDebatePrompts', 'promptDebug', 'showAgentPrompts'].some((k) => {
+        const v = String(params.get(k) || '').toLowerCase();
+        return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+      });
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function promptDebugEsc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function promptDebugDownloadName() {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return 'latexai-debate-agent-prompts-' + stamp + '.txt';
+  }
+
+  function promptDebugInitialHtml() {
+    return `<!doctype html><html><head><meta charset="utf-8" />
+<title>Latexai debate agent prompt debug</title>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#0b1020;color:#e7ecff;}
+header{position:sticky;top:0;z-index:2;background:#111936;border-bottom:1px solid #33406f;padding:12px 16px;}
+h1{font-size:17px;margin:0 0 4px;} .sub{font-size:12px;color:#aeb8e8;line-height:1.35;}
+button{margin:8px 8px 0 0;border:1px solid #6574b8;background:#18224a;color:#fff;border-radius:8px;padding:7px 10px;font-size:12px;}
+#log{padding:14px 16px 60px;}
+.event{border:1px solid #344274;background:#121936;border-radius:12px;margin:0 0 16px;padding:12px;box-shadow:0 4px 18px rgba(0,0,0,.18);}
+.event h2{font-size:15px;margin:0 0 6px;color:#fff;}
+.meta{font-size:12px;color:#b8c2f5;margin:0 0 10px;white-space:pre-wrap;}
+details{margin:8px 0;} summary{cursor:pointer;color:#d8defd;font-weight:600;}
+pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;border:1px solid #26335f;border-radius:8px;padding:10px;max-height:none;overflow:auto;font-size:12px;line-height:1.38;}
+.warn{color:#ffd78a}.good{color:#9ff7bd}.muted{color:#9ba8d7}
+</style></head><body>
+<header><h1>Latexai debate agent prompt debug</h1>
+<div class="sub">Temporary debug mode. This tab shows the exact <code>payload.prompt</code> built by the frontend for each Devil's Advocate agent call, plus the AIProvider payload fields. It is enabled only when the main app URL includes <code>?laiPromptDebug=1</code> or <code>&amp;laiPromptDebug=1</code>.</div>
+<button onclick="navigator.clipboard&&navigator.clipboard.writeText(Array.from(document.querySelectorAll('.prompt-pre')).map((p,i)=>'===== PROMPT '+(i+1)+' =====\\n'+p.textContent).join('\\n\\n'))">Copy all visible prompts</button>
+<button onclick="document.getElementById('log').innerHTML=''">Clear</button>
+<span id="status" class="sub"></span></header><main id="log"></main></body></html>`;
+  }
+
+  function ensurePromptDebugWindow(reason) {
+    if (!promptDebugEnabled()) return null;
+    try {
+      if (promptDebugWindow && !promptDebugWindow.closed) return promptDebugWindow;
+      promptDebugRunId = 'pdebug_' + Date.now().toString(36) + '_' + Math.random().toString(16).slice(2, 8);
+      promptDebugEventCount = 0;
+      promptDebugWindow = W.open('', 'latexai_debate_prompt_debug_' + promptDebugRunId);
+      if (!promptDebugWindow) {
+        status('Prompt debug mode is enabled, but the browser blocked the prompt debug tab. Allow pop-ups for this site or open from a direct click.', 'warn');
+        return null;
+      }
+      promptDebugWindow.document.open();
+      promptDebugWindow.document.write(promptDebugInitialHtml());
+      promptDebugWindow.document.close();
+      try { promptDebugWindow.document.getElementById('status').textContent = 'Run id: ' + promptDebugRunId + (reason ? ' · ' + reason : ''); } catch (_err) {}
+      return promptDebugWindow;
+    } catch (err) {
+      console.warn('[Latexai] prompt debug window failed', err);
+      return null;
+    }
+  }
+
+  function promptDebugPayloadText(payload, options) {
+    const p = payload || {};
+    const safe = {
+      provider: p.provider,
+      model: p.model,
+      latexSourceMode: p.latexSourceMode,
+      fullLatexSourceVisibleInPrompt: p.fullLatexSourceVisibleInPrompt,
+      reviewText: p.reviewText,
+      paperSummary: p.paperSummary,
+      branchTitle: p.branch?.title,
+      branchType: p.branch?.branchType,
+      selectedTargets: p.branch?.targetSections || p.executionPlan?.targetSections,
+      priorOutputCount: Array.isArray(p.priorOutputs) ? p.priorOutputs.length : 0,
+      latexSourceChars: typeof p.latexSource === 'string' ? p.latexSource.length : 0,
+      payloadContainsFullLatexSource: !!p.latexSource,
+      note: 'The model definitely receives payload.prompt. Other payload fields are visible to the model only if AIProvider/proxy includes them in model messages.'
+    };
+    let text = JSON.stringify(safe, null, 2);
+    if (options?.includeLatexSource && typeof p.latexSource === 'string' && p.latexSource) {
+      text += '\n\n===== payload.latexSource =====\n' + p.latexSource;
+    }
+    return text;
+  }
+
+  function publishPromptDebugEvent(kind, step, prompt, payload, extra) {
+    if (!promptDebugEnabled()) return;
+    const win = ensurePromptDebugWindow('capturing prompts');
+    const event = {
+      runId: promptDebugRunId,
+      eventIndex: ++promptDebugEventCount,
+      kind,
+      createdAt: new Date().toISOString(),
+      stepIndex: step?.stepIndex,
+      agentRole: step?.agentRole,
+      debateRound: step?.debateRound || 0,
+      debatePhase: step?.debatePhase || '',
+      taskType: step?.taskType || '',
+      prompt: String(prompt || ''),
+      payloadSummary: promptDebugPayloadText(payload, { includeLatexSource: true }),
+      extra: extra || null
+    };
+    try {
+      const prev = JSON.parse(W.localStorage?.getItem?.('latexai:debatePromptDebugEvents') || '[]');
+      prev.push(event);
+      W.localStorage?.setItem?.('latexai:debatePromptDebugEvents', JSON.stringify(prev.slice(-100)));
+    } catch (_err) {}
+    if (!win || win.closed) return;
+    try {
+      const log = win.document.getElementById('log');
+      const roleLine = (event.agentRole || 'agent') + (event.debateRound ? ' round ' + event.debateRound : '') + ' · step ' + (event.stepIndex || event.eventIndex);
+      const html = '<section class="event">' +
+        '<h2>' + promptDebugEsc(event.kind + ': ' + roleLine) + '</h2>' +
+        '<div class="meta">' + promptDebugEsc(event.createdAt + '\nTask: ' + event.taskType + (extra?.status ? '\nStatus: ' + extra.status : '')) + '</div>' +
+        '<details open><summary>Visible prompt sent as payload.prompt (' + promptDebugEsc(String(event.prompt.length)) + ' chars)</summary><pre class="prompt-pre">' + promptDebugEsc(event.prompt) + '</pre></details>' +
+        '<details><summary>AIProvider payload summary and latexSource payload</summary><pre>' + promptDebugEsc(event.payloadSummary) + '</pre></details>' +
+        (extra ? '<details><summary>Extra event data</summary><pre>' + promptDebugEsc(JSON.stringify(extra, null, 2)) + '</pre></details>' : '') +
+        '</section>';
+      log.insertAdjacentHTML('beforeend', html);
+      win.document.getElementById('status').textContent = 'Captured ' + promptDebugEventCount + ' event(s). Latest: ' + roleLine;
+      win.scrollTo(0, win.document.body.scrollHeight);
+    } catch (err) {
+      console.warn('[Latexai] prompt debug append failed', err);
+    }
+  }
 
 
   async function loadPromptTemplate(name) {
@@ -177,7 +311,7 @@
   }
 
   function removeLooseTargetSectionSuggestionText(text) {
-    // Stage 19N1G: earlier experiments could leave plain text advice such as
+    // Stage 19N1H: earlier experiments could leave plain text advice such as
     // "Target section: X Add ..." outside \lai blocks. These are AI suggestion
     // artifacts, not paper structure. Remove them only in cleanup/prompt context.
     const lines = String(text || '').split('\n');
@@ -534,7 +668,7 @@
   }
 
   function topLevelSections(source) {
-    // Historical name retained for insertion and outline helpers. In Stage 19N1G it
+    // Historical name retained for insertion and outline helpers. In Stage 19N1H it
     // intentionally returns all parsed targetable units, not only \section headings.
     const units = documentTargetUnits(source);
     if (units.length) return units;
@@ -559,11 +693,27 @@
     return inputValue('branchWorkflowPayloadSourceMode', 'include_full_source') || 'include_full_source';
   }
 
+  function equationCoverageMode() {
+    return inputValue('branchWorkflowEquationCoverageMode', 'auto') || 'auto';
+  }
+
+  function equationCoverageActive() {
+    const mode = equationCoverageMode();
+    if (mode === 'on') return true;
+    if (mode === 'off') return false;
+    const signal = [
+      inputValue('branchWorkflowQuery', ''),
+      inputValue('branchWorkflowReviewText', ''),
+      inputValue('branchWorkflowPaperSummary', '')
+    ].join(' ');
+    return /\b(?:math|mathematical|equation|equations|derivation|derive|proof\s+step|explain\s+all\s+math|every\s+equation|below\s+it)\b/i.test(signal);
+  }
+
   function payloadLatexSourceForAI() {
     const mode = payloadSourceMode();
     const src = stripLatexaiVisibleEditBlocks(getActiveSource());
     if (mode === 'omit_full_source') return '';
-    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '... [payload latexSource truncated by Latexai Stage 19N1G] ...');
+    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '... [payload latexSource truncated by Latexai Stage 19N1H] ...');
     return src;
   }
 
@@ -670,6 +820,103 @@
     return truncateMiddle(chunks.join('\n'), budget + 700, '% ... [section excerpt truncated by Latexai] ...');
   }
 
+
+  function sectionTitleAtOffset(units, offset) {
+    const pos = Number(offset) || 0;
+    let best = null;
+    (units || []).forEach((u) => {
+      if (pos >= u.start && pos < u.end) {
+        if (!best || u.start >= best.start) best = u;
+      }
+    });
+    return best?.title || '';
+  }
+
+  function rangesOverlap(a, b) {
+    return a && b && a.start < b.end && b.start < a.end;
+  }
+
+  function extractDisplayEquationTargets(source, options) {
+    const s = String(source || '');
+    const opts = options || {};
+    const units = topLevelSections(s);
+    const ignoreRanges = ignoredStructureRanges(s);
+    const candidates = [];
+    const addPattern = (kind, re) => {
+      let m = null;
+      re.lastIndex = 0;
+      while ((m = re.exec(s))) {
+        const start = m.index;
+        const end = m.index + m[0].length;
+        if (ignoreRanges.some((r) => rangesOverlap({ start, end }, r))) continue;
+        if (candidates.some((c) => rangesOverlap({ start, end }, c))) continue;
+        const raw = m[0];
+        const body = raw.length > 2200 ? truncateMiddle(raw, 2200, '% ... [equation truncated for prompt] ...') : raw;
+        const before = s.slice(Math.max(0, start - 260), start).replace(/\s+/g, ' ').trim();
+        const after = s.slice(end, Math.min(s.length, end + 260)).replace(/\s+/g, ' ').trim();
+        candidates.push({ kind, start, end, raw, body, before, after, section: sectionTitleAtOffset(units, start) || 'Document' });
+      }
+    };
+    addPattern('environment', /\\begin\s*\{(equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|eqnarray\*?)\}[\s\S]*?\\end\s*\{\1\}/g);
+    addPattern('bracket-display', /\\\[[\s\S]*?\\\]/g);
+    addPattern('dollar-display', /\$\$[\s\S]*?\$\$/g);
+    candidates.sort((a, b) => a.start - b.start);
+    const maxCount = Math.max(1, Math.min(Number(opts.maxCount) || 80, 150));
+    return candidates.slice(0, maxCount).map((c, idx) => ({
+      ...c,
+      id: 'eq_' + String(idx + 1).padStart(3, '0'),
+      label: 'eq_' + String(idx + 1).padStart(3, '0') + ' · ' + c.section
+    }));
+  }
+
+  function selectedEquationTargets(runPayload) {
+    const source = sourceForAgentVisiblePrompt();
+    const all = extractDisplayEquationTargets(source, { maxCount: 120 });
+    if (!all.length) return [];
+    const scope = targetSelectorMode();
+    const targets = desiredTargetSections(runPayload).map((t) => titleKeyForMatch(t)).filter(Boolean);
+    if (scope === 'whole' || !targets.length) return all;
+    const filtered = all.filter((eq) => {
+      const secKey = titleKeyForMatch(eq.section || '');
+      return targets.some((t) => secKey === t || secKey.includes(t) || t.includes(secKey));
+    });
+    return filtered.length ? filtered : all;
+  }
+
+  function buildEquationCoverageContext(runPayload) {
+    if (!equationCoverageActive()) return '';
+    const eqs = selectedEquationTargets(runPayload);
+    if (!eqs.length) {
+      return 'MATH EQUATION COVERAGE MODE ACTIVE. No display equations were detected in the selected visible source. If the user asked for equation explanations, say that no display equations were found and do not substitute citation/related-work edits.';
+    }
+    const maxVisible = Math.min(eqs.length, 80);
+    const items = eqs.slice(0, maxVisible).map((eq) => {
+      return [
+        'Equation id: ' + eq.id,
+        'Containing section/unit: ' + eq.section,
+        'Preceding context: ' + (eq.before || '(none)'),
+        'Equation source:',
+        eq.body,
+        'Following context: ' + (eq.after || '(none)')
+      ].join('\n');
+    }).join('\n\n---\n\n');
+    const omitted = eqs.length > maxVisible ? '\n\nNote: ' + (eqs.length - maxVisible) + ' additional equation(s) were omitted from the visible prompt by the safety budget.' : '';
+    return [
+      'MATH EQUATION COVERAGE MODE ACTIVE.',
+      'The user specifically asked for mathematical equation / derivation explanations.',
+      'The final editor must provide an explanatory edit below EACH listed equation id, not citation-only or introduction-only edits.',
+      'Use this exact block form for each equation explanation:',
+      '\\lai{%',
+      '% Target equation id: <equation id>',
+      '% Target section: <containing section/unit>',
+      '<short LaTeX-ready explanatory text that should appear immediately below the equation>',
+      '}',
+      'Do not output "No edits recommended" for a listed equation unless the user explicitly asked to skip obvious equations. For this task, every listed equation should get an explanation.',
+      'Detected display equations visible to the model:',
+      items + omitted
+    ].join('\n');
+  }
+
   function buildSectionAwareExcerpt(runPayload) {
     const source = sourceForAgentVisiblePrompt();
     const units = topLevelSections(source);
@@ -682,12 +929,12 @@
     contextParts.push('Visible context mode: ' + mode + '.');
 
     if (mode === 'whole_truncated_selected_focus') {
-      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, '% ... [whole paper middle truncated by Latexai Stage 19N1G] ...'));
+      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, '% ... [whole paper middle truncated by Latexai Stage 19N1H] ...'));
     } else if (mode === 'full_source_if_safe') {
       if (source.length <= 65000) {
         contextParts.push('===== FULL PAPER CONTEXT (VISIBLE TO MODEL) =====\n' + source);
       } else {
-        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, '% ... [full paper truncated by Latexai Stage 19N1G for prompt length] ...'));
+        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, '% ... [full paper truncated by Latexai Stage 19N1H for prompt length] ...'));
       }
     } else if (mode === 'selected_excerpts_only') {
       // No full outline beyond the compact outline above; selected excerpts follow below.
@@ -737,7 +984,18 @@
           data.realAgentRunPayload.executionPlan.steps = steps.map((st) => ({ ...st, targetSections: targets }));
         }
       }
-      data.sectionCoverageOverride = { scope, targetSections: targets, frontendStage: STAGE };
+      if (equationCoverageActive()) {
+        const eqTargets = selectedEquationTargets(data?.realAgentRunPayload || data || {});
+        const mathTitle = 'Explain mathematical equations and derivation steps';
+        const mathHint = 'For every detected display equation in the requested scope, produce a short LaTeX-ready \\lai explanation immediately below that equation.';
+        data.selectedBranch = { ...(data.selectedBranch || {}), title: mathTitle, branchType: 'math_equation_exposition', latexEditHint: mathHint, targetSections: targets };
+        data.executionPlan = { ...(data.executionPlan || {}), title: mathTitle, selectedBranchType: 'math_equation_exposition', targetSections: targets, latexEditTargets: eqTargets.map((eq) => ({ equationId: eq.id, section: eq.section, mode: 'insert-below-equation' })) };
+        if (data.realAgentRunPayload) {
+          data.realAgentRunPayload.selectedBranch = { ...(data.realAgentRunPayload.selectedBranch || data.selectedBranch || {}), title: mathTitle, branchType: 'math_equation_exposition', latexEditHint: mathHint, targetSections: targets };
+          data.realAgentRunPayload.executionPlan = { ...(data.realAgentRunPayload.executionPlan || data.executionPlan || {}), title: mathTitle, selectedBranchType: 'math_equation_exposition', targetSections: targets, latexEditTargets: eqTargets.map((eq) => ({ equationId: eq.id, section: eq.section, mode: 'insert-below-equation' })) };
+        }
+      }
+      data.sectionCoverageOverride = { scope, targetSections: targets, equationCoverageActive: equationCoverageActive(), frontendStage: STAGE };
     } catch (_err) {}
     return data;
   }
@@ -748,8 +1006,9 @@
     const sectionScope = targetSelectorMode();
     const queryBase = inputValue('branchWorkflowQuery', 'novelty theorem assumptions citation coverage clarity limitations');
     const coverageNote = sectionScope === 'branch' ? '' : ('\n\nSection coverage request: evaluate and propose edits across these sections, not only the Introduction: ' + sectionTargets.join(', '));
-    const query = queryBase + (sectionScope === 'branch' ? '' : ' multi-section section-aware whole-paper revision');
-    const reviewText = inputValue('branchWorkflowReviewText', queryBase) + coverageNote;
+    const equationNote = equationCoverageActive() ? '\n\nEquation coverage request: explain every detected display equation in the requested scope and produce a visible \lai edit immediately below each equation. Do not substitute citation/related-work edits for this task.' : '';
+    const query = queryBase + (sectionScope === 'branch' ? '' : ' multi-section section-aware whole-paper revision') + (equationCoverageActive() ? ' equation explanation derivation below each equation' : '');
+    const reviewText = inputValue('branchWorkflowReviewText', queryBase) + coverageNote + equationNote;
     const paperSummary = inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.');
     return {
       workflow: 'latex-paper-debate',
@@ -881,6 +1140,8 @@
       latexEditHint: branch.latexEditHint || '',
       memoryIds: memoryIds.join(', ') || 'none',
       sectionCoverageInstruction: await sectionCoverageInstruction(runPayload),
+      equationCoverageContext: buildEquationCoverageContext(runPayload),
+      equationCoverageActive: equationCoverageActive() ? 'true' : 'false',
       paperSummary: inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.'),
       reviewText: inputValue('branchWorkflowReviewText', inputValue('branchWorkflowQuery', '')),
       visibleContext: buildSectionAwareExcerpt(runPayload),
@@ -953,9 +1214,31 @@
     const dry = mode !== 'call_ai_proxy_expensive';
     const role = step.agentRole || 'agent';
     const prompt = await buildDebatePrompt(step, priorOutputs, runPayload);
+    const provider = dry ? 'dry-run' : inputValue('branchWorkflowProvider', $('aiProvider')?.value || 'openai');
+    const model = dry ? 'dry-run' : inputValue('branchWorkflowModel', $('aiModel')?.value || 'gpt-4.1-mini');
+    const aiPayload = {
+      prompt,
+      provider,
+      model,
+      branch: runPayload?.selectedBranch,
+      executionPlan: runPayload?.executionPlan,
+      priorOutputs,
+      latexSource: payloadLatexSourceForAI(),
+      latexSourceMode: payloadSourceMode(),
+      fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
+      reviewText: inputValue('branchWorkflowReviewText', ''),
+      paperSummary: inputValue('branchWorkflowPaperSummary', '')
+    };
+    publishPromptDebugEvent(dry ? 'dry-run prompt built' : 'calling AI with prompt', step, prompt, aiPayload, {
+      status: dry ? 'dry-run-no-model-call' : 'before-ai-call',
+      visiblePromptChars: prompt.length,
+      payloadLatexSourceChars: typeof aiPayload.latexSource === 'string' ? aiPayload.latexSource.length : 0,
+      runMode: mode
+    });
+
     if (dry) {
       const isFinal = /editor|final|synth/i.test(role) && priorOutputs.length > 0;
-      return {
+      const dryOutput = {
         stepIndex: step.stepIndex,
         agentRole: role,
         taskType: step.taskType,
@@ -968,29 +1251,23 @@
         latencyMs: 0,
         outputText: isFinal ? '[DRY RUN] Final visible edit draft after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\n\\lai{Add the selected branch improvement here after reviewing real agent outputs.}' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
       };
+      publishPromptDebugEvent('dry-run output generated', step, prompt, aiPayload, { status: 'dry-run-output-generated', outputText: dryOutput.outputText });
+      return dryOutput;
     }
 
     if (!NS.AIProvider?.ask) throw new Error('AIProvider is not loaded.');
-    const provider = inputValue('branchWorkflowProvider', $('aiProvider')?.value || 'openai');
-    const model = inputValue('branchWorkflowModel', $('aiModel')?.value || 'gpt-4.1-mini');
     const start = Date.now();
-    const raw = await NS.AIProvider.ask({
-      prompt,
-      provider,
-      model,
-      branch: runPayload?.selectedBranch,
-      executionPlan: runPayload?.executionPlan,
-      priorOutputs,
-      latexSource: payloadLatexSourceForAI(),
-      latexSourceMode: payloadSourceMode(),
-      fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
-      reviewText: inputValue('branchWorkflowReviewText', ''),
-      paperSummary: inputValue('branchWorkflowPaperSummary', '')
-    }, {
+    const raw = await NS.AIProvider.ask(aiPayload, {
       task: 'latex-paper-debate-real-agent-branch-run',
       provider,
       model,
       context: { workflow: 'latex-paper-debate-real-agent-run', agentRole: role, stage: STAGE }
+    });
+    const text = NS.AIProvider.extractText ? NS.AIProvider.extractText(raw) : extractAiText(raw);
+    publishPromptDebugEvent('AI response received', step, prompt, aiPayload, {
+      status: 'after-ai-call',
+      latencyMs: Date.now() - start,
+      outputTextPreview: String(text || '').slice(0, 4000)
     });
     return {
       stepIndex: step.stepIndex,
@@ -1003,7 +1280,7 @@
       promptSeed: prompt,
       dryRun: false,
       latencyMs: Date.now() - start,
-      outputText: NS.AIProvider.extractText ? NS.AIProvider.extractText(raw) : extractAiText(raw),
+      outputText: text,
       rawResponse: raw
     };
   }
@@ -1041,6 +1318,20 @@
     }
     if (!runPayload?.executionPlan?.steps?.length) throw new Error('No selected execution plan available.');
     const steps = buildConfigurableDebateSteps(runPayload);
+    if (promptDebugEnabled()) {
+      ensurePromptDebugWindow('debate run starting');
+      publishPromptDebugEvent('debate run starting', { stepIndex: 0, agentRole: 'workflow', taskType: 'runSelectedBranch' }, 'Debate run starting. Prompts will appear below as each agent step is built and called.', {
+        prompt: 'Debate run starting.',
+        provider: inputValue('branchWorkflowProvider', $('aiProvider')?.value || 'openai'),
+        model: inputValue('branchWorkflowModel', $('aiModel')?.value || 'gpt-4.1-mini'),
+        latexSource: payloadLatexSourceForAI(),
+        latexSourceMode: payloadSourceMode(),
+        fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
+        branch: runPayload?.selectedBranch,
+        executionPlan: runPayload?.executionPlan,
+        priorOutputs: []
+      }, { status: 'start', stepCount: steps.length, debugUrlArg: 'laiPromptDebug=1' });
+    }
     const mode = inputValue('branchWorkflowRunMode', 'dry_run_no_model_calls');
     const dry = mode !== 'call_ai_proxy_expensive';
     if (!dry && !W.confirm('This will call the configured AI proxy for ' + steps.length + ' agent steps (' + debateRoundCount() + ' debate round(s) plus synthesis/editor). Continue?')) return null;
@@ -1218,8 +1509,9 @@
       const block = String(raw || '').trim();
       if (!block || !/\\lai\s*\{/.test(block)) return;
       const fallback = targets && targets.length ? targets[Math.min(idx, targets.length - 1)] : '';
-      const target = inferTargetFromLaiBlock(block, fallback, targets) || fallback || 'untargeted';
-      const targetKey = normalizeSectionTitle(target).toLowerCase() || 'untargeted';
+      const eqId = inferEquationTargetIdFromLaiBlock(block);
+      const target = eqId ? ('Equation ' + eqId) : (inferTargetFromLaiBlock(block, fallback, targets) || fallback || 'untargeted');
+      const targetKey = eqId ? ('equation::' + eqId) : (normalizeSectionTitle(target).toLowerCase() || 'untargeted');
       const bodyKey = canonicalizeLaiBlock(block);
       if (!bodyKey) return;
       const key = targetKey + '::' + bodyKey.slice(0, 900);
@@ -1253,7 +1545,7 @@
     const addParsed = (text) => parseLatexMacroBlocks(text, 'lai').map((b) => b.raw).filter(Boolean);
     let blocks = [];
 
-    // Stage 19N1G: insert only the final editor's curated answer by default.
+    // Stage 19N1H: insert only the final editor's curated answer by default.
     // Earlier critic/advocate/synthesizer outputs often contain candidate edits that the
     // final editor later repeats or rejects; using all outputs caused duplicated red text.
     blocks = addParsed(finalEditorOutputText());
@@ -1307,6 +1599,21 @@
     return c;
   }
 
+  function inferEquationTargetIdFromLaiBlock(block) {
+    const s = String(block || '');
+    const m = s.match(/%\s*Target\s+equation\s*(?:id)?\s*:\s*(eq[_-]?\d+)/i) || s.match(/Target\s+equation\s*(?:id)?\s*:\s*(eq[_-]?\d+)/i);
+    return m && m[1] ? m[1].replace(/-/g, '_').toLowerCase() : '';
+  }
+
+  function equationTargetById(equations, id) {
+    const key = String(id || '').replace(/-/g, '_').toLowerCase();
+    return (equations || []).find((eq) => String(eq.id || '').toLowerCase() === key) || null;
+  }
+
+  function isEquationExplanationBlock(block) {
+    return !!inferEquationTargetIdFromLaiBlock(block);
+  }
+
   function inferTargetFromLaiBlock(block, fallback, knownTargets) {
     const s = String(block || '');
     const pats = [
@@ -1354,21 +1661,39 @@
   function buildTargetedDraftFromBlocks(source, blocks, targets) {
     const s = String(source || '');
     const sections = topLevelSections(s);
+    const equations = extractDisplayEquationTargets(s, { maxCount: 160 });
     const safeBlocks = (blocks || []).map((b) => String(b || '').trim()).filter(Boolean);
-    if (!safeBlocks.length || !sections.length) return buildAppendDraftFromBlocks(s, safeBlocks, targets);
-    const groups = new Map();
+    if (!safeBlocks.length) return s;
+    const sectionGroups = new Map();
+    const insertions = [];
+
     safeBlocks.forEach((block, idx) => {
+      const eqId = inferEquationTargetIdFromLaiBlock(block);
+      if (eqId) {
+        const eq = equationTargetById(equations, eqId);
+        const label = eq ? (eq.id + ' in ' + eq.section) : eqId;
+        const blockText = [
+          '',
+          '% --- Latexai equation explanation suggestion for: ' + label + ' ---',
+          block,
+          '% --- end Latexai equation explanation suggestion ---',
+          ''
+        ].join('\n');
+        if (eq) insertions.push({ index: eq.end, text: blockText, target: label });
+        else insertions.push({ index: findLastEndDocument(s)?.index ?? s.length, text: blockText, target: label });
+        return;
+      }
+
       const fallback = targets && targets.length ? targets[Math.min(idx, targets.length - 1)] : '';
       let target = inferTargetFromLaiBlock(block, fallback, targets);
-      if (!target) target = firstExistingSectionTitle(targets, s) || sections[0].title;
+      if (!target) target = firstExistingSectionTitle(targets, s) || sections[0]?.title || '';
       const hit = sections.find((sec) => sectionMatches(sec, target));
       const key = hit ? hit.title : target;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(block);
+      if (!sectionGroups.has(key)) sectionGroups.set(key, []);
+      sectionGroups.get(key).push(block);
     });
-    let out = s;
-    const insertions = [];
-    groups.forEach((bs, target) => {
+
+    sectionGroups.forEach((bs, target) => {
       const sec = sections.find((x) => sectionMatches(x, target));
       const blockText = [
         '',
@@ -1378,8 +1703,11 @@
         ''
       ].join('\n');
       if (sec) insertions.push({ index: sec.headerEnd, text: blockText, target });
-      else insertions.push({ index: findLastEndDocument(out)?.index ?? out.length, text: blockText, target });
+      else insertions.push({ index: findLastEndDocument(s)?.index ?? s.length, text: blockText, target });
     });
+
+    if (!insertions.length) return buildAppendDraftFromBlocks(s, safeBlocks, targets);
+    let out = s;
     insertions.sort((a, b) => b.index - a.index).forEach((ins) => { out = out.slice(0, ins.index) + ins.text + out.slice(ins.index); });
     return out;
   }
@@ -1393,7 +1721,7 @@
     if (!blocks.length) return data;
     const targeted = normalizeLaiDraftForCompilation(buildTargetedDraftFromBlocks(source, blocks, targets), 'targeted');
     const append = normalizeLaiDraftForCompilation(buildAppendDraftFromBlocks(source, blocks, targets), 'append');
-    const blockTargets = blocks.map((b, i) => inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '', targets)).filter(Boolean);
+    const blockTargets = blocks.map((b, i) => inferEquationTargetIdFromLaiBlock(b) || inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '', targets)).filter(Boolean);
     return {
       ...(data || {}),
       targetedInsertionDraft: targeted,
@@ -1405,7 +1733,7 @@
       multiSectionFrontendInsertion: true,
       warnings: [
         ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
-        'Stage 19N1G inserted only final-editor \\lai blocks by default, removed duplicate repeated blocks, and dropped contradictory no-edit markers when edits exist for the same target.',
+        'Stage 19N1H inserted only final-editor \\lai blocks by default, removed duplicate repeated blocks, and dropped contradictory no-edit markers when edits exist for the same target.',
         ...(lastInsertionDedupeNotes.length ? ['Deduplication skipped: ' + lastInsertionDedupeNotes.slice(0, 8).join('; ') + (lastInsertionDedupeNotes.length > 8 ? '; ...' : '')] : [])
       ]
     };
@@ -1599,9 +1927,10 @@
     card.id = 'realAgentBranchCard';
     card.className = 'devils-debate-card real-agent-branch-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1G</div><h2>Devil’s Advocate branch runner</h2></div></div>',
-      '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → user-selected/whole-paper/salient targets → context-controlled prompts → clean LAI → insertion preview → reward feedback using the active editor source.</p>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1I</div><h2>Devil’s Advocate branch runner</h2></div></div>',
+      '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → user-selected/whole-paper/salient targets → optional equation-by-equation edits → context-controlled prompts → clean LAI → insertion preview → reward feedback. Add ?laiPromptDebug=1 to index.html to open a live prompt-debug tab showing each agent prompt.</p>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
+      '<label class="field">Math/equation coverage <select id="branchWorkflowEquationCoverageMode"><option value="auto" selected>auto-detect from focus/query</option><option value="on">force equation-by-equation edits</option><option value="off">off</option></select></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
       '<label class="field">Paper summary <textarea id="branchWorkflowPaperSummary" rows="2" placeholder="Optional short paper summary"></textarea></label>',
       '<div class="field-grid two">',
@@ -1642,13 +1971,17 @@
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1G ready. Use Clean previous AI suggestions before rerunning. Final editor output is patch-style, final-editor-only, and advisory/repeated section edits are filtered before insertion.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1I ready. Temporary prompt debug is enabled only with ?laiPromptDebug=1. Use Clean previous AI suggestions before rerunning. Equation focus can force an explanatory \lai block below each detected display equation.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
     if (before && before.parentNode === host) host.insertBefore(card, before);
     else host.appendChild(card);
     mounted = true;
+    if (promptDebugEnabled()) {
+      const st = $('branchWorkflowStatus');
+      if (st) st.textContent = 'Stage 19N1I prompt debug mode is ON. When you click Run selected branch or Run full preview, a new prompt-debug tab will open and show each agent prompt as it is called.';
+    }
     bindButton('branchWorkflowPlanBtn', planBranch);
     bindButton('branchWorkflowRunBtn', runSelectedBranch);
     bindButton('branchWorkflowFullBtn', runFullPreview);
