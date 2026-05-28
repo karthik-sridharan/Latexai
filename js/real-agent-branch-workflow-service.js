@@ -1379,7 +1379,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   }
 
   async function cleanLastRealRun() {
-    if (!lastRealRunData) throw new Error('No real-agent result yet.');
+    if (!lastRealRunData) {
+      throw new Error('No real-agent result yet. Click Run selected branch or Run full preview first. If prompt debug is enabled, the debug tab can open before any backend-recorded agent result exists; cleaner/preview needs a completed run result.');
+    }
     status('Cleaning and validating real-agent \\lai output...', 'warn');
     const data = await backendPost('/debate/clean-real-agent-output', lastRealRunData);
     lastCleanerData = data;
@@ -1845,9 +1847,19 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     try {
       maybeWarnRepeatedHeadings('Pre-run warning');
       await planBranch();
-      await runSelectedBranch();
+      const runResult = await runSelectedBranch();
+      if (!runResult || !lastRealRunData) {
+        const msg = 'Prompt/debug run did not produce a backend-recorded real-agent result, so LAI cleaning and insertion preview were skipped. This usually means the real-AI confirmation was canceled, the backend recording call did not complete, or you only wanted to inspect prompts. Use dry_run_no_model_calls for a no-cost recorded dry result, or run selected branch again and allow the run to finish.';
+        status(msg, promptDebugEnabled() ? 'warn' : 'bad');
+        if (promptDebugEnabled()) {
+          publishPromptDebugEvent('run stopped before cleaner', { stepIndex: 0, agentRole: 'workflow', taskType: 'runFullPreview' }, msg, { prompt: msg, provider: 'frontend', model: 'debug', latexSource: payloadLatexSourceForAI(), latexSourceMode: payloadSourceMode(), priorOutputs: [] }, { status: 'no-real-agent-result-cleaner-skipped' });
+          return null;
+        }
+        throw new Error('No real-agent result was recorded.');
+      }
       await cleanLastRealRun();
       await prepareInsertion();
+      return lastInsertionData || lastCleanerData || lastRealRunData;
     } catch (err) {
       status('Branch workflow failed: ' + (err?.message || err), 'bad');
       throw err;
@@ -1971,7 +1983,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1I ready. Temporary prompt debug is enabled only with ?laiPromptDebug=1. Use Clean previous AI suggestions before rerunning. Equation focus can force an explanatory \lai block below each detected display equation.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1I2 ready. Temporary prompt debug is enabled only with ?laiPromptDebug=1. Use Clean previous AI suggestions before rerunning. Equation focus can force an explanatory \lai block below each detected display equation.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
