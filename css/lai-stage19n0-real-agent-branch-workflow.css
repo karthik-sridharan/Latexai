@@ -1,4 +1,4 @@
-/* Latexai Stage 19N0b main-editor real-agent branch workflow scroll/preview fix */
+/* Latexai Stage 19N0eb main-editor real-agent branch workflow scroll/preview fix */
 .real-agent-branch-card { margin-top: 1rem; border: 1px solid rgba(124, 155, 255, 0.28); }
 .real-agent-branch-card.is-busy { opacity: 0.82; }
 .real-agent-branch-card .field textarea { min-height: 4.5rem; }
@@ -12,7 +12,7 @@
 .branch-workflow-list li { margin: .15rem 0; }
 
 
-/* Stage 19N0b: right-panel scroll and always-visible insertion preview fix.
+/* Stage 19N0eb: right-panel scroll and always-visible insertion preview fix.
    On iPad/Safari the Copilot tab and the dynamically injected branch runner could
    become clipped by parent flex/overflow rules. Make both the active Copilot tab
    and this card explicit touch scrollports, and dock the insertion preview above
@@ -122,4 +122,64 @@
   .branch-workflow-output {
     max-height: 34dvh;
   }
+}
+
+/* Stage 19N0ed: visual red/blue LAI preview inside the main-editor branch runner. */
+.lai-color-preview-note {
+  border: 1px solid rgba(245, 158, 11, .22);
+  background: rgba(255, 251, 235, .72);
+  color: #78350f;
+  border-radius: 12px;
+  padding: .55rem .65rem;
+  margin: .45rem 0 .65rem;
+  font-size: .88rem;
+  line-height: 1.35;
+}
+
+.lai-color-preview-list {
+  display: grid;
+  gap: .55rem;
+}
+
+.lai-color-preview-block {
+  border: 1px solid rgba(15, 23, 42, .12);
+  border-radius: 12px;
+  background: rgba(255,255,255,.80);
+  padding: .55rem;
+}
+
+.lai-color-preview-block.new {
+  border-color: rgba(220, 38, 38, .26);
+  background: rgba(254, 242, 242, .82);
+}
+
+.lai-color-preview-block.old {
+  border-color: rgba(37, 99, 235, .26);
+  background: rgba(239, 246, 255, .86);
+}
+
+.lai-color-preview-label {
+  font-weight: 900;
+  margin-bottom: .35rem;
+}
+
+.lai-color-preview-block.new .lai-color-preview-label,
+.lai-color-preview-block.new pre {
+  color: #dc2626 !important;
+}
+
+.lai-color-preview-block.old .lai-color-preview-label,
+.lai-color-preview-block.old pre {
+  color: #2563eb !important;
+}
+
+.lai-color-preview-block pre {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  max-height: 18dvh;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.45 var(--mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 }
