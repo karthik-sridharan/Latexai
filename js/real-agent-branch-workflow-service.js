@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1C RealAgentBranchWorkflowService
- * Stage: stage19n1c-enforced-multi-section-debate-edits-20260528-1
+/* Latexai Stage 19N1D-rev2 RealAgentBranchWorkflowService
+ * Stage: stage19n1d-rev2-user-target-context-prompt-files-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1c-enforced-multi-section-debate-edits-20260528-1';
+  const STAGE = 'stage19n1d-rev2-user-target-context-prompt-files-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -19,12 +19,37 @@
   let lastInsertionData = null;
   let lastOutcomeData = null;
   let mounted = false;
+  const PROMPT_TEMPLATE_ROOT = 'prompt/devils-advocate-branch-runner/';
+  const promptTemplateCache = {};
+
 
   function $(id) { return D.getElementById(id); }
   function clean(v) { return String(v == null ? '' : v).trim(); }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
   function getStored(key, fallback = '') { try { return W.localStorage?.getItem?.(key) || fallback; } catch (_err) { return fallback; } }
   function setStored(key, value) { try { W.localStorage?.setItem?.(key, String(value ?? '')); } catch (_err) {} }
+
+
+  async function loadPromptTemplate(name) {
+    const safeName = String(name || '').replace(/[^a-z0-9_.-]/gi, '');
+    if (!safeName) throw new Error('Missing prompt template name.');
+    if (promptTemplateCache[safeName]) return promptTemplateCache[safeName];
+    const url = PROMPT_TEMPLATE_ROOT + safeName + '.txt?v=' + encodeURIComponent(STAGE);
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Could not load prompt template: ' + url + ' (' + res.status + ')');
+    const text = await res.text();
+    promptTemplateCache[safeName] = text;
+    return text;
+  }
+
+  function fillPromptTemplate(template, values) {
+    const bag = values || {};
+    return String(template || '').replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_m, key) => {
+      const value = bag[key];
+      if (Array.isArray(value)) return value.join(', ');
+      return value == null ? '' : String(value);
+    }).trim();
+  }
 
   function toast(message) {
     try { NS.Main?.toast?.(message); } catch (_err) {}
@@ -333,14 +358,23 @@
     return clean(String(title || '').replace(/\\[A-Za-z]+\s*/g, '').replace(/[{}]/g, ' ').replace(/\s+/g, ' '));
   }
 
+  const LATEX_STRUCTURE_LEVELS = ['part', 'chapter', 'section', 'subsection', 'subsubsection', 'paragraph', 'subparagraph'];
+  function structureLevelRank(level) {
+    const idx = LATEX_STRUCTURE_LEVELS.indexOf(String(level || '').toLowerCase());
+    return idx >= 0 ? idx : LATEX_STRUCTURE_LEVELS.length;
+  }
+
   function extractLatexSections(source) {
     const s = String(source || '');
-    const re = /\\(section|subsection|subsubsection)\*?\s*\{([^{}]{1,160})\}/g;
+    // Stage 19N1D: parse the document hierarchy broadly so the user can target
+    // chapters, sections, subsections, subsubsections, and smaller paragraph-level units.
+    const re = /\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{([^{}]{1,180})\}/g;
     const found = [];
     let m = null;
     while ((m = re.exec(s))) {
       found.push({
         level: m[1],
+        levelRank: structureLevelRank(m[1]),
         title: normalizeSectionTitle(m[2]),
         rawTitle: m[2],
         command: m[0],
@@ -352,15 +386,14 @@
       const cur = found[i];
       let end = s.length;
       for (let j = i + 1; j < found.length; j += 1) {
-        // Top-level sections end at the next top-level section. Subsections end at the next
-        // subsection or section. This is only for prompt excerpts; it never edits the source.
-        if (cur.level === 'section' && found[j].level === 'section') { end = found[j].start; break; }
-        if (cur.level === 'subsection' && /section|subsection/.test(found[j].level)) { end = found[j].start; break; }
-        if (cur.level === 'subsubsection') { end = found[j].start; break; }
+        // A structural unit ends at the next unit with the same or higher hierarchy.
+        // Example: a subsection ends at the next subsection or section/chapter.
+        if (found[j].levelRank <= cur.levelRank) { end = found[j].start; break; }
       }
       cur.end = end;
       cur.body = s.slice(cur.start, end);
       cur.key = cur.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      cur.displayTitle = cur.level + ': ' + cur.title;
     }
     return found.filter((x) => x.title);
   }
@@ -369,46 +402,116 @@
     return String(value || '').split(/[,;\n]+/).map((x) => normalizeSectionTitle(x)).filter(Boolean);
   }
 
+  function documentTargetUnits(source) {
+    return extractLatexSections(source);
+  }
+
   function topLevelSections(source) {
-    const sections = extractLatexSections(source).filter((s) => s.level === 'section');
-    return sections.length ? sections : extractLatexSections(source);
+    // Historical name retained for insertion and outline helpers. In Stage 19N1D it
+    // intentionally returns all parsed targetable units, not only \section headings.
+    const units = documentTargetUnits(source);
+    if (units.length) return units;
+    return [];
+  }
+
+  function selectedTargetPickerSections() {
+    const node = $('branchWorkflowTargetPicker');
+    if (!node) return [];
+    return Array.from(node.selectedOptions || []).map((opt) => normalizeSectionTitle(opt.value || opt.textContent || '')).filter(Boolean);
+  }
+
+  function targetSelectorMode() {
+    return inputValue('branchWorkflowSectionScope', 'salient') || 'salient';
+  }
+
+  function visibleContextMode() {
+    return inputValue('branchWorkflowVisibleContextMode', 'outline_selected_excerpts') || 'outline_selected_excerpts';
+  }
+
+  function payloadSourceMode() {
+    return inputValue('branchWorkflowPayloadSourceMode', 'include_full_source') || 'include_full_source';
+  }
+
+  function payloadLatexSourceForAI() {
+    const mode = payloadSourceMode();
+    const src = getActiveSource();
+    if (mode === 'omit_full_source') return '';
+    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '... [payload latexSource truncated by Latexai Stage 19N1D] ...');
+    return src;
+  }
+
+  function truncateMiddle(text, maxLen, markerText) {
+    const s = String(text || '');
+    const n = Number(maxLen) || 0;
+    if (!n || s.length <= n) return s;
+    const marker = '\n' + (markerText || '... [truncated] ...') + '\n';
+    const keep = Math.max(1000, n - marker.length);
+    const front = Math.floor(keep * 0.55);
+    const back = keep - front;
+    return s.slice(0, front) + marker + s.slice(-back);
+  }
+
+  function latexStructureLabel(unit) {
+    if (!unit) return '';
+    return (unit.level || 'section') + ': ' + unit.title;
+  }
+
+  function unitByTitle(units, title) {
+    return (units || []).find((sec) => sectionMatches(sec, title));
   }
 
   function desiredTargetSections(runPayload) {
     const explicit = splitTargetSections(inputValue('branchWorkflowTargetSection', ''));
-    if (explicit.length) return explicit.slice(0, 12);
-    const scope = inputValue('branchWorkflowSectionScope', 'branch');
+    if (explicit.length) return explicit.slice(0, 60);
+    const scope = targetSelectorMode();
     const source = getActiveSource();
-    const sections = topLevelSections(source);
-    if (scope === 'whole') return sections.map((s) => s.title).slice(0, 12);
-    if (scope === 'first6') return sections.map((s) => s.title).slice(0, 6);
+    const units = topLevelSections(source);
+    if (scope === 'selected') {
+      const selected = selectedTargetPickerSections();
+      if (selected.length) return selected.slice(0, 60);
+      return [];
+    }
+    if (scope === 'whole') return units.map((s) => s.title).slice(0, 120);
+    if (scope === 'first6') return units.map((s) => s.title).slice(0, 6);
     if (scope === 'salient') {
-      const preferred = [/intro/i, /contribution/i, /related/i, /prelim/i, /main|result|theorem/i, /algorithm|method/i, /experiment|evaluation/i, /conclusion|discussion/i];
+      const preferred = [
+        /abstract|intro|motivation/i,
+        /contribution/i,
+        /related|literature/i,
+        /prelim|notation|background/i,
+        /setup|problem|goal|assumption/i,
+        /main|result|theorem|lemma|proposition/i,
+        /proof|analysis|geometric|orthogonality|variance/i,
+        /algorithm|method|sampler|estimator/i,
+        /experiment|evaluation|application/i,
+        /limitation|future|conclusion|discussion/i
+      ];
       const chosen = [];
       preferred.forEach((pat) => {
-        const hit = sections.find((sec) => pat.test(sec.title) && !chosen.includes(sec.title));
+        const hit = units.find((sec) => pat.test(sec.title) && !chosen.includes(sec.title));
         if (hit) chosen.push(hit.title);
       });
-      sections.forEach((sec) => { if (chosen.length < 6 && !chosen.includes(sec.title)) chosen.push(sec.title); });
-      return chosen.slice(0, 8);
+      units.forEach((sec) => { if (chosen.length < 8 && !chosen.includes(sec.title)) chosen.push(sec.title); });
+      return chosen.slice(0, 12);
     }
     const branchTargets = runPayload?.executionPlan?.targetSections || runPayload?.selectedBranch?.targetSections || [];
     return Array.isArray(branchTargets) ? branchTargets.map(normalizeSectionTitle).filter(Boolean) : [];
   }
 
-  function sectionCoverageInstruction(runPayload) {
-    const scope = inputValue('branchWorkflowSectionScope', 'branch');
+  async function sectionCoverageInstruction(runPayload) {
+    const scope = targetSelectorMode();
     const targets = desiredTargetSections(runPayload);
-    if (scope === 'branch' && !splitTargetSections(inputValue('branchWorkflowTargetSection', '')).length) {
-      return 'Section coverage mode: selected branch target only. Requested target sections: ' + (targets.join(', ') || 'none') + '.';
-    }
-    return [
-      'Section coverage mode: ' + scope + '.',
-      'Requested target sections: ' + (targets.join(', ') || 'none') + '.',
-      'Do NOT restrict all edits to the Introduction unless the target list only contains Introduction.',
-      'For every requested target section, either propose a concrete visible \\lai edit or explicitly say that no edit is needed for that section.',
-      'Prefer section-labeled edits, e.g. \\paragraph{Target section: <section>} followed by \\lai{...}.'
-    ].join('\n');
+    const modeName = scope === 'selected' ? 'user-selected document units' : scope;
+    const explicitOverride = splitTargetSections(inputValue('branchWorkflowTargetSection', '')).length;
+    const templateName = (scope === 'branch' && !explicitOverride) ? 'coverage-branch' : 'coverage-multisection';
+    const tpl = await loadPromptTemplate(templateName);
+    return fillPromptTemplate(tpl, {
+      modeName,
+      scope,
+      requestedTargets: targets.join(', ') || 'none',
+      targetCount: targets.length,
+      wholePaperActive: scope === 'whole' ? 'true' : 'false'
+    });
   }
 
   function sectionMatches(sec, title) {
@@ -417,29 +520,78 @@
     return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
   }
 
+  function excerptForUnit(sec, perSectionBudget) {
+    const body = String(sec?.body || '').trim();
+    if (!body) return '';
+    const budget = Math.max(700, Number(perSectionBudget) || 1600);
+    if (body.length <= budget) return body;
+    const chunks = [];
+    const first = Math.floor(budget * 0.45);
+    const last = Math.floor(budget * 0.20);
+    chunks.push(body.slice(0, first));
+    const importantRe = /(\\begin\s*\{(?:theorem|lemma|proposition|corollary|proof|assumption|definition|algorithm|equation|align)\}|\\\[|\\\(|\b(theorem|lemma|proof|assumption|definition|variance|orthogonality|influence function|efficient|GMM|limitation|future work)\b)/ig;
+    let m = null;
+    const seen = new Set();
+    while ((m = importantRe.exec(body)) && chunks.join('\n').length < budget - last - 200) {
+      const pos = Math.max(0, m.index - 300);
+      const key = Math.floor(pos / 400);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      chunks.push('\n% ... [important excerpt from this section] ...\n' + body.slice(pos, Math.min(body.length, pos + 900)));
+    }
+    chunks.push('\n% ... [section ending excerpt] ...\n' + body.slice(-last));
+    return truncateMiddle(chunks.join('\n'), budget + 700, '% ... [section excerpt truncated by Latexai] ...');
+  }
+
   function buildSectionAwareExcerpt(runPayload) {
     const source = getActiveSource();
-    const sections = topLevelSections(source);
+    const units = topLevelSections(source);
     const targets = desiredTargetSections(runPayload);
-    if (!sections.length || !targets.length) return source.slice(0, 12000);
-    const outline = sections.map((s, i) => String(i + 1) + '. ' + s.title).join('\n');
+    const outline = units.length ? units.map((s, i) => String(i + 1) + '. ' + latexStructureLabel(s)).join('\n') : '(no LaTeX structural headings detected)';
+    const mode = visibleContextMode();
+    const contextParts = [];
+
+    contextParts.push('Document section/chapter/subsection outline:\n' + outline);
+    contextParts.push('Visible context mode: ' + mode + '.');
+
+    if (mode === 'whole_truncated_selected_focus') {
+      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, '% ... [whole paper middle truncated by Latexai Stage 19N1D] ...'));
+    } else if (mode === 'full_source_if_safe') {
+      if (source.length <= 65000) {
+        contextParts.push('===== FULL PAPER CONTEXT (VISIBLE TO MODEL) =====\n' + source);
+      } else {
+        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, '% ... [full paper truncated by Latexai Stage 19N1D for prompt length] ...'));
+      }
+    } else if (mode === 'selected_excerpts_only') {
+      // No full outline beyond the compact outline above; selected excerpts follow below.
+    }
+
+    if (!units.length || !targets.length) {
+      if (mode === 'selected_excerpts_only' || mode === 'outline_selected_excerpts') {
+        contextParts.push('===== FALLBACK SOURCE EXCERPT =====\n' + source.slice(0, 16000));
+      }
+      return contextParts.join('\n\n');
+    }
+
     const chosen = [];
     targets.forEach((t) => {
-      const hit = sections.find((sec) => sectionMatches(sec, t));
+      const hit = unitByTitle(units, t);
       if (hit && !chosen.includes(hit)) chosen.push(hit);
     });
-    if (!chosen.length) return source.slice(0, 12000);
-    const perSectionBudget = Math.max(900, Math.floor(15000 / Math.max(1, chosen.length)));
+    if (!chosen.length) {
+      contextParts.push('===== FALLBACK SOURCE EXCERPT =====\n' + source.slice(0, 16000));
+      return contextParts.join('\n\n');
+    }
+    const perSectionBudget = Math.max(900, Math.floor(18000 / Math.max(1, chosen.length)));
     const chunks = chosen.map((sec) => {
-      const body = String(sec.body || '').trim();
-      const excerpt = body.length > perSectionBudget ? body.slice(0, perSectionBudget) + '\n% ... [section excerpt truncated by Latexai] ...' : body;
-      return '===== SECTION EXCERPT: ' + sec.title + ' =====\n' + excerpt;
+      return '===== TARGET EXCERPT: ' + latexStructureLabel(sec) + ' =====\n' + excerptForUnit(sec, perSectionBudget);
     });
-    return 'Document section outline:\n' + outline + '\n\n' + chunks.join('\n\n');
+    contextParts.push('Requested target excerpts visible to model:\n' + chunks.join('\n\n'));
+    return contextParts.join('\n\n');
   }
 
   function applySectionScopeToSelection(data) {
-    const scope = inputValue('branchWorkflowSectionScope', 'branch');
+    const scope = targetSelectorMode();
     const explicit = splitTargetSections(inputValue('branchWorkflowTargetSection', ''));
     if (scope === 'branch' && !explicit.length) return data;
     const targets = desiredTargetSections(data?.realAgentRunPayload || data || {});
@@ -466,7 +618,7 @@
   function planPayload() {
     const latexSource = getActiveSource();
     const sectionTargets = desiredTargetSections(null);
-    const sectionScope = inputValue('branchWorkflowSectionScope', 'branch');
+    const sectionScope = targetSelectorMode();
     const queryBase = inputValue('branchWorkflowQuery', 'novelty theorem assumptions citation coverage clarity limitations');
     const coverageNote = sectionScope === 'branch' ? '' : ('\n\nSection coverage request: evaluate and propose edits across these sections, not only the Introduction: ' + sectionTargets.join(', '));
     const query = queryBase + (sectionScope === 'branch' ? '' : ' multi-section section-aware whole-paper revision');
@@ -493,7 +645,7 @@
       ucbBeta: Number(getStored('latexai:memory-bandit-ucb-beta', '0.20')),
       thompsonAlpha: Number(getStored('latexai:memory-bandit-thompson-alpha', '0.25')),
       softmaxTemperature: Number(getStored('latexai:memory-bandit-softmax-temperature', '0.25')),
-      metadata: { frontendStage: STAGE, activePath: activePath(), source: 'main-editor', sectionScope, requestedTargetSections: sectionTargets }
+      metadata: { frontendStage: STAGE, activePath: activePath(), source: 'main-editor', sectionScope, requestedTargetSections: sectionTargets, visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode() }
     };
   }
 
@@ -588,115 +740,57 @@
     return joined.slice(0, 2500) + '\n\n...[middle of transcript truncated for prompt length]...\n\n' + joined.slice(-6500);
   }
 
-  function baseBranchPromptContext(step, runPayload) {
+  async function baseBranchPromptContext(step, runPayload) {
     const branch = runPayload?.selectedBranch || {};
     const plan = runPayload?.executionPlan || {};
     const memoryIds = Array.from(new Set([...(branch.memoryIdsUsed || []), ...(plan.memoryIdsToUse || [])].filter(Boolean)));
     const targets = desiredTargetSections(runPayload);
-    return [
-      'Branch title: ' + (branch.title || 'selected branch'),
-      'Branch type: ' + (branch.branchType || ''),
-      'Target sections: ' + (targets.join(', ') || ((branch.targetSections || plan.targetSections || []).join(', ') || 'none')),
-      'Rationale: ' + (branch.rationale || ''),
-      'Latex edit hint: ' + (branch.latexEditHint || ''),
-      'Memory ids to use: ' + (memoryIds.join(', ') || 'none'),
-      '',
-      sectionCoverageInstruction(runPayload),
-      '',
-      'Paper summary:',
-      inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.'),
-      '',
-      'Review/report signal:',
-      inputValue('branchWorkflowReviewText', inputValue('branchWorkflowQuery', '')),
-      '',
-      'Relevant LaTeX excerpt:',
-      buildSectionAwareExcerpt(runPayload)
-    ].join('\n');
+    const tpl = await loadPromptTemplate('base-context');
+    return fillPromptTemplate(tpl, {
+      branchTitle: branch.title || 'selected branch',
+      branchType: branch.branchType || '',
+      targetSections: targets.join(', ') || ((branch.targetSections || plan.targetSections || []).join(', ') || 'none'),
+      rationale: branch.rationale || '',
+      latexEditHint: branch.latexEditHint || '',
+      memoryIds: memoryIds.join(', ') || 'none',
+      sectionCoverageInstruction: await sectionCoverageInstruction(runPayload),
+      paperSummary: inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.'),
+      reviewText: inputValue('branchWorkflowReviewText', inputValue('branchWorkflowQuery', '')),
+      visibleContext: buildSectionAwareExcerpt(runPayload),
+      stage: STAGE
+    });
   }
 
-  function buildDebatePrompt(step, priorOutputs, runPayload) {
+  async function buildDebatePrompt(step, priorOutputs, runPayload) {
     const role = String(step?.agentRole || 'agent');
     const round = Number(step?.debateRound || 0);
-    const base = baseBranchPromptContext(step, runPayload);
+    const baseContext = await baseBranchPromptContext(step, runPayload);
     const transcript = transcriptText(priorOutputs);
     const totalRounds = debateRoundCount();
     const previousInstruction = priorOutputs?.length
       ? 'You MUST use the prior debate transcript below. Do not restart from scratch; respond to the strongest unresolved points, concessions, and proposed edits from previous turns.'
       : 'This is the first substantive debate turn. Establish the strongest position for your role.';
 
-    if (/citation-reviewer|reviewer/.test(role) && !/critic|advocate/.test(role)) {
-      return [
-        'You are the citation/reviewer setup agent for a Latexai Devil\'s Advocate branch run.',
-        base,
-        '',
-        'Task: identify the concrete citation, related-work, novelty, assumption, or clarity weaknesses that the critic/advocate debate should focus on.',
-        'Return concise analysis and concrete search/BibTeX targets when relevant. Do not produce final edits unless they are clearly marked as candidate \\lai blocks.'
-      ].join('\n');
-    }
+    let templateName = 'default-step';
+    if (/citation-reviewer|reviewer/.test(role) && !/critic|advocate/.test(role)) templateName = 'citation-reviewer';
+    else if (/critic/.test(role)) templateName = 'critic';
+    else if (/advocate|defender|for/.test(role)) templateName = 'advocate';
+    else if (/synthesizer/.test(role)) templateName = 'synthesizer';
+    else if (/editor|final/.test(role)) templateName = 'editor';
 
-    if (/critic/.test(role)) {
-      return [
-        'You are the CRITIC agent in a multi-round Latexai Devil\'s Advocate debate.',
-        'Debate round: ' + (round || 1) + ' of ' + totalRounds + '.',
-        base,
-        '',
-        'Prior debate transcript:',
-        transcript,
-        '',
-        previousInstruction,
-        round > 1
-          ? 'Round-' + round + ' critic task: attack the advocate\'s previous defense, identify what remains unproven or weak, sharpen failure modes, and point to specific places where the paper still needs visible \\lai edits. Avoid merely repeating round 1.'
-          : 'Round-1 critic task: make the strongest critique of this branch issue. Identify concrete weaknesses, missing assumptions/citations, or places where reviewers would object.',
-        'Return concise but actionable critique. Use bullet points. Cover each requested target section; do not collapse the critique into only the Introduction unless that is the only requested target. Do not write the final paper edit yet.'
-      ].join('\n');
-    }
-
-    if (/advocate|defender|for/.test(role)) {
-      return [
-        'You are the ADVOCATE / FOR-THE-PAPER agent in a multi-round Latexai Devil\'s Advocate debate.',
-        'Debate round: ' + (round || 1) + ' of ' + totalRounds + '.',
-        base,
-        '',
-        'Prior debate transcript:',
-        transcript,
-        '',
-        previousInstruction,
-        round > 1
-          ? 'Round-' + round + ' advocate task: respond directly to the latest critic points. Defend what is defensible, concede what should be fixed, and propose precise revisions that preserve the paper\'s strongest claims.'
-          : 'Round-1 advocate task: defend the current draft where reasonable, identify the best interpretation of its contribution, and propose minimal edits that address the critique without overstating claims.',
-        'Return a concise defense plus a list of concrete revision directions for each requested target section. Do not write the final paper edit yet.'
-      ].join('\n');
-    }
-
-    if (/synthesizer/.test(role)) {
-      return [
-        'You are the SYNTHESIZER agent after a multi-round Latexai Devil\'s Advocate debate.',
-        'Total completed debate rounds: ' + totalRounds + '.',
-        base,
-        '',
-        'Full prior debate transcript:',
-        transcript,
-        '',
-        'Task: synthesize the strongest critic and advocate points into a balanced improvement plan. Separate by target section where possible: (1) must-fix issues, (2) defensible claims, (3) edits to make now, (4) points needing human/citation verification.',
-        'Prepare the editor agent to produce visible \\lai edits. Do not invent citations; mark uncertain citations as search/BibTeX targets.'
-      ].join('\n');
-    }
-
-    if (/editor|final/.test(role)) {
-      return [
-        'You are the EDITOR agent. Produce the final actionable LaTeX edits after a multi-round Latexai Devil\'s Advocate debate.',
-        'Total completed debate rounds: ' + totalRounds + '.',
-        base,
-        '',
-        'Full prior debate transcript:',
-        transcript,
-        '',
-        'Task: produce final visible LaTeX edits using ONLY section-labeled \\lai{...} blocks. For EACH requested target section, output either (a) one concrete \\lai{\\paragraph{Target section: <exact section title>} ...} block, or (b) one \\lai{\\paragraph{Target section: <exact section title>} No edit needed here because ...} block. Do not output all edits under Introduction. Do not put section labels outside \\lai because the cleaner keeps only \\lai blocks.',
-        'Output format: start with % LATEXAI_MULTI_SECTION_EDIT_BEGIN, then one or more balanced \\lai{...} blocks with internal \\paragraph{Target section: ...} labels, then % LATEXAI_MULTI_SECTION_EDIT_END. Do not invent citations; use placeholder/search-target notes for unverified references. Avoid unescaped author-list ampersands; write \\& in text.'
-      ].join('\n');
-    }
-
-    return [step?.promptSeed || ('Execute branch step for ' + role), '', 'Prior debate transcript:', transcript].join('\n');
+    const tpl = await loadPromptTemplate(templateName);
+    return fillPromptTemplate(tpl, {
+      baseContext,
+      transcript,
+      totalRounds,
+      round: round || 1,
+      role,
+      taskType: step?.taskType || '',
+      previousInstruction,
+      selectedBranchTitle: runPayload?.selectedBranch?.title || 'selected branch',
+      requestedTargets: desiredTargetSections(runPayload).join(', ') || 'none',
+      stage: STAGE
+    });
   }
 
   function findTemplateStep(steps, roleRegex, fallbackRole) {
@@ -731,7 +825,7 @@
     const mode = inputValue('branchWorkflowRunMode', 'dry_run_no_model_calls');
     const dry = mode !== 'call_ai_proxy_expensive';
     const role = step.agentRole || 'agent';
-    const prompt = buildDebatePrompt(step, priorOutputs, runPayload);
+    const prompt = await buildDebatePrompt(step, priorOutputs, runPayload);
     if (dry) {
       const isFinal = /editor|final|synth/i.test(role) && priorOutputs.length > 0;
       return {
@@ -760,7 +854,9 @@
       branch: runPayload?.selectedBranch,
       executionPlan: runPayload?.executionPlan,
       priorOutputs,
-      latexSource: getActiveSource(),
+      latexSource: payloadLatexSourceForAI(),
+      latexSourceMode: payloadSourceMode(),
+      fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
       reviewText: inputValue('branchWorkflowReviewText', ''),
       paperSummary: inputValue('branchWorkflowPaperSummary', '')
     }, {
@@ -836,11 +932,13 @@
       executionPlan: { ...(runPayload.executionPlan || {}), steps, debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' },
       selectedBranch: runPayload.selectedBranch,
       latexSource: getActiveSource(),
+      aiPayloadLatexSourceMode: payloadSourceMode(),
+      fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
       reviewText: inputValue('branchWorkflowReviewText', ''),
       paperSummary: inputValue('branchWorkflowPaperSummary', ''),
       query: inputValue('branchWorkflowQuery', ''),
       agentOutputs: outputs,
-      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' }
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(runPayload) }
     };
     const data = await backendPost('/debate/run-real-agent-branch', body);
     lastRealRunData = data;
@@ -967,7 +1065,7 @@
   function enhanceInsertionDataWithMultiSectionDrafts(data) {
     const source = getActiveSource();
     const targets = desiredTargetSections(selectedRealPayload() || lastRealRunData || lastSelectionData || {});
-    const scope = inputValue('branchWorkflowSectionScope', 'salient');
+    const scope = targetSelectorMode();
     if (scope === 'branch' && targets.length <= 1) return data;
     const blocks = laiBlocksForInsertion();
     if (!blocks.length) return data;
@@ -985,7 +1083,7 @@
       multiSectionFrontendInsertion: true,
       warnings: [
         ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
-        'Stage 19N1C frontend distributed cleaned \\lai blocks across section targets when labels were available. Use Section scope = salient/first6/whole for edits beyond Introduction.'
+        'Stage 19N1D frontend distributed cleaned \\lai blocks across user-selected/salient/whole-paper targets when labels were available.'
       ]
     };
   }
@@ -1002,7 +1100,7 @@
       realAgentRunResult: lastRealRunData || null,
       cleanerResult: lastCleanerData || null,
       cleanedLaiBlocks: lastCleanerData?.insertableLaiBlocks || lastCleanerData?.validVisibleLaiBlocks || lastRealRunData?.insertableLaiBlocks || lastRealRunData?.visibleLaiBlocks || [],
-      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' }
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}) }
     };
   }
 
@@ -1059,7 +1157,9 @@
       compileStatus: 'not_checked',
       validationStatus: lastInsertionData?.safeToInsert ? 'valid' : 'not_checked',
       workflow: 'latex-paper-debate-real-agent-run',
-      latexSource: getActiveSource(),
+      latexSource: payloadLatexSourceForAI(),
+      latexSourceMode: payloadSourceMode(),
+      fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
       reviewText: inputValue('branchWorkflowReviewText', ''),
       paperSummary: inputValue('branchWorkflowPaperSummary', ''),
       query: inputValue('branchWorkflowQuery', ''),
@@ -1141,6 +1241,32 @@
     }, true);
   }
 
+  function refreshTargetPicker() {
+    const picker = $('branchWorkflowTargetPicker');
+    const summary = $('branchWorkflowTargetSummary');
+    if (!picker) return;
+    const prev = new Set(Array.from(picker.selectedOptions || []).map((o) => o.value));
+    const units = topLevelSections(getActiveSource());
+    picker.innerHTML = '';
+    units.forEach((u, idx) => {
+      const opt = D.createElement('option');
+      opt.value = u.title;
+      opt.textContent = String(idx + 1) + '. ' + latexStructureLabel(u);
+      opt.dataset.level = u.level || '';
+      opt.selected = prev.has(u.title);
+      picker.appendChild(opt);
+    });
+    if (summary) summary.textContent = units.length ? (units.length + ' targetable document unit(s) detected. Hold Cmd/Ctrl or use touch selection to select multiple units.') : 'No section/chapter headings detected yet.';
+  }
+
+  function renderTargetModeNote() {
+    const node = $('branchWorkflowTargetModeNote');
+    if (!node) return;
+    const mode = targetSelectorMode();
+    const targets = desiredTargetSections(selectedRealPayload() || lastSelectionData || {});
+    node.innerHTML = '<strong>Current target mode:</strong> ' + esc(mode) + '<br><strong>Targets:</strong> ' + esc(targets.join(', ') || 'none yet');
+  }
+
   function createCard() {
     if (mounted || $('realAgentBranchCard')) return true;
     const host = $('copilotTab') || D.querySelector('.copilot-panel') || D.querySelector('.right-panel');
@@ -1149,8 +1275,8 @@
     card.id = 'realAgentBranchCard';
     card.className = 'devils-debate-card real-agent-branch-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1C</div><h2>Devil’s Advocate branch runner</h2></div></div>',
-      '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → section-aware synthesize/edit → clean LAI → insertion preview → reward feedback using the active editor source.</p>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1D</div><h2>Devil’s Advocate branch runner</h2></div></div>',
+      '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → user-selected/whole-paper/salient targets → context-controlled prompts → clean LAI → insertion preview → reward feedback using the active editor source.</p>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
       '<label class="field">Paper summary <textarea id="branchWorkflowPaperSummary" rows="2" placeholder="Optional short paper summary"></textarea></label>',
@@ -1159,8 +1285,14 @@
       '<label class="field">Insertion mode <select id="branchWorkflowInsertMode"><option value="targeted" selected>targeted section insertion</option><option value="append">append at end</option></select></label>',
       '</div>',
       '<div class="field-grid two">',
-      '<label class="field">Section scope <select id="branchWorkflowSectionScope"><option value="branch">selected branch target only</option><option value="salient" selected>salient sections</option><option value="first6">first 6 sections</option><option value="whole">whole paper outline</option></select></label>',
-      '<div class="settings-note compact">Use <strong>salient/first6/whole</strong> when you want edits beyond Introduction. For multi-section edits, append mode is usually safest because it adds section-labeled \lai blocks before <code>\end{document}</code>.</div>',
+      '<label class="field">Target mode <select id="branchWorkflowSectionScope"><option value="branch">selected branch target only</option><option value="selected">user-selected sections/subsections</option><option value="salient" selected>salient sections</option><option value="first6">first 6 detected units</option><option value="whole">whole paper: every detected unit</option></select></label>',
+      '<div id="branchWorkflowTargetModeNote" class="settings-note compact">Choose target sections/chapters/subsections. Whole paper requires the editor to return an edit or <code>\lai{no edits recommended}</code> marker for every detected unit.</div>',
+      '</div>',
+      '<label class="field">Detected target sections / chapters / subsections <select id="branchWorkflowTargetPicker" multiple size="7" class="branch-target-picker"></select></label>',
+      '<div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRefreshTargetsBtn" class="btn mini" type="button">Refresh detected targets</button><span id="branchWorkflowTargetSummary" class="settings-note compact">Target list not loaded yet.</span></div>',
+      '<div class="field-grid two">',
+      '<label class="field">Visible prompt context <select id="branchWorkflowVisibleContextMode"><option value="outline_selected_excerpts" selected>outline + selected excerpts</option><option value="selected_excerpts_only">selected excerpts only</option><option value="whole_truncated_selected_focus">whole paper truncated + selected focus</option><option value="full_source_if_safe">full paper visible if within budget</option></select></label>',
+      '<label class="field">AI payload full source <select id="branchWorkflowPayloadSourceMode"><option value="include_full_source" selected>include full latexSource in payload</option><option value="include_truncated_source">include truncated latexSource in payload</option><option value="omit_full_source">omit latexSource from AI payload</option></select></label>',
       '</div>',
       '<div class="field-grid two">',
       '<label class="field">Debate rounds <input id="branchWorkflowDebateRounds" type="number" min="1" max="5" step="1" value="1" /></label>',
@@ -1186,7 +1318,7 @@
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1C ready. Default scope is salient sections; final editor is forced to produce section-labeled \lai blocks and targeted apply distributes labeled edits across sections.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1D ready. Choose target sections/chapters/subsections or whole paper, then choose visible prompt and AI payload context modes. Final editor must return one \lai block or no-edit marker per target.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -1202,6 +1334,10 @@
     bindButton('branchWorkflowApplyAppendBtn', () => applyDraft('append'));
     bindButton('branchWorkflowCopyTargetedBtn', () => copyDraft('targeted'));
     bindButton('branchWorkflowRejectBtn', () => recordOutcome('rejected'));
+    bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); });
+    ['branchWorkflowSectionScope','branchWorkflowTargetPicker','branchWorkflowVisibleContextMode','branchWorkflowPayloadSourceMode'].forEach((id) => { const n = $(id); if (n) n.addEventListener('change', () => { renderTargetModeNote(); }, true); });
+    refreshTargetPicker();
+    renderTargetModeNote();
     return true;
   }
 
@@ -1209,6 +1345,7 @@
     createCard();
     setTimeout(createCard, 800);
     setTimeout(createCard, 1800);
+    setTimeout(() => { try { refreshTargetPicker(); renderTargetModeNote(); } catch (_err) {} }, 2400);
   }
 
   NS.RealAgentBranchWorkflowService = {
@@ -1218,6 +1355,9 @@
     runSelectedBranch,
     extractLatexSections,
     desiredTargetSections,
+    refreshTargetPicker,
+    visibleContextMode,
+    payloadSourceMode,
     cleanLastRealRun,
     prepareInsertion,
     recordOutcome,
