@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1E RealAgentBranchWorkflowService
- * Stage: stage19n1e-final-editor-only-deduped-section-edits-20260528-1
+/* Latexai Stage 19N1G RealAgentBranchWorkflowService
+ * Stage: stage19n1f-structure-clean-target-dedupe-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1e-final-editor-only-deduped-section-edits-20260528-1';
+  const STAGE = 'stage19n1g-clean-previous-ai-patch-style-edits-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -176,8 +176,81 @@
     return s;
   }
 
+  function removeLooseTargetSectionSuggestionText(text) {
+    // Stage 19N1G: earlier experiments could leave plain text advice such as
+    // "Target section: X Add ..." outside \lai blocks. These are AI suggestion
+    // artifacts, not paper structure. Remove them only in cleanup/prompt context.
+    const lines = String(text || '').split('\n');
+    const out = [];
+    let skipping = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      const startsLooseTarget = /^Target\s+section\s*:/i.test(trimmed);
+      const startsLatexHeading = /^\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{/i.test(trimmed);
+      const startsCommentBoundary = /^%\s*---\s*Latexai/i.test(trimmed);
+      if (startsLooseTarget) { skipping = true; continue; }
+      if (skipping && (startsLatexHeading || startsCommentBoundary || trimmed === '' || /^\s*\\(?:begin|end)\s*\{/i.test(trimmed))) {
+        skipping = false;
+      }
+      if (!skipping) out.push(line);
+    }
+    return out.join('\n').replace(/\n{4,}/g, '\n\n\n');
+  }
+
   function sourceForAgentVisiblePrompt() {
-    return stripLatexaiVisibleEditBlocks(getActiveSource());
+    return removeLooseTargetSectionSuggestionText(stripLatexaiVisibleEditBlocks(getActiveSource()));
+  }
+
+  function removePreviousLaiBlocksFromSource(text) {
+    let s = removeLatexaiSuggestionCommentRegions(String(text || ''));
+    const blocks = parseLatexMacroBlocks(s, 'lai').concat(parseLatexMacroBlocks(s, 'laiold')).sort((a, b) => b.start - a.start);
+    blocks.forEach((b) => {
+      const before = s.slice(Math.max(0, b.start - 30), b.start);
+      if (/\\(?:long\s*)?def\s*$|\\(?:newcommand|providecommand)\s*\{?\s*$/i.test(before)) return;
+      s = s.slice(0, b.start) + '\n' + s.slice(b.end);
+    });
+    s = removeLooseTargetSectionSuggestionText(s);
+    return s.replace(/\n{4,}/g, '\n\n\n').trimEnd() + '\n';
+  }
+
+  function repeatedHeadingWarnings(source) {
+    const units = extractLatexSections(source || '');
+    const seen = new Map();
+    const dups = [];
+    units.forEach((u) => {
+      const key = titleKeyForMatch(u.title || '');
+      if (!key) return;
+      const prev = seen.get(key) || [];
+      prev.push(u);
+      seen.set(key, prev);
+    });
+    seen.forEach((arr) => {
+      if (arr.length > 1) dups.push(arr[0].title + ' ×' + arr.length);
+    });
+    return dups;
+  }
+
+  function maybeWarnRepeatedHeadings(prefix) {
+    const dups = repeatedHeadingWarnings(getActiveSource());
+    if (dups.length) {
+      status((prefix || 'Warning') + ': duplicate section headings detected: ' + dups.slice(0, 6).join(', ') + (dups.length > 6 ? ', ...' : '') + '. Consider cleaning/restoring source before debate.', 'warn');
+      return true;
+    }
+    return false;
+  }
+
+  function cleanPreviousAiSuggestions() {
+    const before = getActiveSource();
+    const after = removePreviousLaiBlocksFromSource(before);
+    if (after === before) {
+      maybeWarnRepeatedHeadings('No previous \lai blocks removed');
+      status('No previous visible \lai / \laiold suggestions found to remove. Duplicate headings, if any, may already be plain source text.', 'warn');
+      return;
+    }
+    setActiveSource(after, 'Previous Latexai AI suggestions removed from active source.', { kind: 'cleanup' });
+    const dups = repeatedHeadingWarnings(after);
+    if (dups.length) status('Cleaned old \lai suggestions. Still found duplicate headings: ' + dups.slice(0, 6).join(', ') + '. These are now plain source text and should be manually reviewed or restored.', 'warn');
   }
 
   function movePostEndDocumentLaiBeforeEnd(text) {
@@ -391,18 +464,45 @@
     return idx >= 0 ? idx : LATEX_STRUCTURE_LEVELS.length;
   }
 
+  function addRegexRanges(out, text, regex) {
+    const s = String(text || '');
+    let m = null;
+    regex.lastIndex = 0;
+    while ((m = regex.exec(s))) out.push({ start: m.index, end: m.index + m[0].length });
+  }
+
+  function ignoredStructureRanges(text) {
+    const s = String(text || '');
+    const ranges = [];
+    parseLatexMacroBlocks(s, 'lai').forEach((b) => ranges.push({ start: b.start, end: b.end }));
+    parseLatexMacroBlocks(s, 'laiold').forEach((b) => ranges.push({ start: b.start, end: b.end }));
+    addRegexRanges(ranges, s, /% --- Latexai targeted Devil's Advocate suggestion for section:[\s\S]*?% --- end Latexai targeted suggestion ---/g);
+    addRegexRanges(ranges, s, /% --- Latexai appended multi-section Devil's Advocate suggestions ---[\s\S]*?(?=\\end\s*\{document\}|$)/g);
+    addRegexRanges(ranges, s, /% --- Latexai appended AI suggestions \(moved before \\end\{document\}\) ---[\s\S]*?(?=\\end\s*\{document\}|$)/g);
+    return ranges.sort((a, b) => a.start - b.start);
+  }
+
+  function isInsideRange(index, ranges) {
+    return (ranges || []).some((r) => index >= r.start && index < r.end);
+  }
+
   function extractLatexSections(source) {
     const s = String(source || '');
-    // Stage 19N1E: parse the document hierarchy broadly so the user can target
-    // chapters, sections, subsections, subsubsections, and smaller paragraph-level units.
+    // Stage 19N1G: parse real document hierarchy broadly while ignoring headings
+    // that appear inside prior \lai / \laiold suggestions. Otherwise reruns treat
+    // old "Target section:" markers as new document sections and repeat edits.
+    const ignoreRanges = ignoredStructureRanges(s);
     const re = /\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{([^{}]{1,180})\}/g;
     const found = [];
     let m = null;
     while ((m = re.exec(s))) {
+      if (isInsideRange(m.index, ignoreRanges)) continue;
+      const normalizedTitle = normalizeSectionTitle(m[2]);
+      if (/^target\s+section\s*:/i.test(normalizedTitle)) continue;
       found.push({
         level: m[1],
         levelRank: structureLevelRank(m[1]),
-        title: normalizeSectionTitle(m[2]),
+        title: normalizedTitle,
         rawTitle: m[2],
         command: m[0],
         start: m.index,
@@ -434,7 +534,7 @@
   }
 
   function topLevelSections(source) {
-    // Historical name retained for insertion and outline helpers. In Stage 19N1E it
+    // Historical name retained for insertion and outline helpers. In Stage 19N1G it
     // intentionally returns all parsed targetable units, not only \section headings.
     const units = documentTargetUnits(source);
     if (units.length) return units;
@@ -463,7 +563,7 @@
     const mode = payloadSourceMode();
     const src = stripLatexaiVisibleEditBlocks(getActiveSource());
     if (mode === 'omit_full_source') return '';
-    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '... [payload latexSource truncated by Latexai Stage 19N1E] ...');
+    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '... [payload latexSource truncated by Latexai Stage 19N1G] ...');
     return src;
   }
 
@@ -582,12 +682,12 @@
     contextParts.push('Visible context mode: ' + mode + '.');
 
     if (mode === 'whole_truncated_selected_focus') {
-      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, '% ... [whole paper middle truncated by Latexai Stage 19N1E] ...'));
+      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, '% ... [whole paper middle truncated by Latexai Stage 19N1G] ...'));
     } else if (mode === 'full_source_if_safe') {
       if (source.length <= 65000) {
         contextParts.push('===== FULL PAPER CONTEXT (VISIBLE TO MODEL) =====\n' + source);
       } else {
-        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, '% ... [full paper truncated by Latexai Stage 19N1E for prompt length] ...'));
+        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, '% ... [full paper truncated by Latexai Stage 19N1G for prompt length] ...'));
       }
     } else if (mode === 'selected_excerpts_only') {
       // No full outline beyond the compact outline above; selected excerpts follow below.
@@ -933,6 +1033,7 @@
   }
 
   async function runSelectedBranch() {
+    maybeWarnRepeatedHeadings('Pre-run warning');
     let runPayload = selectedRealPayload();
     if (!runPayload) {
       await planBranch();
@@ -1042,6 +1143,72 @@
     return false;
   }
 
+  function tokenSetForDedupe(text) {
+    const stop = new Set(['the','and','for','with','this','that','from','into','onto','section','target','edit','edits','recommended','add','insert','revise','paragraph','cite','citation','citations','work','literature']);
+    return new Set(String(text || '').toLowerCase().replace(/\\[a-z]+(?:\s*\{[^}]*\})?/g, ' ').replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter((w) => w.length > 3 && !stop.has(w)));
+  }
+
+  function jaccardSimilarity(a, b) {
+    const A = tokenSetForDedupe(a);
+    const B = tokenSetForDedupe(b);
+    if (!A.size || !B.size) return 0;
+    let inter = 0;
+    A.forEach((x) => { if (B.has(x)) inter += 1; });
+    return inter / Math.max(1, A.size + B.size - inter);
+  }
+
+  function isNearDuplicateLaiBlock(block, existingBlocks) {
+    const body = canonicalizeLaiBlock(block);
+    return (existingBlocks || []).some((old) => {
+      const oldBody = canonicalizeLaiBlock(old);
+      if (!body || !oldBody) return false;
+      if (body === oldBody) return true;
+      if (body.length > 120 && oldBody.length > 120 && (body.includes(oldBody.slice(0, 180)) || oldBody.includes(body.slice(0, 180)))) return true;
+      return jaccardSimilarity(body, oldBody) >= 0.52;
+    });
+  }
+
+  function stripTargetCommentFromLaiBody(body) {
+    return String(body || '')
+      .replace(/^\s*%\s*\n?/, '')
+      .replace(/^\s*%\s*Target\s+section\s*:[^\n]*\n?/i, '')
+      .replace(/^\s*\\paragraph\s*\{\s*Target\s+section\s*:[^}]+\}\s*/i, '')
+      .trim();
+  }
+
+  function isPatchStyleLaiBlock(block) {
+    const parsed = parseLatexMacroBlocks(block, 'lai')[0];
+    if (!parsed) return false;
+    const body = stripTargetCommentFromLaiBody(parsed.body);
+    if (/^\\emph\s*\{\s*No\s+edits?\s+recommended\.?\s*\}\s*\.?$/i.test(body)) return true;
+    if (/^No\s+edits?\s+recommended\.?$/i.test(body)) return true;
+    if (/\\laiold\s*\{/.test(block)) return true;
+    const advisoryStart = /^(?:Target\s+section\s*:\s*)?(?:Add|Insert|Revise|Rewrite|Replace|Expand|Clarify|Enhance|Recommend|Consider|Suggest|Include|Mention)\b/i;
+    if (advisoryStart.test(body)) return false;
+    const advisoryPhrases = [
+      /\b(?:Insert|Add|Replace|Revise|Rewrite|Expand|Clarify|Enhance)\s+(?:the|a|an|this|current|following)\b/i,
+      /\b(?:paragraph|sentence|section)\s+(?:with|by|after|before)\b/i,
+      /\bFor\s+example\s*,?\s+(?:revise|replace|insert|add)\b/i,
+      /\bThis\s+(?:will|would)\s+(?:clarify|strengthen|situate|highlight)\b/i
+    ];
+    if (advisoryPhrases.some((re) => re.test(body))) return false;
+    if (body.length < 16) return false;
+    return true;
+  }
+
+  function filterPatchStyleLaiBlocks(blocks) {
+    const kept = [];
+    const skipped = [];
+    (blocks || []).forEach((block) => {
+      const b = String(block || '').trim();
+      if (!b) return;
+      if (isPatchStyleLaiBlock(b)) kept.push(b);
+      else skipped.push('dropped advisory/non-patch block: ' + canonicalizeLaiBlock(b).slice(0, 90));
+    });
+    kept._patchNotes = skipped;
+    return kept;
+  }
+
   function dedupeLaiBlocksForInsertion(blocks, targets) {
     const active = getActiveSource();
     const seen = new Set();
@@ -1051,24 +1218,28 @@
       const block = String(raw || '').trim();
       if (!block || !/\\lai\s*\{/.test(block)) return;
       const fallback = targets && targets.length ? targets[Math.min(idx, targets.length - 1)] : '';
-      const target = inferTargetFromLaiBlock(block, fallback) || fallback || 'untargeted';
+      const target = inferTargetFromLaiBlock(block, fallback, targets) || fallback || 'untargeted';
       const targetKey = normalizeSectionTitle(target).toLowerCase() || 'untargeted';
       const bodyKey = canonicalizeLaiBlock(block);
       if (!bodyKey) return;
       const key = targetKey + '::' + bodyKey.slice(0, 900);
       if (seen.has(key)) { skipped.push('duplicate block for ' + target); return; }
       if (likelyAlreadyAppliedToSource(block, active)) { skipped.push('already applied block for ' + target); return; }
-      seen.add(key);
       if (!byTarget.has(targetKey)) byTarget.set(targetKey, { target, edits: [], noEdits: [] });
       const bucket = byTarget.get(targetKey);
-      if (isNoEditLaiBlock(block)) bucket.noEdits.push(block);
-      else bucket.edits.push(block);
+      const list = isNoEditLaiBlock(block) ? bucket.noEdits : bucket.edits;
+      if (isNearDuplicateLaiBlock(block, list)) { skipped.push('near-duplicate block for ' + target); return; }
+      seen.add(key);
+      list.push(block);
     });
     const out = [];
     byTarget.forEach((bucket) => {
       if (bucket.edits.length) {
         // If there are actual edits for a section, a simultaneous no-edit marker is contradictory.
-        out.push(...bucket.edits);
+        // Stage 19N1G caps excessive variants per target; the editor should consolidate, not
+        // paste every phrasing from the debate transcript into the paper.
+        if (bucket.edits.length > 2) skipped.push('kept first 2 non-overlapping edits for ' + bucket.target + ', dropped ' + (bucket.edits.length - 2) + ' extra variant(s)');
+        out.push(...bucket.edits.slice(0, 2));
       } else if (bucket.noEdits.length) {
         out.push(bucket.noEdits[0]);
       }
@@ -1082,7 +1253,7 @@
     const addParsed = (text) => parseLatexMacroBlocks(text, 'lai').map((b) => b.raw).filter(Boolean);
     let blocks = [];
 
-    // Stage 19N1E: insert only the final editor's curated answer by default.
+    // Stage 19N1G: insert only the final editor's curated answer by default.
     // Earlier critic/advocate/synthesizer outputs often contain candidate edits that the
     // final editor later repeats or rejects; using all outputs caused duplicated red text.
     blocks = addParsed(finalEditorOutputText());
@@ -1097,24 +1268,65 @@
       if (!blocks.length && lastRealRunData?.finalOutput) blocks = addParsed(lastRealRunData.finalOutput);
     }
 
-    const deduped = dedupeLaiBlocksForInsertion(blocks, targets);
-    lastInsertionDedupeNotes = Array.isArray(deduped._dedupeNotes) ? deduped._dedupeNotes : [];
+    const patchFiltered = filterPatchStyleLaiBlocks(blocks);
+    const deduped = dedupeLaiBlocksForInsertion(patchFiltered, targets);
+    lastInsertionDedupeNotes = [
+      ...(Array.isArray(patchFiltered._patchNotes) ? patchFiltered._patchNotes : []),
+      ...(Array.isArray(deduped._dedupeNotes) ? deduped._dedupeNotes : [])
+    ];
     return deduped;
   }
 
 
-  function inferTargetFromLaiBlock(block, fallback) {
+  function titleKeyForMatch(title) {
+    return normalizeSectionTitle(title).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function matchKnownTargetTitle(candidate, knownTargets) {
+    const c = titleKeyForMatch(candidate);
+    if (!c) return '';
+    const targets = (knownTargets || []).map((t) => normalizeSectionTitle(t)).filter(Boolean);
+    let best = '';
+    let bestLen = 0;
+    targets.forEach((t) => {
+      const k = titleKeyForMatch(t);
+      if (!k) return;
+      if ((c === k || c.startsWith(k + ' ') || c.includes(' ' + k + ' ') || k.includes(c)) && k.length > bestLen) {
+        best = t;
+        bestLen = k.length;
+      }
+    });
+    return best;
+  }
+
+  function cleanTargetCandidate(candidate) {
+    let c = normalizeSectionTitle(candidate || '');
+    c = c.replace(/^\s*Target\s+section\s*:\s*/i, '');
+    c = c.replace(/\s*(?:Add|Insert|Revise|Rewrite|Expand|Clarify|Enhance|Recommend|No\s+edits?\s+recommended|Covered\s+above|Similarly)\b[\s\S]*$/i, '').trim();
+    c = c.replace(/[.。:;,-]+$/g, '').trim();
+    return c;
+  }
+
+  function inferTargetFromLaiBlock(block, fallback, knownTargets) {
     const s = String(block || '');
     const pats = [
-      /Target\s+section\s*:\s*([^}\n\\]{2,120})/i,
-      /Target\s*:\s*([^}\n\\]{2,120})/i,
-      /section\s*[:=]\s*([^}\n\\]{2,120})/i
+      /Target\s+section\s*:\s*([^}\n\\]{2,180})/i,
+      /Target\s*:\s*([^}\n\\]{2,180})/i,
+      /section\s*[:=]\s*([^}\n\\]{2,180})/i
     ];
     for (const pat of pats) {
       const m = s.match(pat);
-      if (m && m[1]) return normalizeSectionTitle(m[1].replace(/[.。]+$/g, ''));
+      if (!m || !m[1]) continue;
+      const rawCandidate = normalizeSectionTitle(m[1]);
+      const known = matchKnownTargetTitle(rawCandidate, knownTargets);
+      if (known) return known;
+      const cleaned = cleanTargetCandidate(rawCandidate);
+      const knownCleaned = matchKnownTargetTitle(cleaned, knownTargets);
+      if (knownCleaned) return knownCleaned;
+      if (cleaned) return cleaned;
     }
-    return normalizeSectionTitle(fallback || '');
+    const fallbackKnown = matchKnownTargetTitle(fallback || '', knownTargets);
+    return fallbackKnown || normalizeSectionTitle(fallback || '');
   }
 
   function insertBeforeEndDocument(source, addition) {
@@ -1147,7 +1359,7 @@
     const groups = new Map();
     safeBlocks.forEach((block, idx) => {
       const fallback = targets && targets.length ? targets[Math.min(idx, targets.length - 1)] : '';
-      let target = inferTargetFromLaiBlock(block, fallback);
+      let target = inferTargetFromLaiBlock(block, fallback, targets);
       if (!target) target = firstExistingSectionTitle(targets, s) || sections[0].title;
       const hit = sections.find((sec) => sectionMatches(sec, target));
       const key = hit ? hit.title : target;
@@ -1181,7 +1393,7 @@
     if (!blocks.length) return data;
     const targeted = normalizeLaiDraftForCompilation(buildTargetedDraftFromBlocks(source, blocks, targets), 'targeted');
     const append = normalizeLaiDraftForCompilation(buildAppendDraftFromBlocks(source, blocks, targets), 'append');
-    const blockTargets = blocks.map((b, i) => inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '')).filter(Boolean);
+    const blockTargets = blocks.map((b, i) => inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '', targets)).filter(Boolean);
     return {
       ...(data || {}),
       targetedInsertionDraft: targeted,
@@ -1193,7 +1405,7 @@
       multiSectionFrontendInsertion: true,
       warnings: [
         ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
-        'Stage 19N1E inserted only final-editor \\lai blocks by default, removed duplicate repeated blocks, and dropped contradictory no-edit markers when edits exist for the same target.',
+        'Stage 19N1G inserted only final-editor \\lai blocks by default, removed duplicate repeated blocks, and dropped contradictory no-edit markers when edits exist for the same target.',
         ...(lastInsertionDedupeNotes.length ? ['Deduplication skipped: ' + lastInsertionDedupeNotes.slice(0, 8).join('; ') + (lastInsertionDedupeNotes.length > 8 ? '; ...' : '')] : [])
       ]
     };
@@ -1303,6 +1515,7 @@
 
   async function runFullPreview() {
     try {
+      maybeWarnRepeatedHeadings('Pre-run warning');
       await planBranch();
       await runSelectedBranch();
       await cleanLastRealRun();
@@ -1386,7 +1599,7 @@
     card.id = 'realAgentBranchCard';
     card.className = 'devils-debate-card real-agent-branch-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1E</div><h2>Devil’s Advocate branch runner</h2></div></div>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1G</div><h2>Devil’s Advocate branch runner</h2></div></div>',
       '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → user-selected/whole-paper/salient targets → context-controlled prompts → clean LAI → insertion preview → reward feedback using the active editor source.</p>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
@@ -1400,7 +1613,7 @@
       '<div id="branchWorkflowTargetModeNote" class="settings-note compact">Choose target sections/chapters/subsections. Whole paper requires the editor to return an edit or <code>\lai{no edits recommended}</code> marker for every detected unit.</div>',
       '</div>',
       '<label class="field">Detected target sections / chapters / subsections <select id="branchWorkflowTargetPicker" multiple size="7" class="branch-target-picker"></select></label>',
-      '<div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRefreshTargetsBtn" class="btn mini" type="button">Refresh detected targets</button><span id="branchWorkflowTargetSummary" class="settings-note compact">Target list not loaded yet.</span></div>',
+      '<div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRefreshTargetsBtn" class="btn mini" type="button">Refresh detected targets</button><button id="branchWorkflowCleanPreviousAiBtn" class="btn mini warn" type="button">Clean previous AI suggestions</button><span id="branchWorkflowTargetSummary" class="settings-note compact">Target list not loaded yet.</span></div>',
       '<div class="field-grid two">',
       '<label class="field">Visible prompt context <select id="branchWorkflowVisibleContextMode"><option value="outline_selected_excerpts" selected>outline + selected excerpts</option><option value="selected_excerpts_only">selected excerpts only</option><option value="whole_truncated_selected_focus">whole paper truncated + selected focus</option><option value="full_source_if_safe">full paper visible if within budget</option></select></label>',
       '<label class="field">AI payload full source <select id="branchWorkflowPayloadSourceMode"><option value="include_full_source" selected>include full latexSource in payload</option><option value="include_truncated_source">include truncated latexSource in payload</option><option value="omit_full_source">omit latexSource from AI payload</option></select></label>',
@@ -1429,7 +1642,7 @@
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1E ready. Choose targets/context. Final editor output is deduplicated, final-editor-only, and must return at least one coverage \lai block or a no-edit marker per target.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1G ready. Use Clean previous AI suggestions before rerunning. Final editor output is patch-style, final-editor-only, and advisory/repeated section edits are filtered before insertion.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -1445,7 +1658,8 @@
     bindButton('branchWorkflowApplyAppendBtn', () => applyDraft('append'));
     bindButton('branchWorkflowCopyTargetedBtn', () => copyDraft('targeted'));
     bindButton('branchWorkflowRejectBtn', () => recordOutcome('rejected'));
-    bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); });
+    bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); maybeWarnRepeatedHeadings('Target refresh warning'); });
+    bindButton('branchWorkflowCleanPreviousAiBtn', cleanPreviousAiSuggestions);
     ['branchWorkflowSectionScope','branchWorkflowTargetPicker','branchWorkflowVisibleContextMode','branchWorkflowPayloadSourceMode'].forEach((id) => { const n = $(id); if (n) n.addEventListener('change', () => { renderTargetModeNote(); }, true); });
     refreshTargetPicker();
     renderTargetModeNote();
@@ -1473,6 +1687,8 @@
     prepareInsertion,
     recordOutcome,
     runFullPreview,
+    cleanPreviousAiSuggestions,
+    removePreviousLaiBlocksFromSource,
     getLastSelection: () => lastSelectionData,
     getLastRealRun: () => lastRealRunData,
     getLastCleaner: () => lastCleanerData,
