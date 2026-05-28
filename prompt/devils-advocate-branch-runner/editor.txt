@@ -12,30 +12,45 @@ Very important consolidation / deduplication rule:
 - Do NOT copy the prior transcript verbatim.
 - Do NOT repeat the same recommendation in multiple wordings.
 - Consolidate overlapping critic, advocate, reviewer, and synthesizer suggestions into the smallest useful set of final patches.
-- If several prior agents proposed the same citation/related-work/assumption edit, keep one best version only.
+- If several prior agents proposed the same edit, keep one best version only.
 - Do NOT output both a detailed edit and a shorter paraphrase of that same edit.
-- Do NOT output multiple variants of the same citation-gap, related-work, assumption, novelty, or limitation recommendation.
 - If an exact or near-identical edit already appears in the supplied paper context, do not re-add it.
 - Treat the transcript as evidence, not text to paste. Never copy whole bullet lists or paragraphs from earlier agents.
 
-Mandatory coverage rule:
-- For EACH requested target section/unit, output AT LEAST ONE section-labeled patch block.
-- If that target needs multiple substantively different changes, output multiple separate blocks for that same target, but normally no more than two non-overlapping edit blocks per target.
+Mandatory section coverage rule:
+- For EACH requested target section/unit, output AT LEAST ONE section-labeled patch block, unless MATH EQUATION COVERAGE MODE is active and the requested task is specifically equation-by-equation explanation.
+- If a target needs multiple substantively different changes, output multiple separate blocks for that same target, but normally no more than two non-overlapping edit blocks per target.
 - If that target does not need an edit, output exactly one no-edit block for that target.
 - Do not output a "No edits recommended" block for a target if you also output an actual edit for that same target.
 - Do not skip any requested target.
 - Do not output all edits under Introduction unless Introduction is the only requested target.
 
+Mandatory equation coverage rule:
+- If the base context contains the line "MATH EQUATION COVERAGE MODE ACTIVE", then the user's task is equation-centered.
+- In that mode, the final output must include one explanatory \lai block for EACH listed equation id.
+- Each equation explanation must use the exact equation id comment: % Target equation id: eq_###.
+- The insertion engine will place that block immediately below the corresponding equation. Do not target only the section header.
+- The explanation should be short, pedagogical, and paper-ready, e.g. one paragraph explaining what the equation states, what the symbols mean, and how it connects to the surrounding derivation.
+- Do NOT answer an equation-focused prompt with citation gaps, related-work paragraphs, or introduction-only edits.
+- Do NOT output "No edits recommended" for listed equations unless the user explicitly requested optional equation edits. If the user asked for every equation, give every listed equation a real explanatory edit.
+
 Patch-style requirements:
 - DO NOT output visible advice such as "Add a paragraph...", "Insert after...", "Replace the current paragraph with...", "Consider citing...", or "This will strengthen...".
 - If you want to insert text, write the actual LaTeX-ready text that should appear in the paper.
 - If you want to replace text, provide a short exact old snippet in \laiold{...} followed immediately by the LaTeX-ready replacement in \lai{...}.
-- Put the target section label as a LaTeX comment inside \lai, so it is available to the insertion engine but does not appear as red paper text.
+- Put target labels as LaTeX comments inside \lai, so they are available to the insertion engine but do not appear as red paper text.
 
-Insertion block format:
+Section insertion block format:
 \lai{%
 % Target section: <exact section title>
 <actual LaTeX-ready text to insert in the paper>
+}
+
+Equation explanation block format:
+\lai{%
+% Target equation id: <exact equation id>
+% Target section: <containing section/unit>
+<actual LaTeX-ready explanation to appear immediately below the equation>
 }
 
 Replacement block format:

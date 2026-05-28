@@ -8,6 +8,11 @@ Coverage rule for the final editor step:
 - If no edits are needed for a target, output exactly one no-edit block for that target; do not also output edits for that target.
 - Use the exact target section/unit names listed above so the insertion step can distribute blocks correctly.
 
+Equation-focused override:
+- If MATH EQUATION COVERAGE MODE ACTIVE appears later in the prompt, the editor must prioritize the equation inventory and output one explanatory block per listed equation id.
+- Equation explanations must use `% Target equation id: eq_###` so the frontend can place them immediately below the corresponding equation.
+- In equation mode, do not drift into citation-only, related-work-only, or introduction-only edits.
+
 Patch-style block requirements:
 - DO NOT output review/advice prose such as "Add a paragraph...", "Insert after...", "Replace the current paragraph with...", or "Consider citing..." inside \lai.
 - Instead, output the actual LaTeX-ready text to insert, or a true replacement pair using \laiold{old text}\lai{new text}.
@@ -17,6 +22,13 @@ Insertion block format:
 \lai{%
 % Target section: <exact section title>
 <actual LaTeX-ready text to insert in the paper>
+}
+
+Equation explanation block format:
+\lai{%
+% Target equation id: <exact equation id>
+% Target section: <containing section/unit>
+<actual LaTeX-ready explanation to appear immediately below that equation>
 }
 
 Replacement block format:
@@ -31,4 +43,4 @@ No-edit block format:
 \emph{No edits recommended.}
 }
 
-Deduplication rule: repeated citation-gap, related-work, assumption, novelty, limitation, or positioning edits should be consolidated by the final editor into one best patch per target whenever possible. Earlier debate agents should discuss candidates, but only the final editor should output final \lai or \laiold blocks.
+Deduplication rule: repeated citation-gap, related-work, assumption, novelty, limitation, positioning, or equation-explanation edits should be consolidated by the final editor into one best patch per target whenever possible. Earlier debate agents should discuss candidates, but only the final editor should output final \lai or \laiold blocks.
