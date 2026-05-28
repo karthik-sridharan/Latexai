@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1I RealAgentBranchWorkflowService
- * Stage: stage19n1h-equation-coverage-edits-20260528-1
+/* Latexai Stage 19N1J RealAgentBranchWorkflowService
+ * Stage: stage19n1j-per-round-visible-memory-injection-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1i-temporary-agent-prompt-debug-tab-20260528-1';
+  const STAGE = 'stage19n1j-per-round-visible-memory-injection-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1126,7 +1126,116 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return joined.slice(0, 2500) + '\n\n...[middle of transcript truncated for prompt length]...\n\n' + joined.slice(-6500);
   }
 
-  async function baseBranchPromptContext(step, runPayload) {
+  function uniqueMemoryEvidenceItems(runPayload) {
+    const branch = runPayload?.selectedBranch || {};
+    const plan = runPayload?.executionPlan || {};
+    const candidates = [];
+    const arrays = [
+      branch.memoryEvidence,
+      branch.rankedMemoryEvidence,
+      branch.selectedMemoryEvidence,
+      branch.memoryContext,
+      runPayload?.memoryEvidence,
+      runPayload?.rankedMemoryEvidence,
+      plan.memoryEvidence,
+      plan.contextMemoryEvidence
+    ];
+    arrays.forEach((arr) => { if (Array.isArray(arr)) candidates.push(...arr); });
+    const ids = Array.from(new Set([...(branch.memoryIdsUsed || []), ...(branch.memoryIds || []), ...(plan.memoryIdsToUse || [])].filter(Boolean)));
+    ids.forEach((id) => {
+      if (!candidates.some((m) => String(m?.memoryId || m?.id || '') === String(id))) candidates.push({ memoryId: id, summary: '', source: 'memory-id-only' });
+    });
+    const seen = new Set();
+    const out = [];
+    candidates.forEach((item) => {
+      if (!item) return;
+      const id = clean(item.memoryId || item.id || item.key || item.contextId || item.summary || '');
+      const key = id || clean(item.summary || item.text || '').slice(0, 160);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(item);
+    });
+    return out;
+  }
+
+  function memoryEvidenceText(item) {
+    return clean(item?.summary || item?.text || item?.content || item?.description || item?.value || '');
+  }
+
+  function stepMemoryKeywords(step, priorOutputs) {
+    const role = String(step?.agentRole || '').toLowerCase();
+    const task = String(step?.taskType || '').toLowerCase();
+    const query = inputValue('branchWorkflowQuery', '').toLowerCase();
+    const words = [];
+    function add(xs) { xs.forEach((x) => { if (!words.includes(x)) words.push(x); }); }
+    if (/critic|reviewer|citation/.test(role + ' ' + task)) add(['weakness','risk','gap','missing','citation','assumption','limitation','failure','unclear','novelty','proof']);
+    if (/advocate|defender|for/.test(role + ' ' + task)) add(['strength','defend','contribution','novelty','clarity','position','revision','scope','claim']);
+    if (/synthesizer|synthesis/.test(role + ' ' + task)) add(['synthesis','balance','tradeoff','plan','priority','consensus','actionable']);
+    if (/editor|final|edit/.test(role + ' ' + task)) add(['edit','patch','latex','lai','accepted','apply','insert','replace','compile','explanation']);
+    if (equationCoverageActive() || /equation|math|derivation|formula/.test(query + ' ' + task)) add(['equation','math','derivation','symbol','formula','explain','below','display']);
+    query.replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter((w) => w.length >= 5).slice(0, 12).forEach((w) => { if (!words.includes(w)) words.push(w); });
+    const transcriptTail = transcriptText(priorOutputs || []).slice(-1800).toLowerCase();
+    transcriptTail.replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter((w) => w.length >= 7).slice(0, 10).forEach((w) => { if (!words.includes(w)) words.push(w); });
+    return words;
+  }
+
+  function memoryEvidenceScoreForStep(item, keywords) {
+    const text = (memoryEvidenceText(item) + ' ' + clean(item?.key || '') + ' ' + clean(item?.memoryId || item?.id || '')).toLowerCase();
+    const base = Number(item?.banditScore ?? item?.rankScore ?? item?.baseScore ?? item?.score ?? 0) || 0;
+    let hits = 0;
+    const matched = [];
+    (keywords || []).forEach((kw) => {
+      if (kw && text.includes(String(kw).toLowerCase())) { hits += 1; matched.push(kw); }
+    });
+    const summaryBonus = memoryEvidenceText(item) ? 0.15 : -0.05;
+    const explorationBonus = item?.wasExploration ? 0.03 : 0;
+    return { score: base + hits * 0.12 + summaryBonus + explorationBonus, hits, matched: matched.slice(0, 8) };
+  }
+
+  function buildPerRoundMemoryContext(step, priorOutputs, runPayload) {
+    const memories = uniqueMemoryEvidenceItems(runPayload);
+    const branch = runPayload?.selectedBranch || {};
+    const plan = runPayload?.executionPlan || {};
+    const ids = Array.from(new Set([...(branch.memoryIdsUsed || []), ...(branch.memoryIds || []), ...(plan.memoryIdsToUse || [])].filter(Boolean)));
+    const role = clean(step?.agentRole || 'agent');
+    const round = step?.debateRound ? String(step.debateRound) : '0';
+    const policy = memorySelectionPolicy();
+    const keywords = stepMemoryKeywords(step, priorOutputs || []);
+    const scored = memories.map((m) => ({ item: m, ...memoryEvidenceScoreForStep(m, keywords) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+    const lines = [];
+    lines.push('=== BANDIT-SELECTED MEMORY CONTEXT FOR THIS AGENT ===');
+    lines.push('Agent role: ' + role + (step?.debatePhase ? ' · phase: ' + step.debatePhase : '') + ' · round: ' + round + '.');
+    lines.push('Memory policy used during branch planning: ' + policy + '.');
+    lines.push('Frontend injection note: Stage 19N1J does not run a new backend bandit query per agent call. It takes the backend/bandit-selected memory evidence returned with the selected branch and re-ranks that evidence for this agent role/round before inserting it into the visible prompt.');
+    if (!scored.length) {
+      lines.push('No full memory summaries/evidence were available in the selected branch payload.');
+      lines.push('Memory ids carried by the plan: ' + (ids.join(', ') || 'none') + '.');
+      lines.push('The agent should proceed from the visible paper context and debate transcript.');
+      return lines.join('\n');
+    }
+    lines.push('Role/query keywords used for frontend per-agent memory re-ranking: ' + (keywords.slice(0, 18).join(', ') || 'none') + '.');
+    scored.forEach((entry, idx) => {
+      const m = entry.item || {};
+      const summary = memoryEvidenceText(m);
+      const id = clean(m.memoryId || m.id || m.contextId || '') || '(no memory id)';
+      const key = clean(m.key || m.type || m.label || '');
+      lines.push('\nMemory ' + (idx + 1) + ': ' + id + (key ? ' · key=' + key : ''));
+      lines.push('Why selected for this agent: backend-selected memory; frontend role/round score=' + entry.score.toFixed(3) + '; matched terms=' + (entry.matched.join(', ') || 'none') + '.');
+      const scoreParts = [];
+      ['baseScore','banditScore','rankScore','termHits','wasExploration'].forEach((k) => {
+        if (m[k] !== undefined && m[k] !== null && m[k] !== '') scoreParts.push(k + '=' + m[k]);
+      });
+      if (scoreParts.length) lines.push('Backend evidence: ' + scoreParts.join(', ') + '.');
+      lines.push('Summary: ' + (summary ? truncateMiddle(summary, 900, ' ... [memory summary truncated] ...') : '(summary not available; only the memory id was returned)'));
+    });
+    lines.push('\nInstruction: Use these memories as contextual hints only. Do not quote them as paper text. If a memory conflicts with the current paper context or user focus/query, prefer the current paper context and user focus/query.');
+    return lines.join('\n');
+  }
+
+
+  async function baseBranchPromptContext(step, runPayload, priorOutputs = []) {
     const branch = runPayload?.selectedBranch || {};
     const plan = runPayload?.executionPlan || {};
     const memoryIds = Array.from(new Set([...(branch.memoryIdsUsed || []), ...(plan.memoryIdsToUse || [])].filter(Boolean)));
@@ -1139,6 +1248,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       rationale: branch.rationale || '',
       latexEditHint: branch.latexEditHint || '',
       memoryIds: memoryIds.join(', ') || 'none',
+      memoryContext: buildPerRoundMemoryContext(step, priorOutputs, runPayload),
       sectionCoverageInstruction: await sectionCoverageInstruction(runPayload),
       equationCoverageContext: buildEquationCoverageContext(runPayload),
       equationCoverageActive: equationCoverageActive() ? 'true' : 'false',
@@ -1152,7 +1262,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   async function buildDebatePrompt(step, priorOutputs, runPayload) {
     const role = String(step?.agentRole || 'agent');
     const round = Number(step?.debateRound || 0);
-    const baseContext = await baseBranchPromptContext(step, runPayload);
+    const baseContext = await baseBranchPromptContext(step, runPayload, priorOutputs);
     const transcript = transcriptText(priorOutputs);
     const totalRounds = debateRoundCount();
     const previousInstruction = priorOutputs?.length
@@ -1226,6 +1336,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       latexSource: payloadLatexSourceForAI(),
       latexSourceMode: payloadSourceMode(),
       fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
+      visibleMemoryContext: buildPerRoundMemoryContext(step, priorOutputs, runPayload),
       reviewText: inputValue('branchWorkflowReviewText', ''),
       paperSummary: inputValue('branchWorkflowPaperSummary', '')
     };
