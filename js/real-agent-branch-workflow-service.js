@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n0b-main-editor-branch-runner-scroll-preview-fix-20260528-1';
+  const STAGE = 'stage19n0e-append-before-enddocument-fix-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -39,17 +39,210 @@
     const file = activeFile();
     return String(file?.text || file?.content || '');
   }
-  function setActiveSource(text, label) {
-    const value = String(text ?? '');
-    try { state()?.updateActiveText?.(value); } catch (_err) {}
-    const editor = $('sourceEditor');
-    if (editor) {
-      editor.value = value;
-      try { editor.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+  function firstDiffRange(before, after) {
+    const a = String(before || '');
+    const b = String(after || '');
+    let start = 0;
+    const minLen = Math.min(a.length, b.length);
+    while (start < minLen && a[start] === b[start]) start += 1;
+    let aEnd = a.length;
+    let bEnd = b.length;
+    while (aEnd > start && bEnd > start && a[aEnd - 1] === b[bEnd - 1]) { aEnd -= 1; bEnd -= 1; }
+    return { start, oldEnd: aEnd, newEnd: bEnd };
+  }
+
+  function lineColForOffset(text, offset) {
+    const safe = Math.max(0, Math.min(Number(offset) || 0, String(text || '').length));
+    const lines = String(text || '').slice(0, safe).split('\n');
+    return { line: lines.length, col: lines[lines.length - 1].length + 1 };
+  }
+
+
+  function hasLatexaiLaiMacro(text) {
+    const s = String(text || '');
+    return /\\newif\s*\\iflaishowchanges/.test(s) && /\\(?:long\s*)?\\def\s*\\lai\b|\\newcommand\s*\{\\lai\}|\\providecommand\s*\{\\lai\}/.test(s);
+  }
+
+  function hasLatexaiLaiOldMacro(text) {
+    const s = String(text || '');
+    return /\\(?:long\s*)?\\def\s*\\laiold\b|\\newcommand\s*\{\\laiold\}|\\providecommand\s*\{\\laiold\}/.test(s);
+  }
+
+  function ensureXcolorPackage(text) {
+    let s = String(text || '');
+    if (/\\usepackage(?:\[[^\]]*\])?\{[^}]*\b(?:xcolor|color)\b[^}]*\}/.test(s)) return s;
+    const docClass = s.match(/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/);
+    if (docClass && typeof docClass.index === 'number') {
+      const insertAt = docClass.index + docClass[0].length;
+      return s.slice(0, insertAt) + '\n\\usepackage{xcolor}% added by Latexai for visible \\lai / \\laiold markup' + s.slice(insertAt);
     }
+    const begin = s.search(/\\begin\s*\{document\}/);
+    if (begin >= 0) return s.slice(0, begin) + '\\usepackage{xcolor}% added by Latexai for visible \\lai / \\laiold markup\n' + s.slice(begin);
+    return '\\usepackage{xcolor}% added by Latexai for visible \\lai / \\laiold markup\n' + s;
+  }
+
+  function ensureLatexaiColorMacros(text) {
+    let s = ensureXcolorPackage(text);
+    const macroBlock = [
+      '% --- Latexai AI-change highlighting macro ---',
+      '% Set this to \\laishowchangesfalse to hide red AI markup.',
+      '\\newif\\iflaishowchanges',
+      '\\laishowchangestrue',
+      '\\long\\def\\lai#1{%',
+      '  \\iflaishowchanges',
+      '    {\\color{red}#1}%',
+      '  \\else',
+      '    #1%',
+      '  \\fi',
+      '}',
+      '\\long\\def\\laiold#1{{\\color{blue}#1}}',
+      '% --- end Latexai AI-change highlighting macro ---',
+      ''
+    ].join('\n');
+    if (!hasLatexaiLaiMacro(s)) {
+      const begin = s.search(/\\begin\s*\{document\}/);
+      if (begin >= 0) s = s.slice(0, begin) + macroBlock + '\n' + s.slice(begin);
+      else s = macroBlock + '\n' + s;
+    } else if (!hasLatexaiLaiOldMacro(s)) {
+      const laiIdx = s.search(/% --- Latexai AI-change highlighting macro ---|\\(?:long\s*)?\\def\s*\\lai\b|\\newcommand\s*\{\\lai\}|\\providecommand\s*\{\\lai\}/);
+      const insertAt = laiIdx >= 0 ? laiIdx : 0;
+      s = s.slice(0, insertAt) + '\\long\\def\\laiold#1{{\\color{blue}#1}}\n' + s.slice(insertAt);
+    }
+    // Users expect the visible preview to show red new edits. If a previous test toggled
+    // the switch off, turn it back on when applying a branch-run draft.
+    s = s.replace(/\\laishowchangesfalse\b/, '\\laishowchangestrue');
+    return s;
+  }
+
+
+  function findLastEndDocument(text) {
+    const s = String(text || '');
+    const re = /\\end\s*\{document\}/g;
+    let match = null;
+    let m = null;
+    while ((m = re.exec(s))) match = { index: m.index, end: m.index + m[0].length, text: m[0] };
+    return match;
+  }
+
+  function containsLaiMarkup(text) {
+    return /\\lai(?:old)?\s*\{/.test(String(text || ''));
+  }
+
+  function movePostEndDocumentLaiBeforeEnd(text) {
+    const s = String(text || '');
+    const end = findLastEndDocument(s);
+    if (!end) return s;
+    const after = s.slice(end.end);
+    const afterTrim = after.trim();
+    if (!afterTrim || !containsLaiMarkup(afterTrim)) return s;
+    const before = s.slice(0, end.index).replace(/\s+$/, '');
+    const movedHeader = '% --- Latexai appended AI suggestions (moved before \\end{document}) ---';
+    return [before, '', movedHeader, afterTrim, '', end.text, ''].join('\n');
+  }
+
+  function normalizeLaiDraftForCompilation(text, mode) {
+    let s = ensureLatexaiColorMacros(String(text || ''));
+    // Append-only drafts from Stage 19M2 may include \lai blocks after \end{document}.
+    // LaTeX ignores anything after \end{document}, so move those suggestions just before it.
+    if (mode === 'append' || containsLaiMarkup(s.slice((findLastEndDocument(s)?.end || s.length)))) {
+      s = movePostEndDocumentLaiBeforeEnd(s);
+    }
+    return s;
+  }
+
+  function parseLatexMacroBlocks(text, macroName) {
+    const s = String(text || '');
+    const needle = '\\' + macroName;
+    const out = [];
+    let i = 0;
+    while ((i = s.indexOf(needle, i)) >= 0) {
+      const nameEnd = i + needle.length;
+      if (/[A-Za-z@]/.test(s[nameEnd] || '')) { i = nameEnd; continue; }
+      let j = nameEnd;
+      while (/\s/.test(s[j] || '')) j += 1;
+      if (s[j] !== '{') { i = nameEnd; continue; }
+      let depth = 0;
+      let escaped = false;
+      for (let k = j; k < s.length; k += 1) {
+        const ch = s[k];
+        if (escaped) { escaped = false; continue; }
+        if (ch === '\\') { escaped = true; continue; }
+        if (ch === '{') depth += 1;
+        else if (ch === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            out.push({ macro: macroName, start: i, end: k + 1, raw: s.slice(i, k + 1), body: s.slice(j + 1, k) });
+            i = k + 1;
+            break;
+          }
+        }
+      }
+      if (i < nameEnd) i = nameEnd;
+    }
+    return out;
+  }
+
+  function renderLaiColorPreviewHtml(draft) {
+    const blocks = parseLatexMacroBlocks(draft, 'lai').concat(parseLatexMacroBlocks(draft, 'laiold')).sort((a, b) => a.start - b.start);
+    if (!blocks.length) return '<div class="settings-note warn">No \\lai or \\laiold blocks found in this draft.</div>';
+    return '<div class="lai-color-preview-note">Visual preview only: red = <code>\\lai{...}</code> new AI text; blue = <code>\\laiold{...}</code> preserved old text. The PDF will show these colors after Compile PDF if the macros are present and <code>\\laishowchangestrue</code> is active.</div>' +
+      '<div class="lai-color-preview-list">' + blocks.map((b, idx) => {
+        const cls = b.macro === 'laiold' ? 'old' : 'new';
+        const label = b.macro === 'laiold' ? 'OLD / blue' : 'NEW / red';
+        return '<div class="lai-color-preview-block ' + cls + '"><div class="lai-color-preview-label">' + esc(String(idx + 1)) + '. ' + esc(label) + '</div><pre>' + esc(b.body.trim() || b.raw) + '</pre></div>';
+      }).join('') + '</div>';
+  }
+
+  function jumpEditorToOffset(offset, endOffset) {
+    const editor = $('sourceEditor');
+    const safeStart = Math.max(0, Math.min(Number(offset) || 0, String(editor?.value || '').length));
+    const safeEnd = Math.max(safeStart, Math.min(Number(endOffset) || safeStart, String(editor?.value || '').length));
+    try { NS.Editor?.focus?.(); } catch (_err) {}
+    if (editor) {
+      try { editor.focus(); } catch (_err) {}
+      try { editor.setSelectionRange(safeStart, safeEnd || safeStart); } catch (_err) {}
+      try {
+        const lc = lineColForOffset(editor.value, safeStart);
+        editor.scrollTop = Math.max(0, (lc.line - 5) * 22);
+      } catch (_err) {}
+      try { editor.dispatchEvent(new Event('keyup', { bubbles: true })); } catch (_err) {}
+    }
+  }
+
+  function updateVisibleEditor(value) {
+    const text = String(value ?? '');
+    let usedEditorApi = false;
+    try {
+      if (NS.Editor && typeof NS.Editor.setText === 'function') {
+        NS.Editor.setText(text);
+        usedEditorApi = true;
+      }
+    } catch (_err) {}
+    const editor = $('sourceEditor');
+    if (editor && (!usedEditorApi || editor.value !== text)) {
+      editor.value = text;
+      try { editor.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+      try { editor.dispatchEvent(new Event('change', { bubbles: true })); } catch (_err) {}
+    }
+    try { state()?.updateActiveText?.(text); } catch (_err) {}
     try { state()?.save?.(); } catch (_err) {}
+    try { NS.Editor?.render?.(); } catch (_err) {}
     try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
-    toast(label || 'LaTeX source updated.');
+  }
+
+  function setActiveSource(text, label, options = {}) {
+    const before = getActiveSource();
+    const value = String(text ?? '');
+    updateVisibleEditor(value);
+    const diff = firstDiffRange(before, value);
+    const firstLaiAfterChange = value.indexOf('\\lai', Math.max(0, diff.start - 20));
+    const jumpStart = firstLaiAfterChange >= 0 ? firstLaiAfterChange : diff.start;
+    const jumpEnd = firstLaiAfterChange >= 0 ? Math.min(value.length, firstLaiAfterChange + 80) : Math.min(value.length, diff.newEnd);
+    jumpEditorToOffset(jumpStart, jumpEnd);
+    const lc = lineColForOffset(value, jumpStart);
+    const suffix = options?.kind ? ` Applied ${options.kind}; jumped to line ${lc.line}. Search for \\lai{ or copied citation keys if needed.` : '';
+    toast((label || 'LaTeX source updated.') + suffix);
+    status((label || 'LaTeX source updated.') + ' First changed area is around line ' + lc.line + '.', 'good');
   }
 
   function backendRoot() {
@@ -347,13 +540,18 @@
   function renderInsertion(data) {
     const diff = data?.diffSummary || {};
     const targetedDraft = data?.targetedInsertionDraft || data?.insertableLatexDraft || '';
-    const appendDraft = data?.appendOnlyDraft || '';
+    const rawAppendDraft = data?.appendOnlyDraft || '';
+    const appendDraft = rawAppendDraft ? normalizeLaiDraftForCompilation(rawAppendDraft, 'append') : '';
+    const chosenDraft = inputValue('branchWorkflowInsertMode', 'targeted') === 'append' ? appendDraft : normalizeLaiDraftForCompilation(targetedDraft, 'targeted');
     const body =
       '<div class="settings-note"><strong>safeToInsert:</strong> ' + esc(data?.safeToInsert) + ' · safeToAutoApply=' + esc(data?.safeToAutoApply) + ' · blocks=' + esc(data?.blockCount || 0) + '</div>' +
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || 'append/end') + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
+      '<div class="settings-note warn">The source editor shows raw <code>\\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
-      '<details open><summary>Targeted insertion draft</summary><pre>' + esc(targetedDraft) + '</pre></details>' +
-      '<details><summary>Append-only draft</summary><pre>' + esc(appendDraft) + '</pre></details>';
+      '<details open><summary>Visual colored LAI preview</summary>' + renderLaiColorPreviewHtml(chosenDraft || targetedDraft || appendDraft) + '</details>' +
+      '<details open><summary>Targeted insertion draft source</summary><pre>' + esc(targetedDraft) + '</pre></details>' +
+      '<details><summary>Append-only draft source</summary><pre>' + esc(appendDraft) + '</pre></details>' +
+      (rawAppendDraft && rawAppendDraft !== appendDraft ? '<div class="settings-note good">Append preview was normalized: any \\lai blocks after <code>\\end{document}</code> were moved before <code>\\end{document}</code> so they compile.</div>' : '');
     renderSummary('Preview cleaned LAI insertion', body);
     renderInlinePreview('Insertion preview ready', body);
     revealWorkflowPreview();
@@ -437,8 +635,9 @@
     if (!lastInsertionData) await prepareInsertion();
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
+    const visualText = normalizeLaiDraftForCompilation(text, kind);
     if (!W.confirm('Replace the active editor source with the ' + kind + ' LAI draft?')) return;
-    setActiveSource(text, 'Applied ' + kind + ' LAI draft.');
+    setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros.', { kind });
     await recordOutcome(kind === 'append' ? 'inserted_append' : 'inserted_targeted');
   }
 
@@ -446,7 +645,7 @@
     if (!lastInsertionData) await prepareInsertion();
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(normalizeLaiDraftForCompilation(text, kind));
     await recordOutcome('copied');
     status('Copied ' + kind + ' draft and recorded copied outcome.', 'good');
   }
@@ -504,7 +703,7 @@
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N0b ready. Dry run is selected by default.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N0e ready. Append drafts are moved before \end{document} so they compile.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
