@@ -5,6 +5,8 @@ Rationale: {{rationale}}
 Latex edit hint: {{latexEditHint}}
 Memory ids to use: {{memoryIds}}
 
+{{memoryContext}}
+
 {{sectionCoverageInstruction}}
 
 {{equationCoverageContext}}
