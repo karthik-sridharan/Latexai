@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner + LAI Insert Preview</title>
+  <title>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner + LAI Insert Preview + Outcome Feedback</title>
   <style>
     :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --input:#0b1220; }
     * { box-sizing: border-box; }
@@ -42,8 +42,8 @@
 </head>
 <body>
   <header>
-    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner + LAI Insert Preview</h1>
-    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, a real-agent run planner, an optional Stage 19M frontend real-agent runner, a Stage 19M1 \lai result cleaner/validator, and a Stage 19M2 cleaned edit preview/insert-append workflow.</p>
+    <h1>Latexai Developer: Debate Branch Generator + Evaluator + Rollout + Selector + Real Agents + LAI Cleaner + LAI Insert Preview + Outcome Feedback</h1>
+    <p>Generate, value-score, shallow-rollout, and select candidate Devil's Advocate / revision branches without model calls. This uses deterministic source/review heuristics plus ranked memory context, contextual bandit policy, a cheap evaluator, a cheap rollout simulator, a real-agent run planner, an optional Stage 19M frontend real-agent runner, a Stage 19M1 \lai result cleaner/validator, a Stage 19M2 cleaned edit preview/insert-append workflow, and Stage 19M3 branch outcome reward feedback.</p>
   </header>
   <main>
     <div class="grid">
@@ -167,6 +167,8 @@ The proof follows from concentration.
           <button id="useAppendDraft" class="secondary">Use append draft as source excerpt</button>
           <button id="recordLaiApplied" class="secondary">Record applied outcome</button>
           <button id="recordLaiRejected" class="secondary">Record rejected outcome</button>
+          <button id="recordLaiCopied" class="secondary">Record copied outcome</button>
+          <button id="recordLaiEditedApplied" class="secondary">Record edited+applied outcome</button>
           <button id="loadSample" class="secondary">Load sample</button>
         </div>
         <div id="runStatus" class="status">Ready.</div>
@@ -207,6 +209,12 @@ The proof follows from concentration.
         <h2>Stage 19M2 cleaned LAI edit preview + insert/append workflow</h2>
         <div class="status warn">This developer panel previews targeted and append-only drafts. It does not silently modify the main Latexai editor. Use the copy/apply-to-source-excerpt buttons for manual inspection.</div>
         <div id="insertionTable" class="status">No insertion preview yet.</div>
+      </section>
+
+      <section class="card wide">
+        <h2>Stage 19M3 branch outcome + reward feedback</h2>
+        <div class="status warn">Records whether the cleaned real-agent branch result was applied, copied, edited then applied, or rejected. This updates branch/memory reward signals in Neon.</div>
+        <div id="outcomeTable" class="status">No Stage 19M3 branch outcome recorded yet.</div>
       </section>
 
       <section class="card wide">
@@ -268,6 +276,7 @@ The proof follows from concentration.
   let lastRealRunData = null;
   let lastCleanerData = null;
   let lastInsertionData = null;
+  let lastOutcomeData = null;
   function payload() {
     return {
       workflow: $('workflow').value || 'latex-paper-debate',
@@ -814,37 +823,86 @@ The proof follows from concentration.
 
   function memoryIdsForFeedback() {
     const selected = (lastSelectionData && lastSelectionData.selectedBranch) || (lastRealRunData && lastRealRunData.selectedBranch) || {};
+    const plan = (lastSelectionData && lastSelectionData.executionPlan) || (lastRealRunData && lastRealRunData.executionPlan) || {};
+    const runPayload = selectedRealPayload() || {};
     const ids = [];
     if (Array.isArray(selected.memoryIdsUsed)) ids.push(...selected.memoryIdsUsed);
-    if (lastRealRunData && Array.isArray(lastRealRunData.contextBundleIds)) ids.push(...lastRealRunData.contextBundleIds);
+    if (Array.isArray(selected.memoryIds)) ids.push(...selected.memoryIds);
+    if (Array.isArray(plan.memoryIdsToUse)) ids.push(...plan.memoryIdsToUse);
+    if (Array.isArray(runPayload.memoryIdsToUse)) ids.push(...runPayload.memoryIdsToUse);
     return Array.from(new Set(ids.filter(Boolean)));
+  }
+
+  function renderOutcome(data) {
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    if (!data || data.ok === false) { $('outcomeTable').innerHTML = '<div class="status bad">No Stage 19M3 outcome recorded.</div>'; return; }
+    let html = '<div class="status good"><strong>Stage 19M3 outcome recorded:</strong> ' + esc(data.outcomeType) + ' · reward=' + esc(data.rewardValue) + ' · memoryCount=' + esc(data.memoryCount) + ' · contextFeedbackUpdates=' + esc(data.contextFeedbackUpdateCount) + '</div>';
+    html += '<table><tbody>' +
+      '<tr><th>outcomeId</th><td>' + esc(data.outcomeId || data.id) + '</td></tr>' +
+      '<tr><th>selectedBranchId</th><td>' + esc(data.selectedBranchId || '') + '</td></tr>' +
+      '<tr><th>runId</th><td>' + esc(data.runId || '') + '</td></tr>' +
+      '<tr><th>trajectoryId</th><td>' + esc(data.trajectoryId || '') + '</td></tr>' +
+      '<tr><th>editOutcomeId</th><td>' + esc(data.editOutcomeId || '') + '</td></tr>' +
+      '<tr><th>rewardEventId</th><td>' + esc(data.rewardEventId || '') + '</td></tr>' +
+      '<tr><th>debateOutcomeId</th><td>' + esc(data.debateOutcomeId || '') + '</td></tr>' +
+      '</tbody></table>';
+    if (Array.isArray(data.memoryIdsUsed) && data.memoryIdsUsed.length) html += '<details><summary><strong>Memory IDs credited</strong></summary><pre>' + esc(JSON.stringify(data.memoryIdsUsed, null, 2)) + '</pre></details>';
+    if (Array.isArray(data.contextFeedbackUpdates) && data.contextFeedbackUpdates.length) html += '<details><summary><strong>Context-feedback update details</strong></summary><pre>' + esc(JSON.stringify(data.contextFeedbackUpdates, null, 2)) + '</pre></details>';
+    $('outcomeTable').innerHTML = html;
+  }
+
+  function branchOutcomePayload(outcome) {
+    const runPayload = selectedRealPayload() || {};
+    const selectedBranch = (lastSelectionData && lastSelectionData.selectedBranch) || (lastRealRunData && lastRealRunData.selectedBranch) || runPayload.selectedBranch || {};
+    const executionPlan = (lastSelectionData && lastSelectionData.executionPlan) || (lastRealRunData && lastRealRunData.executionPlan) || runPayload.executionPlan || {};
+    const insertMode = $('laiInsertMode').value || 'targeted';
+    const outcomeType = outcome === 'applied' ? (insertMode === 'append' ? 'inserted_append' : 'inserted_targeted') : outcome;
+    return {
+      outcomeType,
+      insertionMode: insertMode,
+      compileStatus: 'not_checked',
+      validationStatus: lastInsertionData && lastInsertionData.safeToInsert ? 'valid' : 'not_checked',
+      workflow: 'latex-paper-debate-real-agent-run',
+      latexSource: $('latexSource').value || '',
+      reviewText: $('reviewText').value || '',
+      paperSummary: $('paperSummary').value || '',
+      query: $('query').value || '',
+      memoryIds: memoryIdsForFeedback(),
+      selectedBranch,
+      executionPlan,
+      realAgentRunPayload: runPayload,
+      realAgentRunResult: lastRealRunData || null,
+      cleanerResult: lastCleanerData || null,
+      insertionPreview: lastInsertionData || null,
+      note: $('laiOutcomeNote').value || ('Stage 19M3 user marked cleaned LAI branch result as ' + outcomeType),
+      metadata: {
+        frontendStage: 'stage19m3',
+        insertionVersion: lastInsertionData && lastInsertionData.insertionVersion,
+        cleanerVersion: lastCleanerData && lastCleanerData.cleanerVersion,
+        safeToInsert: lastInsertionData && lastInsertionData.safeToInsert,
+        safeToAutoApply: lastInsertionData && lastInsertionData.safeToAutoApply
+      }
+    };
   }
 
   async function recordLaiOutcome(outcome) {
     saveSettings();
-    const success = outcome === 'applied';
-    const body = {
-      memoryIds: memoryIdsForFeedback(),
-      outcome: success ? 'success' : 'failure',
-      accepted: success,
-      rewardValue: success ? 1.0 : -0.6,
-      workflow: 'latex-paper-debate-real-agent-run',
-      agentRole: 'editor',
-      taskType: 'cleaned_lai_edit_' + outcome,
-      stepName: 'stage19m2_lai_insert_preview',
-      sourceEventId: (lastRealRunData && lastRealRunData.runId) || (lastInsertionData && lastInsertionData.insertionVersion) || '',
-      note: $('laiOutcomeNote').value || ('Stage 19M2 user marked cleaned LAI edits as ' + outcome),
-      metadata: { stage: 'stage19m2', insertionVersion: lastInsertionData && lastInsertionData.insertionVersion, safeToInsert: lastInsertionData && lastInsertionData.safeToInsert }
-    };
+    if (!lastRealRunData && !lastInsertionData && !lastSelectionData) {
+      setStatus($('runStatus'), 'No branch/run/insertion state available to record. Run select/real-agent/clean/preview first.', 'bad');
+      return;
+    }
+    const body = branchOutcomePayload(outcome);
     try {
-      const res = await fetch(apiRoot() + '/memory/context-feedback', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      const res = await fetch(apiRoot() + '/debate/record-branch-outcome', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
       const text = await res.text();
       let data = null; try { data = JSON.parse(text); } catch (_) {}
       if (!res.ok || !data) throw new Error('HTTP ' + res.status + ': ' + text);
+      lastOutcomeData = data;
       $('rawJson').textContent = JSON.stringify(data, null, 2);
-      setStatus($('runStatus'), 'Recorded Stage 19M2 outcome feedback: ' + outcome + ' updated=' + (data.updated || 0) + '.', 'good');
+      renderOutcome(data);
+      setStatus($('runStatus'), 'Recorded Stage 19M3 branch outcome: ' + data.outcomeType + ', reward=' + data.rewardValue + ', memoryCount=' + data.memoryCount + '.', 'good');
     } catch (err) {
-      setStatus($('runStatus'), 'Recording outcome failed: ' + String(err && err.message || err), 'bad');
+      setStatus($('runStatus'), 'Recording Stage 19M3 branch outcome failed: ' + String(err && err.message || err), 'bad');
     }
   }
 
@@ -907,6 +965,8 @@ The proof follows from concentration.
   $('useAppendDraft').addEventListener('click', () => useDraft('append'));
   $('recordLaiApplied').addEventListener('click', () => recordLaiOutcome('applied'));
   $('recordLaiRejected').addEventListener('click', () => recordLaiOutcome('rejected'));
+  $('recordLaiCopied').addEventListener('click', () => recordLaiOutcome('copied'));
+  $('recordLaiEditedApplied').addEventListener('click', () => recordLaiOutcome('edited_then_applied'));
   $('loadSample').addEventListener('click', loadSample);
   loadSettings();
 })();
