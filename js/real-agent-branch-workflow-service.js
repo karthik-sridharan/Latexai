@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n0e-append-before-enddocument-fix-20260528-1';
+  const STAGE = 'stage19n0f-escape-ai-latex-special-chars-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -148,6 +148,43 @@
       s = movePostEndDocumentLaiBeforeEnd(s);
     }
     return s;
+  }
+
+
+
+  function isEscapedAt(text, index) {
+    let slashCount = 0;
+    for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) slashCount += 1;
+    return slashCount % 2 === 1;
+  }
+
+  function escapeUnescapedAlignmentTabs(text) {
+    const s = String(text || '');
+    // The real-agent branch output is prose/edit text, not a tabular/align environment.
+    // A bare author-list ampersand such as "Newey, W. K., & McFadden" causes
+    // "Misplaced alignment tab character &". Escape only unescaped ampersands.
+    let out = '';
+    for (let i = 0; i < s.length; i += 1) {
+      const ch = s[i];
+      if (ch === '&' && !isEscapedAt(s, i)) out += '\\&';
+      else out += ch;
+    }
+    return out;
+  }
+
+  function sanitizeLatexChangedRegionForCompile(before, after) {
+    const original = String(before || '');
+    const draft = String(after || '');
+    if (!draft || original === draft) return draft;
+    const diff = firstDiffRange(original, draft);
+    let start = diff.start;
+    let end = diff.newEnd;
+    // Expand to line boundaries so an inserted author-list line is sanitized as a unit.
+    while (start > 0 && draft[start - 1] !== '\n') start -= 1;
+    while (end < draft.length && draft[end] !== '\n') end += 1;
+    const changed = draft.slice(start, end);
+    const sanitized = escapeUnescapedAlignmentTabs(changed);
+    return draft.slice(0, start) + sanitized + draft.slice(end);
   }
 
   function parseLatexMacroBlocks(text, macroName) {
@@ -635,9 +672,11 @@
     if (!lastInsertionData) await prepareInsertion();
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
-    const visualText = normalizeLaiDraftForCompilation(text, kind);
+    const beforeSource = getActiveSource();
+    let visualText = normalizeLaiDraftForCompilation(text, kind);
+    visualText = sanitizeLatexChangedRegionForCompile(beforeSource, visualText);
     if (!W.confirm('Replace the active editor source with the ' + kind + ' LAI draft?')) return;
-    setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros.', { kind });
+    setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros. Unescaped AI-generated & characters were converted to \& in the inserted region.', { kind });
     await recordOutcome(kind === 'append' ? 'inserted_append' : 'inserted_targeted');
   }
 
@@ -645,9 +684,11 @@
     if (!lastInsertionData) await prepareInsertion();
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
-    await navigator.clipboard.writeText(normalizeLaiDraftForCompilation(text, kind));
+    const beforeSource = getActiveSource();
+    const copiedText = sanitizeLatexChangedRegionForCompile(beforeSource, normalizeLaiDraftForCompilation(text, kind));
+    await navigator.clipboard.writeText(copiedText);
     await recordOutcome('copied');
-    status('Copied ' + kind + ' draft and recorded copied outcome.', 'good');
+    status('Copied ' + kind + ' draft and recorded copied outcome. AI-generated unescaped & was sanitized to \& in the copied draft.', 'good');
   }
 
   function setBusy(on) {
