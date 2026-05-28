@@ -1,4 +1,4 @@
-/* Latexai Stage 19N0 main-editor real-agent branch workflow */
+/* Latexai Stage 19N0b main-editor real-agent branch workflow scroll/preview fix */
 .real-agent-branch-card { margin-top: 1rem; border: 1px solid rgba(124, 155, 255, 0.28); }
 .real-agent-branch-card.is-busy { opacity: 0.82; }
 .real-agent-branch-card .field textarea { min-height: 4.5rem; }
@@ -10,3 +10,116 @@
 .branch-workflow-summary-title { font-weight: 800; margin-bottom: .45rem; color: #dbeafe; }
 .branch-workflow-list { margin: .5rem 0 .8rem 1.2rem; color: #cbd5e1; }
 .branch-workflow-list li { margin: .15rem 0; }
+
+
+/* Stage 19N0b: right-panel scroll and always-visible insertion preview fix.
+   On iPad/Safari the Copilot tab and the dynamically injected branch runner could
+   become clipped by parent flex/overflow rules. Make both the active Copilot tab
+   and this card explicit touch scrollports, and dock the insertion preview above
+   the status line so it is visible without needing to find a hidden lower output. */
+#copilotTab.right-tab-panel.active {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  min-height: 0 !important;
+  padding-bottom: 2.5rem !important;
+}
+
+.real-agent-branch-card {
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+  max-height: min(78dvh, 760px);
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+  padding-bottom: 1rem;
+}
+
+.real-agent-branch-card .micro-actions,
+.real-agent-branch-card .devils-actions {
+  flex: 0 0 auto;
+}
+
+.branch-workflow-preview-dock {
+  display: none;
+  border: 1px solid rgba(37, 99, 235, .20);
+  background: rgba(239, 246, 255, .76);
+  color: #0f172a;
+  border-radius: 16px;
+  padding: .75rem;
+  max-height: 42dvh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.branch-workflow-preview-dock.is-visible {
+  display: block;
+}
+
+.branch-workflow-preview-dock-title {
+  font-weight: 900;
+  color: #174ea6;
+  margin-bottom: .45rem;
+}
+
+.branch-workflow-preview-dock details {
+  border: 1px solid rgba(15, 23, 42, .10);
+  border-radius: 12px;
+  background: rgba(255,255,255,.72);
+  padding: .45rem .55rem;
+  margin-top: .45rem;
+}
+
+.branch-workflow-preview-dock summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.branch-workflow-preview-dock pre {
+  max-height: 26dvh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #0f172a;
+  color: #e5e7eb;
+  border-radius: 12px;
+  padding: .7rem;
+  margin: .45rem 0 0;
+  font: 11px/1.45 var(--mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+}
+
+.branch-workflow-output {
+  flex: 0 0 auto;
+  max-height: 46dvh;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  word-break: break-word;
+}
+
+.branch-workflow-output details {
+  margin-top: .5rem;
+}
+
+.branch-workflow-output pre {
+  max-height: 30dvh;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 980px) {
+  .real-agent-branch-card {
+    max-height: 64dvh;
+  }
+  .branch-workflow-preview-dock,
+  .branch-workflow-output {
+    max-height: 34dvh;
+  }
+}
