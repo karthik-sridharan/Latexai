@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n0-main-editor-real-agent-branch-workflow-20260528-1';
+  const STAGE = 'stage19n0b-main-editor-branch-runner-scroll-preview-fix-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -139,6 +139,32 @@
     const node = $('branchWorkflowOutput');
     if (!node) return;
     node.innerHTML = '<div class="branch-workflow-summary-title">' + esc(title) + '</div>' + html;
+    try { node.dataset.branchWorkflowLastTitle = String(title || ''); } catch (_err) {}
+  }
+
+  function renderInlinePreview(title, html) {
+    const node = $('branchWorkflowPreviewDock');
+    if (!node) return;
+    node.className = 'branch-workflow-preview-dock is-visible';
+    node.innerHTML = '<div class="branch-workflow-preview-dock-title">' + esc(title || 'Preview') + '</div>' + html;
+  }
+
+  function clearInlinePreview() {
+    const node = $('branchWorkflowPreviewDock');
+    if (!node) return;
+    node.className = 'branch-workflow-preview-dock';
+    node.innerHTML = '';
+  }
+
+  function revealWorkflowPreview() {
+    const dock = $('branchWorkflowPreviewDock');
+    const output = $('branchWorkflowOutput');
+    const card = $('realAgentBranchCard');
+    try {
+      if (dock && dock.classList.contains('is-visible')) dock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      else if (output) output.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } catch (_err) {}
+    try { if (card) card.scrollTop = Math.max(0, card.scrollHeight - card.clientHeight); } catch (_err) {}
   }
 
   function renderSelection(data) {
@@ -218,6 +244,7 @@
   }
 
   async function planBranch() {
+    clearInlinePreview();
     setStored('latexai:memory-backend-url', ($('memoryBackendUrl')?.value || '').trim() || getStored('latexai:memory-backend-url', ''));
     status('Planning selected branch with backend policy/value/rollout/selector...', 'warn');
     const data = await backendPost('/debate/select-branch', planPayload());
@@ -319,13 +346,17 @@
 
   function renderInsertion(data) {
     const diff = data?.diffSummary || {};
-    renderSummary('Preview cleaned LAI insertion',
+    const targetedDraft = data?.targetedInsertionDraft || data?.insertableLatexDraft || '';
+    const appendDraft = data?.appendOnlyDraft || '';
+    const body =
       '<div class="settings-note"><strong>safeToInsert:</strong> ' + esc(data?.safeToInsert) + ' · safeToAutoApply=' + esc(data?.safeToAutoApply) + ' · blocks=' + esc(data?.blockCount || 0) + '</div>' +
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || 'append/end') + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
-      '<details open><summary>Targeted insertion draft</summary><pre>' + esc(data?.targetedInsertionDraft || data?.insertableLatexDraft || '') + '</pre></details>' +
-      '<details><summary>Append-only draft</summary><pre>' + esc(data?.appendOnlyDraft || '') + '</pre></details>'
-    );
+      '<details open><summary>Targeted insertion draft</summary><pre>' + esc(targetedDraft) + '</pre></details>' +
+      '<details><summary>Append-only draft</summary><pre>' + esc(appendDraft) + '</pre></details>';
+    renderSummary('Preview cleaned LAI insertion', body);
+    renderInlinePreview('Insertion preview ready', body);
+    revealWorkflowPreview();
   }
 
   async function prepareInsertion() {
@@ -335,7 +366,8 @@
     const data = await backendPost('/debate/prepare-lai-insertion', insertionPayload());
     lastInsertionData = data;
     renderInsertion(data);
-    status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '.', 'good');
+    status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '. Preview is shown in the dock above and in the output box below.', 'good');
+    revealWorkflowPreview();
     return data;
   }
 
@@ -471,7 +503,8 @@
       '<button id="branchWorkflowCopyTargetedBtn" class="btn mini" type="button">Copy targeted</button>',
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N0 ready. Dry run is selected by default.</div>',
+      '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N0b ready. Dry run is selected by default.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
