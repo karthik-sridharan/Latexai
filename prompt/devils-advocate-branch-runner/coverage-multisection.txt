@@ -1,0 +1,13 @@
+Section coverage mode: {{modeName}}.
+Requested target sections/units: {{requestedTargets}}.
+Whole-paper targeting active: {{wholePaperActive}}.
+
+Coverage rule for the final editor step:
+- For EVERY requested target section/unit, output AT LEAST ONE visible \lai{...} coverage block.
+- If edits are needed for a target, output one or more separate \lai{...} blocks for that target.
+- If no edits are needed for a target, output exactly one no-edit block for that target.
+- A no-edit block must have this form: \lai{\paragraph{Target section: <exact section title>} No edits recommended.}
+- An edit block must have this form: \lai{\paragraph{Target section: <exact section title>} <concrete proposed edit, replacement, insertion, or revision plan>.}
+- Do NOT restrict all edits to the Introduction unless the target list only contains Introduction.
+- Do NOT put target labels outside \lai{...}; the cleaner keeps only visible \lai blocks.
+- Use the exact target section/unit names listed above so the insertion step can distribute blocks correctly.

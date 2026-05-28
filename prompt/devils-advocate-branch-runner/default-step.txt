@@ -1,0 +1,10 @@
+Execute this Latexai Devil's Advocate branch step.
+Role: {{role}}
+Task type: {{taskType}}
+
+{{baseContext}}
+
+Prior debate transcript:
+{{transcript}}
+
+Return a concise, actionable result for the next agent.

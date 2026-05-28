@@ -1,0 +1,4 @@
+Section coverage mode: selected branch target only.
+Requested target sections/units: {{requestedTargets}}.
+If no edit is needed for a requested target, say so inside a visible \lai{...} block.
+For every requested target section/unit, the final editor step must provide at least one section-labeled coverage block.

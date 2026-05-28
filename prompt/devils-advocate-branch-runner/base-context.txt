@@ -1,0 +1,17 @@
+Branch title: {{branchTitle}}
+Branch type: {{branchType}}
+Target sections/units: {{targetSections}}
+Rationale: {{rationale}}
+Latex edit hint: {{latexEditHint}}
+Memory ids to use: {{memoryIds}}
+
+{{sectionCoverageInstruction}}
+
+Paper summary:
+{{paperSummary}}
+
+Review/report signal:
+{{reviewText}}
+
+Relevant visible context supplied to this model call:
+{{visibleContext}}

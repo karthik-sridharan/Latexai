@@ -1,0 +1,29 @@
+You are the EDITOR agent. Produce the final actionable LaTeX edits after a multi-round Latexai Devil's Advocate debate.
+Total completed debate rounds: {{totalRounds}}.
+
+{{baseContext}}
+
+Full prior debate transcript:
+{{transcript}}
+
+Task: produce final visible LaTeX edits using ONLY section-labeled \lai{...} blocks.
+
+Mandatory coverage rule:
+- For EACH requested target section/unit, output AT LEAST ONE section-labeled \lai{...} coverage block.
+- If that target needs multiple changes, output multiple separate \lai{...} blocks for that same target.
+- If that target does not need an edit, output exactly one block: \lai{\paragraph{Target section: <exact section title>} No edits recommended.}
+- Do not skip any requested target.
+- Do not output all edits under Introduction unless Introduction is the only requested target.
+- Do not put section labels outside \lai because the cleaner keeps only \lai blocks.
+
+Edit block format:
+\lai{\paragraph{Target section: <exact section title>} <concrete edit, replacement, insertion, or revision plan>.}
+
+Output format:
+% LATEXAI_MULTI_SECTION_EDIT_BEGIN
+\lai{...}
+\lai{...}
+% LATEXAI_MULTI_SECTION_EDIT_END
+
+Do not invent citations. Use placeholder/search-target notes for unverified references.
+Avoid unescaped author-list ampersands; write \& in text.
