@@ -6,8 +6,20 @@
 
   const FALLBACK_MODELS = {
     openai: [
+      { value: 'gpt-5.5', label: 'OpenAI · gpt-5.5' },
+      { value: 'gpt-5.4', label: 'OpenAI · gpt-5.4' },
+      { value: 'gpt-5.4-mini', label: 'OpenAI · gpt-5.4-mini' },
+      { value: 'gpt-5.4-nano', label: 'OpenAI · gpt-5.4-nano' },
+      { value: 'gpt-5.1', label: 'OpenAI · gpt-5.1' },
+      { value: 'gpt-5.1-mini', label: 'OpenAI · gpt-5.1-mini' },
+      { value: 'gpt-5', label: 'OpenAI · gpt-5' },
+      { value: 'gpt-5-mini', label: 'OpenAI · gpt-5-mini' },
+      { value: 'gpt-5-nano', label: 'OpenAI · gpt-5-nano' },
+      { value: 'gpt-4.1', label: 'OpenAI · gpt-4.1' },
       { value: 'gpt-4.1-mini', label: 'OpenAI · gpt-4.1-mini' },
-      { value: 'gpt-4.1', label: 'OpenAI · gpt-4.1' }
+      { value: 'gpt-4.1-nano', label: 'OpenAI · gpt-4.1-nano' },
+      { value: 'gpt-4o', label: 'OpenAI · gpt-4o' },
+      { value: 'gpt-4o-mini', label: 'OpenAI · gpt-4o-mini' }
     ],
     anthropic: [
       { value: 'claude-sonnet-4-5', label: 'Claude · claude-sonnet-4-5' },
@@ -15,12 +27,18 @@
     ],
     gemini: [
       { value: 'gemini-2.5-flash', label: 'Gemini · gemini-2.5-flash' },
-      { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro' }
+      { value: 'gemini-2.5-flash-lite', label: 'Gemini · gemini-2.5-flash-lite' },
+      { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro' },
+      { value: 'gemini-2.0-flash', label: 'Gemini · gemini-2.0-flash' },
+      { value: 'gemini-2.0-flash-lite', label: 'Gemini · gemini-2.0-flash-lite' },
+      { value: 'gemini-1.5-flash', label: 'Gemini · gemini-1.5-flash' },
+      { value: 'gemini-1.5-pro', label: 'Gemini · gemini-1.5-pro' }
     ]
   };
 
   const LS_PROVIDER = 'lumina-latex.ai.provider';
   const LS_MODEL_PREFIX = 'lumina-latex.ai.model.';
+  const LS_CUSTOM_MODEL_PREFIX = 'lumina-latex.ai.customModel.';
   const LS_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
   let remoteModels = null;
@@ -31,10 +49,14 @@
 
   function getConfig() {
     const provider = document.getElementById('aiProvider')?.value || localStorage.getItem(LS_PROVIDER) || 'openai';
-    const model = document.getElementById('aiModel')?.value || localStorage.getItem(`${LS_MODEL_PREFIX}${provider}`) || '';
+    const selectedModel = document.getElementById('aiModel')?.value || localStorage.getItem(`${LS_MODEL_PREFIX}${provider}`) || '';
+    const customModel = document.getElementById('aiCustomModel')?.value?.trim() || localStorage.getItem(`${LS_CUSTOM_MODEL_PREFIX}${provider}`) || '';
+    const model = customModel || selectedModel;
     return {
       provider,
       model,
+      selectedModel,
+      customModel,
       proxyUrl: getProxyUrl(),
       proxyToken: document.getElementById('aiProxyToken')?.value?.trim() || localStorage.getItem(LS_PROXY_TOKEN) || ''
     };
@@ -43,7 +65,8 @@
   function persistConfig() {
     const config = getConfig();
     localStorage.setItem(LS_PROVIDER, config.provider);
-    localStorage.setItem(`${LS_MODEL_PREFIX}${config.provider}`, config.model || '');
+    localStorage.setItem(`${LS_MODEL_PREFIX}${config.provider}`, config.selectedModel || config.model || '');
+    localStorage.setItem(`${LS_CUSTOM_MODEL_PREFIX}${config.provider}`, config.customModel || '');
     localStorage.setItem(LS_PROXY_URL, config.proxyUrl || '/api/lumina/ai');
     localStorage.setItem(LS_PROXY_TOKEN, config.proxyToken || '');
     return config;
@@ -179,6 +202,7 @@
     FALLBACK_MODELS,
     LS_PROVIDER,
     LS_MODEL_PREFIX,
+    LS_CUSTOM_MODEL_PREFIX,
     LS_PROXY_URL,
     LS_PROXY_TOKEN,
     getConfig,

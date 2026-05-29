@@ -12,11 +12,12 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
+  const STAGE = 'stage19n1q2-frontend-model-dropdown-all-gpt-gemini-flash-1';
   const STORAGE_KEY = 'latexai:model-registry:v1';
   const LAST_STATUS_KEY = 'latexai:model-registry:last-status:v1';
   const LS_PROVIDER = 'lumina-latex.ai.provider';
   const LS_MODEL_PREFIX = 'lumina-latex.ai.model.';
+  const LS_CUSTOM_MODEL_PREFIX = 'lumina-latex.ai.customModel.';
   const LS_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
 
@@ -53,9 +54,24 @@
       title: 'OpenAI',
       defaultModel: 'gpt-4.1-mini',
       configured: null,
+      allowCustomModels: true,
+      allowAnyGptModel: true,
+      customModelPattern: '^gpt[-A-Za-z0-9_.]*$',
       models: [
+        { value: 'gpt-5.5', label: 'OpenAI · gpt-5.5', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gpt-5.4', label: 'OpenAI · gpt-5.4', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gpt-5.4-mini', label: 'OpenAI · gpt-5.4-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'debate-advocate'] },
+        { value: 'gpt-5.4-nano', label: 'OpenAI · gpt-5.4-nano', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
+        { value: 'gpt-5.1', label: 'OpenAI · gpt-5.1', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gpt-5.1-mini', label: 'OpenAI · gpt-5.1-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] },
+        { value: 'gpt-5', label: 'OpenAI · gpt-5', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gpt-5-mini', label: 'OpenAI · gpt-5-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] },
+        { value: 'gpt-5-nano', label: 'OpenAI · gpt-5-nano', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
+        { value: 'gpt-4.1', label: 'OpenAI · gpt-4.1', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
         { value: 'gpt-4.1-mini', label: 'OpenAI · gpt-4.1-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'competitive-ranking', 'competitive-improvement', 'debate-advocate', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gpt-4.1', label: 'OpenAI · gpt-4.1', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
+        { value: 'gpt-4.1-nano', label: 'OpenAI · gpt-4.1-nano', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
+        { value: 'gpt-4o', label: 'OpenAI · gpt-4o', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gpt-4o-mini', label: 'OpenAI · gpt-4o-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] }
       ]
     },
     anthropic: {
@@ -73,9 +89,16 @@
       title: 'Gemini / Google',
       defaultModel: 'gemini-2.5-flash',
       configured: null,
+      allowCustomModels: true,
+      customModelPattern: '^gemini[-A-Za-z0-9_.]*$',
       models: [
-        { value: 'gemini-2.5-flash', label: 'Gemini · gemini-2.5-flash', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic'] },
-        { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
+        { value: 'gemini-2.5-flash', label: 'Gemini · gemini-2.5-flash', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'debate-advocate'] },
+        { value: 'gemini-2.5-flash-lite', label: 'Gemini · gemini-2.5-flash-lite', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
+        { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gemini-2.0-flash', label: 'Gemini · gemini-2.0-flash', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic', 'slide-repair'] },
+        { value: 'gemini-2.0-flash-lite', label: 'Gemini · gemini-2.0-flash-lite', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
+        { value: 'gemini-1.5-flash', label: 'Gemini · gemini-1.5-flash', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
+        { value: 'gemini-1.5-pro', label: 'Gemini · gemini-1.5-pro', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'debate-critic', 'debate-synthesizer'] }
       ]
     }
   };
@@ -147,9 +170,37 @@
 
   function modelTierGuess(model) {
     const value = clean(model).toLowerCase();
-    if (/mini|flash|haiku|small|lite/.test(value)) return 'fast';
-    if (/pro|sonnet|opus|4\.1$|strong/.test(value)) return 'strong';
+    if (/mini|flash|haiku|small|lite|nano/.test(value)) return 'fast';
+    if (/pro|sonnet|opus|4\.1$|5\.4$|5\.5$|strong/.test(value)) return 'strong';
     return 'standard';
+  }
+
+  function shouldKeepLocalModelList(provider) {
+    const p = clean(provider).toLowerCase();
+    // Stage 19N1Q2: backend /models can be conservative and report only the current
+    // default. Keep the frontend's curated model registry visible for providers that
+    // support flexible model routing, while still marking backend-reported models.
+    return p === 'openai' || p === 'gemini';
+  }
+
+  function mergeModelLists(provider, baseModels, allowedModels) {
+    const byValue = new Map();
+    const add = (model, backendAllowed = false) => {
+      const value = clean(model?.value || model?.model || model);
+      if (!value) return;
+      const previous = byValue.get(value) || {};
+      const meta = typeof model === 'object' ? model : fallbackModelMeta(provider, value);
+      byValue.set(value, {
+        ...fallbackModelMeta(provider, value),
+        ...previous,
+        ...meta,
+        value,
+        backendAllowed: Boolean(previous.backendAllowed || backendAllowed)
+      });
+    };
+    (baseModels || []).forEach((model) => add(model, false));
+    (allowedModels || []).forEach((model) => add(model, true));
+    return Array.from(byValue.values());
   }
 
   function normalizeProviderInfo(provider, info) {
@@ -162,13 +213,16 @@
       defaultModel: clean(info.defaultModel || base.defaultModel),
       allowedModels: Array.isArray(info.allowedModels) ? info.allowedModels.map(clean).filter(Boolean) : base.allowedModels,
       webSearch: info.webSearch || base.webSearch || null,
-      capabilities: info.capabilities || base.capabilities || null
+      capabilities: info.capabilities || base.capabilities || null,
+      allowCustomModels: typeof info.allowCustomModels === 'boolean' ? info.allowCustomModels : Boolean(base.allowCustomModels),
+      allowAnyGptModel: typeof info.allowAnyGptModel === 'boolean' ? info.allowAnyGptModel : Boolean(base.allowAnyGptModel),
+      customModelPattern: clean(info.customModelPattern || base.customModelPattern || '')
     };
   }
 
   function applyBackendModels(status, modelListing) {
     const next = cloneRegistry(PROVIDERS);
-    const statusProviders = status?.providers || {};
+    const statusProviders = status?.modelRegistry?.providers || status?.providers || {};
     const listingProviders = modelListing?.providers || {};
     const providerKeys = new Set([...Object.keys(next), ...Object.keys(statusProviders), ...Object.keys(listingProviders)]);
 
@@ -179,9 +233,11 @@
       const listingAllowed = Array.isArray(fromListing) ? fromListing.map((item) => clean(item?.model || item?.value || item)).filter(Boolean) : [];
       const allowed = [...new Set([...statusAllowed, ...listingAllowed])].filter(Boolean);
       const baseModels = next[provider]?.models || PROVIDERS[provider]?.models || [];
-      const models = allowed.length
-        ? allowed.map((model) => ({ ...fallbackModelMeta(provider, model), backendAllowed: true }))
-        : baseModels.map((model) => ({ ...model, backendAllowed: false }));
+      const models = shouldKeepLocalModelList(provider)
+        ? mergeModelLists(provider, baseModels, allowed)
+        : (allowed.length
+          ? allowed.map((model) => ({ ...fallbackModelMeta(provider, model), backendAllowed: true }))
+          : baseModels.map((model) => ({ ...model, backendAllowed: false })));
       const defaultModel = clean(fromStatus.defaultModel || next[provider]?.defaultModel || models[0]?.value || '');
       if (defaultModel && !models.some((m) => m.value === defaultModel)) models.unshift({ ...fallbackModelMeta(provider, defaultModel), backendAllowed: true });
       next[provider] = {
@@ -192,7 +248,7 @@
         defaultModel,
         models,
         backendChecked: Boolean(status || modelListing),
-        allowedModels: allowed.length ? allowed : models.map((m) => m.value),
+        allowedModels: models.map((m) => m.value),
         lastUpdated: nowIso()
       };
     });
@@ -270,6 +326,22 @@
     return Boolean(registry[provider]?.backendChecked);
   }
 
+  function isOpenAiGptModel(model) {
+    return /^gpt(?:[-_.]?[A-Za-z0-9]+)*$/i.test(clean(model));
+  }
+
+  function isCustomModelAllowed(provider, model) {
+    const p = clean(provider || '');
+    const m = clean(model || '');
+    if (!m) return false;
+    const record = registry[p] || PROVIDERS[p] || {};
+    if (p === 'openai' && (record.allowAnyGptModel || record.allowCustomModels) && isOpenAiGptModel(m)) return true;
+    if (record.allowCustomModels && record.customModelPattern) {
+      try { return new RegExp(record.customModelPattern, 'i').test(m); } catch (_err) {}
+    }
+    return false;
+  }
+
   function validateProviderModel(provider, model, options = {}) {
     const p = clean(provider || 'openai');
     const m = clean(model || '');
@@ -280,6 +352,9 @@
     const backendChecked = isBackendChecked(providerOk ? p : 'openai');
     const modelOk = Boolean(m && allowed.includes(m));
     if (providerOk && modelOk) return { ok: true, provider: p, model: m, repaired: false, backendChecked, reason: '' };
+    if (providerOk && isCustomModelAllowed(p, m)) {
+      return { ok: true, provider: p, model: m, repaired: false, backendChecked, customModel: true, reason: `${p}/${m} accepted as a custom model.` };
+    }
 
     const fallbackProvider = providerOk ? p : 'openai';
     const fallbackModels = modelsFor(fallbackProvider, { routeKey: options.routeKey });
@@ -299,6 +374,7 @@
   function syncVisibleProviderModel({ repair = false } = {}) {
     const providerEl = el('aiProvider');
     const modelEl = el('aiModel');
+    const customModelEl = el('aiCustomModel');
     if (!providerEl || !modelEl) return null;
 
     const currentProvider = clean(providerEl.value || safeLocalGet(LS_PROVIDER, 'openai') || 'openai');
@@ -307,12 +383,19 @@
     else providerEl.value = currentProvider;
 
     const savedModel = safeLocalGet(`${LS_MODEL_PREFIX}${providerEl.value}`, modelEl.value || registry[providerEl.value]?.defaultModel || '');
-    const validation = validateProviderModel(providerEl.value, savedModel, { routeKey: 'default' });
+    const savedCustomModel = safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value}`, customModelEl?.value || '');
+    const candidateModel = clean(savedCustomModel || savedModel);
+    const validation = validateProviderModel(providerEl.value, candidateModel || savedModel, { routeKey: 'default' });
     const finalModel = repair && validation.repaired ? validation.model : (savedModel || validation.model);
     modelEl.innerHTML = modelOptions(providerEl.value, finalModel, 'default');
     if (Array.from(modelEl.options || []).some((option) => option.value === finalModel)) modelEl.value = finalModel;
+    if (customModelEl) {
+      customModelEl.value = savedCustomModel && !Array.from(modelEl.options || []).some((option) => option.value === savedCustomModel) ? savedCustomModel : savedCustomModel;
+      customModelEl.placeholder = providerEl.value === 'openai' ? 'Optional custom GPT model, e.g. gpt-5.5 or gpt-5.4-mini' : providerEl.value === 'gemini' ? 'Optional Gemini model, e.g. gemini-2.5-flash' : 'Optional custom model';
+    }
     safeLocalSet(LS_PROVIDER, providerEl.value);
     safeLocalSet(`${LS_MODEL_PREFIX}${providerEl.value}`, modelEl.value || '');
+    safeLocalSet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value}`, customModelEl?.value?.trim() || '');
     updateCardSummary(validation);
     return validation;
   }
@@ -419,7 +502,8 @@
     const summary = el('modelRegistrySummary');
     if (!summary) return;
     const provider = clean(el('aiProvider')?.value || 'openai');
-    const model = clean(el('aiModel')?.value || '');
+    const customModel = clean(el('aiCustomModel')?.value || safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${provider}`, ''));
+    const model = customModel || clean(el('aiModel')?.value || '');
     const checkedCount = Object.values(registry).filter((p) => p.backendChecked).length;
     const note = validation?.repaired ? ` · repaired: ${validation.reason}` : '';
     summary.textContent = `Current: ${provider || '(provider?)'} / ${model || '(model?)'} · ${checkedCount ? `${checkedCount} provider(s) backend-checked` : 'using fallback registry'}${note}`;
@@ -452,17 +536,28 @@
   function bindVisibleControls() {
     const providerEl = el('aiProvider');
     const modelEl = el('aiModel');
+    const customModelEl = el('aiCustomModel');
     if (!providerEl || !modelEl || providerEl.dataset.stage18aModelRegistryBound === 'true') return false;
     providerEl.dataset.stage18aModelRegistryBound = 'true';
     providerEl.addEventListener('change', () => {
       safeLocalSet(LS_PROVIDER, providerEl.value || 'openai');
+      if (customModelEl) customModelEl.value = safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value || 'openai'}`, '');
       syncVisibleProviderModel({ repair: true });
       updateRouteModelSelects({ repair: true });
       emitUpdated();
     }, true);
     modelEl.addEventListener('change', () => {
       safeLocalSet(`${LS_MODEL_PREFIX}${providerEl.value || 'openai'}`, modelEl.value || '');
+      if (customModelEl && customModelEl.value.trim()) {
+        // Choosing a listed model clears the optional override so the dropdown takes effect.
+        customModelEl.value = '';
+        safeLocalSet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value || 'openai'}`, '');
+      }
       updateCardSummary();
+    }, true);
+    customModelEl?.addEventListener('input', () => {
+      safeLocalSet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value || 'openai'}`, customModelEl.value.trim());
+      updateCardSummary(validateProviderModel(providerEl.value, customModelEl.value.trim() || modelEl.value, { routeKey: 'default' }));
     }, true);
     return true;
   }
@@ -483,7 +578,9 @@
   }
 
   function registryReport() {
-    const visible = { provider: clean(el('aiProvider')?.value || ''), model: clean(el('aiModel')?.value || '') };
+    const visibleProvider = clean(el('aiProvider')?.value || '');
+    const visibleCustomModel = clean(el('aiCustomModel')?.value || safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${visibleProvider}`, ''));
+    const visible = { provider: visibleProvider, model: visibleCustomModel || clean(el('aiModel')?.value || ''), selectedModel: clean(el('aiModel')?.value || ''), customModel: visibleCustomModel };
     return {
       schema: 'latexai-model-routing-audit-validation-lock-registry-report-v1',
       stage: STAGE,
