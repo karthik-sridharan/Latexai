@@ -15,7 +15,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
+  const STAGE = 'stage19n1q3-sticky-route-provider-model-selects-1';
   const STORAGE_KEY = 'latexai:model-routing:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('model-provider-service')) {
@@ -81,6 +81,19 @@
       provider: clean(providerSelect()?.value || DEFAULTS.default.provider),
       model: clean(modelSelect()?.value || DEFAULTS.default.model)
     };
+  }
+
+  function cssEscape(value) {
+    if (W.CSS?.escape) return W.CSS.escape(value);
+    return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  }
+
+  function routeProviderNode(routeKey) {
+    return D.querySelector(`[data-route-provider="${cssEscape(routeKey)}"]`);
+  }
+
+  function routeModelNode(routeKey) {
+    return D.querySelector(`[data-route-model="${cssEscape(routeKey)}"]`);
   }
 
   function setProviderModel(route) {
@@ -327,11 +340,45 @@
     return true;
   }
 
+  function routeRecommendation(routeKey, provider) {
+    return NS.ModelRegistryService?.recommendedForRoute?.(routeKey, provider) || DEFAULTS[routeKey] || DEFAULTS.default;
+  }
+
+  function refreshRouteRow(routeKey, options = {}) {
+    const p = routeProviderNode(routeKey);
+    const m = routeModelNode(routeKey);
+    const provider = clean(p?.value || DEFAULTS[routeKey]?.provider || DEFAULTS.default.provider);
+    const currentModel = clean(m?.value || '');
+    const recommendation = routeRecommendation(routeKey, provider);
+    const validation = currentModel
+      ? NS.ModelRegistryService?.validateProviderModel?.(provider, currentModel, { routeKey })
+      : null;
+
+    let targetModel = currentModel;
+    if (options.forceRecommended || !targetModel) {
+      targetModel = clean(recommendation.model || DEFAULTS[routeKey]?.model || DEFAULTS.default.model);
+    } else if (options.repair !== false && validation?.repaired) {
+      targetModel = clean(validation.model || recommendation.model || DEFAULTS[routeKey]?.model || DEFAULTS.default.model);
+    }
+
+    if (m?.tagName === 'SELECT') m.innerHTML = modelOptionsHtml(provider, targetModel, routeKey);
+    if (m) {
+      const hasTarget = Array.from(m.options || []).some((opt) => opt.value === targetModel);
+      if (hasTarget || m.tagName !== 'SELECT') m.value = targetModel;
+      else if (m.options?.length) m.value = m.options[0].value;
+    }
+    return { provider, model: clean(m?.value || targetModel) };
+  }
+
+  function refreshRouteOptionsPreservingUi() {
+    for (const item of ROUTES) refreshRouteRow(item.key, { repair: true, forceRecommended: false });
+  }
+
   function routesFromUi() {
     const routes = {};
     for (const item of ROUTES) {
-      const provider = clean(D.querySelector(`[data-route-provider="${CSS.escape(item.key)}"]`)?.value || DEFAULTS[item.key]?.provider);
-      const model = clean(D.querySelector(`[data-route-model="${CSS.escape(item.key)}"]`)?.value || DEFAULTS[item.key]?.model);
+      const provider = clean(routeProviderNode(item.key)?.value || DEFAULTS[item.key]?.provider);
+      const model = clean(routeModelNode(item.key)?.value || DEFAULTS[item.key]?.model);
       const validation = NS.ModelRegistryService?.validateProviderModel?.(provider, model, { routeKey: item.key });
       routes[item.key] = validation ? { provider: validation.provider, model: validation.model } : { provider, model };
     }
@@ -342,14 +389,19 @@
     const normalized = normalizeRoutes(routes);
     for (const item of ROUTES) {
       const route = normalized[item.key];
-      const p = D.querySelector(`[data-route-provider="${CSS.escape(item.key)}"]`);
-      const m = D.querySelector(`[data-route-model="${CSS.escape(item.key)}"]`);
+      const p = routeProviderNode(item.key);
+      const m = routeModelNode(item.key);
       if (p) p.value = route.provider;
       if (m) {
         if (m.tagName === 'SELECT') m.innerHTML = modelOptionsHtml(route.provider, route.model, item.key);
         m.value = route.model;
       }
     }
+  }
+
+  function autosaveRoutes(message) {
+    writeRoutes(routesFromUi());
+    if (message) setStatus(message);
   }
 
   function setStatus(message) {
@@ -410,18 +462,37 @@
     el('useCurrentModelForAllBtn')?.addEventListener('click', useCurrentForAll, true);
     el('resetModelRoutingBtn')?.addEventListener('click', resetDefaults, true);
     el('copyModelRoutingReportBtn')?.addEventListener('click', copyReport, true);
+
     D.querySelectorAll('[data-route-provider]').forEach((node) => {
-      if (node.dataset.stage18aRouteBound === 'true') return;
-      node.dataset.stage18aRouteBound = 'true';
+      if (node.dataset.stage19n1q3RouteProviderBound === 'true') return;
+      node.dataset.stage19n1q3RouteProviderBound = 'true';
       node.addEventListener('change', () => {
         const key = node.getAttribute('data-route-provider');
-        const modelNode = D.querySelector(`[data-route-model="${CSS.escape(key)}"]`);
-        const recommendation = NS.ModelRegistryService?.recommendedForRoute?.(key, node.value) || DEFAULTS[key] || DEFAULTS.default;
-        if (modelNode?.tagName === 'SELECT') modelNode.innerHTML = modelOptionsHtml(node.value, recommendation.model, key);
-        if (modelNode) modelNode.value = recommendation.model;
+        refreshRouteRow(key, { forceRecommended: true, repair: true });
+        autosaveRoutes(`Route ${key} set to ${node.value} / ${routeModelNode(key)?.value || '(model?)'}.`);
       }, true);
     });
-    D.addEventListener('latexai:model-registry-updated', () => updateUiFromRoutes(readRoutes()), { passive: true });
+
+    D.querySelectorAll('[data-route-model]').forEach((node) => {
+      if (node.dataset.stage19n1q3RouteModelBound === 'true') return;
+      node.dataset.stage19n1q3RouteModelBound = 'true';
+      node.addEventListener('change', () => {
+        const key = node.getAttribute('data-route-model');
+        autosaveRoutes(`Route ${key} set to ${routeProviderNode(key)?.value || '(provider?)'} / ${node.value}.`);
+      }, true);
+    });
+
+    // Do not rebuild route rows from saved localStorage when the model registry
+    // refreshes. That was the source of the iPad/Safari dropdown bug: a backend
+    // registry update fired while the user was editing, so the row reverted to
+    // the previously saved OpenAI route. Refresh only the option lists and keep
+    // the currently visible provider/model choices.
+    if (D.documentElement.dataset.stage19n1q3RegistryPreserveBound !== 'true') {
+      D.documentElement.dataset.stage19n1q3RegistryPreserveBound = 'true';
+      D.addEventListener('latexai:model-registry-updated', () => {
+        refreshRouteOptionsPreservingUi();
+      }, { passive: true });
+    }
   }
 
   function init() {

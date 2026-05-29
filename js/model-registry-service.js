@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1q2-frontend-model-dropdown-all-gpt-gemini-flash-1';
+  const STAGE = 'stage19n1q3-sticky-route-provider-model-selects-1';
   const STORAGE_KEY = 'latexai:model-registry:v1';
   const LAST_STATUS_KEY = 'latexai:model-registry:last-status:v1';
   const LS_PROVIDER = 'lumina-latex.ai.provider';
