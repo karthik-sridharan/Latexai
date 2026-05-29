@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1Q4 RealAgentBranchWorkflowService
- * Stage: stage19n1q4-branch-runner-settings-devils-routes-20260529-1
+/* Latexai Stage 19N1R RealAgentBranchWorkflowService
+ * Stage: stage19n1r-branch-runner-settings-devils-routes-20260529-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1q4-branch-runner-settings-devils-routes-20260529-1';
+  const STAGE = 'stage19n1r-devils-output-saved-runs-learned-branch-bundle-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -26,6 +26,8 @@
   let promptDebugWindow = null;
   let promptDebugRunId = '';
   let promptDebugEventCount = 0;
+  const SAVED_BRANCH_RUNS_KEY = 'latexai:devils-advocate:saved-runs:v2';
+  const SAVED_BRANCH_RUNS_LIMIT = 50;
 
 
   function $(id) { return D.getElementById(id); }
@@ -581,6 +583,17 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const root = backendRoot();
     if (!root) throw new Error('Missing memory/backend URL. Set Memory backend URL in Settings.');
     const res = await fetch(root + path, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body || {}) });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
+    if (!res.ok || data?.ok === false) throw new Error(data?.error?.message || data?.detail || data?.message || ('HTTP ' + res.status + ': ' + text));
+    return data;
+  }
+
+  async function backendGet(path) {
+    const root = backendRoot();
+    if (!root) throw new Error('Missing memory/backend URL. Set Memory backend URL in Settings.');
+    const res = await fetch(root + path, { method: 'GET', headers: authHeaders() });
     const text = await res.text();
     let data = null;
     try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
@@ -1496,6 +1509,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<details open><summary>Agent outputs</summary><ol>' + outputs.map((o) => '<li><strong>' + esc(o.agentRole) + (o.debateRound ? ' r' + esc(o.debateRound) : '') + '</strong> (' + esc(o.provider) + '/' + esc(o.model) + ')<br><span class="small">' + esc(String(o.outputText || '').slice(0, 800)) + '</span></li>').join('') + '</ol></details>' +
       '<details open><summary>Structured editor output schema</summary>' + renderStructuredEditorPreviewHtml(structured) + '</details>' +
       (blocks.length ? '<details open><summary>Visible \\lai candidates</summary><pre>' + esc(blocks.join('\n\n')) + '</pre></details>' : '') +
+      '<details open><summary>Complete saved review artifact / report</summary><pre>' + esc(buildBranchRunReport(currentBranchRunSnapshot('render_report'))) + '</pre></details>' +
       '<details><summary>Final output</summary><pre>' + esc(finalText) + '</pre></details>'
     );
   }
@@ -1555,7 +1569,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     lastCleanerData = data.laiValidation || null;
     refreshStructuredEditorData();
     renderRealRun(data);
-    status((dry ? 'Dry run' : 'Real-agent run') + ' completed and recorded.', 'good');
+    try { await saveCurrentBranchRun('run_completed', { quiet: true }); } catch (_err) {}
+    status((dry ? 'Dry run' : 'Real-agent run') + ' completed, recorded, and saved locally.', 'good');
     return data;
   }
 
@@ -2519,10 +2534,306 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     data = enhanceInsertionDataWithMultiSectionDrafts(data);
     lastInsertionData = data;
     renderInsertion(data);
+    try { await saveCurrentBranchRun('insertion_preview_prepared', { quiet: true }); } catch (_err) {}
     status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '. Preview is shown in the dock above and in the output box below.', 'good');
     revealWorkflowPreview();
     return data;
   }
+
+
+function compactHashText(value) {
+  const s = String(value || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+
+function readSavedBranchRunsLocal() {
+  try {
+    const arr = JSON.parse(W.localStorage?.getItem?.(SAVED_BRANCH_RUNS_KEY) || '[]');
+    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+  } catch (_err) { return []; }
+}
+
+function writeSavedBranchRunsLocal(runs) {
+  const list = Array.isArray(runs) ? runs.filter(Boolean).slice(0, SAVED_BRANCH_RUNS_LIMIT) : [];
+  try { W.localStorage?.setItem?.(SAVED_BRANCH_RUNS_KEY, JSON.stringify(list)); } catch (_err) {}
+  refreshSavedRunPicker(list);
+  return list;
+}
+
+function branchRunTitle(snapshot) {
+  const branch = snapshot?.realRunData?.selectedBranch || snapshot?.selectionData?.selectedBranch || snapshot?.selectedBranch || {};
+  const title = branch.title || snapshot?.title || snapshot?.runId || 'Devil’s Advocate run';
+  const when = snapshot?.savedAt ? new Date(snapshot.savedAt).toLocaleString() : '';
+  return (when ? when + ' · ' : '') + title;
+}
+
+function currentBranchRunSnapshot(reason) {
+  const selected = lastSelectionData?.selectedBranch || lastRealRunData?.selectedBranch || selectedRealPayload()?.selectedBranch || {};
+  const runId = lastRealRunData?.runId || lastSelectionData?.runId || ('local-' + Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 8));
+  const structured = lastStructuredEditorData || refreshStructuredEditorData();
+  const snapshot = {
+    ok: true,
+    id: runId,
+    runId,
+    savedAt: new Date().toISOString(),
+    savedReason: reason || 'manual',
+    stage: STAGE,
+    activePath: activePath(),
+    sourceHash: compactHashText(getActiveSource()),
+    title: selected?.title || 'Devil’s Advocate branch run',
+    branchType: selected?.branchType || '',
+    query: inputValue('branchWorkflowQuery', ''),
+    reviewText: inputValue('branchWorkflowReviewText', ''),
+    paperSummary: inputValue('branchWorkflowPaperSummary', ''),
+    insertionMode: inputValue('branchWorkflowInsertMode', 'targeted'),
+    debateRoundCount: debateRoundCount(),
+    routeSummary: debateRouteSummaryObject(),
+    targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}),
+    selectionData: lastSelectionData || null,
+    realRunData: lastRealRunData || null,
+    cleanerData: lastCleanerData || null,
+    insertionData: lastInsertionData || null,
+    structuredEditorData: structured || null,
+    outcomeData: lastOutcomeData || null
+  };
+  snapshot.reportMarkdown = buildBranchRunReport(snapshot);
+  return snapshot;
+}
+
+function summarizeStructuredEditsForReport(structured) {
+  const edits = Array.isArray(structured?.edits) ? structured.edits : [];
+  if (!edits.length) return '_No structured edits parsed yet._';
+  return edits.map((e, i) => {
+    const target = [e.targetType || 'section', e.targetId || '', e.targetSection || ''].filter(Boolean).join(' / ');
+    return (i + 1) + '. **' + (e.action || 'edit') + '** → ' + target + '\n' +
+      '   - Note: ' + (e.note || '') + '\n' +
+      '   - LaTeX preview: `' + String(e.latex || '').replace(/`/g, '\\`').slice(0, 240) + (String(e.latex || '').length > 240 ? '…' : '') + '`';
+  }).join('\n');
+}
+
+function buildBranchRunReport(snapshot) {
+  const snap = snapshot || currentBranchRunSnapshot('report');
+  const run = snap.realRunData || {};
+  const selected = run.selectedBranch || snap.selectionData?.selectedBranch || snap.selectedBranch || {};
+  const outputs = Array.isArray(run.agentOutputs) ? run.agentOutputs : [];
+  const structured = snap.structuredEditorData || {};
+  const insertion = snap.insertionData || {};
+  const lines = [];
+  lines.push('# Latexai Devil’s Advocate branch run report');
+  lines.push('');
+  lines.push('- Saved: ' + (snap.savedAt || new Date().toISOString()));
+  lines.push('- Run id: `' + (snap.runId || '') + '`');
+  lines.push('- Active file: `' + (snap.activePath || '') + '`');
+  lines.push('- Source hash: `' + (snap.sourceHash || '') + '`');
+  lines.push('- Branch: **' + (selected.title || snap.title || 'selected branch') + '**');
+  lines.push('- Branch type: `' + (selected.branchType || snap.branchType || '') + '`');
+  lines.push('- Debate rounds: ' + (snap.debateRoundCount || ''));
+  lines.push('- Target sections: ' + ((snap.targetSections || selected.targetSections || []).join(', ') || 'none'));
+  lines.push('');
+  lines.push('## Model routes actually configured');
+  lines.push('```json');
+  lines.push(JSON.stringify(snap.routeSummary || {}, null, 2));
+  lines.push('```');
+  lines.push('');
+  lines.push('## Focus / review signal');
+  lines.push('**Query:** ' + (snap.query || ''));
+  lines.push('');
+  lines.push('**Review signal:**');
+  lines.push('');
+  lines.push(snap.reviewText || '_No review signal supplied._');
+  lines.push('');
+  lines.push('## Agent transcript');
+  if (!outputs.length) lines.push('_No agent outputs recorded._');
+  outputs.forEach((o, i) => {
+    lines.push('');
+    lines.push('### ' + (i + 1) + '. ' + (o.agentRole || 'agent') + (o.debateRound ? ' round ' + o.debateRound : ''));
+    lines.push('- Provider/model: `' + (o.provider || '') + '/' + (o.model || '') + '`');
+    lines.push('- Task: ' + (o.taskType || ''));
+    lines.push('');
+    lines.push(String(o.outputText || '').trim() || '_Empty output._');
+  });
+  lines.push('');
+  lines.push('## Final structured LaTeX edits');
+  lines.push(summarizeStructuredEditsForReport(structured));
+  lines.push('');
+  lines.push('## Insertion preview');
+  lines.push('- Safe to insert: `' + String(insertion.safeToInsert ?? '') + '`');
+  lines.push('- Block count: `' + String(insertion.blockCount ?? '') + '`');
+  lines.push('- Mode: `' + String(insertion.insertionMode || snap.insertionMode || '') + '`');
+  if (insertion.targetedInsertionDraft || insertion.insertableLatexDraft) {
+    lines.push('');
+    lines.push('### Targeted draft');
+    lines.push('```latex');
+    lines.push(String(insertion.targetedInsertionDraft || insertion.insertableLatexDraft || '').slice(0, 20000));
+    lines.push('```');
+  }
+  if (insertion.appendOnlyDraft) {
+    lines.push('');
+    lines.push('### Append draft');
+    lines.push('```latex');
+    lines.push(String(insertion.appendOnlyDraft || '').slice(0, 20000));
+    lines.push('```');
+  }
+  lines.push('');
+  lines.push('## Outcome / learning signal');
+  lines.push('```json');
+  lines.push(JSON.stringify(snap.outcomeData || {}, null, 2));
+  lines.push('```');
+  return lines.join('\n');
+}
+
+function upsertSavedBranchRunLocal(snapshot) {
+  if (!snapshot) return null;
+  const id = snapshot.id || snapshot.runId || ('local-' + Date.now().toString(36));
+  snapshot.id = id;
+  snapshot.runId = snapshot.runId || id;
+  snapshot.reportMarkdown = snapshot.reportMarkdown || buildBranchRunReport(snapshot);
+  const prev = readSavedBranchRunsLocal().filter((r) => (r.id || r.runId) !== id);
+  prev.unshift(snapshot);
+  writeSavedBranchRunsLocal(prev);
+  return snapshot;
+}
+
+async function saveCurrentBranchRun(reason, options = {}) {
+  if (!lastSelectionData && !lastRealRunData && !lastInsertionData) {
+    if (!options.quiet) status('No branch run is available to save yet.', 'warn');
+    return null;
+  }
+  const snapshot = currentBranchRunSnapshot(reason || 'manual');
+  upsertSavedBranchRunLocal(snapshot);
+  if (!options.localOnly) {
+    try {
+      const saved = await backendPost('/debate/save-run', { snapshot, reportMarkdown: snapshot.reportMarkdown, metadata: { frontendStage: STAGE, saveReason: reason || 'manual' } });
+      snapshot.backendSaveId = saved.saveId || saved.trajectoryId || saved.id || '';
+      snapshot.backendSavedAt = saved.savedAt || new Date().toISOString();
+      upsertSavedBranchRunLocal(snapshot);
+    } catch (err) {
+      if (!options.quiet) status('Saved run locally. Backend save did not complete: ' + (err?.message || err), 'warn');
+    }
+  }
+  if (!options.quiet) status('Saved Devil’s Advocate run: ' + branchRunTitle(snapshot), 'good');
+  return snapshot;
+}
+
+function mergeSavedRuns(localRuns, backendRuns) {
+  const map = new Map();
+  [...(backendRuns || []), ...(localRuns || [])].forEach((r) => {
+    const snap = r?.snapshot || r;
+    const id = snap?.id || snap?.runId || r?.id || r?.saveId;
+    if (!id) return;
+    map.set(id, { ...(map.get(id) || {}), ...snap, id });
+  });
+  return Array.from(map.values()).sort((a, b) => String(b.savedAt || b.createdAt || '').localeCompare(String(a.savedAt || a.createdAt || ''))).slice(0, SAVED_BRANCH_RUNS_LIMIT);
+}
+
+async function refreshSavedRunsFromBackend() {
+  const local = readSavedBranchRunsLocal();
+  try {
+    const data = await backendGet('/debate/saved-runs?limit=40');
+    const merged = mergeSavedRuns(local, data.savedRuns || data.runs || []);
+    writeSavedBranchRunsLocal(merged);
+    status('Loaded saved Devil’s Advocate runs: local=' + local.length + ', merged=' + merged.length + '.', 'good');
+    return merged;
+  } catch (err) {
+    refreshSavedRunPicker(local);
+    status('Showing local saved runs only. Backend saved-run list failed: ' + (err?.message || err), 'warn');
+    return local;
+  }
+}
+
+function refreshSavedRunPicker(runs) {
+  const picker = $('branchWorkflowSavedRunPicker');
+  if (!picker) return;
+  const list = Array.isArray(runs) ? runs : readSavedBranchRunsLocal();
+  const prev = picker.value;
+  picker.innerHTML = '';
+  const empty = D.createElement('option');
+  empty.value = '';
+  empty.textContent = list.length ? 'Select a saved Devil’s Advocate run…' : 'No saved branch runs yet';
+  picker.appendChild(empty);
+  list.forEach((r) => {
+    const opt = D.createElement('option');
+    opt.value = r.id || r.runId || '';
+    opt.textContent = branchRunTitle(r);
+    picker.appendChild(opt);
+  });
+  if (prev && list.some((r) => (r.id || r.runId) === prev)) picker.value = prev;
+}
+
+function selectedSavedRunSnapshot() {
+  const id = $('branchWorkflowSavedRunPicker')?.value || '';
+  if (!id) return null;
+  return readSavedBranchRunsLocal().find((r) => (r.id || r.runId) === id) || null;
+}
+
+function loadSavedBranchRunFromPicker() {
+  const snap = selectedSavedRunSnapshot();
+  if (!snap) throw new Error('Choose a saved branch run first.');
+  lastSelectionData = snap.selectionData || null;
+  lastRealRunData = snap.realRunData || null;
+  lastCleanerData = snap.cleanerData || null;
+  lastInsertionData = snap.insertionData || null;
+  lastStructuredEditorData = snap.structuredEditorData || null;
+  lastOutcomeData = snap.outcomeData || null;
+  if (lastRealRunData) renderRealRun(lastRealRunData);
+  else if (lastSelectionData) renderSelection(lastSelectionData);
+  if (lastInsertionData) renderInlinePreview('Loaded saved insertion preview', '<details open><summary>Targeted draft</summary><pre>' + esc(lastInsertionData.targetedInsertionDraft || lastInsertionData.insertableLatexDraft || '') + '</pre></details>');
+  status('Loaded saved Devil’s Advocate run: ' + branchRunTitle(snap), 'good');
+  return snap;
+}
+
+async function copyCurrentBranchRunReport() {
+  const snap = (lastRealRunData || lastSelectionData || lastInsertionData) ? currentBranchRunSnapshot('copy_report') : selectedSavedRunSnapshot();
+  if (!snap) throw new Error('No current or selected saved run available.');
+  const report = snap.reportMarkdown || buildBranchRunReport(snap);
+  await navigator.clipboard.writeText(report);
+  status('Copied complete Devil’s Advocate report to clipboard.', 'good');
+}
+
+function exportCurrentBranchRunReport() {
+  const snap = (lastRealRunData || lastSelectionData || lastInsertionData) ? currentBranchRunSnapshot('export_report') : selectedSavedRunSnapshot();
+  if (!snap) throw new Error('No current or selected saved run available.');
+  const report = snap.reportMarkdown || buildBranchRunReport(snap);
+  const blob = new Blob([report], { type: 'text/markdown;charset=utf-8' });
+  const a = D.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'latexai-devils-advocate-run-' + (snap.runId || snap.id || Date.now()).replace(/[^a-z0-9_.-]+/gi, '-') + '.md';
+  D.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  status('Exported complete Devil’s Advocate run report.', 'good');
+}
+
+function savedRunsForLearningPayload() {
+  return readSavedBranchRunsLocal().slice(0, 40).map((r) => ({
+    id: r.id || r.runId,
+    savedAt: r.savedAt,
+    branchType: r.branchType || r.realRunData?.selectedBranch?.branchType || r.selectionData?.selectedBranch?.branchType,
+    selectedBranch: r.realRunData?.selectedBranch || r.selectionData?.selectedBranch || {},
+    rewardValue: r.outcomeData?.rewardValue,
+    outcomeType: r.outcomeData?.outcomeType,
+    insertionMode: r.insertionMode,
+    sourceHash: r.sourceHash,
+    title: r.title
+  }));
+}
+
+async function learnedSelectBranch() {
+  clearInlinePreview();
+  status('Running learned branch selection from saved outcomes and current paper context...', 'warn');
+  const body = { ...planPayload(), savedRuns: savedRunsForLearningPayload(), policy: memorySelectionPolicy(), currentRoutes: debateRouteSummaryObject() };
+  const data = applySectionScopeToSelection(await backendPost('/debate/select-learned-branch', body));
+  lastSelectionData = data;
+  renderSelection(data);
+  const selected = data?.selectedBranch || {};
+  status('Learned selector chose: ' + (selected.title || 'branch') + ' · learned score=' + (selected.learnedSelectionScore || selected.selectionScore || '') + '.', 'good');
+  return data;
+}
 
   function memoryIdsForFeedback() {
     const selected = lastSelectionData?.selectedBranch || lastRealRunData?.selectedBranch || selectedRealPayload()?.selectedBranch || {};
@@ -2672,8 +2983,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     card.id = 'realAgentBranchCard';
     card.className = 'devils-debate-card real-agent-branch-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1I</div><h2>Devil’s Advocate branch runner</h2></div></div>',
-      '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → user-selected/whole-paper/salient targets → optional equation-by-equation edits → context-controlled prompts → clean LAI → insertion preview → reward feedback. Add ?laiPromptDebug=1 to index.html to open a live prompt-debug tab showing each agent prompt.</p>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1R</div><h2>Devil’s Advocate branch runner</h2></div></div>',
+      '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → structured actionable LaTeX edits → saved/reloadable run artifacts → insertion preview → outcome reward → learned branch selection. Add ?laiPromptDebug=1 to index.html to open a live prompt-debug tab showing each agent prompt.</p>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
       '<label class="field">Math/equation coverage <select id="branchWorkflowEquationCoverageMode"><option value="auto" selected>auto-detect from focus/query</option><option value="on">force equation-by-equation edits</option><option value="off">off</option></select></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
@@ -2701,8 +3012,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<label class="field">Target section override <input id="branchWorkflowTargetSection" type="text" placeholder="optional, e.g. Introduction" /></label>',
       '<label class="field">Outcome note <input id="branchWorkflowOutcomeNote" type="text" placeholder="optional note for reward feedback" /></label>',
       '</div>',
+      '<div class="branch-workflow-saved-runs settings-card-subtle">',
+      '<label class="field">Saved Devil\'s Advocate runs <select id="branchWorkflowSavedRunPicker"><option value="">No saved branch runs loaded yet</option></select></label>',
+      '<div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRefreshSavedBtn" class="btn mini" type="button">Refresh saved</button><button id="branchWorkflowLoadSavedBtn" class="btn mini" type="button">Load saved</button><button id="branchWorkflowSaveCurrentBtn" class="btn mini" type="button">Save current</button><button id="branchWorkflowCopyReportBtn" class="btn mini" type="button">Copy report</button><button id="branchWorkflowExportReportBtn" class="btn mini" type="button">Export report</button></div>',
+      '<div class="settings-note compact">Saved runs include transcript, selected branch, provider/model trace, structured edits, insertion preview, and outcome reward. They feed the learned branch selector.</div>',
+      '</div>',
       '<div class="micro-actions stretch devils-actions">',
       '<button id="branchWorkflowPlanBtn" class="btn mini" type="button">Plan branch</button>',
+      '<button id="branchWorkflowLearnedSelectBtn" class="btn mini" type="button">Learned select</button>',
       '<button id="branchWorkflowRunBtn" class="btn mini primary" type="button">Run selected branch</button>',
       '<button id="branchWorkflowFullBtn" class="btn mini" type="button">Run full preview</button>',
       '<button id="branchWorkflowCleanBtn" class="btn mini" type="button">Clean LAI</button>',
@@ -2713,7 +3030,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1Q4 ready. Branch runner inherits provider/model from Settings → Model/provider routing → Devil’s advocate rows; no model is requested in the Copilot tab.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1R ready. This bundle adds actionable LaTeX edit artifacts, saved/reloadable Devil’s Advocate runs, and a learned branch selector using saved outcome rewards. Provider/model is inherited from Settings → Model/provider routing.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -2722,9 +3039,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     mounted = true;
     if (promptDebugEnabled()) {
       const st = $('branchWorkflowStatus');
-      if (st) st.textContent = 'Stage 19N1Q4 prompt debug mode is ON. When you click Run selected branch or Run full preview, a new prompt-debug tab will open and show each agent prompt as it is called.';
+      if (st) st.textContent = 'Stage 19N1R prompt debug mode is ON. When you click Run selected branch or Run full preview, a new prompt-debug tab will open and show each agent prompt as it is called.';
     }
     bindButton('branchWorkflowPlanBtn', planBranch);
+    bindButton('branchWorkflowLearnedSelectBtn', learnedSelectBranch);
     bindButton('branchWorkflowRunBtn', runSelectedBranch);
     bindButton('branchWorkflowFullBtn', runFullPreview);
     bindButton('branchWorkflowCleanBtn', cleanLastRealRun);
@@ -2733,17 +3051,23 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     bindButton('branchWorkflowApplyAppendBtn', () => applyDraft('append'));
     bindButton('branchWorkflowCopyTargetedBtn', () => copyDraft('targeted'));
     bindButton('branchWorkflowRejectBtn', () => recordOutcome('rejected'));
+    bindButton('branchWorkflowRefreshSavedBtn', refreshSavedRunsFromBackend);
+    bindButton('branchWorkflowLoadSavedBtn', loadSavedBranchRunFromPicker);
+    bindButton('branchWorkflowSaveCurrentBtn', () => saveCurrentBranchRun('manual_save'));
+    bindButton('branchWorkflowCopyReportBtn', copyCurrentBranchRunReport);
+    bindButton('branchWorkflowExportReportBtn', exportCurrentBranchRunReport);
     bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); maybeWarnRepeatedHeadings('Target refresh warning'); });
     bindButton('branchWorkflowCleanPreviousAiBtn', cleanPreviousAiSuggestions);
     ['branchWorkflowSectionScope','branchWorkflowTargetPicker','branchWorkflowVisibleContextMode','branchWorkflowPayloadSourceMode'].forEach((id) => { const n = $(id); if (n) n.addEventListener('change', () => { renderTargetModeNote(); }, true); });
-    if (D.documentElement.dataset.stage19n1q4BranchRouteSummaryBound !== 'true') {
-      D.documentElement.dataset.stage19n1q4BranchRouteSummaryBound = 'true';
+    if (D.documentElement.dataset.stage19n1rBranchRouteSummaryBound !== 'true') {
+      D.documentElement.dataset.stage19n1rBranchRouteSummaryBound = 'true';
       D.addEventListener('change', (ev) => { if (ev.target?.matches?.('[data-route-provider],[data-route-model]')) refreshBranchRouteSummary(); }, true);
       D.addEventListener('latexai:model-registry-updated', refreshBranchRouteSummary, { passive: true });
     }
     refreshTargetPicker();
     renderTargetModeNote();
     refreshBranchRouteSummary();
+    refreshSavedRunPicker();
     return true;
   }
 
@@ -2778,7 +3102,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     buildConfigurableDebateSteps,
     buildDebatePrompt,
     configuredDebateRouteForStep,
-    debateRouteSummaryObject
+    debateRouteSummaryObject,
+    saveCurrentBranchRun,
+    refreshSavedRunsFromBackend,
+    loadSavedBranchRunFromPicker,
+    buildBranchRunReport,
+    learnedSelectBranch
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
