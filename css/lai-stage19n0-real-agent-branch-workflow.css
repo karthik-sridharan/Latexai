@@ -193,3 +193,36 @@
   font-size: 12px;
   line-height: 1.35;
 }
+
+
+/* Stage 19N1D target/context controls */
+#realAgentBranchCard .branch-target-picker {
+  min-height: 9.5rem;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+#realAgentBranchCard .micro-actions.compact {
+  align-items: center;
+  gap: 0.4rem;
+}
+#realAgentBranchCard .settings-note.compact {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+
+/* Stage 19N1R1: always show the real-agent branch output panel.
+   It inherits the older .devils-output class, which defaults to display:none.
+   Keep this specific panel visible so completed runs do not disappear behind
+   a green status message on iPad/Safari. */
+#branchWorkflowOutput.branch-workflow-output,
+#branchWorkflowOutput.branch-workflow-output.active {
+  display: block !important;
+  visibility: visible !important;
+}
+
+#branchWorkflowOutput.branch-workflow-output:empty::before {
+  content: 'Branch workflow output will appear here.';
+  color: #cbd5e1;
+}
