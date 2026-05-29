@@ -6,7 +6,7 @@ Total completed debate rounds: {{totalRounds}}.
 Full prior debate transcript:
 {{transcript}}
 
-Task: produce the final curated edits as a STRUCTURED JSON object first, then optionally include the corresponding \lai blocks for human readability.
+Task: produce the final curated edits as a STRUCTURED JSON object first. Do not output review prose before the JSON markers. The frontend will block insertion if the JSON is missing or empty.
 
 Very important consolidation / deduplication rule:
 - Do NOT copy the prior transcript verbatim.
@@ -18,7 +18,7 @@ Very important consolidation / deduplication rule:
 - Treat the transcript as evidence, not text to paste. Never copy whole bullet lists or paragraphs from earlier agents.
 
 MANDATORY STRUCTURED OUTPUT SCHEMA:
-Output a JSON object between the exact markers below:
+Output a JSON object between the exact markers below. These markers are mandatory and must appear exactly once:
 
 LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
 {
@@ -40,7 +40,7 @@ LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
 LATEXAI_STRUCTURED_EDIT_JSON_END
 
 Schema rules:
-- The `latex` field should contain actual paper-ready LaTeX text only, not advice.
+- The `latex` field must contain actual paper-ready LaTeX text only, not advice. It must not be empty for insert_after, insert_before, replace, append, or equation edits.
 - Do NOT put outer \lai{...} in the JSON `latex` field unless unavoidable; the frontend will wrap it.
 - For replacement edits, set `action` to `replace`, put the short exact old text in `oldLatex`, and put the replacement text in `latex`.
 - For no-edit coverage, set `action` to `no_edit` and set `latex` to `No edits recommended.`
@@ -57,7 +57,7 @@ Mandatory section coverage rule:
 
 Mandatory equation coverage rule:
 - If the base context contains the line "MATH EQUATION COVERAGE MODE ACTIVE", then the user's task is equation-centered.
-- In that mode, the final JSON must include one explanatory edit object for EACH listed equation id.
+- In that mode, the final JSON must include one explanatory edit object for EACH listed equation id. If you cannot improve the equation, still provide a short explanatory sentence below it, because the user explicitly requested every equation to be explained.
 - Each equation edit must set `targetType` to `equation` and `targetId` to the exact equation id, e.g. `eq_001`.
 - The frontend will place that edit immediately below the corresponding equation. Do not target only the section header.
 - The explanation should be short, pedagogical, and paper-ready, e.g. one paragraph explaining what the equation states, what the symbols mean, and how it connects to the surrounding derivation.
@@ -75,3 +75,7 @@ Optional human-readable mirror after the JSON:
 After the structured JSON, you may include a `% LATEXAI_MULTI_SECTION_EDIT_BEGIN` block with \lai patches mirroring the JSON, but the JSON is authoritative.
 
 Do not invent citations. Prefer concrete, compact paper-ready edits over long review prose.
+
+
+Failure mode to avoid:
+If you output normal prose, markdown bullets, or only human-readable \lai blocks without the JSON markers, the frontend will not insert anything and the preview will show blocks=0. Always produce the JSON object first.
