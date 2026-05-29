@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1J RealAgentBranchWorkflowService
- * Stage: stage19n1j-per-round-visible-memory-injection-20260528-1
+/* Latexai Stage 19N1K RealAgentBranchWorkflowService
+ * Stage: stage19n1k-structured-editor-output-schema-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,12 +11,13 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1j-per-round-visible-memory-injection-20260528-1';
+  const STAGE = 'stage19n1k-structured-editor-output-schema-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
   let lastCleanerData = null;
   let lastInsertionData = null;
+  let lastStructuredEditorData = null;
   let lastOutcomeData = null;
   let lastInsertionDedupeNotes = [];
   let mounted = false;
@@ -1360,7 +1361,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         promptSeed: prompt,
         dryRun: true,
         latencyMs: 0,
-        outputText: isFinal ? '[DRY RUN] Final visible edit draft after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\n\\lai{Add the selected branch improvement here after reviewing real agent outputs.}' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
+        outputText: isFinal ? '[DRY RUN] Final structured edit draft after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\nLATEXAI_STRUCTURED_EDIT_JSON_BEGIN\n' + JSON.stringify({ ok: true, editMode: equationCoverageActive() ? 'equation_coverage' : 'section_coverage', edits: [{ targetType: equationCoverageActive() ? 'equation' : 'section', targetId: equationCoverageActive() ? 'eq_001' : '', targetSection: (desiredTargetSections(runPayload)[0] || 'Introduction'), action: 'insert_after', latex: equationCoverageActive() ? 'This equation states the key mathematical condition and should be read together with the surrounding definitions.' : 'This paragraph records the selected branch improvement after reviewing the debate transcript.' }], warnings: ['dry-run structured schema example'] }, null, 2) + '\nLATEXAI_STRUCTURED_EDIT_JSON_END\n\n\\lai{%\n% Target section: ' + (desiredTargetSections(runPayload)[0] || 'Introduction') + '\nThis paragraph records the selected branch improvement after reviewing real agent outputs.\n}' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
       };
       publishPromptDebugEvent('dry-run output generated', step, prompt, aiPayload, { status: 'dry-run-output-generated', outputText: dryOutput.outputText });
       return dryOutput;
@@ -1412,9 +1413,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const outputs = Array.isArray(data?.agentOutputs) ? data.agentOutputs : [];
     const finalText = data?.finalOutput || outputs[outputs.length - 1]?.outputText || '';
     const blocks = Array.isArray(data?.insertableLaiBlocks) ? data.insertableLaiBlocks : (Array.isArray(data?.visibleLaiBlocks) ? data.visibleLaiBlocks : []);
+    const structured = refreshStructuredEditorData();
     renderSummary('Real-agent branch result',
       '<div class="settings-note"><strong>Run:</strong> ' + esc(data?.runId || '') + ' · dryRun=' + esc(data?.dryRun) + ' · outputs=' + esc(outputs.length) + '</div>' +
       '<details open><summary>Agent outputs</summary><ol>' + outputs.map((o) => '<li><strong>' + esc(o.agentRole) + (o.debateRound ? ' r' + esc(o.debateRound) : '') + '</strong> (' + esc(o.provider) + '/' + esc(o.model) + ')<br><span class="small">' + esc(String(o.outputText || '').slice(0, 800)) + '</span></li>').join('') + '</ol></details>' +
+      '<details open><summary>Structured editor output schema</summary>' + renderStructuredEditorPreviewHtml(structured) + '</details>' +
       (blocks.length ? '<details open><summary>Visible \\lai candidates</summary><pre>' + esc(blocks.join('\n\n')) + '</pre></details>' : '') +
       '<details><summary>Final output</summary><pre>' + esc(finalText) + '</pre></details>'
     );
@@ -1473,6 +1476,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const data = await backendPost('/debate/run-real-agent-branch', body);
     lastRealRunData = data;
     lastCleanerData = data.laiValidation || null;
+    refreshStructuredEditorData();
     renderRealRun(data);
     status((dry ? 'Dry run' : 'Real-agent run') + ' completed and recorded.', 'good');
     return data;
@@ -1516,6 +1520,151 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const editorOutputs = outputs.filter((o) => /editor|final/i.test(String(o?.agentRole || '')) || /visible-lai|implementation-plan/i.test(String(o?.expectedOutput || o?.taskType || '')));
     const picked = editorOutputs.length ? editorOutputs[editorOutputs.length - 1] : null;
     return String(picked?.outputText || lastRealRunData?.finalOutput || '');
+  }
+
+
+  function findJsonObjectAfter(text, startIndex) {
+    const s = String(text || '');
+    const start = Math.max(0, Number(startIndex) || 0);
+    const open = s.indexOf('{', start);
+    if (open < 0) return '';
+    let depth = 0;
+    let inString = false;
+    let escNext = false;
+    for (let i = open; i < s.length; i += 1) {
+      const ch = s[i];
+      if (inString) {
+        if (escNext) escNext = false;
+        else if (ch === '\\') escNext = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) return s.slice(open, i + 1);
+      }
+    }
+    return '';
+  }
+
+  function extractStructuredEditorJsonText(text) {
+    const s = String(text || '');
+    const marker = s.match(/LATEXAI_STRUCTURED_EDIT_JSON_BEGIN([\s\S]*?)LATEXAI_STRUCTURED_EDIT_JSON_END/i);
+    if (marker && marker[1]) {
+      const obj = findJsonObjectAfter(marker[1], 0);
+      if (obj) return obj;
+    }
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?"edits"[\s\S]*?)```/i);
+    if (fence && fence[1]) {
+      const obj = findJsonObjectAfter(fence[1], 0);
+      if (obj) return obj;
+    }
+    const idx = s.search(/"edits"\s*:/i);
+    if (idx >= 0) {
+      const obj = findJsonObjectAfter(s, Math.max(0, s.lastIndexOf('{', idx)));
+      if (obj) return obj;
+    }
+    return '';
+  }
+
+  function normalizeStructuredTargetType(v) {
+    const t = clean(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (/equation|math|formula/.test(t)) return 'equation';
+    if (/section|subsection|chapter|unit|paragraph/.test(t)) return 'section';
+    return t || 'section';
+  }
+
+  function normalizeStructuredAction(v) {
+    const a = clean(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (/replace/.test(a)) return 'replace';
+    if (/no.*edit|none|skip/.test(a)) return 'no_edit';
+    if (/append/.test(a)) return 'append';
+    if (/before/.test(a)) return 'insert_before';
+    return 'insert_after';
+  }
+
+  function parseStructuredEditorOutputText(text) {
+    const rawText = String(text || '');
+    const jsonText = extractStructuredEditorJsonText(rawText);
+    const result = { ok: false, source: 'none', editMode: '', edits: [], warnings: [] };
+    if (!jsonText) {
+      result.warnings.push('No structured JSON edit schema was found in the final editor output. Falling back to legacy \\lai scraping.');
+      return result;
+    }
+    let parsed = null;
+    try { parsed = JSON.parse(jsonText); }
+    catch (err) {
+      result.warnings.push('Structured editor JSON could not be parsed: ' + (err && err.message ? err.message : String(err)) + '. Falling back to legacy \\lai scraping.');
+      result.rawJsonText = jsonText;
+      return result;
+    }
+    const edits = Array.isArray(parsed?.edits) ? parsed.edits : (Array.isArray(parsed?.sectionEdits) ? parsed.sectionEdits : []);
+    result.ok = true;
+    result.source = 'final-editor-json';
+    result.editMode = clean(parsed?.editMode || parsed?.mode || 'structured_edits');
+    result.raw = parsed;
+    result.warnings = Array.isArray(parsed?.warnings) ? parsed.warnings.map((x) => String(x || '')).filter(Boolean) : [];
+    result.edits = edits.map((e, idx) => {
+      const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind);
+      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode);
+      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || '');
+      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || '');
+      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.text || e?.content || '').trim();
+      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || '').trim();
+      const note = clean(e?.note || e?.rationale || e?.reason || '');
+      return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
+    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+    if (!result.edits.length) result.warnings.push('Structured JSON was present, but it contained no usable edits. Falling back to legacy \\lai scraping.');
+    return result;
+  }
+
+  function refreshStructuredEditorData() {
+    lastStructuredEditorData = parseStructuredEditorOutputText(finalEditorOutputText());
+    return lastStructuredEditorData;
+  }
+
+  function structuredEditLatexBlock(edit) {
+    const e = edit || {};
+    const targetType = normalizeStructuredTargetType(e.targetType);
+    const action = normalizeStructuredAction(e.action);
+    const targetSection = clean(e.targetSection || '');
+    const targetId = clean(e.targetId || '');
+    const latex = String(e.latex || '').trim();
+    const oldLatex = String(e.oldLatex || '').trim();
+    const hasLai = /\\lai(?:old)?\s*\{/.test(latex);
+    if (hasLai && (!oldLatex || /\\laiold\s*\{/.test(latex))) return latex;
+    const targetLines = [];
+    if (targetType === 'equation' && targetId) targetLines.push('% Target equation id: ' + targetId);
+    if (targetSection) targetLines.push('% Target section: ' + targetSection);
+    if (action === 'no_edit') {
+      return '\\lai{%\n' + targetLines.join('\n') + (targetLines.length ? '\n' : '') + '\\emph{No edits recommended.}\n}';
+    }
+    if (action === 'replace' && oldLatex) {
+      return '\\laiold{' + oldLatex + '}\\lai{%\n' + targetLines.join('\n') + (targetLines.length ? '\n' : '') + (latex || '% TODO: missing replacement text') + '\n}';
+    }
+    return '\\lai{%\n' + targetLines.join('\n') + (targetLines.length ? '\n' : '') + (latex || '% TODO: missing inserted text') + '\n}';
+  }
+
+  function structuredEditorBlocksForInsertion() {
+    const data = refreshStructuredEditorData();
+    if (!data?.ok || !Array.isArray(data.edits) || !data.edits.length) return [];
+    const blocks = data.edits.map(structuredEditLatexBlock).filter(Boolean);
+    blocks._structuredNotes = data.warnings || [];
+    return blocks;
+  }
+
+  function renderStructuredEditorPreviewHtml(data) {
+    const d = data || refreshStructuredEditorData();
+    if (!d?.ok || !Array.isArray(d.edits) || !d.edits.length) {
+      return '<div class="settings-note warn">No structured editor JSON was parsed. Legacy \\lai block extraction is being used.</div>' +
+        (Array.isArray(d?.warnings) && d.warnings.length ? '<div class="settings-note warn">' + esc(d.warnings.join('; ')) + '</div>' : '');
+    }
+    const rows = d.edits.map((e) => '<tr><td>' + esc(e.index) + '</td><td>' + esc(e.targetType) + '</td><td>' + esc(e.targetId || '') + '</td><td>' + esc(e.targetSection || '') + '</td><td>' + esc(e.action) + '</td><td><code>' + esc(String(e.latex || '').slice(0, 180)) + (String(e.latex || '').length > 180 ? '…' : '') + '</code></td></tr>').join('');
+    return '<div class="settings-note good">Structured editor schema parsed: ' + esc(d.edits.length) + ' edit(s), mode=' + esc(d.editMode || '') + '.</div>' +
+      (Array.isArray(d.warnings) && d.warnings.length ? '<div class="settings-note warn">Schema warnings: ' + esc(d.warnings.join('; ')) + '</div>' : '') +
+      '<div class="branch-workflow-table-wrap"><table class="branch-workflow-table"><thead><tr><th>#</th><th>targetType</th><th>targetId</th><th>section</th><th>action</th><th>latex</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function blockBodyForDuplicate(block) {
@@ -1657,6 +1806,21 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const targets = desiredTargetSections(selectedRealPayload() || lastRealRunData || lastSelectionData || {});
     const addParsed = (text) => parseLatexMacroBlocks(text, 'lai').map((b) => b.raw).filter(Boolean);
     let blocks = [];
+
+    // Stage 19N1K: prefer the final editor's structured JSON schema when present.
+    // This avoids scraping random prose and gives the insertion engine targetType/targetId/action.
+    const structuredBlocks = structuredEditorBlocksForInsertion();
+    if (structuredBlocks.length) {
+      const patchFilteredStructured = filterPatchStyleLaiBlocks(structuredBlocks);
+      const dedupedStructured = dedupeLaiBlocksForInsertion(patchFilteredStructured, targets);
+      lastInsertionDedupeNotes = [
+        'Using Stage 19N1K structured editor schema instead of legacy free-form \\lai scraping.',
+        ...((Array.isArray(structuredBlocks._structuredNotes) ? structuredBlocks._structuredNotes : [])),
+        ...((Array.isArray(patchFilteredStructured._patchNotes) ? patchFilteredStructured._patchNotes : [])),
+        ...((Array.isArray(dedupedStructured._dedupeNotes) ? dedupedStructured._dedupeNotes : []))
+      ];
+      return dedupedStructured;
+    }
 
     // Stage 19N1H: insert only the final editor's curated answer by default.
     // Earlier critic/advocate/synthesizer outputs often contain candidate edits that the
@@ -1878,6 +2042,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<div class="settings-note"><strong>safeToInsert:</strong> ' + esc(data?.safeToInsert) + ' · safeToAutoApply=' + esc(data?.safeToAutoApply) + ' · blocks=' + esc(data?.blockCount || 0) + '</div>' +
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || (Array.isArray(data?.targetSections) ? data.targetSections.join(', ') : 'append/end')) + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
       (data?.multiSectionFrontendInsertion ? '<div class="settings-note good">Multi-section frontend insertion is active. Block targets: ' + esc((data.blockSectionTargets || []).join(', ') || 'none inferred') + '</div>' : '') +
+      '<details open><summary>Structured edit schema preview</summary>' + renderStructuredEditorPreviewHtml(lastStructuredEditorData || refreshStructuredEditorData()) + '</details>' +
       '<div class="settings-note warn">The source editor shows raw <code>\\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
       '<details open><summary>Visual colored LAI preview</summary>' + renderLaiColorPreviewHtml(chosenDraft || targetedDraft || appendDraft) + '</details>' +
@@ -2094,7 +2259,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1I2 ready. Temporary prompt debug is enabled only with ?laiPromptDebug=1. Use Clean previous AI suggestions before rerunning. Equation focus can force an explanatory \lai block below each detected display equation.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1K ready. Structured editor output schema is enabled; prompt debug is available with ?laiPromptDebug=1. Use Clean previous AI suggestions before rerunning.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
