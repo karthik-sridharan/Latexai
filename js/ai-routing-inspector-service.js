@@ -1,5 +1,5 @@
 /* Latexai Stage 18A AiRoutingInspectorService
- * Stage: stage18a-model-routing-audit-validation-lock-1
+ * Stage: stage19n1q10-live-provider-model-discovery-1
  * AI model routing inspector + preflight.
  * Local-only except explicit backend status checks.
  */
@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18a-model-routing-audit-validation-lock-1';
+  const STAGE = 'stage19n1q10-live-provider-model-discovery-1';
   const ROUTES_KEY = 'latexai:model-routing:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('ai-routing-inspector-service')) {
@@ -18,18 +18,18 @@
   }
 
   const SAFE_DEFAULT_ROUTES = {
-    default: { provider: 'openai', model: 'gpt-4.1-mini' },
-    paper: { provider: 'openai', model: 'gpt-4.1-mini' },
-    citation: { provider: 'openai', model: 'gpt-4.1-mini' },
-    presentation: { provider: 'openai', model: 'gpt-4.1-mini' },
-    figure: { provider: 'openai', model: 'gpt-4.1-mini' },
-    'slide-repair': { provider: 'openai', model: 'gpt-4.1-mini' },
-    diagnostic: { provider: 'openai', model: 'gpt-4.1-mini' },
-    'competitive-ranking': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'competitive-improvement': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'debate-advocate': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'debate-critic': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'debate-synthesizer': { provider: 'openai', model: 'gpt-4.1-mini' }
+    default: { provider: 'openai', model: 'gpt-5.4-mini' },
+    paper: { provider: 'openai', model: 'gpt-5.4-mini' },
+    citation: { provider: 'openai', model: 'gpt-5.4-mini' },
+    presentation: { provider: 'openai', model: 'gpt-5.4-mini' },
+    figure: { provider: 'openai', model: 'gpt-5.4-mini' },
+    'slide-repair': { provider: 'openai', model: 'gpt-5.4-mini' },
+    diagnostic: { provider: 'openai', model: 'gpt-5.4-mini' },
+    'competitive-ranking': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'competitive-improvement': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'debate-advocate': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'debate-critic': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'debate-synthesizer': { provider: 'openai', model: 'gpt-5.4-mini' }
   };
 
   const WORKFLOWS = [
@@ -57,7 +57,7 @@
   function visibleProviderModel() {
     return {
       provider: clean(el('aiProvider')?.value || 'openai'),
-      model: clean(el('aiModel')?.value || 'gpt-4.1-mini')
+      model: clean(el('aiModel')?.value || 'gpt-5.4-mini')
     };
   }
 
@@ -74,7 +74,7 @@
     try {
       localStorage.setItem(ROUTES_KEY, JSON.stringify({ schema: 'latexai-model-routing-v1', routes: SAFE_DEFAULT_ROUTES }));
     } catch (_err) {}
-    setStatus('Model routes reset to safe defaults: OpenAI gpt-4.1-mini.');
+    setStatus('Model routes reset to safe defaults: OpenAI gpt-5.4-mini.');
     renderInspector();
     D.addEventListener('latexai:model-registry-updated', renderInspector, { passive: true });
   }
@@ -110,7 +110,7 @@
   }
 
   function statusUrl() {
-    const raw = clean(el('aiProxyUrl')?.value) || '/api/lumina/ai';
+    const raw = NS.BackendUrlSettingsService?.normalizeAiProxyUrl?.(clean(el('aiProxyUrl')?.value)) || clean(el('aiProxyUrl')?.value) || 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/ai';
     try {
       const u = new URL(raw, W.location.href);
       if (/\/api\/lumina\/ai\/?$/i.test(u.pathname)) {

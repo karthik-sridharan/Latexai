@@ -9,30 +9,20 @@
       { value: 'gpt-5.5', label: 'OpenAI · gpt-5.5' },
       { value: 'gpt-5.4', label: 'OpenAI · gpt-5.4' },
       { value: 'gpt-5.4-mini', label: 'OpenAI · gpt-5.4-mini' },
-      { value: 'gpt-5.4-nano', label: 'OpenAI · gpt-5.4-nano' },
-      { value: 'gpt-5.1', label: 'OpenAI · gpt-5.1' },
-      { value: 'gpt-5.1-mini', label: 'OpenAI · gpt-5.1-mini' },
-      { value: 'gpt-5', label: 'OpenAI · gpt-5' },
-      { value: 'gpt-5-mini', label: 'OpenAI · gpt-5-mini' },
-      { value: 'gpt-5-nano', label: 'OpenAI · gpt-5-nano' },
-      { value: 'gpt-4.1', label: 'OpenAI · gpt-4.1' },
-      { value: 'gpt-4.1-mini', label: 'OpenAI · gpt-4.1-mini' },
-      { value: 'gpt-4.1-nano', label: 'OpenAI · gpt-4.1-nano' },
-      { value: 'gpt-4o', label: 'OpenAI · gpt-4o' },
-      { value: 'gpt-4o-mini', label: 'OpenAI · gpt-4o-mini' }
+      { value: 'gpt-5.4-nano', label: 'OpenAI · gpt-5.4-nano' }
     ],
     anthropic: [
       { value: 'claude-sonnet-4-5', label: 'Claude · claude-sonnet-4-5' },
       { value: 'claude-haiku-4-5', label: 'Claude · claude-haiku-4-5' }
     ],
     gemini: [
+      { value: 'gemini-3.5-flash', label: 'Gemini · gemini-3.5-flash' },
+      { value: 'gemini-3.1-pro-preview', label: 'Gemini · gemini-3.1-pro-preview' },
+      { value: 'gemini-3-flash-preview', label: 'Gemini · gemini-3-flash-preview' },
+      { value: 'gemini-3.1-flash-lite', label: 'Gemini · gemini-3.1-flash-lite' },
       { value: 'gemini-2.5-flash', label: 'Gemini · gemini-2.5-flash' },
       { value: 'gemini-2.5-flash-lite', label: 'Gemini · gemini-2.5-flash-lite' },
-      { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro' },
-      { value: 'gemini-2.0-flash', label: 'Gemini · gemini-2.0-flash' },
-      { value: 'gemini-2.0-flash-lite', label: 'Gemini · gemini-2.0-flash-lite' },
-      { value: 'gemini-1.5-flash', label: 'Gemini · gemini-1.5-flash' },
-      { value: 'gemini-1.5-pro', label: 'Gemini · gemini-1.5-pro' }
+      { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro' }
     ]
   };
 
@@ -41,22 +31,57 @@
   const LS_CUSTOM_MODEL_PREFIX = 'lumina-latex.ai.customModel.';
   const LS_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
+  const DEFAULT_AI_PROXY_URL = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/ai';
   let remoteModels = null;
 
+  function normalizeAiProxyUrl(raw) {
+    if (NS.BackendUrlSettingsService?.normalizeAiProxyUrl) return NS.BackendUrlSettingsService.normalizeAiProxyUrl(raw);
+    const value = String(raw || '').trim() || DEFAULT_AI_PROXY_URL;
+    try {
+      const url = new URL(value, window.location?.href || DEFAULT_AI_PROXY_URL);
+      url.search = ''; url.hash = '';
+      url.pathname = url.pathname
+        .replace(/\/api\/lumina\/ai\/(?:status|workflows)\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/?$/i, '/api/lumina/ai');
+      if (!/\/api\/lumina\/ai\/?$/i.test(url.pathname)) url.pathname = url.pathname.replace(/\/+$/, '') + '/api/lumina/ai';
+      return url.href.replace(/\/$/, '');
+    } catch (_err) { return value; }
+  }
+
   function getProxyUrl() {
-    return NS.BackendUrlSettings?.getAiProxyUrl?.() || document.getElementById('aiProxyUrl')?.value?.trim() || localStorage.getItem(LS_PROXY_URL) || '/api/lumina/ai';
+    return normalizeAiProxyUrl(NS.BackendUrlSettings?.getAiProxyUrl?.() || document.getElementById('aiProxyUrl')?.value?.trim() || localStorage.getItem(LS_PROXY_URL) || DEFAULT_AI_PROXY_URL);
+  }
+
+
+  function normalizeDeprecatedModel(provider, model) {
+    const p = String(provider || '').trim().toLowerCase();
+    const m = String(model || '').trim();
+    if (p !== 'openai') return m;
+    const aliases = {
+      'gpt-5.1-mini': 'gpt-5.4-mini',
+      'gpt 5.1 mini': 'gpt-5.4-mini',
+      'gpt-5.1': 'gpt-5.4',
+      'gpt 5.1': 'gpt-5.4'
+    };
+    return aliases[m.toLowerCase()] || m;
   }
 
   function getConfig() {
     const provider = document.getElementById('aiProvider')?.value || localStorage.getItem(LS_PROVIDER) || 'openai';
     const selectedModel = document.getElementById('aiModel')?.value || localStorage.getItem(`${LS_MODEL_PREFIX}${provider}`) || '';
-    const customModel = document.getElementById('aiCustomModel')?.value?.trim() || localStorage.getItem(`${LS_CUSTOM_MODEL_PREFIX}${provider}`) || '';
-    const model = customModel || selectedModel;
+    const customEl = document.getElementById('aiCustomModel');
+    const customModel = customEl?.disabled ? '' : (customEl?.value?.trim() || localStorage.getItem(`${LS_CUSTOM_MODEL_PREFIX}${provider}`) || '');
+    const rawModel = normalizeDeprecatedModel(provider, customModel || selectedModel);
+    const validation = NS.ModelRegistryService?.validateProviderModel?.(provider, rawModel, { routeKey: 'default' });
+    const model = validation?.model || rawModel;
     return {
-      provider,
+      provider: validation?.provider || provider,
       model,
-      selectedModel,
-      customModel,
+      selectedModel: normalizeDeprecatedModel(provider, selectedModel),
+      customModel: customEl?.disabled ? '' : normalizeDeprecatedModel(provider, customModel),
       proxyUrl: getProxyUrl(),
       proxyToken: document.getElementById('aiProxyToken')?.value?.trim() || localStorage.getItem(LS_PROXY_TOKEN) || ''
     };
@@ -66,8 +91,8 @@
     const config = getConfig();
     localStorage.setItem(LS_PROVIDER, config.provider);
     localStorage.setItem(`${LS_MODEL_PREFIX}${config.provider}`, config.selectedModel || config.model || '');
-    localStorage.setItem(`${LS_CUSTOM_MODEL_PREFIX}${config.provider}`, config.customModel || '');
-    localStorage.setItem(LS_PROXY_URL, config.proxyUrl || '/api/lumina/ai');
+    localStorage.setItem(`${LS_CUSTOM_MODEL_PREFIX}${config.provider}`, document.getElementById('aiCustomModel')?.disabled ? '' : (config.customModel || ''));
+    localStorage.setItem(LS_PROXY_URL, normalizeAiProxyUrl(config.proxyUrl || DEFAULT_AI_PROXY_URL));
     localStorage.setItem(LS_PROXY_TOKEN, config.proxyToken || '');
     return config;
   }
@@ -184,9 +209,10 @@
       },
       client: { app: 'lumina-latex-editor', stage: W.LUMINA_LATEX_STAGE || 'stage1e', sentAt: new Date().toISOString() }
     };
-    const response = await fetch(config.proxyUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+    const requestUrl = normalizeAiProxyUrl(config.proxyUrl);
+    const response = await fetch(requestUrl, { method: 'POST', headers, body: JSON.stringify(body) });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok === false) throw new Error(data?.error?.message || data?.message || `AI proxy failed with HTTP ${response.status}.`);
+    if (!response.ok || data.ok === false) throw new Error(data?.error?.message || data?.message || `AI proxy failed with HTTP ${response.status} at ${requestUrl}. Check Settings → AI backend proxy URL; it should end in /api/lumina/ai.`);
     if (modelDecision.repaired) data.modelRoutingAudit = body.context.modelRoutingAudit;
     return data;
   }
@@ -208,6 +234,7 @@
     getConfig,
     persistConfig,
     modelsFor,
+    normalizeAiProxyUrl,
     loadModelsFromProxy,
     getStatus,
     getWorkflows,

@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1q3-sticky-route-provider-model-selects-1';
+  const STAGE = 'stage19n1q10-live-provider-model-discovery-1';
   const STORAGE_KEY = 'latexai:model-registry:v1';
   const LAST_STATUS_KEY = 'latexai:model-registry:last-status:v1';
   const LS_PROVIDER = 'lumina-latex.ai.provider';
@@ -52,26 +52,16 @@
     openai: {
       key: 'openai',
       title: 'OpenAI',
-      defaultModel: 'gpt-4.1-mini',
+      defaultModel: 'gpt-5.4-mini',
       configured: null,
-      allowCustomModels: true,
-      allowAnyGptModel: true,
-      customModelPattern: '^gpt[-A-Za-z0-9_.]*$',
+      allowCustomModels: false,
+      allowAnyGptModel: false,
+      customModelPattern: '',
       models: [
         { value: 'gpt-5.5', label: 'OpenAI · gpt-5.5', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
         { value: 'gpt-5.4', label: 'OpenAI · gpt-5.4', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gpt-5.4-mini', label: 'OpenAI · gpt-5.4-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'debate-advocate'] },
-        { value: 'gpt-5.4-nano', label: 'OpenAI · gpt-5.4-nano', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
-        { value: 'gpt-5.1', label: 'OpenAI · gpt-5.1', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gpt-5.1-mini', label: 'OpenAI · gpt-5.1-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] },
-        { value: 'gpt-5', label: 'OpenAI · gpt-5', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gpt-5-mini', label: 'OpenAI · gpt-5-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] },
-        { value: 'gpt-5-nano', label: 'OpenAI · gpt-5-nano', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
-        { value: 'gpt-4.1', label: 'OpenAI · gpt-4.1', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gpt-4.1-mini', label: 'OpenAI · gpt-4.1-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'competitive-ranking', 'competitive-improvement', 'debate-advocate', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gpt-4.1-nano', label: 'OpenAI · gpt-4.1-nano', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
-        { value: 'gpt-4o', label: 'OpenAI · gpt-4o', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gpt-4o-mini', label: 'OpenAI · gpt-4o-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] }
+        { value: 'gpt-5.4-mini', label: 'OpenAI · gpt-5.4-mini', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'competitive-ranking', 'competitive-improvement', 'debate-advocate', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gpt-5.4-nano', label: 'OpenAI · gpt-5.4-nano', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] }
       ]
     },
     anthropic: {
@@ -87,18 +77,18 @@
     gemini: {
       key: 'gemini',
       title: 'Gemini / Google',
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: 'gemini-3.5-flash',
       configured: null,
-      allowCustomModels: true,
-      customModelPattern: '^gemini[-A-Za-z0-9_.]*$',
+      allowCustomModels: false,
+      customModelPattern: '',
       models: [
+        { value: 'gemini-3.5-flash', label: 'Gemini · gemini-3.5-flash', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gemini-3.1-pro-preview', label: 'Gemini · gemini-3.1-pro-preview', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gemini-3-flash-preview', label: 'Gemini · gemini-3-flash-preview', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+        { value: 'gemini-3.1-flash-lite', label: 'Gemini · gemini-3.1-flash-lite', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic', 'slide-repair', 'debate-advocate'] },
         { value: 'gemini-2.5-flash', label: 'Gemini · gemini-2.5-flash', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'debate-advocate'] },
         { value: 'gemini-2.5-flash-lite', label: 'Gemini · gemini-2.5-flash-lite', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
-        { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
-        { value: 'gemini-2.0-flash', label: 'Gemini · gemini-2.0-flash', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic', 'slide-repair'] },
-        { value: 'gemini-2.0-flash-lite', label: 'Gemini · gemini-2.0-flash-lite', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
-        { value: 'gemini-1.5-flash', label: 'Gemini · gemini-1.5-flash', tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic'] },
-        { value: 'gemini-1.5-pro', label: 'Gemini · gemini-1.5-pro', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'debate-critic', 'debate-synthesizer'] }
+        { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro', tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
       ]
     }
   };
@@ -122,6 +112,29 @@
 
   function safeLocalSet(key, value) {
     try { localStorage.setItem(key, value); } catch (_err) {}
+  }
+
+
+  const DEPRECATED_MODEL_ALIASES = {
+    openai: {
+      'gpt-5.1-mini': 'gpt-5.4-mini',
+      'gpt 5.1 mini': 'gpt-5.4-mini',
+      'gpt-5.1': 'gpt-5.4',
+      'gpt 5.1': 'gpt-5.4'
+    }
+  };
+
+  function normalizeDeprecatedModel(provider, model) {
+    const p = clean(provider || 'openai').toLowerCase();
+    const m = clean(model || '');
+    if (!m) return m;
+    return DEPRECATED_MODEL_ALIASES[p]?.[m.toLowerCase()] || m;
+  }
+
+  function isDeprecatedModel(provider, model) {
+    const p = clean(provider || 'openai').toLowerCase();
+    const m = clean(model || '').toLowerCase();
+    return Boolean(DEPRECATED_MODEL_ALIASES[p]?.[m]);
   }
 
   function readCachedStatus() {
@@ -176,11 +189,10 @@
   }
 
   function shouldKeepLocalModelList(provider) {
-    const p = clean(provider).toLowerCase();
-    // Stage 19N1Q2: backend /models can be conservative and report only the current
-    // default. Keep the frontend's curated model registry visible for providers that
-    // support flexible model routing, while still marking backend-reported models.
-    return p === 'openai' || p === 'gemini';
+    // Stage 19N1Q10: when the backend returns account/provider-discovered models,
+    // use exactly that list for the dropdown. This prevents stale model IDs such as
+    // gpt-5.1-mini or deprecated Gemini models from remaining selectable.
+    return false;
   }
 
   function mergeModelLists(provider, baseModels, allowedModels) {
@@ -231,7 +243,7 @@
       const fromListing = listingProviders[provider];
       const statusAllowed = Array.isArray(fromStatus.allowedModels) ? fromStatus.allowedModels : [];
       const listingAllowed = Array.isArray(fromListing) ? fromListing.map((item) => clean(item?.model || item?.value || item)).filter(Boolean) : [];
-      const allowed = [...new Set([...statusAllowed, ...listingAllowed])].filter(Boolean);
+      const allowed = [...new Set([...statusAllowed, ...listingAllowed])].filter(Boolean).filter((model) => !isDeprecatedModel(provider, model));
       const baseModels = next[provider]?.models || PROVIDERS[provider]?.models || [];
       const models = shouldKeepLocalModelList(provider)
         ? mergeModelLists(provider, baseModels, allowed)
@@ -312,9 +324,10 @@
 
   function modelOptions(provider, selected, routeKey = '') {
     const models = modelsFor(provider, { routeKey });
-    const selectedModel = clean(selected);
+    const selectedModel = normalizeDeprecatedModel(provider, clean(selected));
     const hasSelected = models.some((m) => m.value === selectedModel);
-    const list = hasSelected || !selectedModel ? models : [{ ...fallbackModelMeta(provider, selectedModel), backendAllowed: false, warning: 'not listed by backend' }, ...models];
+    const backendChecked = isBackendChecked(provider);
+    const list = hasSelected || !selectedModel || backendChecked ? models : [{ ...fallbackModelMeta(provider, selectedModel), backendAllowed: false, warning: 'not listed by backend' }, ...models];
     return list.map((m) => {
       const tags = [m.tier, m.backendAllowed ? 'allowed' : (registry[provider]?.backendChecked ? 'not-listed' : 'fallback')].filter(Boolean).join(' · ');
       const label = `${m.label || m.value}${tags ? ` (${tags})` : ''}`;
@@ -350,6 +363,10 @@
     const models = modelsFor(providerOk ? p : 'openai', { routeKey: options.routeKey });
     const allowed = models.map((item) => item.value);
     const backendChecked = isBackendChecked(providerOk ? p : 'openai');
+    const repairedDeprecated = normalizeDeprecatedModel(providerOk ? p : 'openai', m);
+    if (providerOk && m && repairedDeprecated !== m) {
+      return { ok: false, provider: p, model: repairedDeprecated, repaired: true, backendChecked, reason: `${p}/${m} is deprecated or unavailable; repaired to ${repairedDeprecated}.` };
+    }
     const modelOk = Boolean(m && allowed.includes(m));
     if (providerOk && modelOk) return { ok: true, provider: p, model: m, repaired: false, backendChecked, reason: '' };
     if (providerOk && isCustomModelAllowed(p, m)) {
@@ -384,18 +401,26 @@
 
     const savedModel = safeLocalGet(`${LS_MODEL_PREFIX}${providerEl.value}`, modelEl.value || registry[providerEl.value]?.defaultModel || '');
     const savedCustomModel = safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value}`, customModelEl?.value || '');
-    const candidateModel = clean(savedCustomModel || savedModel);
+    const candidateModel = normalizeDeprecatedModel(providerEl.value, clean(savedCustomModel || savedModel));
     const validation = validateProviderModel(providerEl.value, candidateModel || savedModel, { routeKey: 'default' });
-    const finalModel = repair && validation.repaired ? validation.model : (savedModel || validation.model);
+    const finalModel = validation.repaired ? validation.model : (normalizeDeprecatedModel(providerEl.value, savedModel) || validation.model);
     modelEl.innerHTML = modelOptions(providerEl.value, finalModel, 'default');
     if (Array.from(modelEl.options || []).some((option) => option.value === finalModel)) modelEl.value = finalModel;
     if (customModelEl) {
-      customModelEl.value = savedCustomModel && !Array.from(modelEl.options || []).some((option) => option.value === savedCustomModel) ? savedCustomModel : savedCustomModel;
-      customModelEl.placeholder = providerEl.value === 'openai' ? 'Optional custom GPT model, e.g. gpt-5.5 or gpt-5.4-mini' : providerEl.value === 'gemini' ? 'Optional Gemini model, e.g. gemini-2.5-flash' : 'Optional custom model';
+      const allowCustom = Boolean(registry[providerEl.value]?.allowCustomModels);
+      if (!allowCustom) {
+        customModelEl.value = '';
+        customModelEl.disabled = true;
+        customModelEl.placeholder = 'Disabled: choose a currently available model from the dropdown';
+      } else {
+        customModelEl.disabled = false;
+        customModelEl.value = savedCustomModel && !Array.from(modelEl.options || []).some((option) => option.value === savedCustomModel) ? savedCustomModel : savedCustomModel;
+        customModelEl.placeholder = providerEl.value === 'openai' ? 'Optional custom GPT model' : providerEl.value === 'gemini' ? 'Optional Gemini model' : 'Optional custom model';
+      }
     }
     safeLocalSet(LS_PROVIDER, providerEl.value);
     safeLocalSet(`${LS_MODEL_PREFIX}${providerEl.value}`, modelEl.value || '');
-    safeLocalSet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value}`, customModelEl?.value?.trim() || '');
+    safeLocalSet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value}`, customModelEl?.disabled ? '' : (customModelEl?.value?.trim() || ''));
     updateCardSummary(validation);
     return validation;
   }
@@ -406,9 +431,9 @@
       const modelNode = D.querySelector(`[data-route-model="${cssEscape(routeKey)}"]`);
       if (!modelNode) return;
       const provider = clean(providerNode.value || 'openai');
-      const selected = clean(modelNode.value || recommendedForRoute(routeKey, provider).model);
+      const selected = normalizeDeprecatedModel(provider, clean(modelNode.value || recommendedForRoute(routeKey, provider).model));
       const validation = validateProviderModel(provider, selected, { routeKey });
-      const finalModel = repair && validation.repaired ? validation.model : selected;
+      const finalModel = validation.repaired ? validation.model : selected;
       if (modelNode.tagName === 'SELECT') modelNode.innerHTML = modelOptions(provider, finalModel, routeKey);
       if (Array.from(modelNode.options || []).some((option) => option.value === finalModel)) modelNode.value = finalModel;
     });
@@ -541,7 +566,7 @@
     providerEl.dataset.stage18aModelRegistryBound = 'true';
     providerEl.addEventListener('change', () => {
       safeLocalSet(LS_PROVIDER, providerEl.value || 'openai');
-      if (customModelEl) customModelEl.value = safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value || 'openai'}`, '');
+      if (customModelEl) customModelEl.value = registry[providerEl.value || 'openai']?.allowCustomModels ? safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value || 'openai'}`, '') : '';
       syncVisibleProviderModel({ repair: true });
       updateRouteModelSelects({ repair: true });
       emitUpdated();
@@ -556,6 +581,7 @@
       updateCardSummary();
     }, true);
     customModelEl?.addEventListener('input', () => {
+      if (customModelEl.disabled) return;
       safeLocalSet(`${LS_CUSTOM_MODEL_PREFIX}${providerEl.value || 'openai'}`, customModelEl.value.trim());
       updateCardSummary(validateProviderModel(providerEl.value, customModelEl.value.trim() || modelEl.value, { routeKey: 'default' }));
     }, true);
@@ -579,7 +605,8 @@
 
   function registryReport() {
     const visibleProvider = clean(el('aiProvider')?.value || '');
-    const visibleCustomModel = clean(el('aiCustomModel')?.value || safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${visibleProvider}`, ''));
+    const customInput = el('aiCustomModel');
+    const visibleCustomModel = customInput?.disabled ? '' : clean(customInput?.value || safeLocalGet(`${LS_CUSTOM_MODEL_PREFIX}${visibleProvider}`, ''));
     const visible = { provider: visibleProvider, model: visibleCustomModel || clean(el('aiModel')?.value || ''), selectedModel: clean(el('aiModel')?.value || ''), customModel: visibleCustomModel };
     return {
       schema: 'latexai-model-routing-audit-validation-lock-registry-report-v1',

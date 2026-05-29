@@ -7,15 +7,22 @@
 
   const FALLBACK_MODELS = {
     openai: [
-      { value: 'gpt-4.1-mini', label: 'OpenAI · gpt-4.1-mini' },
-      { value: 'gpt-4.1', label: 'OpenAI · gpt-4.1' }
+      { value: 'gpt-5.5', label: 'OpenAI · gpt-5.5' },
+      { value: 'gpt-5.4', label: 'OpenAI · gpt-5.4' },
+      { value: 'gpt-5.4-mini', label: 'OpenAI · gpt-5.4-mini' },
+      { value: 'gpt-5.4-nano', label: 'OpenAI · gpt-5.4-nano' }
     ],
     anthropic: [
       { value: 'claude-sonnet-4-5', label: 'Claude · claude-sonnet-4-5' },
       { value: 'claude-haiku-4-5', label: 'Claude · claude-haiku-4-5' }
     ],
     gemini: [
+      { value: 'gemini-3.5-flash', label: 'Gemini · gemini-3.5-flash' },
+      { value: 'gemini-3.1-pro-preview', label: 'Gemini · gemini-3.1-pro-preview' },
+      { value: 'gemini-3-flash-preview', label: 'Gemini · gemini-3-flash-preview' },
+      { value: 'gemini-3.1-flash-lite', label: 'Gemini · gemini-3.1-flash-lite' },
       { value: 'gemini-2.5-flash', label: 'Gemini · gemini-2.5-flash' },
+      { value: 'gemini-2.5-flash-lite', label: 'Gemini · gemini-2.5-flash-lite' },
       { value: 'gemini-2.5-pro', label: 'Gemini · gemini-2.5-pro' }
     ]
   };

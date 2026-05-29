@@ -447,7 +447,7 @@ ${details.output || ''}`),
   function currentProviderModel() {
     return {
       provider: clean(el('aiProvider')?.value || 'openai'),
-      model: clean(el('aiModel')?.value || 'gpt-4.1-mini')
+      model: clean(el('aiModel')?.value || 'gpt-5.4-mini')
     };
   }
 
@@ -1395,7 +1395,7 @@ ${details.output || ''}`),
     if (NS.ModelRegistryService?.modelOptions) return NS.ModelRegistryService.modelOptions(provider, selected, routeKey);
     const source = el('aiModel');
     const values = Array.from(source?.options || []).map((opt) => ({ value: opt.value, label: opt.textContent || opt.value })).filter((item) => item.value);
-    const fallback = values.length ? values : [{ value: selected || 'gpt-4.1-mini', label: selected || 'gpt-4.1-mini' }];
+    const fallback = values.length ? values : [{ value: selected || 'gpt-5.4-mini', label: selected || 'gpt-5.4-mini' }];
     return fallback.map((item) => `<option value="${escapeHtml(item.value)}"${item.value === selected ? ' selected' : ''}>${escapeHtml(item.label || item.value)}</option>`).join('');
   }
 

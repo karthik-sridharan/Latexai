@@ -1,5 +1,5 @@
 /* Latexai Stage 18A ModelRoutingService
- * Stage: stage18a-model-routing-audit-validation-lock-1
+ * Stage: stage19n1q10-live-provider-model-discovery-1
  *
  * Central model/provider routing cleanup.
  *
@@ -15,7 +15,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1q4-branch-runner-settings-devils-routes-1';
+  const STAGE = 'stage19n1q10-live-provider-model-discovery-1';
   const STORAGE_KEY = 'latexai:model-routing:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('model-provider-service')) {
@@ -48,24 +48,38 @@
   ];
 
   const DEFAULTS = {
-    default: { provider: 'openai', model: 'gpt-4.1-mini' },
-    paper: { provider: 'openai', model: 'gpt-4.1-mini' },
-    citation: { provider: 'openai', model: 'gpt-4.1-mini' },
-    presentation: { provider: 'openai', model: 'gpt-4.1-mini' },
-    figure: { provider: 'openai', model: 'gpt-4.1-mini' },
-    'slide-repair': { provider: 'openai', model: 'gpt-4.1-mini' },
-    diagnostic: { provider: 'openai', model: 'gpt-4.1-mini' },
-    'competitive-ranking': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'competitive-improvement': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'debate-advocate': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'debate-critic': { provider: 'openai', model: 'gpt-4.1-mini' },
-    'debate-synthesizer': { provider: 'openai', model: 'gpt-4.1-mini' }
+    default: { provider: 'openai', model: 'gpt-5.4-mini' },
+    paper: { provider: 'openai', model: 'gpt-5.4-mini' },
+    citation: { provider: 'openai', model: 'gpt-5.4-mini' },
+    presentation: { provider: 'openai', model: 'gpt-5.4-mini' },
+    figure: { provider: 'openai', model: 'gpt-5.4-mini' },
+    'slide-repair': { provider: 'openai', model: 'gpt-5.4-mini' },
+    diagnostic: { provider: 'openai', model: 'gpt-5.4-mini' },
+    'competitive-ranking': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'competitive-improvement': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'debate-advocate': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'debate-critic': { provider: 'openai', model: 'gpt-5.4-mini' },
+    'debate-synthesizer': { provider: 'openai', model: 'gpt-5.4-mini' }
   };
 
   function el(id) { return D.getElementById(id); }
 
   function clean(value) {
     return String(value || '').trim();
+  }
+
+
+  function normalizeDeprecatedModel(provider, model) {
+    const p = clean(provider || 'openai').toLowerCase();
+    const m = clean(model || '');
+    if (p !== 'openai') return m;
+    const aliases = {
+      'gpt-5.1-mini': 'gpt-5.4-mini',
+      'gpt 5.1 mini': 'gpt-5.4-mini',
+      'gpt-5.1': 'gpt-5.4',
+      'gpt 5.1': 'gpt-5.4'
+    };
+    return aliases[m.toLowerCase()] || m;
   }
 
   function providerSelect() {
@@ -98,7 +112,7 @@
 
   function setProviderModel(route) {
     const provider = clean(route?.provider);
-    const model = clean(route?.model);
+    const model = normalizeDeprecatedModel(provider || route?.provider, route?.model);
     const p = providerSelect();
     const m = modelSelect();
 
@@ -132,7 +146,7 @@
       const source = input?.[item.key] || DEFAULTS[item.key] || DEFAULTS.default;
       routes[item.key] = {
         provider: clean(source.provider || DEFAULTS[item.key]?.provider || DEFAULTS.default.provider),
-        model: clean(source.model || DEFAULTS[item.key]?.model || DEFAULTS.default.model)
+        model: normalizeDeprecatedModel(source.provider || DEFAULTS[item.key]?.provider || DEFAULTS.default.provider, source.model || DEFAULTS[item.key]?.model || DEFAULTS.default.model)
       };
     }
     return routes;
@@ -193,7 +207,7 @@
     // Stage 17H: allow workflow code to explicitly opt out of route override.
     // This is needed for multi-agent workflows where each visible agent row has
     // its own provider/model. Without this, the generic "paper" route can
-    // override all agents to gpt-4.1 even when the row shows gpt-4.1-mini.
+    // override all agents to gpt-5.4 even when the row shows gpt-5.4-mini.
     const bypass = Boolean(
       payload?.modelRoutingBypass ||
       payload?.modelRouting?.bypass ||

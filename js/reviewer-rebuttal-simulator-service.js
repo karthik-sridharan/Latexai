@@ -80,7 +80,7 @@
   }
 
   function currentProviderModel() {
-    return { provider: clean(el('aiProvider')?.value || 'openai'), model: clean(el('aiModel')?.value || 'gpt-4.1-mini') };
+    return { provider: clean(el('aiProvider')?.value || 'openai'), model: clean(el('aiModel')?.value || 'gpt-5.4-mini') };
   }
 
 
