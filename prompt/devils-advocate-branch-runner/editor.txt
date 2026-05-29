@@ -81,7 +81,9 @@ Failure mode to avoid:
 If you output normal prose, markdown bullets, or only human-readable \lai blocks without the JSON markers, the frontend will not insert anything and the preview will show blocks=0. Always produce the JSON object first.
 
 
-Stage 19N1K3 parser note:
+Stage 19N1K4 parser note:
 - Even though the frontend can repair some malformed JSON, you must still output valid JSON between the markers.
 - Do not omit LATEXAI_STRUCTURED_EDIT_JSON_END.
 - Do not put markdown fences around the required JSON block.
+- Keep each `latex` value as a compact single JSON string. Do not put literal unescaped line breaks inside JSON strings; use short paragraphs or `\n` if line breaks are necessary.
+- Finish the JSON object completely before writing any optional mirror text. If output budget is tight, shorten each edit rather than leaving the JSON unfinished.
