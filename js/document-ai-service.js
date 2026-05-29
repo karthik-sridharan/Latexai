@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1N DocumentAIService
- * Stage: stage19n1n-source-scanned-lai-resolver-20260529-1
+/* Latexai Stage 19N1P DocumentAIService
+ * Stage: stage19n1p-resolver-outcome-reward-feedback-20260529-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
  * - prompts remain developer-managed static frontend files under /prompt/
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1n-source-scanned-lai-resolver-20260529-1';
+  const STAGE = 'stage19n1p-resolver-outcome-reward-feedback-20260529-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -57,6 +57,145 @@
     if (!node) return;
     node.classList.add('active');
     node.textContent = String(text || '');
+  }
+
+
+  function cleanString(value) {
+    return String(value ?? '').trim();
+  }
+
+  function getStored(key, fallback = '') {
+    try {
+      const value = W.localStorage?.getItem?.(key);
+      return value == null || value === '' ? fallback : value;
+    } catch (_err) {
+      return fallback;
+    }
+  }
+
+  function resolverFeedbackStatus(message, kind = '') {
+    const node = el('documentAiResolveFeedbackStatus');
+    if (node) {
+      node.textContent = String(message || '');
+      node.dataset.kind = kind || '';
+    }
+  }
+
+  function resolverBackendRoot() {
+    const fromSettings = cleanString(NS.BackendUrlSettingsService?.getMemoryApiBaseUrl?.() || '');
+    const raw = cleanString(el('memoryBackendUrl')?.value) || fromSettings || cleanString(getStored('latexai:memory-backend-url', ''));
+    const base = raw.replace(/\/+$/, '');
+    if (!base) return '';
+    if (/\/api\/lumina\/memory$/i.test(base)) return base.replace(/\/api\/lumina\/memory$/i, '/api/lumina');
+    if (/\/api\/lumina$/i.test(base)) return base;
+    if (/\/api\/lumina\/latex\/compile$/i.test(base)) return base.replace(/\/api\/lumina\/latex\/compile$/i, '/api/lumina');
+    return base + '/api/lumina';
+  }
+
+  function resolverAuthHeaders() {
+    const h = { 'Content-Type': 'application/json' };
+    const token = cleanString(NS.BackendUrlSettingsService?.getMemoryProxyToken?.() || '') || cleanString(el('memoryProxyToken')?.value) || cleanString(getStored('latexai:memory-proxy-token', ''));
+    if (token) {
+      h.Authorization = 'Bearer ' + token;
+      h['X-Lumina-Token'] = token;
+    }
+    return h;
+  }
+
+  function compactPreview(value, limit = 700) {
+    const s = String(value || '').replace(/\s+/g, ' ').trim();
+    return s.length > limit ? s.slice(0, limit) + '…' : s;
+  }
+
+  function resolverOutcomeTypeFor(pair, keep) {
+    // Keep red/new accepts the AI proposal for standalone insertions, replacements,
+    // and old-only deletion markers. Keep blue/old rejects the AI proposal.
+    return keep === 'new' ? 'accepted' : 'rejected';
+  }
+
+  function resolverRewardValueFor(pair, keep) {
+    if (keep === 'new') {
+      if (pair?.type === 'old-new-pair') return 1.05;
+      if (pair?.type === 'standalone-new') return 0.85;
+      if (pair?.type === 'standalone-old') return 0.75;
+      return 0.8;
+    }
+    if (pair?.type === 'old-new-pair') return -0.65;
+    if (pair?.type === 'standalone-new') return -0.55;
+    if (pair?.type === 'standalone-old') return -0.45;
+    return -0.5;
+  }
+
+  function resolverFeedbackPayload(pair, keep, keptText) {
+    const p = project();
+    const outcomeType = resolverOutcomeTypeFor(pair, keep);
+    return {
+      outcomeType,
+      rewardValue: resolverRewardValueFor(pair, keep),
+      workflow: 'latexai-source-scanned-ai-edit-resolver',
+      insertionMode: 'resolver',
+      compileStatus: 'not_checked',
+      validationStatus: 'resolved',
+      actionId: pair?.id || '',
+      sectionId: pair?.path || '',
+      projectId: p?.id || p?.projectId || '',
+      paperId: p?.paperId || p?.rootFile || rootPath(),
+      note: `Stage 19N1P resolver outcome: ${outcomeType}; kept=${keep}; type=${pair?.type || 'unknown'}; path=${pair?.path || ''}; line=${pair?.line || '?'}`,
+      metadata: {
+        frontendStage: STAGE,
+        resolverVersion: 'stage19n1p-v1',
+        source: 'document-ai-resolver',
+        editId: pair?.id || '',
+        editType: pair?.type || '',
+        command: pair?.command || '',
+        kept: keep,
+        outcomeType,
+        path: pair?.path || '',
+        line: pair?.line || null,
+        rangeStart: pair?.rangeStart || 0,
+        rangeEnd: pair?.rangeEnd || 0,
+        oldLength: String(pair?.oldText || '').length,
+        newLength: String(pair?.newText || '').length,
+        keptLength: String(keptText || '').length,
+        oldPreview: compactPreview(pair?.oldText || pair?.oldPreview || ''),
+        newPreview: compactPreview(pair?.newText || pair?.newPreview || ''),
+        keptPreview: compactPreview(keptText || ''),
+      }
+    };
+  }
+
+  async function postResolverFeedback(payload) {
+    const root = resolverBackendRoot();
+    if (!root) {
+      resolverFeedbackStatus('Resolver outcome not recorded: no Memory/backend URL configured.', 'warn');
+      return { ok: false, skipped: true, reason: 'missing-backend-url' };
+    }
+    const res = await fetch(root + '/debate/record-branch-outcome', {
+      method: 'POST',
+      headers: resolverAuthHeaders(),
+      body: JSON.stringify(payload || {}),
+      keepalive: true
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
+    if (!res.ok || data?.ok === false) throw new Error(data?.error?.message || data?.detail || data?.message || ('HTTP ' + res.status));
+    return data || {};
+  }
+
+  function recordResolverFeedback(pair, keep, keptText) {
+    const payload = resolverFeedbackPayload(pair, keep, keptText);
+    resolverFeedbackStatus('Recording resolver outcome feedback…', 'pending');
+    postResolverFeedback(payload)
+      .then((data) => {
+        if (data?.skipped) return;
+        resolverFeedbackStatus(`Recorded resolver outcome: ${payload.outcomeType}, reward=${data?.rewardValue ?? payload.rewardValue}.`, 'good');
+      })
+      .catch((err) => {
+        // Never block the user from resolving source edits because reward logging failed.
+        console.warn('[Latexai] Resolver outcome feedback recording failed', err);
+        resolverFeedbackStatus(`Resolver outcome resolved locally; reward feedback not recorded (${err?.message || err}).`, 'warn');
+      });
   }
 
   function normalizePath(path) {
@@ -932,8 +1071,9 @@
       : `kept ${keep === 'new' ? 'new red \\lai content' : 'old blue \\laiold content'} as normal black LaTeX`;
     setStatus(`Resolved ${current.id}: ${actionLabel}.`);
     toast(`Resolved AI edit: ${actionLabel}.`);
+    recordResolverFeedback(current, keep, kept);
     refreshResolveSelect();
-    return { ok: true, path: pair.path, id: current.id, kept: keep };
+    return { ok: true, path: pair.path, id: current.id, kept: keep, type: current.type };
   }
 
   function resolveSelectedKeepNew() {
@@ -1020,6 +1160,7 @@
       '      <button id="keepAllNewDocumentAiBtn" class="btn mini" type="button">Keep all red/new</button>',
       '      <button id="keepAllOldDocumentAiBtn" class="btn mini" type="button">Keep all blue/old</button>',
       '    </div>',
+      '    <div id="documentAiResolveFeedbackStatus" class="document-ai-status">Resolver reward feedback ready.</div>',
       '    <pre id="documentAiResolvePreview" class="document-ai-output"></pre>',
       '  </div>',
       '</div>'
