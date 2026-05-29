@@ -1,5 +1,5 @@
-/* Latexai Stage 11G DocumentAIService
- * Stage: stage11g-resolve-laiold-lai-edits-1
+/* Latexai Stage 19N1N DocumentAIService
+ * Stage: stage19n1n-source-scanned-lai-resolver-20260529-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
  * - prompts remain developer-managed static frontend files under /prompt/
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage11g-resolve-laiold-lai-edits-1';
+  const STAGE = 'stage19n1n-source-scanned-lai-resolver-20260529-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -611,50 +611,211 @@
     return null;
   }
 
+  function syncActiveEditorToStateForResolve() {
+    try {
+      const editor = NS.Editor?.editor || document.getElementById('sourceEditor');
+      const path = normalizePath(project().activePath || rootPath());
+      if (!editor || !path) return false;
+      const file = State()?.getFile?.(path);
+      if (!file || !textFile(file)) return false;
+      const liveText = String(editor.value ?? '');
+      if (liveText && liveText !== fileText(file)) {
+        State()?.updateFile?.(path, liveText);
+        return true;
+      }
+    } catch (_err) {}
+    return false;
+  }
+
+  function braceBlockAt(text, command, cmdAt) {
+    const s = String(text || '');
+    const needle = `\\${command}`;
+    if (!s.startsWith(needle, cmdAt)) return null;
+    if (command === 'lai' && s.startsWith('\\laiold', cmdAt)) return null;
+
+    const afterCommand = cmdAt + needle.length;
+    const nextChar = s[afterCommand] || '';
+    if (/[A-Za-z@]/.test(nextChar)) return null;
+
+    let cursor = afterCommand;
+    while (/\s/.test(s[cursor] || '')) cursor += 1;
+    if (s[cursor] !== '{') return null;
+
+    const openAt = cursor;
+    let depth = 0;
+    for (let i = openAt; i < s.length; i += 1) {
+      const ch = s[i];
+      const prev = i > 0 ? s[i - 1] : '';
+      if (ch === '{' && prev !== '\\') depth += 1;
+      else if (ch === '}' && prev !== '\\') {
+        depth -= 1;
+        if (depth === 0) {
+          return {
+            command,
+            cmdAt,
+            openAt,
+            closeAt: i,
+            start: cmdAt,
+            end: i + 1,
+            inner: s.slice(openAt + 1, i)
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findNextLaiBlock(text, searchFrom = 0) {
+    const s = String(text || '');
+    let best = null;
+    for (const command of ['laiold', 'lai']) {
+      const needle = `\\${command}`;
+      let cursor = Math.max(0, Number(searchFrom) || 0);
+      while (cursor < s.length) {
+        const at = s.indexOf(needle, cursor);
+        if (at < 0) break;
+        if (command === 'lai' && s.startsWith('\\laiold', at)) {
+          cursor = at + 4;
+          continue;
+        }
+        const block = braceBlockAt(s, command, at);
+        if (block) {
+          if (!best || block.start < best.start) best = block;
+          break;
+        }
+        cursor = at + needle.length;
+      }
+    }
+    return best;
+  }
+
+  function lineNumberAt(text, index) {
+    return String(text || '').slice(0, Math.max(0, index || 0)).split('\n').length;
+  }
+
+  function stableEditId(path, type, start, index) {
+    const base = `${normalizePath(path || rootPath())}:${type}:${start}:${index}`;
+    let h = 2166136261;
+    for (let i = 0; i < base.length; i += 1) {
+      h ^= base.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return `lai-src-${(h >>> 0).toString(36)}-${index}`;
+  }
+
+  function expandResolveStartForOldMarker(text, oldBlock) {
+    const s = String(text || '');
+    const start = oldBlock?.start || 0;
+    const before = s.slice(Math.max(0, start - 700), start);
+    const marker = before.match(/% BEGIN LAI-OLD id=([^\s]+)\s+path=([^\n]+)\n\s*$/);
+    if (!marker) return { rangeStart: start, markerId: '', markerPath: '' };
+    return {
+      rangeStart: start - marker[0].length,
+      markerId: marker[1] || '',
+      markerPath: normalizePath(marker[2] || '')
+    };
+  }
+
+  function expandResolveEnd(text, end) {
+    const s = String(text || '');
+    let out = Math.max(0, Number(end) || 0);
+    while (out < s.length && /[ \t]/.test(s[out])) out += 1;
+    if (s[out] === '\r') out += 1;
+    if (s[out] === '\n') out += 1;
+    return out;
+  }
+
+  function resolveReplacementTextForKeep(pair, keep) {
+    if (!pair || !['new', 'old'].includes(keep)) return '';
+    if (pair.type === 'standalone-new') return keep === 'new' ? pair.newText : '';
+    if (pair.type === 'standalone-old') return keep === 'old' ? pair.oldText : '';
+    return keep === 'new' ? pair.newText : pair.oldText;
+  }
+
   function scanResolvedPairsInText(text, path) {
     const s = String(text || '');
     const pairs = [];
-    const markerRe = /% BEGIN LAI-OLD id=([^\s]+)\s+path=([^\n]+)\n/g;
-    let match;
+    let cursor = 0;
+    let index = 0;
 
-    while ((match = markerRe.exec(s))) {
-      const markerStart = match.index;
-      const id = match[1] || `lai-old-${pairs.length}`;
-      const markerPath = normalizePath(match[2] || path || rootPath());
+    while (cursor < s.length) {
+      const block = findNextLaiBlock(s, cursor);
+      if (!block) break;
 
-      const oldBlock = findBraceBlock(s, 'laiold', markerRe.lastIndex);
-      if (!oldBlock) continue;
+      if (block.command === 'laiold') {
+        const expanded = expandResolveStartForOldMarker(s, block);
+        const next = findNextLaiBlock(s, block.end);
+        if (next && next.command === 'lai') {
+          const id = expanded.markerId || stableEditId(path, 'pair', expanded.rangeStart, index);
+          const markerPath = expanded.markerPath || normalizePath(path || rootPath());
+          pairs.push({
+            id,
+            type: 'old-new-pair',
+            path: normalizePath(path || markerPath),
+            markerPath,
+            rangeStart: expanded.rangeStart,
+            rangeEnd: expandResolveEnd(s, next.end),
+            oldText: block.inner.trim(),
+            newText: next.inner.trim(),
+            oldPreview: block.inner.trim().slice(0, 180),
+            newPreview: next.inner.trim().slice(0, 180),
+            line: lineNumberAt(s, expanded.rangeStart),
+            command: '\\laiold + \\lai'
+          });
+          cursor = next.end;
+          index += 1;
+          continue;
+        }
 
-      const endMarker = `% END LAI-OLD id=${id}`;
-      const endMarkerAt = s.indexOf(endMarker, oldBlock.end);
-      if (endMarkerAt < 0) continue;
-      const endMarkerEnd = s.indexOf('\n', endMarkerAt);
-      const afterOld = endMarkerEnd >= 0 ? endMarkerEnd + 1 : endMarkerAt + endMarker.length;
+        const id = expanded.markerId || stableEditId(path, 'old', expanded.rangeStart, index);
+        pairs.push({
+          id,
+          type: 'standalone-old',
+          path: normalizePath(path || rootPath()),
+          markerPath: expanded.markerPath || normalizePath(path || rootPath()),
+          rangeStart: expanded.rangeStart,
+          rangeEnd: expandResolveEnd(s, block.end),
+          oldText: block.inner.trim(),
+          newText: '',
+          oldPreview: block.inner.trim().slice(0, 180),
+          newPreview: '(no paired \\lai new content; keep red/new will remove this old-only marker)',
+          line: lineNumberAt(s, expanded.rangeStart),
+          command: '\\laiold'
+        });
+        cursor = block.end;
+        index += 1;
+        continue;
+      }
 
-      const nextOldAt = s.indexOf('% BEGIN LAI-OLD', afterOld);
-      const nextLai = findBraceBlock(s, 'lai', afterOld);
-      if (!nextLai) continue;
-      if (nextOldAt >= 0 && nextOldAt < nextLai.start) continue;
+      if (block.command === 'lai') {
+        const id = stableEditId(path, 'new', block.start, index);
+        pairs.push({
+          id,
+          type: 'standalone-new',
+          path: normalizePath(path || rootPath()),
+          markerPath: normalizePath(path || rootPath()),
+          rangeStart: block.start,
+          rangeEnd: expandResolveEnd(s, block.end),
+          oldText: '',
+          newText: block.inner.trim(),
+          oldPreview: '(no blue \\laiold content; keep blue/old will reject/remove this insertion)',
+          newPreview: block.inner.trim().slice(0, 180),
+          line: lineNumberAt(s, block.start),
+          command: '\\lai'
+        });
+        cursor = block.end;
+        index += 1;
+        continue;
+      }
 
-      pairs.push({
-        id,
-        path: normalizePath(path || markerPath),
-        markerPath,
-        rangeStart: markerStart,
-        rangeEnd: nextLai.end,
-        oldText: oldBlock.inner.trim(),
-        newText: nextLai.inner.trim(),
-        oldPreview: oldBlock.inner.trim().slice(0, 180),
-        newPreview: nextLai.inner.trim().slice(0, 180)
-      });
-
-      markerRe.lastIndex = nextLai.end;
+      cursor = block.end || (cursor + 1);
     }
 
     return pairs;
   }
 
   function scanResolvableEdits() {
+    syncActiveEditorToStateForResolve();
     const p = project();
     const files = (p.files || [])
       .filter((file) => textFile(file))
@@ -678,7 +839,7 @@
     if (!pairs.length) {
       const option = document.createElement('option');
       option.value = '';
-      option.textContent = 'No unresolved \\laiold{...} / \\lai{...} edits found';
+      option.textContent = 'No unresolved \\lai / \\laiold edits found in current .tex source';
       select.appendChild(option);
       setResolvePreview(null);
       return pairs;
@@ -687,7 +848,7 @@
     pairs.forEach((pair, index) => {
       const option = document.createElement('option');
       option.value = String(index);
-      option.textContent = `${index + 1}. ${pair.path} · ${pair.id}`;
+      option.textContent = `${index + 1}. ${pair.path}:${pair.line || '?'} · ${pair.command || pair.type} · ${pair.id}`;
       select.appendChild(option);
     });
 
@@ -710,18 +871,27 @@
       return;
     }
     node.classList.add('active');
+    const help = pair.type === 'standalone-new'
+      ? 'Standalone \lai insertion: Keep red/new accepts it as normal text; Keep blue/old rejects/removes it.'
+      : pair.type === 'standalone-old'
+        ? 'Standalone \laiold block: Keep blue/old restores it as normal text; Keep red/new removes it.'
+        : 'Replacement pair: Keep red/new accepts the proposed replacement; Keep blue/old restores the original.';
     node.textContent = [
-      'Selected paper-level AI edit',
-      '============================',
+      'Selected source-scanned AI edit',
+      '===============================',
       '',
       `File: ${pair.path}`,
+      `Line: ${pair.line || '?'}`,
+      `Type: ${pair.type || 'unknown'}`,
       `ID: ${pair.id}`,
       '',
+      help,
+      '',
       'BLUE old content (\\laiold):',
-      pair.oldPreview || '(empty)',
+      pair.oldPreview || '(empty / not present)',
       '',
       'RED new content (\\lai):',
-      pair.newPreview || '(empty)'
+      pair.newPreview || '(empty / not present)'
     ].join('\n');
   }
 
@@ -731,6 +901,7 @@
       return { ok: false, reason: 'missing-pair' };
     }
 
+    syncActiveEditorToStateForResolve();
     const file = State()?.getFile?.(pair.path);
     if (!file || !textFile(file)) {
       setStatus(`Could not resolve edit: file not found: ${pair.path}`);
@@ -738,14 +909,15 @@
     }
 
     const text = fileText(file);
-    const current = scanResolvedPairsInText(text, pair.path).find((candidate) => candidate.id === pair.id);
+    const current = scanResolvedPairsInText(text, pair.path).find((candidate) => candidate.id === pair.id)
+      || scanResolvedPairsInText(text, pair.path).find((candidate) => Number(candidate.rangeStart) === Number(pair.rangeStart) && candidate.type === pair.type);
     if (!current) {
       setStatus('Could not find that unresolved edit anymore. Refresh the list.');
       refreshResolveSelect();
       return { ok: false, reason: 'not-found' };
     }
 
-    const kept = keep === 'new' ? current.newText : current.oldText;
+    const kept = resolveReplacementTextForKeep(current, keep);
     const next = text.slice(0, current.rangeStart) + kept + text.slice(current.rangeEnd);
     State()?.updateFile?.(pair.path, next);
 
@@ -755,8 +927,11 @@
     try { State()?.save?.(); } catch (_err) {}
     try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
 
-    setStatus(`Resolved ${current.id}: kept ${keep === 'new' ? 'new red \\lai content' : 'old blue \\laiold content'} as normal black LaTeX.`);
-    toast(`Kept ${keep === 'new' ? 'new' : 'old'} content and removed Latexai markup.`);
+    const actionLabel = current.type === 'standalone-new' && keep === 'old' ? 'rejected standalone red \\lai insertion'
+      : current.type === 'standalone-old' && keep === 'new' ? 'removed standalone blue \\laiold block'
+      : `kept ${keep === 'new' ? 'new red \\lai content' : 'old blue \\laiold content'} as normal black LaTeX`;
+    setStatus(`Resolved ${current.id}: ${actionLabel}.`);
+    toast(`Resolved AI edit: ${actionLabel}.`);
     refreshResolveSelect();
     return { ok: true, path: pair.path, id: current.id, kept: keep };
   }
@@ -836,7 +1011,7 @@
       '  <pre id="documentAiOutput" class="document-ai-output"></pre>',
       '  <div class="document-ai-resolver">',
       '    <h4>Resolve AI edits</h4>',
-      '    <div class="document-ai-help">Choose whether to keep the red new content or blue old content. The kept content becomes normal black LaTeX and the <code>\\lai</code>/<code>\\laiold</code> markup is removed.</div>',
+      '    <div class="document-ai-help">Refresh scans the current .tex source for every <code>\\lai{...}</code>, <code>\\laiold{...}</code>, or paired replacement block. The kept content becomes normal black LaTeX and Latexai markup is removed. For standalone red <code>\\lai</code> insertions, Keep blue/old rejects/removes the insertion.</div>',
       '    <label>Unresolved edit <select id="documentAiResolveSelect"></select></label>',
       '    <div class="document-ai-actions">',
       '      <button id="refreshDocumentAiResolveBtn" class="btn mini" type="button">Refresh edits</button>',
