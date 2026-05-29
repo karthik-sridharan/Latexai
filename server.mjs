@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const STAGE = 'latex-stage18a-model-routing-audit-validation-lock-backend-20260521-1';
+const STAGE = 'latex-stage19n1q5-gemini-key-diagnostics-and-env-aliases-20260529-1';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
@@ -23,6 +23,8 @@ const ALLOW_SHELL_ESCAPE = String(process.env.ALLOW_SHELL_ESCAPE || 'false').toL
 const RETURN_RAW = String(process.env.RETURN_RAW_PROVIDER_RESPONSE || 'false').toLowerCase() === 'true';
 const OPENAI_WEB_SEARCH_ENABLED = String(process.env.OPENAI_WEB_SEARCH_ENABLED || 'true').toLowerCase() !== 'false';
 const OPENAI_WEB_SEARCH_TOOL = process.env.OPENAI_WEB_SEARCH_TOOL || 'web_search';
+const OPENAI_ALLOW_ANY_GPT_MODEL = String(process.env.OPENAI_ALLOW_ANY_GPT_MODEL || 'true').toLowerCase() !== 'false';
+const GEMINI_ALLOW_ANY_MODEL = String(process.env.GEMINI_ALLOW_ANY_MODEL || 'false').toLowerCase() === 'true';
 const PROJECTS = new Map();
 const JOBS = new Map();
 
@@ -30,10 +32,38 @@ function envList(name, fallback = '') {
   return String(process.env[name] || fallback || '').split(',').map((s) => s.trim()).filter(Boolean);
 }
 
+function truthyEnv(name, fallback = 'false') {
+  return String(process.env[name] || fallback || '').toLowerCase() === 'true';
+}
+
+const GEMINI_API_KEY_ENV_NAMES = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_AI_API_KEY'];
+
+function firstEnvValue(names) {
+  for (const name of names || []) {
+    const value = String(process.env[name] || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function getGeminiApiKey() {
+  return firstEnvValue(GEMINI_API_KEY_ENV_NAMES);
+}
+
+function providerEnvStatus(provider) {
+  const names = provider === 'gemini' ? GEMINI_API_KEY_ENV_NAMES : provider === 'openai' ? ['OPENAI_API_KEY'] : provider === 'anthropic' ? ['ANTHROPIC_API_KEY'] : [];
+  const present = Object.fromEntries(names.map((name) => [name, Boolean(String(process.env[name] || '').trim())]));
+  return { names, present, configured: Object.values(present).some(Boolean) };
+}
+
+function uniqueList(items) {
+  return [...new Set((items || []).map((s) => String(s || '').trim()).filter(Boolean))];
+}
+
 function hasProviderKey(provider) {
   if (provider === 'openai') return Boolean(process.env.OPENAI_API_KEY);
   if (provider === 'anthropic') return Boolean(process.env.ANTHROPIC_API_KEY);
-  if (provider === 'gemini') return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  if (provider === 'gemini') return Boolean(getGeminiApiKey());
   return false;
 }
 
@@ -43,17 +73,45 @@ const DEFAULT_MODELS = {
   gemini: process.env.GEMINI_DEFAULT_MODEL || 'gemini-2.5-flash'
 };
 
+const OPENAI_CURATED_GPT_MODELS = uniqueList([
+  DEFAULT_MODELS.openai,
+  ...envList('OPENAI_SUGGESTED_MODELS', ''),
+  'gpt-4.1-mini',
+  'gpt-4.1',
+  'gpt-4o-mini',
+  'gpt-4o',
+  'gpt-5-mini',
+  'gpt-5',
+  'gpt-5.1-mini',
+  'gpt-5.1',
+  'gpt-5.4'
+]);
+const GEMINI_CURATED_MODELS = uniqueList([
+  DEFAULT_MODELS.gemini,
+  ...envList('GEMINI_SUGGESTED_MODELS', ''),
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro'
+]);
 const ALLOWED_MODELS = {
-  openai: new Set(envList('OPENAI_ALLOWED_MODELS', DEFAULT_MODELS.openai)),
+  openai: new Set(envList('OPENAI_ALLOWED_MODELS', OPENAI_CURATED_GPT_MODELS.join(','))),
   anthropic: new Set(envList('ANTHROPIC_ALLOWED_MODELS', DEFAULT_MODELS.anthropic)),
-  gemini: new Set(envList('GEMINI_ALLOWED_MODELS', DEFAULT_MODELS.gemini))
+  gemini: new Set(envList('GEMINI_ALLOWED_MODELS', GEMINI_CURATED_MODELS.join(',')))
 };
 for (const provider of Object.keys(DEFAULT_MODELS)) ALLOWED_MODELS[provider].add(DEFAULT_MODELS[provider]);
 
 const MODEL_CAPABILITY_HINTS = {
   openai: {
     'gpt-4.1-mini': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'presentation', 'figure', 'slide-repair', 'diagnostic', 'competitive-ranking', 'competitive-improvement', 'debate-advocate', 'debate-critic', 'debate-synthesizer'] },
-    'gpt-4.1': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
+    'gpt-4.1': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+    'gpt-4o-mini': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] },
+    'gpt-4o': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+    'gpt-5-mini': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] },
+    'gpt-5': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+    'gpt-5.1-mini': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'paper', 'citation', 'diagnostic', 'debate-advocate'] },
+    'gpt-5.1': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] },
+    'gpt-5.4': { tier: 'strong', structuredJson: true, longContext: true, recommendedFor: ['paper', 'competitive-ranking', 'competitive-improvement', 'debate-critic', 'debate-synthesizer'] }
   },
   anthropic: {
     'claude-haiku-4-5': { tier: 'fast', structuredJson: true, longContext: true, recommendedFor: ['default', 'citation', 'diagnostic', 'debate-advocate'] },
@@ -84,8 +142,13 @@ const MODEL_ALIASES = {
   openai: {
     'gpt-4.1 mini': 'gpt-4.1-mini',
     'gpt 4.1 mini': 'gpt-4.1-mini',
-    'gpt-4o-mini': 'gpt-4.1-mini',
-    'gpt-4.1-nano': 'gpt-4.1-mini'
+    'gpt 5': 'gpt-5',
+    'gpt-5 mini': 'gpt-5-mini',
+    'gpt 5 mini': 'gpt-5-mini',
+    'gpt 5.1': 'gpt-5.1',
+    'gpt-5.1 mini': 'gpt-5.1-mini',
+    'gpt 5.1 mini': 'gpt-5.1-mini',
+    'gpt 5.4': 'gpt-5.4'
   },
   anthropic: {
     'claude-sonnet': 'claude-sonnet-4-5',
@@ -113,9 +176,20 @@ function modelRegistryStatus() {
       configured: hasProviderKey(provider),
       defaultModel: DEFAULT_MODELS[provider],
       allowedModels: Array.from(ALLOWED_MODELS[provider] || []),
-      models: modelRegistryForProvider(provider)
+      models: modelRegistryForProvider(provider),
+      allowCustomModels: provider === 'openai' ? OPENAI_ALLOW_ANY_GPT_MODEL : provider === 'gemini' ? GEMINI_ALLOW_ANY_MODEL : false,
+      allowAnyGptModel: provider === 'openai' ? OPENAI_ALLOW_ANY_GPT_MODEL : false,
+      customModelPattern: provider === 'openai' ? '^gpt[-A-Za-z0-9_.]*$' : provider === 'gemini' ? '^gemini[-A-Za-z0-9_.]*$' : ''
     }]))
   };
+}
+
+function isOpenAiGptModel(model) {
+  return /^gpt(?:[-_.]?[A-Za-z0-9]+)*$/i.test(String(model || '').trim());
+}
+
+function isGeminiModel(model) {
+  return /^gemini(?:[-_.]?[A-Za-z0-9]+)*$/i.test(String(model || '').trim());
 }
 
 function normalizeAllowedModel(provider, model) {
@@ -124,6 +198,14 @@ function normalizeAllowedModel(provider, model) {
   const alias = MODEL_ALIASES[provider]?.[raw.toLowerCase()];
   const candidate = alias || raw;
   if (candidate && allowed.has(candidate)) return { model: candidate, repaired: candidate !== raw, requestedModel: raw, reason: candidate !== raw ? `Alias ${raw} mapped to ${candidate}.` : '' };
+  if (provider === 'openai' && candidate && OPENAI_ALLOW_ANY_GPT_MODEL && isOpenAiGptModel(candidate)) {
+    allowed.add(candidate);
+    return { model: candidate, repaired: candidate !== raw, requestedModel: raw, reason: candidate !== raw ? `Alias ${raw} mapped to ${candidate}.` : 'Accepted custom OpenAI GPT model.' };
+  }
+  if (provider === 'gemini' && candidate && GEMINI_ALLOW_ANY_MODEL && isGeminiModel(candidate)) {
+    allowed.add(candidate);
+    return { model: candidate, repaired: candidate !== raw, requestedModel: raw, reason: candidate !== raw ? `Alias ${raw} mapped to ${candidate}.` : 'Accepted custom Gemini model.' };
+  }
   const fallback = allowed.has(DEFAULT_MODELS[provider]) ? DEFAULT_MODELS[provider] : Array.from(allowed)[0];
   if (!fallback) throw httpError(400, `No allowed models configured for ${provider}.`);
   if (raw && !allowed.has(raw)) return { model: fallback, repaired: true, requestedModel: raw, reason: `Unsupported model for ${provider}: ${raw}; using ${fallback}.` };
@@ -182,7 +264,9 @@ app.get('/api/lumina/ai/status', requireProxyToken, (_req, res) => {
     taskModelRoutes: TASK_MODEL_ROUTES,
     modelRegistry: modelRegistryStatus(),
     allowedModels: Object.fromEntries(Object.entries(ALLOWED_MODELS).map(([provider, set]) => [provider, Array.from(set)])),
-    providers: Object.fromEntries([...PROVIDERS].map((p) => [p, hasProviderKey(p)])),
+    providers: modelRegistryStatus().providers,
+    configuredProviders: Object.fromEntries([...PROVIDERS].map((p) => [p, hasProviderKey(p)])),
+    providerEnv: Object.fromEntries([...PROVIDERS].map((p) => [p, providerEnvStatus(p)])),
     imageInputsForwarded: true,
     openaiVisionForwarding: true,
     documentAiPromptsInBackend: true,
@@ -923,8 +1007,8 @@ async function callAnthropic(model, payload) {
 }
 
 async function callGemini(model, payload) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw httpError(500, 'GEMINI_API_KEY is not set on backend.');
+  const key = getGeminiApiKey();
+  if (!key) throw httpError(500, `Gemini API key is not set on backend. Set one of: ${GEMINI_API_KEY_ENV_NAMES.join(', ')}.`);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
   const response = await fetch(url, {
     method: 'POST',
