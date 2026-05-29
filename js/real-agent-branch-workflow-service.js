@@ -1,5 +1,5 @@
 /* Latexai Stage 19N1K RealAgentBranchWorkflowService
- * Stage: stage19n1k-structured-editor-output-schema-20260528-1
+ * Stage: stage19n1k2-structured-schema-guard-fallback-preview-20260528-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1k-structured-editor-output-schema-20260528-1';
+  const STAGE = 'stage19n1k2-structured-schema-guard-fallback-preview-20260528-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1585,38 +1585,70 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return 'insert_after';
   }
 
+  function coerceStructuredEditArray(parsed) {
+    if (Array.isArray(parsed)) return parsed;
+    if (!parsed || typeof parsed !== 'object') return [];
+    const candidates = [
+      parsed.edits,
+      parsed.sectionEdits,
+      parsed.equationEdits,
+      parsed.equations,
+      parsed.patches,
+      parsed.items,
+      parsed.results
+    ];
+    for (const c of candidates) {
+      if (Array.isArray(c)) return c;
+      if (c && typeof c === 'object') return [c];
+    }
+    // Some models return a single edit object as the root.
+    if (parsed.targetType || parsed.targetId || parsed.targetSection || parsed.latex || parsed.action) return [parsed];
+    return [];
+  }
+
   function parseStructuredEditorOutputText(text) {
     const rawText = String(text || '');
     const jsonText = extractStructuredEditorJsonText(rawText);
     const result = { ok: false, source: 'none', editMode: '', edits: [], warnings: [] };
+    if (!rawText.trim()) {
+      result.warnings.push('Final editor output was empty; no structured edits can be inserted.');
+      return result;
+    }
     if (!jsonText) {
-      result.warnings.push('No structured JSON edit schema was found in the final editor output. Falling back to legacy \\lai scraping.');
+      result.warnings.push('No structured JSON edit schema was found in the final editor output. This usually means the final editor ignored the JSON contract, so insertion has no usable blocks. Re-run with prompt debug enabled to inspect the editor prompt/output.');
+      result.rawOutputPreview = rawText.slice(0, 4000);
       return result;
     }
     let parsed = null;
     try { parsed = JSON.parse(jsonText); }
     catch (err) {
-      result.warnings.push('Structured editor JSON could not be parsed: ' + (err && err.message ? err.message : String(err)) + '. Falling back to legacy \\lai scraping.');
+      result.warnings.push('Structured editor JSON could not be parsed: ' + (err && err.message ? err.message : String(err)) + '. Insertion was blocked instead of guessing from prose.');
       result.rawJsonText = jsonText;
+      result.rawOutputPreview = rawText.slice(0, 4000);
       return result;
     }
-    const edits = Array.isArray(parsed?.edits) ? parsed.edits : (Array.isArray(parsed?.sectionEdits) ? parsed.sectionEdits : []);
+    const edits = coerceStructuredEditArray(parsed);
     result.ok = true;
     result.source = 'final-editor-json';
-    result.editMode = clean(parsed?.editMode || parsed?.mode || 'structured_edits');
+    result.editMode = clean(parsed?.editMode || parsed?.mode || (equationCoverageActive() ? 'equation_coverage' : 'structured_edits'));
     result.raw = parsed;
     result.warnings = Array.isArray(parsed?.warnings) ? parsed.warnings.map((x) => String(x || '')).filter(Boolean) : [];
     result.edits = edits.map((e, idx) => {
-      const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind);
-      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode);
-      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || '');
-      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || '');
-      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.text || e?.content || '').trim();
-      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || '').trim();
-      const note = clean(e?.note || e?.rationale || e?.reason || '');
+      const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
+      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
+      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
+      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
+      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
+      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
+      const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
       return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
     }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
-    if (!result.edits.length) result.warnings.push('Structured JSON was present, but it contained no usable edits. Falling back to legacy \\lai scraping.');
+    if (!result.edits.length) {
+      result.ok = false;
+      result.warnings.push('Structured JSON was present, but it contained no usable edits. Expected non-empty `edits[]` with latex/explanation text or no_edit actions.');
+      result.rawJsonText = jsonText;
+      result.rawOutputPreview = rawText.slice(0, 4000);
+    }
     return result;
   }
 
@@ -1658,8 +1690,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function renderStructuredEditorPreviewHtml(data) {
     const d = data || refreshStructuredEditorData();
     if (!d?.ok || !Array.isArray(d.edits) || !d.edits.length) {
-      return '<div class="settings-note warn">No structured editor JSON was parsed. Legacy \\lai block extraction is being used.</div>' +
-        (Array.isArray(d?.warnings) && d.warnings.length ? '<div class="settings-note warn">' + esc(d.warnings.join('; ')) + '</div>' : '');
+      return '<div class="settings-note warn">No usable structured editor JSON edits were parsed. Stage 19N1K2 blocks insertion instead of guessing from prose.</div>' +
+        (Array.isArray(d?.warnings) && d.warnings.length ? '<div class="settings-note warn">' + esc(d.warnings.join('; ')) + '</div>' : '') +
+        (d?.rawJsonText ? '<details open><summary>Raw structured JSON text</summary><pre>' + esc(String(d.rawJsonText).slice(0, 4000)) + '</pre></details>' : '') +
+        (d?.rawOutputPreview ? '<details><summary>Final editor output preview</summary><pre>' + esc(String(d.rawOutputPreview).slice(0, 4000)) + '</pre></details>' : '');
     }
     const rows = d.edits.map((e) => '<tr><td>' + esc(e.index) + '</td><td>' + esc(e.targetType) + '</td><td>' + esc(e.targetId || '') + '</td><td>' + esc(e.targetSection || '') + '</td><td>' + esc(e.action) + '</td><td><code>' + esc(String(e.latex || '').slice(0, 180)) + (String(e.latex || '').length > 180 ? '…' : '') + '</code></td></tr>').join('');
     return '<div class="settings-note good">Structured editor schema parsed: ' + esc(d.edits.length) + ' edit(s), mode=' + esc(d.editMode || '') + '.</div>' +
@@ -1989,13 +2023,36 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return out;
   }
 
+  function structuredInsertionFailureWarnings() {
+    const parsed = lastStructuredEditorData || refreshStructuredEditorData();
+    const warnings = [];
+    if (!parsed?.ok || !Array.isArray(parsed.edits) || !parsed.edits.length) {
+      warnings.push('Stage 19N1K2: no usable structured editor edits were available, so insertion was blocked instead of guessing from prose.');
+      if (Array.isArray(parsed?.warnings) && parsed.warnings.length) warnings.push(...parsed.warnings);
+      if (parsed?.rawJsonText) warnings.push('Raw structured JSON preview: ' + String(parsed.rawJsonText).slice(0, 600));
+      else if (parsed?.rawOutputPreview) warnings.push('Final editor output preview: ' + String(parsed.rawOutputPreview).slice(0, 600));
+    }
+    return warnings;
+  }
+
   function enhanceInsertionDataWithMultiSectionDrafts(data) {
     const source = getActiveSource();
     const targets = desiredTargetSections(selectedRealPayload() || lastRealRunData || lastSelectionData || {});
-    const scope = targetSelectorMode();
-    if (scope === 'branch' && targets.length <= 1) return data;
     const blocks = laiBlocksForInsertion();
-    if (!blocks.length) return data;
+    if (!blocks.length) {
+      const extraWarnings = structuredInsertionFailureWarnings();
+      if (!extraWarnings.length) return data;
+      return {
+        ...(data || {}),
+        blockCount: data?.blockCount || 0,
+        safeToInsert: false,
+        safeToAutoApply: false,
+        warnings: [
+          ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
+          ...extraWarnings
+        ]
+      };
+    }
     const targeted = normalizeLaiDraftForCompilation(buildTargetedDraftFromBlocks(source, blocks, targets), 'targeted');
     const append = normalizeLaiDraftForCompilation(buildAppendDraftFromBlocks(source, blocks, targets), 'append');
     const blockTargets = blocks.map((b, i) => inferEquationTargetIdFromLaiBlock(b) || inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '', targets)).filter(Boolean);
