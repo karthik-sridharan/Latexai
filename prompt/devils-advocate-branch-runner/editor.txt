@@ -6,7 +6,7 @@ Total completed debate rounds: {{totalRounds}}.
 Full prior debate transcript:
 {{transcript}}
 
-Task: produce the final curated edits as a STRUCTURED JSON object first. Do not output review prose before the JSON markers. The frontend will block insertion if the JSON is missing or empty.
+Task: produce the final curated edits as a STRUCTURED JSON object first. Do not output review prose before the JSON markers. The frontend will block insertion if the JSON is missing or empty. The JSON must be syntactically valid JSON: use double quotes for all keys/strings and escape every LaTeX backslash inside JSON strings as double backslashes, e.g. write "\\theta" inside JSON to mean LaTeX \theta.
 
 Very important consolidation / deduplication rule:
 - Do NOT copy the prior transcript verbatim.
@@ -40,7 +40,7 @@ LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
 LATEXAI_STRUCTURED_EDIT_JSON_END
 
 Schema rules:
-- The `latex` field must contain actual paper-ready LaTeX text only, not advice. It must not be empty for insert_after, insert_before, replace, append, or equation edits.
+- The `latex` field must contain actual paper-ready LaTeX text only, not advice. It must not be empty for insert_after, insert_before, replace, append, or equation edits. Inside JSON strings, every LaTeX backslash must be escaped as `\\`; for example use `$\\psi_1$`, not `$\psi_1$`.
 - Do NOT put outer \lai{...} in the JSON `latex` field unless unavoidable; the frontend will wrap it.
 - For replacement edits, set `action` to `replace`, put the short exact old text in `oldLatex`, and put the replacement text in `latex`.
 - For no-edit coverage, set `action` to `no_edit` and set `latex` to `No edits recommended.`
@@ -79,3 +79,9 @@ Do not invent citations. Prefer concrete, compact paper-ready edits over long re
 
 Failure mode to avoid:
 If you output normal prose, markdown bullets, or only human-readable \lai blocks without the JSON markers, the frontend will not insert anything and the preview will show blocks=0. Always produce the JSON object first.
+
+
+Stage 19N1K3 parser note:
+- Even though the frontend can repair some malformed JSON, you must still output valid JSON between the markers.
+- Do not omit LATEXAI_STRUCTURED_EDIT_JSON_END.
+- Do not put markdown fences around the required JSON block.
