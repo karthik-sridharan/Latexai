@@ -64,6 +64,15 @@ Mandatory equation coverage rule:
 - Do NOT answer an equation-focused prompt with citation gaps, related-work paragraphs, or introduction-only edits.
 - Do NOT output `no_edit` for listed equations unless the user explicitly requested optional equation edits. If the user asked for every equation, give every listed equation a real explanatory edit.
 
+
+Stage 19N1L equation-only schema rule:
+- If the prompt contains "MATH EQUATION COVERAGE MODE ACTIVE", the JSON must use `"editMode": "equation_coverage"`.
+- In that mode, every object in `edits` must have `"targetType": "equation"`. Do not output section-level edits, literature edits, citation edits, or general paper-positioning edits.
+- Use only the exact equation ids listed in the equation inventory: `eq_001`, `eq_002`, etc.
+- The frontend will discard section edits during equation coverage mode, so section-targeted JSON will not be inserted.
+- Each `latex` value should be a short explanatory paragraph to appear immediately below the corresponding display equation.
+- Do not refer to the equation id in visible prose unless necessary; if you do, write `Equation~\texttt{eq\_001}` with escaped backslashes inside JSON as `Equation~\\texttt{eq\\_001}`.
+
 Patch-style requirements:
 - DO NOT output visible advice such as "Add a paragraph...", "Insert after...", "Replace the current paragraph with...", "Consider citing...", or "This will strengthen...".
 - If you want to insert text, write the actual LaTeX-ready text that should appear in the paper.
@@ -81,7 +90,7 @@ Failure mode to avoid:
 If you output normal prose, markdown bullets, or only human-readable \lai blocks without the JSON markers, the frontend will not insert anything and the preview will show blocks=0. Always produce the JSON object first.
 
 
-Stage 19N1K5 parser note:
+Stage 19N1L parser note:
 - Even though the frontend can repair some malformed JSON, you must still output valid JSON between the markers.
 - Do not omit LATEXAI_STRUCTURED_EDIT_JSON_END.
 - Do not put markdown fences around the required JSON block.
@@ -89,7 +98,7 @@ Stage 19N1K5 parser note:
 - Finish the JSON object completely before writing any optional mirror text. If output budget is tight, shorten each edit rather than leaving the JSON unfinished.
 
 
-Stage 19N1K5 compile-safety note:
+Stage 19N1L compile-safety note:
 - Any underscore in normal prose must be escaped as `\_` or put inside math mode. Raw text such as `eq_025` causes LaTeX "Missing $ inserted" errors.
 - Prefer `the displayed equation`, `Equation~\texttt{eq\_025}`, or math-mode symbols such as `$\psi_1$`.
 - Keep explanatory equation edits as short prose paragraphs; use math mode for symbols and escape text-mode special characters.
