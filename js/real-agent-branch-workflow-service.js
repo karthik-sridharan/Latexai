@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1k4-jsonish-salvage-latex-command-escape-20260529-1';
+  const STAGE = 'stage19n1k5-structured-latex-prose-sanitizer-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1575,7 +1575,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function extractStructuredEditorJsonText(text) {
     const s = String(text || '');
-    // Stage 19N1K4: accept the begin marker even if the model forgets the end marker.
+    // Stage 19N1K5: accept the begin marker even if the model forgets the end marker.
     // This was the failure seen on iPad: the preview showed LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
     // and a JSON object, but extraction returned "no schema" because the END marker was missing.
     const begin = s.search(/LATEXAI_STRUCTURED_EDIT_JSON_BEGIN/i);
@@ -1764,7 +1764,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         result.source = 'partial-final-editor-json-salvage';
         result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
         result.raw = { edits: salvaged };
-        result.warnings.push('Stage 19N1K4: recovered complete edit object(s) from a partial/truncated structured JSON response. The model likely omitted the closing JSON object or END marker.');
+        result.warnings.push('Stage 19N1K5: recovered complete edit object(s) from a partial/truncated structured JSON response. The model likely omitted the closing JSON object or END marker.');
         result.edits = salvaged.map((e, idx) => {
           const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
           const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
@@ -1798,7 +1798,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
           result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
           result.raw = { edits: salvaged };
           result.edits = normalized;
-          result.warnings.push('Stage 19N1K4: structured JSON root could not be parsed, but complete edit object(s) were recovered from the malformed response.');
+          result.warnings.push('Stage 19N1K5: structured JSON root could not be parsed, but complete edit object(s) were recovered from the malformed response.');
           result.rawJsonText = jsonText.slice(0, 2000);
           result.repairedJsonText = repairedJsonText.slice(0, 2000);
           return result;
@@ -1834,7 +1834,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         result.source = 'empty-root-edits-salvage';
         result.raw = { edits: salvaged };
         result.edits = normalized;
-        result.warnings.push('Stage 19N1K4: parsed root schema had no usable edits, but complete edit object(s) were recovered from the final editor output.');
+        result.warnings.push('Stage 19N1K5: parsed root schema had no usable edits, but complete edit object(s) were recovered from the final editor output.');
       } else {
         result.ok = false;
         result.warnings.push('Structured JSON was present, but it contained no usable edits. Expected non-empty `edits[]` with latex/explanation text or no_edit actions.');
@@ -1850,14 +1850,65 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return lastStructuredEditorData;
   }
 
+
+  function toggleMathModeForStructuredSanitizer(state, delimiter) {
+    const s = state || { inline: false, display: false };
+    if (delimiter === '$') s.inline = !s.inline;
+    else if (delimiter === '\\(') s.inline = true;
+    else if (delimiter === '\\)') s.inline = false;
+    else if (delimiter === '\\[') s.display = true;
+    else if (delimiter === '\\]') s.display = false;
+    return s;
+  }
+
+  function sanitizeStructuredLatexTextForCompile(text) {
+    let s = String(text || '');
+    if (!s) return s;
+    // Stage 19N1K5: structured JSON often contains pedagogical prose such as
+    // "from eq_025". A raw underscore in text mode causes "Missing $ inserted".
+    // Escape unescaped underscores only outside math spans and comments. This is
+    // intentionally conservative: it does not rewrite math content or command names.
+    let out = '';
+    let state = { inline: false, display: false };
+    for (let i = 0; i < s.length; i += 1) {
+      const ch = s[i];
+      const next = s.slice(i, i + 2);
+      if (!state.inline && !state.display && ch === '%') {
+        const nl = s.indexOf('\n', i);
+        if (nl < 0) { out += s.slice(i); break; }
+        out += s.slice(i, nl + 1);
+        i = nl;
+        continue;
+      }
+      if (next === '\\(' || next === '\\)' || next === '\\[' || next === '\\]') {
+        out += next;
+        toggleMathModeForStructuredSanitizer(state, next);
+        i += 1;
+        continue;
+      }
+      if (ch === '$' && !isEscapedAt(s, i)) {
+        // Treat $$ as display toggle and $ as inline toggle.
+        if (s[i + 1] === '$') { out += '$$'; state.display = !state.display; i += 1; }
+        else { out += '$'; state.inline = !state.inline; }
+        continue;
+      }
+      if (!state.inline && !state.display && ch === '_' && !isEscapedAt(s, i)) {
+        out += '\\_';
+        continue;
+      }
+      out += ch;
+    }
+    return out;
+  }
+
   function structuredEditLatexBlock(edit) {
     const e = edit || {};
     const targetType = normalizeStructuredTargetType(e.targetType);
     const action = normalizeStructuredAction(e.action);
     const targetSection = clean(e.targetSection || '');
     const targetId = clean(e.targetId || '');
-    const latex = String(e.latex || '').trim();
-    const oldLatex = String(e.oldLatex || '').trim();
+    const latex = sanitizeStructuredLatexTextForCompile(String(e.latex || '').trim());
+    const oldLatex = sanitizeStructuredLatexTextForCompile(String(e.oldLatex || '').trim());
     const hasLai = /\\lai(?:old)?\s*\{/.test(latex);
     if (hasLai && (!oldLatex || /\\laiold\s*\{/.test(latex))) return latex;
     const targetLines = [];
@@ -2218,7 +2269,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const parsed = lastStructuredEditorData || refreshStructuredEditorData();
     const warnings = [];
     if (!parsed?.ok || !Array.isArray(parsed.edits) || !parsed.edits.length) {
-      warnings.push('Stage 19N1K4: no usable structured editor edits were available, so insertion was blocked instead of guessing from prose.');
+      warnings.push('Stage 19N1K5: no usable structured editor edits were available, so insertion was blocked instead of guessing from prose.');
       if (Array.isArray(parsed?.warnings) && parsed.warnings.length) warnings.push(...parsed.warnings);
       if (parsed?.rawJsonText) warnings.push('Raw structured JSON preview: ' + String(parsed.rawJsonText).slice(0, 600));
       else if (parsed?.rawOutputPreview) warnings.push('Final editor output preview: ' + String(parsed.rawOutputPreview).slice(0, 600));
