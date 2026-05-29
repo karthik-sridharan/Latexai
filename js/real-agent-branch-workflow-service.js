@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1r1-visible-branch-output-panel-20260529-1';
+  const STAGE = 'stage19n1r2-readable-branch-output-panel-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -2045,10 +2045,22 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     }
     const previewWarnings = d.warnings || [];
     const previewEdits = filterStructuredEditsForEquationCoverage(d.edits, previewWarnings);
-    const rows = previewEdits.map((e) => '<tr><td>' + esc(e.index) + '</td><td>' + esc(e.targetType) + '</td><td>' + esc(e.targetId || '') + '</td><td>' + esc(e.targetSection || '') + '</td><td>' + esc(e.action) + '</td><td><code>' + esc(String(e.latex || '').slice(0, 180)) + (String(e.latex || '').length > 180 ? '…' : '') + '</code></td></tr>').join('');
+    const cards = previewEdits.map((e, idx) => {
+      const latex = String(e.latex || '').trim();
+      const shownLatex = latex.length > 900 ? latex.slice(0, 900) + '…' : latex;
+      return '<article class="branch-workflow-edit-card">' +
+        '<div class="branch-workflow-edit-meta">' +
+          '<span><strong>#</strong> ' + esc(e.index || idx + 1) + '</span>' +
+          '<span><strong>target</strong> ' + esc(e.targetType || '') + (e.targetId ? ' · ' + esc(e.targetId) : '') + '</span>' +
+          '<span><strong>section</strong> ' + esc(e.targetSection || '(not specified)') + '</span>' +
+          '<span><strong>action</strong> ' + esc(e.action || '') + '</span>' +
+        '</div>' +
+        '<pre class="branch-workflow-edit-latex">' + esc(shownLatex || '(empty latex field)') + '</pre>' +
+      '</article>';
+    }).join('');
     return '<div class="settings-note good">Structured editor schema parsed: ' + esc(d.edits.length) + ' raw edit(s), ' + esc(previewEdits.length) + ' usable edit(s), mode=' + esc(d.editMode || '') + '.</div>' +
       (Array.isArray(previewWarnings) && previewWarnings.length ? '<div class="settings-note warn">Schema warnings: ' + esc(previewWarnings.join('; ')) + '</div>' : '') +
-      '<div class="branch-workflow-table-wrap"><table class="branch-workflow-table"><thead><tr><th>#</th><th>targetType</th><th>targetId</th><th>section</th><th>action</th><th>latex</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      '<div class="branch-workflow-edit-list">' + cards + '</div>';
   }
 
   function blockBodyForDuplicate(block) {
@@ -2525,8 +2537,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<div class="settings-note warn">The source editor shows raw <code>\\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
       '<details open><summary>Visual colored LAI preview</summary>' + renderLaiColorPreviewHtml(chosenDraft || targetedDraft || appendDraft) + '</details>' +
-      '<details open><summary>Targeted insertion draft source</summary><pre>' + esc(targetedDraft) + '</pre></details>' +
-      '<details><summary>Append-only draft source</summary><pre>' + esc(appendDraft) + '</pre></details>' +
+      '<details><summary>Targeted insertion draft source</summary><pre class="branch-workflow-latex-source-preview">' + esc(targetedDraft) + '</pre></details>' +
+      '<details><summary>Append-only draft source</summary><pre class="branch-workflow-latex-source-preview">' + esc(appendDraft) + '</pre></details>' +
       (rawAppendDraft && rawAppendDraft !== appendDraft ? '<div class="settings-note good">Append preview was normalized: any \\lai blocks after <code>\\end{document}</code> were moved before <code>\\end{document}</code> so they compile.</div>' : '');
     renderSummary('Preview cleaned LAI insertion', body);
     renderInlinePreview('Insertion preview ready', body);
