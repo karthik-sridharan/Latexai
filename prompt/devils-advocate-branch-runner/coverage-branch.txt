@@ -23,3 +23,7 @@ Equation explanation block format:
 }
 
 Deduplication rule: if multiple agents propose the same edit, the final editor should keep one best version only and should not output shorter paraphrases of the same recommendation. Earlier debate agents should not output final \lai or \laiold blocks.
+
+Stage 19N1K structured editor schema note:
+- The final editor should encode the final answer in the structured JSON schema requested by editor.txt.
+- The JSON schema is authoritative; optional \lai blocks are only a human-readable mirror.

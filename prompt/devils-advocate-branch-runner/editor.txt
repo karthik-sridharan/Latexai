@@ -6,7 +6,7 @@ Total completed debate rounds: {{totalRounds}}.
 Full prior debate transcript:
 {{transcript}}
 
-Task: produce the final curated visible LaTeX edits using ONLY patch-style \lai{...} and, when replacing old text, \laiold{...}\lai{...} blocks.
+Task: produce the final curated edits as a STRUCTURED JSON object first, then optionally include the corresponding \lai blocks for human readability.
 
 Very important consolidation / deduplication rule:
 - Do NOT copy the prior transcript verbatim.
@@ -17,60 +17,61 @@ Very important consolidation / deduplication rule:
 - If an exact or near-identical edit already appears in the supplied paper context, do not re-add it.
 - Treat the transcript as evidence, not text to paste. Never copy whole bullet lists or paragraphs from earlier agents.
 
+MANDATORY STRUCTURED OUTPUT SCHEMA:
+Output a JSON object between the exact markers below:
+
+LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
+{
+  "ok": true,
+  "editMode": "section_coverage | equation_coverage | mixed",
+  "edits": [
+    {
+      "targetType": "section | equation",
+      "targetId": "eq_001 or empty string for section edits",
+      "targetSection": "exact requested section/unit title",
+      "action": "insert_after | insert_before | replace | no_edit | append",
+      "oldLatex": "short exact old text only for replace actions, otherwise empty",
+      "latex": "LaTeX-ready paper text WITHOUT outer \\lai wrapper",
+      "note": "short internal note, not paper text"
+    }
+  ],
+  "warnings": []
+}
+LATEXAI_STRUCTURED_EDIT_JSON_END
+
+Schema rules:
+- The `latex` field should contain actual paper-ready LaTeX text only, not advice.
+- Do NOT put outer \lai{...} in the JSON `latex` field unless unavoidable; the frontend will wrap it.
+- For replacement edits, set `action` to `replace`, put the short exact old text in `oldLatex`, and put the replacement text in `latex`.
+- For no-edit coverage, set `action` to `no_edit` and set `latex` to `No edits recommended.`
+- Use the exact target section/unit names listed in the prompt.
+- For equation edits, use `targetType: "equation"` and the exact `targetId`, such as `eq_003`.
+
 Mandatory section coverage rule:
-- For EACH requested target section/unit, output AT LEAST ONE section-labeled patch block, unless MATH EQUATION COVERAGE MODE is active and the requested task is specifically equation-by-equation explanation.
-- If a target needs multiple substantively different changes, output multiple separate blocks for that same target, but normally no more than two non-overlapping edit blocks per target.
-- If that target does not need an edit, output exactly one no-edit block for that target.
-- Do not output a "No edits recommended" block for a target if you also output an actual edit for that same target.
+- For EACH requested target section/unit, output AT LEAST ONE structured edit object, unless MATH EQUATION COVERAGE MODE is active and the requested task is specifically equation-by-equation explanation.
+- If a target needs multiple substantively different changes, output multiple edit objects for that same target, but normally no more than two non-overlapping edits per target.
+- If that target does not need an edit, output exactly one `no_edit` object for that target.
+- Do not output a `no_edit` object for a target if you also output an actual edit for that same target.
 - Do not skip any requested target.
-- Do not output all edits under Introduction unless Introduction is the only requested target.
+- Do not put all edits under Introduction unless Introduction is the only requested target.
 
 Mandatory equation coverage rule:
 - If the base context contains the line "MATH EQUATION COVERAGE MODE ACTIVE", then the user's task is equation-centered.
-- In that mode, the final output must include one explanatory \lai block for EACH listed equation id.
-- Each equation explanation must use the exact equation id comment: % Target equation id: eq_###.
-- The insertion engine will place that block immediately below the corresponding equation. Do not target only the section header.
+- In that mode, the final JSON must include one explanatory edit object for EACH listed equation id.
+- Each equation edit must set `targetType` to `equation` and `targetId` to the exact equation id, e.g. `eq_001`.
+- The frontend will place that edit immediately below the corresponding equation. Do not target only the section header.
 - The explanation should be short, pedagogical, and paper-ready, e.g. one paragraph explaining what the equation states, what the symbols mean, and how it connects to the surrounding derivation.
 - Do NOT answer an equation-focused prompt with citation gaps, related-work paragraphs, or introduction-only edits.
-- Do NOT output "No edits recommended" for listed equations unless the user explicitly requested optional equation edits. If the user asked for every equation, give every listed equation a real explanatory edit.
+- Do NOT output `no_edit` for listed equations unless the user explicitly requested optional equation edits. If the user asked for every equation, give every listed equation a real explanatory edit.
 
 Patch-style requirements:
 - DO NOT output visible advice such as "Add a paragraph...", "Insert after...", "Replace the current paragraph with...", "Consider citing...", or "This will strengthen...".
 - If you want to insert text, write the actual LaTeX-ready text that should appear in the paper.
-- If you want to replace text, provide a short exact old snippet in \laiold{...} followed immediately by the LaTeX-ready replacement in \lai{...}.
-- Put target labels as LaTeX comments inside \lai, so they are available to the insertion engine but do not appear as red paper text.
+- If you want to replace text, provide a short exact old snippet in `oldLatex` and the LaTeX-ready replacement in `latex`.
+- Do not invent citations. Use placeholder/search-target notes for unverified references.
+- Avoid unescaped author-list ampersands; write \& in text.
 
-Section insertion block format:
-\lai{%
-% Target section: <exact section title>
-<actual LaTeX-ready text to insert in the paper>
-}
+Optional human-readable mirror after the JSON:
+After the structured JSON, you may include a `% LATEXAI_MULTI_SECTION_EDIT_BEGIN` block with \lai patches mirroring the JSON, but the JSON is authoritative.
 
-Equation explanation block format:
-\lai{%
-% Target equation id: <exact equation id>
-% Target section: <containing section/unit>
-<actual LaTeX-ready explanation to appear immediately below the equation>
-}
-
-Replacement block format:
-\laiold{<short exact old text being replaced>}\lai{%
-% Target section: <exact section title>
-<actual LaTeX-ready replacement text>
-}
-
-No-edit block format:
-\lai{%
-% Target section: <exact section title>
-\emph{No edits recommended.}
-}
-
-Output format:
-% LATEXAI_MULTI_SECTION_EDIT_BEGIN
-\lai{...}
-\laiold{...}\lai{...}
-% LATEXAI_MULTI_SECTION_EDIT_END
-
-Do not invent citations. Prefer concrete, compact paper-ready edits over long review prose. If a target needs only citation verification, give one consolidated paper-ready sentence or a concise search-target note, not multiple citation variants.
-Do not invent citations. Use placeholder/search-target notes for unverified references.
-Avoid unescaped author-list ampersands; write \& in text.
+Do not invent citations. Prefer concrete, compact paper-ready edits over long review prose.

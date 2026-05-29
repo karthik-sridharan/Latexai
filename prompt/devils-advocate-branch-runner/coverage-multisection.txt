@@ -44,3 +44,8 @@ No-edit block format:
 }
 
 Deduplication rule: repeated citation-gap, related-work, assumption, novelty, limitation, positioning, or equation-explanation edits should be consolidated by the final editor into one best patch per target whenever possible. Earlier debate agents should discuss candidates, but only the final editor should output final \lai or \laiold blocks.
+
+Stage 19N1K structured editor schema note:
+- The final editor should encode the final answer in the structured JSON schema requested by editor.txt.
+- Section coverage should be represented by one or more JSON edit objects per requested target.
+- Equation coverage should be represented by one JSON edit object per equation id.
