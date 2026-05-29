@@ -333,3 +333,69 @@
   vertical-align: top;
   padding: .35rem;
 }
+
+
+/* Stage 19N1R4: release-hardening verifier, clear transcript dashboard, and review artifact actions. */
+.branch-dashboard-tabs {
+  display: grid;
+  gap: .75rem;
+}
+.branch-dashboard-section {
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, .28);
+  padding: .7rem;
+}
+.branch-dashboard-section h3 {
+  margin: 0 0 .45rem;
+  font-size: 13px;
+  color: #dbeafe;
+}
+.branch-transcript-grid,
+.branch-candidate-grid,
+.branch-verifier-list {
+  display: grid;
+  gap: .55rem;
+}
+.branch-transcript-card,
+.branch-candidate-card,
+.branch-verifier-item {
+  border: 1px solid rgba(99, 102, 241, .24);
+  background: rgba(2, 6, 23, .35);
+  border-radius: 12px;
+  padding: .6rem;
+  overflow: hidden;
+}
+.branch-candidate-card.selected {
+  border-color: rgba(52, 211, 153, .46);
+  background: rgba(6, 78, 59, .18);
+}
+.branch-transcript-title,
+.branch-candidate-title {
+  font-weight: 900;
+  color: #bfdbfe;
+  margin-bottom: .2rem;
+}
+.branch-transcript-meta {
+  color: #a5b4fc;
+  font-size: 11px;
+  margin-bottom: .4rem;
+}
+.branch-transcript-card pre,
+.branch-dashboard-section pre {
+  max-height: 24dvh;
+  white-space: pre-wrap !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+}
+.branch-verifier-item {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0,1fr);
+  align-items: start;
+}
+.branch-verifier-item.pass { border-color: rgba(52, 211, 153, .38); }
+.branch-verifier-item.fail { border-color: rgba(248, 113, 113, .42); }
+.branch-verifier-icon { font-weight: 900; }
+.branch-verifier-item.pass .branch-verifier-icon { color: #86efac; }
+.branch-verifier-item.fail .branch-verifier-icon { color: #fecaca; }
+#realAgentBranchCard .devils-actions .btn { min-width: 0; }
