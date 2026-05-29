@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1K4 RealAgentBranchWorkflowService
- * Stage: stage19n1k4-jsonish-salvage-latex-command-escape-20260529-1
+/* Latexai Stage 19N1Q4 RealAgentBranchWorkflowService
+ * Stage: stage19n1q4-branch-runner-settings-devils-routes-20260529-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1l-equation-inventory-clean-equation-only-schema-20260529-1';
+  const STAGE = 'stage19n1q4-branch-runner-settings-devils-routes-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1311,6 +1311,65 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return found || { agentRole: fallbackRole, taskType: 'execute ' + fallbackRole + ' debate step', expectedOutput: 'analysis' };
   }
 
+
+  function debateRouteKeyForStep(step) {
+    const hay = [step?.agentRole, step?.debatePhase, step?.taskType, step?.expectedOutput].map((v) => clean(v).toLowerCase()).join(' ');
+    if (/critic|reviewer|citation-reviewer|theory-checker|detail-reviewer|attack|weakness/.test(hay)) return 'debate-critic';
+    if (/advocate|supporter|defender|\bfor\b|defend/.test(hay)) return 'debate-advocate';
+    if (/synthesizer|synthesis|synthesize|editor|final|implementation|visible-lai|balanced/.test(hay)) return 'debate-synthesizer';
+    return 'debate-synthesizer';
+  }
+
+  function debateRouteTitle(routeKey) {
+    if (routeKey === 'debate-critic') return 'Devil’s advocate · critic';
+    if (routeKey === 'debate-advocate') return 'Devil’s advocate · supporter';
+    if (routeKey === 'debate-synthesizer') return 'Devil’s advocate · synthesis';
+    return routeKey || 'Devil’s advocate route';
+  }
+
+  function configuredDebateRoute(routeKey) {
+    const key = clean(routeKey || 'debate-synthesizer') || 'debate-synthesizer';
+    const routes = NS.ModelRoutingService?.getRoutes?.() || {};
+    const defaults = NS.ModelRoutingService?.DEFAULTS || {};
+    const source = routes[key] || defaults[key] || routes.paper || routes.default || defaults.default || { provider: 'openai', model: 'gpt-4.1-mini' };
+    const provider = clean(source.provider || 'openai');
+    const model = clean(source.model || 'gpt-4.1-mini');
+    const validation = NS.ModelRegistryService?.validateProviderModel?.(provider, model, { routeKey: key });
+    if (validation) return { routeKey: key, provider: validation.provider || provider, model: validation.model || model, repaired: Boolean(validation.repaired), reason: validation.reason || '' };
+    return { routeKey: key, provider, model, repaired: false, reason: '' };
+  }
+
+  function configuredDebateRouteForStep(step) {
+    return configuredDebateRoute(debateRouteKeyForStep(step));
+  }
+
+  function debateRouteSummaryObject() {
+    return {
+      critic: configuredDebateRoute('debate-critic'),
+      advocate: configuredDebateRoute('debate-advocate'),
+      synthesizer: configuredDebateRoute('debate-synthesizer')
+    };
+  }
+
+  function debateRouteSummaryText() {
+    const routes = debateRouteSummaryObject();
+    return [
+      'critic=' + routes.critic.provider + '/' + routes.critic.model,
+      'advocate=' + routes.advocate.provider + '/' + routes.advocate.model,
+      'synthesis=' + routes.synthesizer.provider + '/' + routes.synthesizer.model
+    ].join('; ');
+  }
+
+  function refreshBranchRouteSummary() {
+    const node = $('branchWorkflowRouteSummary');
+    if (!node) return;
+    const routes = debateRouteSummaryObject();
+    node.innerHTML = '<strong>Model routing:</strong> inherited from <em>Settings → Model/provider routing</em> Devil’s advocate rows.<br>' +
+      '<span>Critic/reviewer: <code>' + esc(routes.critic.provider + ' / ' + routes.critic.model) + '</code></span><br>' +
+      '<span>Advocate/supporter: <code>' + esc(routes.advocate.provider + ' / ' + routes.advocate.model) + '</code></span><br>' +
+      '<span>Synthesizer/editor: <code>' + esc(routes.synthesizer.provider + ' / ' + routes.synthesizer.model) + '</code></span>';
+  }
+
   function buildConfigurableDebateSteps(runPayload) {
     const planSteps = runPayload?.executionPlan?.steps || [];
     const rounds = debateRoundCount();
@@ -1339,12 +1398,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const dry = mode !== 'call_ai_proxy_expensive';
     const role = step.agentRole || 'agent';
     const prompt = await buildDebatePrompt(step, priorOutputs, runPayload);
-    const provider = dry ? 'dry-run' : inputValue('branchWorkflowProvider', $('aiProvider')?.value || 'openai');
-    const model = dry ? 'dry-run' : inputValue('branchWorkflowModel', $('aiModel')?.value || 'gpt-4.1-mini');
+    const route = dry ? { routeKey: 'dry-run', provider: 'dry-run', model: 'dry-run' } : configuredDebateRouteForStep(step);
+    const provider = route.provider;
+    const model = route.model;
     const aiPayload = {
       prompt,
       provider,
       model,
+      modelRouteKey: route.routeKey,
+      modelRouteTitle: dry ? 'dry run' : debateRouteTitle(route.routeKey),
       branch: runPayload?.selectedBranch,
       executionPlan: runPayload?.executionPlan,
       priorOutputs,
@@ -1384,10 +1446,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     if (!NS.AIProvider?.ask) throw new Error('AIProvider is not loaded.');
     const start = Date.now();
     const raw = await NS.AIProvider.ask(aiPayload, {
-      task: 'latex-paper-debate-real-agent-branch-run',
+      task: 'latex-paper-debate-real-agent-branch-run ' + route.routeKey,
+      routeKey: route.routeKey,
       provider,
       model,
-      context: { workflow: 'latex-paper-debate-real-agent-run', agentRole: role, stage: STAGE }
+      context: { workflow: 'devils-advocate-paper-debate', agentRole: role, modelRouteKey: route.routeKey, modelRouteTitle: debateRouteTitle(route.routeKey), stage: STAGE }
     });
     const text = NS.AIProvider.extractText ? NS.AIProvider.extractText(raw) : extractAiText(raw);
     publishPromptDebugEvent('AI response received', step, prompt, aiPayload, {
@@ -1450,8 +1513,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       ensurePromptDebugWindow('debate run starting');
       publishPromptDebugEvent('debate run starting', { stepIndex: 0, agentRole: 'workflow', taskType: 'runSelectedBranch' }, 'Debate run starting. Prompts will appear below as each agent step is built and called.', {
         prompt: 'Debate run starting.',
-        provider: inputValue('branchWorkflowProvider', $('aiProvider')?.value || 'openai'),
-        model: inputValue('branchWorkflowModel', $('aiModel')?.value || 'gpt-4.1-mini'),
+        provider: 'settings-devils-advocate-routes',
+        model: debateRouteSummaryText(),
         latexSource: payloadLatexSourceForAI(),
         latexSourceMode: payloadSourceMode(),
         fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
@@ -1473,8 +1536,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       runMode: dry ? 'dry_run' : 'frontend_ai_proxy_outputs',
       dryRun: dry,
       recordTrajectory: true,
-      provider: inputValue('branchWorkflowProvider', $('aiProvider')?.value || 'openai'),
-      model: inputValue('branchWorkflowModel', $('aiModel')?.value || 'gpt-4.1-mini'),
+      provider: 'settings-devils-advocate-routes',
+      model: debateRouteSummaryText(),
       realAgentRunPayload: { ...runPayload, executionPlan: { ...(runPayload.executionPlan || {}), steps, debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' }, debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' },
       executionPlan: { ...(runPayload.executionPlan || {}), steps, debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds' },
       selectedBranch: runPayload.selectedBranch,
@@ -1485,7 +1548,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       paperSummary: inputValue('branchWorkflowPaperSummary', ''),
       query: inputValue('branchWorkflowQuery', ''),
       agentOutputs: outputs,
-      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(runPayload) }
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(runPayload), modelRoutingSource: 'settings-devils-advocate-routes', devilAdvocateRoutes: debateRouteSummaryObject() }
     };
     const data = await backendPost('/debate/run-real-agent-branch', body);
     lastRealRunData = data;
@@ -2633,10 +2696,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<label class="field">Debate rounds <input id="branchWorkflowDebateRounds" type="number" min="1" max="5" step="1" value="1" /></label>',
       '<div class="settings-note compact">Each round runs <strong>critic → advocate</strong>. Round 2+ prompts include the prior debate transcript, reviewer setup, and all earlier critic/advocate outputs.</div>',
       '</div>',
-      '<div class="field-grid two">',
-      '<label class="field">Provider <input id="branchWorkflowProvider" type="text" value="openai" /></label>',
-      '<label class="field">Model <input id="branchWorkflowModel" type="text" value="gpt-4.1-mini" /></label>',
-      '</div>',
+      '<div id="branchWorkflowRouteSummary" class="settings-note compact">Provider/model is inherited from Settings → Model/provider routing → Devil’s advocate rows.</div>',
       '<div class="field-grid two">',
       '<label class="field">Target section override <input id="branchWorkflowTargetSection" type="text" placeholder="optional, e.g. Introduction" /></label>',
       '<label class="field">Outcome note <input id="branchWorkflowOutcomeNote" type="text" placeholder="optional note for reward feedback" /></label>',
@@ -2653,7 +2713,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1K4 ready. Structured JSON parser salvages complete edit objects from partial JSON and repairs raw LaTeX command backslashes; prompt debug is available with ?laiPromptDebug=1.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1Q4 ready. Branch runner inherits provider/model from Settings → Model/provider routing → Devil’s advocate rows; no model is requested in the Copilot tab.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -2662,7 +2722,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     mounted = true;
     if (promptDebugEnabled()) {
       const st = $('branchWorkflowStatus');
-      if (st) st.textContent = 'Stage 19N1I prompt debug mode is ON. When you click Run selected branch or Run full preview, a new prompt-debug tab will open and show each agent prompt as it is called.';
+      if (st) st.textContent = 'Stage 19N1Q4 prompt debug mode is ON. When you click Run selected branch or Run full preview, a new prompt-debug tab will open and show each agent prompt as it is called.';
     }
     bindButton('branchWorkflowPlanBtn', planBranch);
     bindButton('branchWorkflowRunBtn', runSelectedBranch);
@@ -2676,8 +2736,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); maybeWarnRepeatedHeadings('Target refresh warning'); });
     bindButton('branchWorkflowCleanPreviousAiBtn', cleanPreviousAiSuggestions);
     ['branchWorkflowSectionScope','branchWorkflowTargetPicker','branchWorkflowVisibleContextMode','branchWorkflowPayloadSourceMode'].forEach((id) => { const n = $(id); if (n) n.addEventListener('change', () => { renderTargetModeNote(); }, true); });
+    if (D.documentElement.dataset.stage19n1q4BranchRouteSummaryBound !== 'true') {
+      D.documentElement.dataset.stage19n1q4BranchRouteSummaryBound = 'true';
+      D.addEventListener('change', (ev) => { if (ev.target?.matches?.('[data-route-provider],[data-route-model]')) refreshBranchRouteSummary(); }, true);
+      D.addEventListener('latexai:model-registry-updated', refreshBranchRouteSummary, { passive: true });
+    }
     refreshTargetPicker();
     renderTargetModeNote();
+    refreshBranchRouteSummary();
     return true;
   }
 
@@ -2685,7 +2751,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     createCard();
     setTimeout(createCard, 800);
     setTimeout(createCard, 1800);
-    setTimeout(() => { try { refreshTargetPicker(); renderTargetModeNote(); } catch (_err) {} }, 2400);
+    setTimeout(() => { try { refreshTargetPicker(); renderTargetModeNote(); refreshBranchRouteSummary(); } catch (_err) {} }, 2400);
   }
 
   NS.RealAgentBranchWorkflowService = {
@@ -2710,7 +2776,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     getLastInsertion: () => lastInsertionData,
     getLastOutcome: () => lastOutcomeData,
     buildConfigurableDebateSteps,
-    buildDebatePrompt
+    buildDebatePrompt,
+    configuredDebateRouteForStep,
+    debateRouteSummaryObject
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });

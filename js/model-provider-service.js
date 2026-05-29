@@ -15,7 +15,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1q3-sticky-route-provider-model-selects-1';
+  const STAGE = 'stage19n1q4-branch-runner-settings-devils-routes-1';
   const STORAGE_KEY = 'latexai:model-routing:v1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('model-provider-service')) {
@@ -146,6 +146,14 @@
 
   function routeForTask(task, payload, options) {
     const haystack = [
+      options?.routeKey,
+      options?.modelRouteKey,
+      options?.context?.routeKey,
+      options?.context?.modelRouteKey,
+      options?.context?.agentRole,
+      payload?.routeKey,
+      payload?.modelRouteKey,
+      payload?.agentRole,
       task,
       options?.context?.workflow,
       options?.context?.task,
