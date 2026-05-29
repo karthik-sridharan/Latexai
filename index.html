@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19n1q5-gemini-key-diagnostics-and-env-aliases-20260529-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19n1q10-live-provider-model-discovery-20260529-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -219,7 +219,7 @@
             <select id="aiModel" data-lumina-ai-model></select>
           </label>
           <label class="field">Custom model override, optional
-            <input id="aiCustomModel" data-lumina-ai-custom-model type="text" placeholder="Optional: gpt-5.4, gpt-4.1, gemini-2.5-pro, ..." />
+            <input id="aiCustomModel" data-lumina-ai-custom-model type="text" placeholder="Disabled: choose a currently available model from the dropdown" />
           </label>
         </div>
         <label class="field">Workflow
@@ -294,7 +294,7 @@
         </div>
         <div class="settings-note">Stage 19C2 keeps AI generation, memory storage, compile routing, and GitHub sync as separate services. Backend/API settings are preserved when creating a new project.</div>
         <label class="field">AI backend proxy URL
-          <input id="aiProxyUrl" data-lumina-ai-proxy-url type="url" value="/api/lumina/ai" placeholder="https://your-ai-backend.example.com/api/lumina/ai" />
+          <input id="aiProxyUrl" data-lumina-ai-proxy-url type="url" value="https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/ai" placeholder="https://your-ai-backend.example.com/api/lumina/ai" />
         </label>
         <label class="field">AI proxy token, optional
           <input id="aiProxyToken" data-lumina-ai-proxy-token type="password" autocomplete="off" placeholder="Optional bearer token for AI backend" />
@@ -430,8 +430,8 @@
 <script src="js/browser-wasm-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/compiler-provider.js?v=stage17x-compile-log-diagnostics-surfacing-1" defer></script>
-<script src="js/ai-provider.js?v=stage19n1q3-sticky-route-dropdown-1" defer></script>
-<script src="js/backend-url-settings-service.js?v=stage19c2-github-backend-url-settings-field-1" defer></script>
+<script src="js/ai-provider.js?v=stage19n1q10-live-provider-model-discovery-1" defer></script>
+<script src="js/backend-url-settings-service.js?v=stage19n1q8-normalized-ai-proxy-url-1" defer></script>
 <script src="js/research-memory-extraction-service.js?v=stage19c-clean-new-project-github-repo-workflow-1" defer></script>
 <script src="js/state.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
 <script src="js/reward-logging-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
@@ -447,7 +447,7 @@
 <script src="js/source-display-sync.js?v=stage8b-source-display-sync-fix-1" defer></script>
 <script src="js/patch-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/patch-manager.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
-<script src="js/copilot.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
+<script src="js/copilot.js?v=stage19n1q10-live-provider-model-discovery-1" defer></script>
 <script src="js/selection-action-bubble.js?v=stage7c-move-selection-bubble-left-1" defer></script>
 <script src="js/diagnostics.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
 <script src="js/main.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
@@ -459,14 +459,14 @@
 <script src="js/document-ai-service.js?v=stage19n1n-source-scanned-lai-resolver-1" defer></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
 <script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19i11-ai-workflow-memory-wiring-completion-1"></script>
-<script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage19i9-devils-advocate-start-marker-diagnostics-20260526-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19i6-explicit-role-context-fix-20260526-1"></script>
+<script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage19n1q10-live-provider-model-discovery-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19n1q10-live-provider-model-discovery-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-reports-browser" data-src="js/ai-report-service.js?v=stage17ef-unified-ai-reports-browser-1"></script>
-<script type="application/latexai-feature-script" data-feature="model-registry" data-src="js/model-registry-service.js?v=stage19n1q3-sticky-route-dropdown-1"></script>
-<script type="application/latexai-feature-script" data-feature="ai-routing-inspector" data-src="js/ai-routing-inspector-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
+<script type="application/latexai-feature-script" data-feature="model-registry" data-src="js/model-registry-service.js?v=stage19n1q10-live-provider-model-discovery-1"></script>
+<script type="application/latexai-feature-script" data-feature="ai-routing-inspector" data-src="js/ai-routing-inspector-service.js?v=stage19n1q10-live-provider-model-discovery-1"></script>
 <script type="application/latexai-feature-script" data-feature="citation-ai" data-src="js/citation-ai-service.js?v=stage12c-missing-bibtex-repair-1"></script>
 <script type="application/latexai-feature-script" data-feature="citation-verifier" data-src="js/citation-verifier-service.js?v=stage12f-clickable-link-panel-fix-1"></script>
 <script type="application/latexai-feature-script" data-feature="presentation-export" data-src="js/presentation-export-service.js?v=stage13g-talk-package-validator-zip-1"></script>
@@ -474,11 +474,11 @@
 <script type="application/latexai-feature-script" data-feature="standalone-path-fixer" data-src="js/standalone-path-service.js?v=stage14b-standalone-path-fixer-1"></script>
 <script type="application/latexai-feature-script" data-feature="ui-cleanup" data-src="js/ui-cleanup-service.js?v=stage15ef-safe-mode-backend-diagnostics-1"></script>
 <script type="application/latexai-feature-script" data-feature="backend-diagnostics" data-src="js/backend-diagnostics-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
-<script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage19n1q5-gemini-key-diagnostics-and-env-aliases-1"></script>
+<script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage19n1q10-live-provider-model-discovery-1"></script>
 <script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
 <script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
-<script src="js/real-agent-branch-workflow-service.js?v=stage19n1q5-gemini-key-diagnostics-and-env-aliases-1" defer></script>
+<script src="js/real-agent-branch-workflow-service.js?v=stage19n1q10-live-provider-model-discovery-1" defer></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 <script id="stage18a-right-panel-organizer-fallback">
 /* LATEXAI_STAGE18A_RIGHT_PANEL_ORGANIZER_FALLBACK_LOADER: load organizer if the feature loader cache, saved flags, or older deployed query string are stale. */
@@ -507,7 +507,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19i6-explicit-role-context-fix-20260526-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19n1q10-live-provider-model-discovery-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -564,7 +564,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19i6-explicit-role-context-fix-20260526-1&watchdog=' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19n1q10-live-provider-model-discovery-1' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
