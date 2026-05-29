@@ -73,6 +73,14 @@ Stage 19N1L equation-only schema rule:
 - Each `latex` value should be a short explanatory paragraph to appear immediately below the corresponding display equation.
 - Do not refer to the equation id in visible prose unless necessary; if you do, write `Equation~\texttt{eq\_001}` with escaped backslashes inside JSON as `Equation~\\texttt{eq\\_001}`.
 
+
+Stage 19N1M one-explanation-per-equation rule:
+- In MATH EQUATION COVERAGE MODE, output exactly one edit object per listed equation id.
+- Do not output multiple alternative explanations for the same equation id.
+- If earlier debate agents proposed several variants for one equation, merge them into one concise paragraph.
+- Do not output section-level no_edit markers in equation coverage mode.
+- Keep every equation explanation to 1--3 sentences unless the equation is a long derivation.
+
 Patch-style requirements:
 - DO NOT output visible advice such as "Add a paragraph...", "Insert after...", "Replace the current paragraph with...", "Consider citing...", or "This will strengthen...".
 - If you want to insert text, write the actual LaTeX-ready text that should appear in the paper.
