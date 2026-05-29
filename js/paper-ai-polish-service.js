@@ -626,9 +626,25 @@
     return lastScan;
   }
 
+  function stripLeadingDuplicateSectionHeadingFromAcceptedText(text, currentSection) {
+    let value = String(text || '').trim();
+    const section = String(currentSection || '').replace(/^.*?:\s*/, '').trim().toLowerCase();
+    if (!value || !section) return value;
+    // Stage 19N1R7: if a \lai replacement is accepted inside an existing
+    // section and its body starts by restating that same section heading,
+    // remove the leading heading. Otherwise Accept all can leave duplicated
+    // \section{...} titles after a Devil's Advocate section-level edit.
+    const re = /^\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{([^{}]{1,180})\}\s*/;
+    const m = value.match(re);
+    if (!m) return value;
+    const found = String(m[2] || '').replace(/\\[A-Za-z]+\s*/g, '').replace(/[{}]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!found || !(found === section || found.includes(section) || section.includes(found))) return value;
+    return value.slice(m[0].length).replace(/^\s+/, '');
+  }
+
   function replacementFor(edit, choice) {
     if (choice === 'old') return edit.oldText || '';
-    if (choice === 'new') return edit.newText || '';
+    if (choice === 'new') return stripLeadingDuplicateSectionHeadingFromAcceptedText(edit.newText || '', edit.section || '');
     return edit.raw;
   }
 

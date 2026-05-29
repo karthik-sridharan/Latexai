@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1r5-safe-devils-apply-insertion-guard-20260529-1';
+  const STAGE = 'stage19n1r7-accept-lai-no-duplicate-sections-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -288,7 +288,71 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   }
 
   function containsLaiMarkup(text) {
-    return /\\lai(?:old)?\s*\{/.test(String(text || ''));
+    return /\lai(?:old)?\s*\{/.test(String(text || ''));
+  }
+
+  function countVisibleLaiBlocks(text) {
+    try {
+      return parseLatexMacroBlocks(text, 'lai').length + parseLatexMacroBlocks(text, 'laiold').length;
+    } catch (_err) {
+      return 0;
+    }
+  }
+
+  function latexPlainTextForLaiBody(text, maxChars) {
+    let s = String(text || '')
+      .replace(/LATEXAI_STRUCTURED_EDIT_JSON_BEGIN[\s\S]*?LATEXAI_STRUCTURED_EDIT_JSON_END/ig, ' ')
+      .replace(/```(?:json|latex|tex)?/ig, ' ')
+      .replace(/\r/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    const max = Math.max(240, Number(maxChars) || 1800);
+    if (s.length > max) s = s.slice(0, max).replace(/\s+\S*$/, '') + '…';
+    // This is a last-resort visible note, so make it compile-safe plain text.
+    return s
+      .replace(/\\/g, '\\textbackslash{}')
+      .replace(/([{}%&_#$])/g, '\\$1')
+      .replace(/\^/g, '\\textasciicircum{}')
+      .replace(/~/g, '\\textasciitilde{}');
+  }
+
+  function fallbackVisibleSuggestionText() {
+    const structured = refreshStructuredEditorData();
+    const parts = [];
+    if (structured?.ok && Array.isArray(structured.edits) && structured.edits.length) {
+      structured.edits.slice(0, 6).forEach((e, idx) => {
+        const target = clean(e.targetSection || e.targetId || e.targetType || ('edit ' + (idx + 1)));
+        const latex = clean(e.latex || e.oldLatex || e.explanation || e.text || e.content || '');
+        if (latex) parts.push('Target ' + target + ': ' + latex);
+      });
+    }
+    const finalText = finalEditorOutputText();
+    if (!parts.length && finalText) parts.push(finalText);
+    if (!parts.length && lastRealRunData?.finalOutput) parts.push(String(lastRealRunData.finalOutput || ''));
+    if (!parts.length && lastSelectionData?.selectedBranch) {
+      const b = lastSelectionData.selectedBranch;
+      parts.push([b.title, b.rationale, b.summary].filter(Boolean).join('\n'));
+    }
+    return parts.join('\n\n').trim();
+  }
+
+  function buildFallbackVisibleLaiDraft(beforeSource, reason) {
+    const before = String(beforeSource || '');
+    const suggestionText = fallbackVisibleSuggestionText();
+    if (!suggestionText.trim()) return before;
+    const block = [
+      '',
+      '% --- Latexai fallback Devil\'s Advocate visible suggestion ---',
+      '% Inserted because the targeted draft would otherwise make no visible source change.',
+      reason ? ('% Reason: ' + String(reason).replace(/\n/g, ' ').slice(0, 240)) : '',
+      '\\paragraph{Latexai Devil\'s Advocate suggestion}',
+      '\\lai{%',
+      latexPlainTextForLaiBody(suggestionText, 2200),
+      '}',
+      '% --- end Latexai fallback visible suggestion ---',
+      ''
+    ].filter((x) => x !== '').join('\n');
+    return normalizeLaiDraftForCompilation(insertBeforeEndDocument(before, block), 'append');
   }
 
   function removeLatexaiEquationExplanationRegions(text) {
@@ -2165,14 +2229,35 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return out;
   }
 
+  function stripLeadingMatchingSectionCommand(text, targetSection) {
+    let value = String(text || '').trim();
+    const target = normalizeSectionTitle(targetSection || '').toLowerCase();
+    if (!value || !target) return value;
+    // Stage 19N1R7: final editor sometimes returns a whole regenerated
+    // section even though the targeted insertion engine inserts inside the
+    // existing section. If we keep the heading, accepting all \lai edits
+    // duplicates \section{...}. Strip only a leading heading whose title
+    // matches the intended target section.
+    const re = /^\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{([^{}]{1,180})\}\s*/;
+    const m = value.match(re);
+    if (!m) return value;
+    const found = normalizeSectionTitle(m[2] || '').toLowerCase();
+    if (!found || !(found === target || found.includes(target) || target.includes(found))) return value;
+    return value.slice(m[0].length).replace(/^\s+/, '');
+  }
+
   function structuredEditLatexBlock(edit) {
     const e = edit || {};
     const targetType = normalizeStructuredTargetType(e.targetType);
     const action = normalizeStructuredAction(e.action);
     const targetSection = clean(e.targetSection || '');
     const targetId = clean(e.targetId || '');
-    const latex = sanitizeStructuredLatexTextForCompile(String(e.latex || '').trim());
-    const oldLatex = sanitizeStructuredLatexTextForCompile(String(e.oldLatex || '').trim());
+    let latex = sanitizeStructuredLatexTextForCompile(String(e.latex || '').trim());
+    let oldLatex = sanitizeStructuredLatexTextForCompile(String(e.oldLatex || '').trim());
+    if (targetSection) {
+      latex = stripLeadingMatchingSectionCommand(latex, targetSection);
+      oldLatex = stripLeadingMatchingSectionCommand(oldLatex, targetSection);
+    }
     const hasLai = /\\lai(?:old)?\s*\{/.test(latex);
     if (hasLai && (!oldLatex || /\\laiold\s*\{/.test(latex))) return latex;
     const targetLines = [];
@@ -2562,6 +2647,67 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return insertBeforeEndDocument(source, header + targetNote + safeBlocks.join('\n\n'));
   }
 
+  function escapeRegExpForBranchWorkflow(text) {
+    return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function findOldLatexRangeInWindow(source, oldText, start, end) {
+    const s = String(source || '');
+    const old = String(oldText || '').trim();
+    if (!old || old.length < 12) return null;
+    const lo = Math.max(0, Number(start) || 0);
+    const hi = Math.max(lo, Math.min(s.length, Number(end) || s.length));
+    const window = s.slice(lo, hi);
+    let idx = window.indexOf(old);
+    if (idx >= 0) return { start: lo + idx, end: lo + idx + old.length, exact: true };
+
+    // Whitespace-tolerant fallback for copied section text whose line wrapping
+    // changed between the prompt and source. Keep this bounded to the target
+    // section/document window to avoid accidental global replacements.
+    try {
+      const pattern = old.split(/\s+/).filter(Boolean).map(escapeRegExpForBranchWorkflow).join('\\s+');
+      if (pattern && pattern.length < 20000) {
+        const re = new RegExp(pattern, 'm');
+        const m = re.exec(window);
+        if (m) return { start: lo + m.index, end: lo + m.index + m[0].length, exact: false };
+      }
+    } catch (_err) {}
+    return null;
+  }
+
+  function replacementRangeForOldLaiBlock(source, block, target, sections) {
+    const oldMacro = parseLatexMacroBlocks(block, 'laiold')[0];
+    if (!oldMacro || !String(oldMacro.body || '').trim()) return null;
+    const oldBody = stripLeadingMatchingSectionCommand(oldMacro.body, target);
+    if (!oldBody || oldBody.trim().length < 12) return null;
+    const sec = (sections || []).find((x) => sectionMatches(x, target));
+    if (sec) {
+      const hit = findOldLatexRangeInWindow(source, oldBody, sec.headerEnd, sec.end);
+      if (hit) return { ...hit, target: sec.title, mode: 'section-old-text' };
+    }
+    const begin = String(source || '').search(/\\begin\s*\{document\}/);
+    const endDoc = findLastEndDocument(source);
+    const globalStart = begin >= 0 ? begin : 0;
+    const globalEnd = endDoc ? endDoc.index : String(source || '').length;
+    const hit = findOldLatexRangeInWindow(source, oldBody, globalStart, globalEnd);
+    return hit ? { ...hit, target: target || '', mode: 'global-old-text' } : null;
+  }
+
+  function stripSectionCommandsFromAdditiveBlock(block, target) {
+    // If the editor returned a whole \section{X}... in a new-only \lai block
+    // and we cannot make an old-text replacement, strip the duplicate heading
+    // before inserting inside the already-existing section X.
+    let out = String(block || '');
+    const laiBlocks = parseLatexMacroBlocks(out, 'lai').sort((a, b) => b.start - a.start);
+    laiBlocks.forEach((b) => {
+      const cleanBody = stripLeadingMatchingSectionCommand(b.body, target);
+      if (cleanBody !== String(b.body || '').trim()) {
+        out = out.slice(0, b.start) + '\\lai{%\n' + cleanBody + '\n}' + out.slice(b.end);
+      }
+    });
+    return out;
+  }
+
   function buildTargetedDraftFromBlocks(source, blocks, targets) {
     const rawSource = String(source || '');
     // Stage 19N1M: in equation coverage mode, applying a new preview should
@@ -2597,8 +2743,27 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       if (!target) target = firstExistingSectionTitle(targets, s) || sections[0]?.title || '';
       const hit = sections.find((sec) => sectionMatches(sec, target));
       const key = hit ? hit.title : target;
+
+      // Stage 19N1R7: replacement-style Devil's Advocate edits must wrap the
+      // existing old text in-place. If we merely insert \laiold{old}\lai{new}
+      // above a section, then accepting all new content keeps the untouched
+      // original section and also inserts the regenerated section, creating
+      // repeated sections. Use oldLatex as an anchor whenever possible.
+      const replacementRange = replacementRangeForOldLaiBlock(s, block, key, sections);
+      if (replacementRange) {
+        const blockText = [
+          '',
+          '% --- Latexai targeted Devil\'s Advocate replacement for section: ' + (key || replacementRange.target || 'unknown') + ' ---',
+          stripSectionCommandsFromAdditiveBlock(block, key || replacementRange.target || ''),
+          '% --- end Latexai targeted replacement ---',
+          ''
+        ].join('\n');
+        insertions.push({ index: replacementRange.start, end: replacementRange.end, text: blockText, target: key, replacement: true });
+        return;
+      }
+
       if (!sectionGroups.has(key)) sectionGroups.set(key, []);
-      sectionGroups.get(key).push(block);
+      sectionGroups.get(key).push(stripSectionCommandsFromAdditiveBlock(block, key));
     });
 
     sectionGroups.forEach((bs, target) => {
@@ -2616,7 +2781,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
     if (!insertions.length) return buildAppendDraftFromBlocks(s, safeBlocks, targets);
     let out = s;
-    insertions.sort((a, b) => b.index - a.index).forEach((ins) => { out = out.slice(0, ins.index) + ins.text + out.slice(ins.index); });
+    insertions.sort((a, b) => b.index - a.index).forEach((ins) => {
+      const end = Number.isFinite(Number(ins.end)) ? Number(ins.end) : ins.index;
+      out = out.slice(0, ins.index) + ins.text + out.slice(end);
+    });
     return out;
   }
 
@@ -3151,6 +3319,26 @@ async function learnedSelectBranch() {
     if (/\\usepackage(?:\[[^\]]*\])?\{[^}]+\}/.test(visualText.slice(0, Math.max(0, visualText.search(/\\documentclass/) >= 0 ? visualText.search(/\\documentclass/) : 0)))) {
       throw new Error('Blocked unsafe Devil’s Advocate apply: a package command would be placed before \\documentclass.');
     }
+
+    // Stage 19N1R7: never silently accept a no-op insertion. If the cleaned
+    // draft equals the current paper, or adds no visible \lai/\laiold blocks,
+    // build a conservative visible fallback from the final editor/schema text.
+    if (looksLikeCompleteLatexDocument(before)) {
+      const beforeTrim = before.trim();
+      const afterTrim = visualText.trim();
+      const beforeBlockCount = countVisibleLaiBlocks(before);
+      const afterBlockCount = countVisibleLaiBlocks(visualText);
+      const noTextChange = beforeTrim === afterTrim;
+      const noNewVisibleEdit = afterBlockCount <= beforeBlockCount && !/\\lai(?:old)?\s*\{/.test(visualText.slice(Math.min(before.length, visualText.length)));
+      if (noTextChange || noNewVisibleEdit) {
+        const fallback = buildFallbackVisibleLaiDraft(before, noTextChange ? 'generated draft was identical to current source' : 'generated draft had no new visible \lai block');
+        if (fallback.trim() !== beforeTrim && countVisibleLaiBlocks(fallback) > beforeBlockCount) {
+          visualText = sanitizeLatexChangedRegionForCompile(before, fallback);
+        } else {
+          throw new Error('Blocked no-op Devil’s Advocate apply: no visible \lai/\laiold edits were produced. Re-run the branch or use Copy report; the source was not changed.');
+        }
+      }
+    }
     return visualText;
   }
 
@@ -3160,8 +3348,8 @@ async function learnedSelectBranch() {
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
     const visualText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
-    if (!W.confirm('Apply the ' + kind + ' LAI draft to the active editor source? A complete-document safety guard will block fragment-only overwrites.')) return;
-    setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros. Stage 19N1R5 guarded against fragment-only source replacement.', { kind });
+    if (!W.confirm('Apply the ' + kind + ' LAI draft to the active editor source? A complete-document safety guard will block fragment-only or no-op overwrites.')) return;
+    setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros. Stage 19N1R7 guarded against fragment-only and no-op source replacement.', { kind });
     await recordOutcome(kind === 'append' ? 'inserted_append' : 'inserted_targeted');
   }
 
@@ -3173,7 +3361,7 @@ async function learnedSelectBranch() {
     const copiedText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
     await navigator.clipboard.writeText(copiedText);
     await recordOutcome('copied');
-    status('Copied ' + kind + ' draft and recorded copied outcome. Stage 19N1R5 guarded against fragment-only source replacement.', 'good');
+    status('Copied ' + kind + ' draft and recorded copied outcome. Stage 19N1R7 guarded against fragment-only and no-op source replacement.', 'good');
   }
 
   function setBusy(on) {
@@ -3274,7 +3462,7 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1R4 ready. Preview insertion, then use Insert localized edits or Append final improvement plan. Saved runs and learned branch selection remain available. Provider/model is inherited from Settings → Model/provider routing.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1R7 ready. Preview insertion, then use Insert localized edits or Append final improvement plan. Saved runs and learned branch selection remain available. Provider/model is inherited from Settings → Model/provider routing.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
