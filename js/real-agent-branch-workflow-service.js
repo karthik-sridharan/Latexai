@@ -289,6 +289,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return /\\lai(?:old)?\s*\{/.test(String(text || ''));
   }
 
+  function removeLatexaiEquationExplanationRegions(text) {
+    // Stage 19N1M: equation-coverage apply should be replace-style by default.
+    // If a previous run already placed explanatory \lai blocks below equations,
+    // remove those wrapper regions before inserting the next recovered set.
+    // This prevents stacking multiple variants under the same display equation.
+    return String(text || '').replace(/\n?% --- Latexai equation explanation suggestion for:[\s\S]*?% --- end Latexai equation explanation suggestion ---\n?/g, '\n');
+  }
+
   function removeLatexaiSuggestionCommentRegions(text) {
     let s = String(text || '');
     // Remove previously applied branch-run suggestion wrappers before constructing
@@ -301,7 +309,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     // equation explanations. Remove the whole wrapper before the next prompt
     // is built; otherwise the next equation inventory treats old AI
     // explanations as if they were original paper context/equations.
-    s = s.replace(/\n?% --- Latexai equation explanation suggestion for:[\s\S]*?% --- end Latexai equation explanation suggestion ---\n?/g, '\n');
+    s = removeLatexaiEquationExplanationRegions(s);
     return s;
   }
 
@@ -2189,21 +2197,57 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     }
   }
 
+  function scoreEquationStructuredEditForDedup(edit) {
+    const latex = String(edit?.latex || '').trim();
+    const action = normalizeStructuredAction(edit?.action);
+    if (!latex && action !== 'no_edit') return -1000;
+    if (action === 'no_edit') return -500;
+    // Prefer concise explanatory prose over empty or very long transcript-like text.
+    const len = latex.length;
+    let score = 0;
+    score += Math.min(len, 650) / 10;
+    if (len > 900) score -= (len - 900) / 20;
+    if (/This equation|This identity|This expression|This formula|This derivation|Here,|The equation/i.test(latex)) score += 25;
+    if (/Add a paragraph|Insert after|Replace the current|Consider citing|Target section:/i.test(latex)) score -= 60;
+    if (/No edits recommended/i.test(latex)) score -= 100;
+    return score;
+  }
+
   function filterStructuredEditsForEquationCoverage(edits, warnings) {
     const arr = Array.isArray(edits) ? edits : [];
     if (!equationCoverageActive()) return arr;
     const validIds = equationIdSetForCurrentSelection();
-    const out = [];
+    const byId = new Map();
     let dropped = 0;
+    let duplicateDropped = 0;
     arr.forEach((e) => {
       const id = String(e?.targetId || '').replace(/-/g, '_').toLowerCase();
       const isEquation = normalizeStructuredTargetType(e?.targetType) === 'equation';
+      const action = normalizeStructuredAction(e?.action);
       if (!isEquation || !id) { dropped += 1; return; }
       if (validIds && validIds.size && !validIds.has(id)) { dropped += 1; return; }
-      out.push({ ...e, targetType: 'equation', targetId: id });
+      if (action === 'no_edit') { dropped += 1; return; }
+      const candidate = { ...e, targetType: 'equation', targetId: id, action: action || 'insert_after' };
+      const prev = byId.get(id);
+      if (!prev) {
+        byId.set(id, candidate);
+      } else {
+        duplicateDropped += 1;
+        if (scoreEquationStructuredEditForDedup(candidate) > scoreEquationStructuredEditForDedup(prev)) {
+          byId.set(id, candidate);
+        }
+      }
     });
+    const selectedIds = validIds ? Array.from(validIds) : [];
+    const out = selectedIds.length ? selectedIds.map((id) => byId.get(id)).filter(Boolean) : Array.from(byId.values());
     if (dropped && Array.isArray(warnings)) {
-      warnings.push('Stage 19N1L: dropped ' + dropped + ' structured section/non-equation edit(s) because math/equation coverage mode is active. In this mode only targetType=equation edits with detected equation ids are insertable.');
+      warnings.push('Stage 19N1M: dropped ' + dropped + ' non-equation, invalid-id, or no-edit structured item(s) because math/equation coverage mode is active.');
+    }
+    if (duplicateDropped && Array.isArray(warnings)) {
+      warnings.push('Stage 19N1M: deduplicated ' + duplicateDropped + ' extra equation edit variant(s); kept at most one explanation per equation id.');
+    }
+    if (validIds && validIds.size && out.length < validIds.size && Array.isArray(warnings)) {
+      warnings.push('Stage 19N1M: equation coverage is partial: ' + out.length + ' usable explanation(s) for ' + validIds.size + ' detected equation id(s).');
     }
     return out;
   }
@@ -2257,7 +2301,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   }
 
   function buildTargetedDraftFromBlocks(source, blocks, targets) {
-    const s = String(source || '');
+    const rawSource = String(source || '');
+    // Stage 19N1M: in equation coverage mode, applying a new preview should
+    // replace old equation-explanation wrappers rather than stacking another
+    // generation below the same display equations.
+    const s = equationCoverageActive() ? removeLatexaiEquationExplanationRegions(rawSource) : rawSource;
     const sections = topLevelSections(s);
     const equations = extractDisplayEquationTargets(s, { maxCount: 160 });
     const safeBlocks = (blocks || []).map((b) => String(b || '').trim()).filter(Boolean);
@@ -2351,6 +2399,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       targetSections: targets,
       blockSectionTargets: blockTargets,
       blockCount: blocks.length,
+      safeToInsert: blocks.length > 0,
+      safeToAutoApply: false,
       multiSectionFrontendInsertion: true,
       warnings: [
         ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
