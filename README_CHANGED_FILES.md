@@ -26,3 +26,19 @@ Expected:
 - Tap `Load`.
 - The same normal tree should list all files returned by the backend.
 - `Commit` commits all files in the normal project state.
+
+## Stage 19N1Q3 sticky provider/model route selects
+
+Changed files:
+- `index.html`
+- `js/model-provider-service.js`
+- `js/model-registry-service.js`
+- `README_STAGE19N1Q3_STICKY_MODEL_ROUTE_SELECTS.md`
+
+Fixes the Settings → Model/provider routing dropdowns so provider changes persist, model dropdowns switch to the selected provider's models, and model-registry refreshes no longer restore stale OpenAI routes while the user is editing.
+
+
+## Stage 19N1R3
+- index.html
+- js/real-agent-branch-workflow-service.js
+- README_STAGE19N1R3_EXPLICIT_DEVILS_ACTION_LABELS.md
