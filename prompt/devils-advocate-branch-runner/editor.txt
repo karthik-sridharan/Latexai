@@ -69,7 +69,7 @@ Patch-style requirements:
 - If you want to insert text, write the actual LaTeX-ready text that should appear in the paper.
 - If you want to replace text, provide a short exact old snippet in `oldLatex` and the LaTeX-ready replacement in `latex`.
 - Do not invent citations. Use placeholder/search-target notes for unverified references.
-- Avoid unescaped author-list ampersands; write \& in text.
+- Avoid unescaped author-list ampersands; write \& in text. Avoid raw underscores in prose: write `eq\_025` or `\texttt{eq\_025}` instead of `eq_025`, and write mathematical symbols like `$\theta_0$` in math mode. Do not put raw identifiers such as eq_001, theta_0, sigma_j, or psi_1 in text mode.
 
 Optional human-readable mirror after the JSON:
 After the structured JSON, you may include a `% LATEXAI_MULTI_SECTION_EDIT_BEGIN` block with \lai patches mirroring the JSON, but the JSON is authoritative.
@@ -81,9 +81,15 @@ Failure mode to avoid:
 If you output normal prose, markdown bullets, or only human-readable \lai blocks without the JSON markers, the frontend will not insert anything and the preview will show blocks=0. Always produce the JSON object first.
 
 
-Stage 19N1K4 parser note:
+Stage 19N1K5 parser note:
 - Even though the frontend can repair some malformed JSON, you must still output valid JSON between the markers.
 - Do not omit LATEXAI_STRUCTURED_EDIT_JSON_END.
 - Do not put markdown fences around the required JSON block.
 - Keep each `latex` value as a compact single JSON string. Do not put literal unescaped line breaks inside JSON strings; use short paragraphs or `\n` if line breaks are necessary.
 - Finish the JSON object completely before writing any optional mirror text. If output budget is tight, shorten each edit rather than leaving the JSON unfinished.
+
+
+Stage 19N1K5 compile-safety note:
+- Any underscore in normal prose must be escaped as `\_` or put inside math mode. Raw text such as `eq_025` causes LaTeX "Missing $ inserted" errors.
+- Prefer `the displayed equation`, `Equation~\texttt{eq\_025}`, or math-mode symbols such as `$\psi_1$`.
+- Keep explanatory equation edits as short prose paragraphs; use math mode for symbols and escape text-mode special characters.
