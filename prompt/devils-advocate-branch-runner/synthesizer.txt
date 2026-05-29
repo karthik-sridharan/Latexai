@@ -17,3 +17,7 @@ Deduplicate aggressively: if multiple agents made the same point, list it once.
 Prepare the editor agent to produce final visible \lai edits, but do not output final \lai blocks yourself. Do not use literal final \lai syntax in your answer.
 Do not invent citations; mark uncertain citations as search/BibTeX targets.
 Important: Do not output literal final \lai{...} or \laiold{...} blocks. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final patch blocks.
+
+
+Stage 19N1R synthesis-to-editor handoff:
+In addition to the balanced plan, end with a compact editor handoff table in prose: target section/unit, specific issue, recommended action, and whether it should become insert_after, replace, no_edit, or equation explanation. Do not emit final \lai blocks; the editor will convert this handoff into structured JSON.

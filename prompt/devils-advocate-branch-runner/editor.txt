@@ -93,6 +93,13 @@ After the structured JSON, you may include a `% LATEXAI_MULTI_SECTION_EDIT_BEGIN
 
 Do not invent citations. Prefer concrete, compact paper-ready edits over long review prose.
 
+Stage 19N1R actionable-edit contract:
+- Every non-no_edit item must be something the frontend can insert into the LaTeX source without human rewriting.
+- Each edit must be localized to a target section/unit or equation id and should avoid generic paper-wide advice.
+- When replacing text, keep oldLatex short and exact enough for a user to recognize the location; when unsure, use insert_after rather than an unreliable replace.
+- Prefer a small number of high-confidence edits over many speculative edits.
+- The final JSON is also saved as part of the Devil's Advocate run artifact, so include useful `note` fields explaining why each patch exists, but keep those notes internal and not paper text.
+
 
 Failure mode to avoid:
 If you output normal prose, markdown bullets, or only human-readable \lai blocks without the JSON markers, the frontend will not insert anything and the preview will show blocks=0. Always produce the JSON object first.
