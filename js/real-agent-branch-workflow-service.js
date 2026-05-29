@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1K3 RealAgentBranchWorkflowService
- * Stage: stage19n1k2-structured-schema-guard-fallback-preview-20260528-1
+/* Latexai Stage 19N1K4 RealAgentBranchWorkflowService
+ * Stage: stage19n1k4-jsonish-salvage-latex-command-escape-20260529-1
  *
  * Main-editor integration for the verified developer-page branch loop:
  * 19L3/L4/L5/L6 plan -> 19M real-agent run -> 19M1 clean -> 19M2 insertion preview -> 19M3 outcome feedback.
@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1k2-structured-schema-guard-fallback-preview-20260528-1';
+  const STAGE = 'stage19n1k4-jsonish-salvage-latex-command-escape-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1575,7 +1575,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function extractStructuredEditorJsonText(text) {
     const s = String(text || '');
-    // Stage 19N1K3: accept the begin marker even if the model forgets the end marker.
+    // Stage 19N1K4: accept the begin marker even if the model forgets the end marker.
     // This was the failure seen on iPad: the preview showed LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
     // and a JSON object, but extraction returned "no schema" because the END marker was missing.
     const begin = s.search(/LATEXAI_STRUCTURED_EDIT_JSON_BEGIN/i);
@@ -1611,7 +1611,6 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const s = String(text || '');
     let out = '';
     let inString = false;
-    let escNext = false;
     for (let i = 0; i < s.length; i += 1) {
       const ch = s[i];
       if (!inString) {
@@ -1619,22 +1618,28 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         if (ch === '"') inString = true;
         continue;
       }
-      if (escNext) {
-        // Preserve legal JSON escapes. Convert common LaTeX escapes like \theta or \[ into
-        // literal backslashes so JSON.parse can still recover the schema.
-        if (/^["\\/bfnrtu]$/.test(ch)) out += ch;
-        else out += '\\' + ch;
-        escNext = false;
-        continue;
-      }
-      if (ch === '\\') { out += '\\'; escNext = true; continue; }
       if (ch === '"') { out += ch; inString = false; continue; }
       if (ch === '\n') { out += '\\n'; continue; }
       if (ch === '\r') { out += '\\r'; continue; }
       if (ch === '\t') { out += '\\t'; continue; }
+      if (ch === '\\') {
+        const next = s[i + 1] || '';
+        const next2 = s[i + 2] || '';
+        const isLegalQuoteSlash = /^["\\/]$/.test(next);
+        const isLikelyJsonControl = /^[bfnrt]$/.test(next) && !/[A-Za-z]/.test(next2);
+        const isLegalUnicode = next === 'u' && /^[0-9a-fA-F]{4}$/.test(s.slice(i + 2, i + 6));
+        if (isLegalQuoteSlash || isLikelyJsonControl || isLegalUnicode) {
+          out += '\\' + next;
+          i += 1;
+        } else {
+          // Treat everything else as a literal LaTeX backslash. This catches
+          // \theta, \Theta, \text, \[...\], \( ... \), \begin, etc.
+          out += '\\\\';
+        }
+        continue;
+      }
       out += ch;
     }
-    if (escNext) out += '\\';
     return out;
   }
 
@@ -1685,6 +1690,65 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return [];
   }
 
+
+  function looksLikeStructuredEditObject(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+    return !!(obj.targetType || obj.type || obj.targetId || obj.target_id || obj.equationId || obj.equation_id || obj.targetSection || obj.section || obj.target || obj.action || obj.latex || obj.text || obj.content || obj.explanation);
+  }
+
+  function markerSegmentForStructuredOutput(text) {
+    const s = String(text || '');
+    const begin = s.search(/LATEXAI_STRUCTURED_EDIT_JSON_BEGIN/i);
+    if (begin >= 0) return s.slice(begin + String('LATEXAI_STRUCTURED_EDIT_JSON_BEGIN').length);
+    const fence = s.match(/```(?:json)?\s*([\s\S]*)/i);
+    return fence && fence[1] ? fence[1] : s;
+  }
+
+  function salvageStructuredEditObjectsFromPartialJson(text) {
+    const segment = markerSegmentForStructuredOutput(text);
+    const hits = [];
+    const seen = new Set();
+    const startHints = [];
+    const editsIdx = segment.search(/"(?:edits|sectionEdits|equationEdits|patches|items|results)"\s*:/i);
+    if (editsIdx >= 0) startHints.push(editsIdx);
+    startHints.push(0);
+    startHints.forEach((hint) => {
+      for (let i = Math.max(0, hint); i < segment.length; i += 1) {
+        if (segment[i] !== '{') continue;
+        const objText = findJsonObjectAfter(segment, i);
+        if (!objText || objText.length < 8) continue;
+        if (!/("targetType"|"targetId"|"targetSection"|"equationId"|"action"|"latex"|"explanation"|"text")\s*:/i.test(objText)) continue;
+        let parsed = null;
+        try { parsed = JSON.parse(objText); }
+        catch (err1) {
+          try { parsed = JSON.parse(repairStructuredJsonText(objText)); }
+          catch (err2) { parsed = null; }
+        }
+        if (!looksLikeStructuredEditObject(parsed)) continue;
+        const key = JSON.stringify(parsed).slice(0, 1000);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        hits.push(parsed);
+        i += Math.max(0, objText.length - 1);
+      }
+    });
+    return hits;
+  }
+
+
+  function normalizeStructuredEditsFromArray(edits) {
+    return (Array.isArray(edits) ? edits : []).map((e, idx) => {
+      const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
+      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
+      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
+      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
+      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
+      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
+      const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
+      return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
+    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+  }
+
   function parseStructuredEditorOutputText(text) {
     const rawText = String(text || '');
     const jsonText = extractStructuredEditorJsonText(rawText);
@@ -1694,7 +1758,26 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       return result;
     }
     if (!jsonText) {
-      result.warnings.push('No structured JSON edit schema was found in the final editor output. This usually means the final editor ignored the JSON contract, so insertion has no usable blocks. Re-run with prompt debug enabled to inspect the editor prompt/output.');
+      const salvaged = salvageStructuredEditObjectsFromPartialJson(rawText);
+      if (salvaged.length) {
+        result.ok = true;
+        result.source = 'partial-final-editor-json-salvage';
+        result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
+        result.raw = { edits: salvaged };
+        result.warnings.push('Stage 19N1K4: recovered complete edit object(s) from a partial/truncated structured JSON response. The model likely omitted the closing JSON object or END marker.');
+        result.edits = salvaged.map((e, idx) => {
+          const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
+          const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
+          const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
+          const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
+          const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
+          const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
+          const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
+          return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
+        }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+        if (result.edits.length) return result;
+      }
+      result.warnings.push('No complete structured JSON edit schema was found in the final editor output. This usually means the final editor ignored the JSON contract or returned a truncated schema with no complete edit objects. Re-run with prompt debug enabled to inspect the editor prompt/output.');
       result.rawOutputPreview = rawText.slice(0, 4000);
       return result;
     }
@@ -1705,8 +1788,21 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       try {
         repairedJsonText = repairStructuredJsonText(jsonText);
         parsed = JSON.parse(repairedJsonText);
-        result.warnings.push('Structured JSON needed Stage 19N1K3 loose repair before parsing. This usually means the model used raw LaTeX backslashes inside JSON strings.');
+        result.warnings.push('Structured JSON needed Stage 19N1K4 loose repair before parsing. This usually means the model used raw LaTeX backslashes inside JSON strings.');
       } catch (err2) {
+        const salvaged = salvageStructuredEditObjectsFromPartialJson(rawText);
+        const normalized = normalizeStructuredEditsFromArray(salvaged);
+        if (normalized.length) {
+          result.ok = true;
+          result.source = 'malformed-final-editor-json-salvage';
+          result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
+          result.raw = { edits: salvaged };
+          result.edits = normalized;
+          result.warnings.push('Stage 19N1K4: structured JSON root could not be parsed, but complete edit object(s) were recovered from the malformed response.');
+          result.rawJsonText = jsonText.slice(0, 2000);
+          result.repairedJsonText = repairedJsonText.slice(0, 2000);
+          return result;
+        }
         result.warnings.push('Structured editor JSON could not be parsed: ' + (err2 && err2.message ? err2.message : String(err2)) + '. Insertion was blocked instead of guessing from prose.');
         result.rawJsonText = jsonText;
         result.repairedJsonText = repairedJsonText;
@@ -1731,10 +1827,20 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
     }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
     if (!result.edits.length) {
-      result.ok = false;
-      result.warnings.push('Structured JSON was present, but it contained no usable edits. Expected non-empty `edits[]` with latex/explanation text or no_edit actions.');
-      result.rawJsonText = jsonText;
-      result.rawOutputPreview = rawText.slice(0, 4000);
+      const salvaged = salvageStructuredEditObjectsFromPartialJson(rawText);
+      const normalized = normalizeStructuredEditsFromArray(salvaged);
+      if (normalized.length) {
+        result.ok = true;
+        result.source = 'empty-root-edits-salvage';
+        result.raw = { edits: salvaged };
+        result.edits = normalized;
+        result.warnings.push('Stage 19N1K4: parsed root schema had no usable edits, but complete edit object(s) were recovered from the final editor output.');
+      } else {
+        result.ok = false;
+        result.warnings.push('Structured JSON was present, but it contained no usable edits. Expected non-empty `edits[]` with latex/explanation text or no_edit actions.');
+        result.rawJsonText = jsonText;
+        result.rawOutputPreview = rawText.slice(0, 4000);
+      }
     }
     return result;
   }
@@ -2112,7 +2218,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const parsed = lastStructuredEditorData || refreshStructuredEditorData();
     const warnings = [];
     if (!parsed?.ok || !Array.isArray(parsed.edits) || !parsed.edits.length) {
-      warnings.push('Stage 19N1K3: no usable structured editor edits were available, so insertion was blocked instead of guessing from prose.');
+      warnings.push('Stage 19N1K4: no usable structured editor edits were available, so insertion was blocked instead of guessing from prose.');
       if (Array.isArray(parsed?.warnings) && parsed.warnings.length) warnings.push(...parsed.warnings);
       if (parsed?.rawJsonText) warnings.push('Raw structured JSON preview: ' + String(parsed.rawJsonText).slice(0, 600));
       else if (parsed?.rawOutputPreview) warnings.push('Final editor output preview: ' + String(parsed.rawOutputPreview).slice(0, 600));
@@ -2401,7 +2507,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1K3 ready. Structured JSON parser accepts missing END markers and repairs raw LaTeX backslashes in JSON strings; prompt debug is available with ?laiPromptDebug=1.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1K4 ready. Structured JSON parser salvages complete edit objects from partial JSON and repairs raw LaTeX command backslashes; prompt debug is available with ?laiPromptDebug=1.</div>',
       '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
     ].join('\n');
     const before = $('copilotOutput');
