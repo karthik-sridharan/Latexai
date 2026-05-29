@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1r-devils-output-saved-runs-learned-branch-bundle-20260529-1';
+  const STAGE = 'stage19n1r1-visible-branch-output-panel-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1073,8 +1073,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function renderSummary(title, html) {
     const node = $('branchWorkflowOutput');
     if (!node) return;
+    // Stage 19N1R1: branchWorkflowOutput also has the legacy devils-output class,
+    // which is display:none unless .active is present. Always reveal the run report
+    // when any branch summary/result is rendered. This fixes iPad/Safari users seeing
+    // only the green completion status with no visible output panel.
+    node.className = 'devils-output active branch-workflow-output';
+    node.setAttribute('aria-live', 'polite');
     node.innerHTML = '<div class="branch-workflow-summary-title">' + esc(title) + '</div>' + html;
     try { node.dataset.branchWorkflowLastTitle = String(title || ''); } catch (_err) {}
+    try { node.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_err) {}
   }
 
   function renderInlinePreview(title, html) {
@@ -3031,7 +3038,7 @@ async function learnedSelectBranch() {
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
       '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1R ready. This bundle adds actionable LaTeX edit artifacts, saved/reloadable Devil’s Advocate runs, and a learned branch selector using saved outcome rewards. Provider/model is inherited from Settings → Model/provider routing.</div>',
-      '<div id="branchWorkflowOutput" class="devils-output branch-workflow-output">Branch workflow output will appear here.</div>'
+      '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
     if (before && before.parentNode === host) host.insertBefore(card, before);
