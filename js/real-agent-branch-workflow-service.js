@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1r4-devils-release-hardening-verifier-20260529-1';
+  const STAGE = 'stage19n1r5-safe-devils-apply-insertion-guard-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -3094,15 +3094,74 @@ async function learnedSelectBranch() {
     }
   }
 
+  function looksLikeCompleteLatexDocument(text) {
+    const s = String(text || '');
+    return /\\documentclass(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/.test(s) && /\\begin\s*\{document\}/.test(s) && /\\end\s*\{document\}/.test(s);
+  }
+
+  function stripAccidentalPreambleFromFragment(text) {
+    return String(text || '')
+      .replace(/% --- Latexai AI-change highlighting macro ---[\s\S]*?% --- end Latexai AI-change highlighting macro ---\s*/g, '')
+      .replace(/^\s*\\usepackage(?:\[[^\]]*\])?\{(?:xcolor|color)\}[^\n]*\n?/gm, '')
+      .trim();
+  }
+
+  function laiBlocksFromDraftFragment(text) {
+    const fragment = stripAccidentalPreambleFromFragment(text);
+    const laiBlocks = parseLatexMacroBlocks(fragment, 'lai');
+    const oldBlocks = parseLatexMacroBlocks(fragment, 'laiold');
+    if (!laiBlocks.length) {
+      const plain = fragment.trim();
+      if (!plain) return [];
+      return ['\\lai{%\n' + plain + '\n}'];
+    }
+    return laiBlocks.map((lai) => {
+      const old = oldBlocks
+        .filter((o) => o.end <= lai.start && /^[\s\r\n]*$/.test(fragment.slice(o.end, lai.start)))
+        .sort((a, b) => b.end - a.end)[0];
+      return old ? (old.raw + lai.raw) : lai.raw;
+    }).filter(Boolean);
+  }
+
+  function normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource) {
+    const before = String(beforeSource || '');
+    let raw = String(text || '');
+    if (!raw.trim()) return '';
+
+    // Stage 19N1R5: Some backend/cleaner paths return only the LAI fragment,
+    // not a complete .tex document. Older apply logic treated that fragment as
+    // the entire source and overwrote main.tex, which moved \usepackage before
+    // \documentclass and deleted the body. If the active editor is a complete
+    // document and the draft is not, rebuild a complete document locally using
+    // the existing multi-section insertion engine.
+    if (looksLikeCompleteLatexDocument(before) && !looksLikeCompleteLatexDocument(raw)) {
+      const targets = desiredTargetSections(selectedRealPayload() || lastRealRunData || lastSelectionData || {});
+      const blocks = laiBlocksFromDraftFragment(raw);
+      raw = kind === 'append'
+        ? buildAppendDraftFromBlocks(before, blocks, targets)
+        : buildTargetedDraftFromBlocks(before, blocks, targets);
+    }
+
+    let visualText = normalizeLaiDraftForCompilation(raw, kind);
+    visualText = sanitizeLatexChangedRegionForCompile(before, visualText);
+
+    if (looksLikeCompleteLatexDocument(before) && !looksLikeCompleteLatexDocument(visualText)) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: the generated draft is not a complete LaTeX document. Use Preview insertion/Copy report and do not replace main.tex.');
+    }
+    if (/\\usepackage(?:\[[^\]]*\])?\{[^}]+\}/.test(visualText.slice(0, Math.max(0, visualText.search(/\\documentclass/) >= 0 ? visualText.search(/\\documentclass/) : 0)))) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: a package command would be placed before \\documentclass.');
+    }
+    return visualText;
+  }
+
   async function applyDraft(kind) {
     if (!lastInsertionData) await prepareInsertion();
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
-    let visualText = normalizeLaiDraftForCompilation(text, kind);
-    visualText = sanitizeLatexChangedRegionForCompile(beforeSource, visualText);
-    if (!W.confirm('Replace the active editor source with the ' + kind + ' LAI draft?')) return;
-    setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros. Unescaped AI-generated & characters were converted to \& in the inserted region.', { kind });
+    const visualText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
+    if (!W.confirm('Apply the ' + kind + ' LAI draft to the active editor source? A complete-document safety guard will block fragment-only overwrites.')) return;
+    setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros. Stage 19N1R5 guarded against fragment-only source replacement.', { kind });
     await recordOutcome(kind === 'append' ? 'inserted_append' : 'inserted_targeted');
   }
 
@@ -3111,10 +3170,10 @@ async function learnedSelectBranch() {
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
-    const copiedText = sanitizeLatexChangedRegionForCompile(beforeSource, normalizeLaiDraftForCompilation(text, kind));
+    const copiedText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
     await navigator.clipboard.writeText(copiedText);
     await recordOutcome('copied');
-    status('Copied ' + kind + ' draft and recorded copied outcome. AI-generated unescaped & was sanitized to \& in the copied draft.', 'good');
+    status('Copied ' + kind + ' draft and recorded copied outcome. Stage 19N1R5 guarded against fragment-only source replacement.', 'good');
   }
 
   function setBusy(on) {
