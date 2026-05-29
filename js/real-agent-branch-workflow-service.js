@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1r2-readable-branch-output-panel-20260529-1';
+  const STAGE = 'stage19n1r3-explicit-devils-action-labels-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -3004,6 +3004,7 @@ async function learnedSelectBranch() {
     card.innerHTML = [
       '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1R</div><h2>Devil’s Advocate branch runner</h2></div></div>',
       '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → structured actionable LaTeX edits → saved/reloadable run artifacts → insertion preview → outcome reward → learned branch selection. Add ?laiPromptDebug=1 to index.html to open a live prompt-debug tab showing each agent prompt.</p>',
+      '<div class="settings-note compact branch-workflow-action-map"><strong>Action labels:</strong> <em>Insert localized edits</em> inserts targeted <code>\\laiold</code>/<code>\\lai</code> edits near relevant sections. <em>Append final improvement plan</em> appends the final plan before <code>\\end{document}</code>. Use <em>Preview insertion</em> first to inspect what will be inserted.</div>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
       '<label class="field">Math/equation coverage <select id="branchWorkflowEquationCoverageMode"><option value="auto" selected>auto-detect from focus/query</option><option value="on">force equation-by-equation edits</option><option value="off">off</option></select></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
@@ -3043,13 +3044,13 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowFullBtn" class="btn mini" type="button">Run full preview</button>',
       '<button id="branchWorkflowCleanBtn" class="btn mini" type="button">Clean LAI</button>',
       '<button id="branchWorkflowPreviewBtn" class="btn mini" type="button">Preview insertion</button>',
-      '<button id="branchWorkflowApplyTargetedBtn" class="btn mini" type="button">Apply targeted</button>',
-      '<button id="branchWorkflowApplyAppendBtn" class="btn mini" type="button">Apply append</button>',
-      '<button id="branchWorkflowCopyTargetedBtn" class="btn mini" type="button">Copy targeted</button>',
+      '<button id="branchWorkflowApplyTargetedBtn" class="btn mini primary" type="button">Insert localized edits</button>',
+      '<button id="branchWorkflowApplyAppendBtn" class="btn mini" type="button">Append final improvement plan</button>',
+      '<button id="branchWorkflowCopyTargetedBtn" class="btn mini" type="button">Copy localized edits</button>',
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1R ready. This bundle adds actionable LaTeX edit artifacts, saved/reloadable Devil’s Advocate runs, and a learned branch selector using saved outcome rewards. Provider/model is inherited from Settings → Model/provider routing.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1R3 ready. Preview insertion, then use Insert localized edits or Append final improvement plan. Saved runs and learned branch selection remain available. Provider/model is inherited from Settings → Model/provider routing.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
