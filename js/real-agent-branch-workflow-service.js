@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1k5-structured-latex-prose-sanitizer-20260529-1';
+  const STAGE = 'stage19n1l-equation-inventory-clean-equation-only-schema-20260529-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -297,6 +297,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     s = s.replace(/\n?% --- Latexai targeted Devil's Advocate suggestion for section:[\s\S]*?% --- end Latexai targeted suggestion ---\n?/g, '\n');
     s = s.replace(/\n?% --- Latexai appended multi-section Devil's Advocate suggestions ---[\s\S]*?(?=\\end\s*\{document\}|$)/g, '\n');
     s = s.replace(/\n?% --- Latexai appended AI suggestions \(moved before \\end\{document\}\) ---[\s\S]*?(?=\\end\s*\{document\}|$)/g, '\n');
+    // Stage 19N1L: previous equation-coverage runs insert wrappers around
+    // equation explanations. Remove the whole wrapper before the next prompt
+    // is built; otherwise the next equation inventory treats old AI
+    // explanations as if they were original paper context/equations.
+    s = s.replace(/\n?% --- Latexai equation explanation suggestion for:[\s\S]*?% --- end Latexai equation explanation suggestion ---\n?/g, '\n');
     return s;
   }
 
@@ -614,6 +619,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     addRegexRanges(ranges, s, /% --- Latexai targeted Devil's Advocate suggestion for section:[\s\S]*?% --- end Latexai targeted suggestion ---/g);
     addRegexRanges(ranges, s, /% --- Latexai appended multi-section Devil's Advocate suggestions ---[\s\S]*?(?=\\end\s*\{document\}|$)/g);
     addRegexRanges(ranges, s, /% --- Latexai appended AI suggestions \(moved before \\end\{document\}\) ---[\s\S]*?(?=\\end\s*\{document\}|$)/g);
+    addRegexRanges(ranges, s, /% --- Latexai equation explanation suggestion for:[\s\S]*?% --- end Latexai equation explanation suggestion ---/g);
     return ranges.sort((a, b) => a.start - b.start);
   }
 
@@ -1575,7 +1581,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function extractStructuredEditorJsonText(text) {
     const s = String(text || '');
-    // Stage 19N1K5: accept the begin marker even if the model forgets the end marker.
+    // Stage 19N1L: accept the begin marker even if the model forgets the end marker.
     // This was the failure seen on iPad: the preview showed LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
     // and a JSON object, but extraction returned "no schema" because the END marker was missing.
     const begin = s.search(/LATEXAI_STRUCTURED_EDIT_JSON_BEGIN/i);
@@ -1764,7 +1770,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         result.source = 'partial-final-editor-json-salvage';
         result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
         result.raw = { edits: salvaged };
-        result.warnings.push('Stage 19N1K5: recovered complete edit object(s) from a partial/truncated structured JSON response. The model likely omitted the closing JSON object or END marker.');
+        result.warnings.push('Stage 19N1L: recovered complete edit object(s) from a partial/truncated structured JSON response. The model likely omitted the closing JSON object or END marker.');
         result.edits = salvaged.map((e, idx) => {
           const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
           const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
@@ -1798,7 +1804,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
           result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
           result.raw = { edits: salvaged };
           result.edits = normalized;
-          result.warnings.push('Stage 19N1K5: structured JSON root could not be parsed, but complete edit object(s) were recovered from the malformed response.');
+          result.warnings.push('Stage 19N1L: structured JSON root could not be parsed, but complete edit object(s) were recovered from the malformed response.');
           result.rawJsonText = jsonText.slice(0, 2000);
           result.repairedJsonText = repairedJsonText.slice(0, 2000);
           return result;
@@ -1834,7 +1840,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         result.source = 'empty-root-edits-salvage';
         result.raw = { edits: salvaged };
         result.edits = normalized;
-        result.warnings.push('Stage 19N1K5: parsed root schema had no usable edits, but complete edit object(s) were recovered from the final editor output.');
+        result.warnings.push('Stage 19N1L: parsed root schema had no usable edits, but complete edit object(s) were recovered from the final editor output.');
       } else {
         result.ok = false;
         result.warnings.push('Structured JSON was present, but it contained no usable edits. Expected non-empty `edits[]` with latex/explanation text or no_edit actions.');
@@ -1864,7 +1870,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function sanitizeStructuredLatexTextForCompile(text) {
     let s = String(text || '');
     if (!s) return s;
-    // Stage 19N1K5: structured JSON often contains pedagogical prose such as
+    // Stage 19N1L: structured JSON often contains pedagogical prose such as
     // "from eq_025". A raw underscore in text mode causes "Missing $ inserted".
     // Escape unescaped underscores only outside math spans and comments. This is
     // intentionally conservative: it does not rewrite math content or command names.
@@ -1926,8 +1932,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function structuredEditorBlocksForInsertion() {
     const data = refreshStructuredEditorData();
     if (!data?.ok || !Array.isArray(data.edits) || !data.edits.length) return [];
-    const blocks = data.edits.map(structuredEditLatexBlock).filter(Boolean);
-    blocks._structuredNotes = data.warnings || [];
+    const warnings = data.warnings || [];
+    const usableEdits = filterStructuredEditsForEquationCoverage(data.edits, warnings);
+    if (!usableEdits.length) {
+      const empty = [];
+      empty._structuredNotes = warnings;
+      return empty;
+    }
+    const blocks = usableEdits.map(structuredEditLatexBlock).filter(Boolean);
+    blocks._structuredNotes = warnings;
     return blocks;
   }
 
@@ -1937,9 +1950,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       return '<div class="settings-note warn">No structured editor JSON was parsed. Legacy \\lai block extraction is being used.</div>' +
         (Array.isArray(d?.warnings) && d.warnings.length ? '<div class="settings-note warn">' + esc(d.warnings.join('; ')) + '</div>' : '');
     }
-    const rows = d.edits.map((e) => '<tr><td>' + esc(e.index) + '</td><td>' + esc(e.targetType) + '</td><td>' + esc(e.targetId || '') + '</td><td>' + esc(e.targetSection || '') + '</td><td>' + esc(e.action) + '</td><td><code>' + esc(String(e.latex || '').slice(0, 180)) + (String(e.latex || '').length > 180 ? '…' : '') + '</code></td></tr>').join('');
-    return '<div class="settings-note good">Structured editor schema parsed: ' + esc(d.edits.length) + ' edit(s), mode=' + esc(d.editMode || '') + '.</div>' +
-      (Array.isArray(d.warnings) && d.warnings.length ? '<div class="settings-note warn">Schema warnings: ' + esc(d.warnings.join('; ')) + '</div>' : '') +
+    const previewWarnings = d.warnings || [];
+    const previewEdits = filterStructuredEditsForEquationCoverage(d.edits, previewWarnings);
+    const rows = previewEdits.map((e) => '<tr><td>' + esc(e.index) + '</td><td>' + esc(e.targetType) + '</td><td>' + esc(e.targetId || '') + '</td><td>' + esc(e.targetSection || '') + '</td><td>' + esc(e.action) + '</td><td><code>' + esc(String(e.latex || '').slice(0, 180)) + (String(e.latex || '').length > 180 ? '…' : '') + '</code></td></tr>').join('');
+    return '<div class="settings-note good">Structured editor schema parsed: ' + esc(d.edits.length) + ' raw edit(s), ' + esc(previewEdits.length) + ' usable edit(s), mode=' + esc(d.editMode || '') + '.</div>' +
+      (Array.isArray(previewWarnings) && previewWarnings.length ? '<div class="settings-note warn">Schema warnings: ' + esc(previewWarnings.join('; ')) + '</div>' : '') +
       '<div class="branch-workflow-table-wrap"><table class="branch-workflow-table"><thead><tr><th>#</th><th>targetType</th><th>targetId</th><th>section</th><th>action</th><th>latex</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
@@ -2163,6 +2178,36 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return (equations || []).find((eq) => String(eq.id || '').toLowerCase() === key) || null;
   }
 
+  function equationIdSetForCurrentSelection() {
+    if (!equationCoverageActive()) return null;
+    try {
+      const payload = selectedRealPayload() || lastRealRunData || lastSelectionData || {};
+      const ids = selectedEquationTargets(payload).map((eq) => String(eq.id || '').toLowerCase()).filter(Boolean);
+      return new Set(ids);
+    } catch (_err) {
+      return new Set();
+    }
+  }
+
+  function filterStructuredEditsForEquationCoverage(edits, warnings) {
+    const arr = Array.isArray(edits) ? edits : [];
+    if (!equationCoverageActive()) return arr;
+    const validIds = equationIdSetForCurrentSelection();
+    const out = [];
+    let dropped = 0;
+    arr.forEach((e) => {
+      const id = String(e?.targetId || '').replace(/-/g, '_').toLowerCase();
+      const isEquation = normalizeStructuredTargetType(e?.targetType) === 'equation';
+      if (!isEquation || !id) { dropped += 1; return; }
+      if (validIds && validIds.size && !validIds.has(id)) { dropped += 1; return; }
+      out.push({ ...e, targetType: 'equation', targetId: id });
+    });
+    if (dropped && Array.isArray(warnings)) {
+      warnings.push('Stage 19N1L: dropped ' + dropped + ' structured section/non-equation edit(s) because math/equation coverage mode is active. In this mode only targetType=equation edits with detected equation ids are insertable.');
+    }
+    return out;
+  }
+
   function isEquationExplanationBlock(block) {
     return !!inferEquationTargetIdFromLaiBlock(block);
   }
@@ -2269,7 +2314,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const parsed = lastStructuredEditorData || refreshStructuredEditorData();
     const warnings = [];
     if (!parsed?.ok || !Array.isArray(parsed.edits) || !parsed.edits.length) {
-      warnings.push('Stage 19N1K5: no usable structured editor edits were available, so insertion was blocked instead of guessing from prose.');
+      warnings.push('Stage 19N1L: no usable structured editor edits were available, so insertion was blocked instead of guessing from prose.');
       if (Array.isArray(parsed?.warnings) && parsed.warnings.length) warnings.push(...parsed.warnings);
       if (parsed?.rawJsonText) warnings.push('Raw structured JSON preview: ' + String(parsed.rawJsonText).slice(0, 600));
       else if (parsed?.rawOutputPreview) warnings.push('Final editor output preview: ' + String(parsed.rawOutputPreview).slice(0, 600));
@@ -2309,7 +2354,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       multiSectionFrontendInsertion: true,
       warnings: [
         ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
-        'Stage 19N1H inserted only final-editor \\lai blocks by default, removed duplicate repeated blocks, and dropped contradictory no-edit markers when edits exist for the same target.',
+        'Stage 19N1L inserted only final-editor \\lai blocks by default, removed duplicate repeated blocks, and dropped contradictory no-edit markers when edits exist for the same target.',
         ...(lastInsertionDedupeNotes.length ? ['Deduplication skipped: ' + lastInsertionDedupeNotes.slice(0, 8).join('; ') + (lastInsertionDedupeNotes.length > 8 ? '; ...' : '')] : [])
       ]
     };
