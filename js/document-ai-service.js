@@ -1,5 +1,5 @@
 /* Latexai Stage 19N1P DocumentAIService
- * Stage: stage19n1p-resolver-outcome-reward-feedback-20260529-1
+ * Stage: stage19n1p2-resolver-outcome-direct-memory-reward-feedback-20260529-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
  * - prompts remain developer-managed static frontend files under /prompt/
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1p-resolver-outcome-reward-feedback-20260529-1';
+  const STAGE = 'stage19n1p2-resolver-outcome-direct-memory-reward-feedback-20260529-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -129,28 +129,48 @@
   function resolverFeedbackPayload(pair, keep, keptText) {
     const p = project();
     const outcomeType = resolverOutcomeTypeFor(pair, keep);
-    return {
+    const rewardValue = resolverRewardValueFor(pair, keep);
+    const accepted = outcomeType === 'accepted';
+    const editType = pair?.type || 'unknown';
+    const path = pair?.path || '';
+    const actionType = `resolver_${outcomeType}_${editType}`;
+    const rewardLabel = accepted ? 'positive' : 'negative';
+    const base = {
       outcomeType,
-      rewardValue: resolverRewardValueFor(pair, keep),
+      rewardValue,
+      rewardLabel,
+      accepted,
       workflow: 'latexai-source-scanned-ai-edit-resolver',
+      stepName: 'resolve-ai-edit',
+      actionType,
+      eventType: 'resolver_ai_edit_outcome',
       insertionMode: 'resolver',
+      editMode: editType,
+      source: 'document-ai-resolver',
+      path,
       compileStatus: 'not_checked',
       validationStatus: 'resolved',
+      githubStatus: '',
       actionId: pair?.id || '',
-      sectionId: pair?.path || '',
+      relatedActionId: pair?.id || '',
+      sectionId: path,
       projectId: p?.id || p?.projectId || '',
       paperId: p?.paperId || p?.rootFile || rootPath(),
-      note: `Stage 19N1P resolver outcome: ${outcomeType}; kept=${keep}; type=${pair?.type || 'unknown'}; path=${pair?.path || ''}; line=${pair?.line || '?'}`,
+      note: `Stage 19N1P2 resolver outcome: ${outcomeType}; kept=${keep}; type=${editType}; path=${path}; line=${pair?.line || '?'}`,
+    };
+    return {
+      ...base,
       metadata: {
         frontendStage: STAGE,
-        resolverVersion: 'stage19n1p-v1',
-        source: 'document-ai-resolver',
+        resolverVersion: 'stage19n1p2-v1',
+        source: base.source,
         editId: pair?.id || '',
-        editType: pair?.type || '',
+        editType,
         command: pair?.command || '',
         kept: keep,
         outcomeType,
-        path: pair?.path || '',
+        accepted,
+        path,
         line: pair?.line || null,
         rangeStart: pair?.rangeStart || 0,
         rangeEnd: pair?.rangeEnd || 0,
@@ -164,13 +184,8 @@
     };
   }
 
-  async function postResolverFeedback(payload) {
-    const root = resolverBackendRoot();
-    if (!root) {
-      resolverFeedbackStatus('Resolver outcome not recorded: no Memory/backend URL configured.', 'warn');
-      return { ok: false, skipped: true, reason: 'missing-backend-url' };
-    }
-    const res = await fetch(root + '/debate/record-branch-outcome', {
+  async function postJsonForResolverFeedback(url, payload) {
+    const res = await fetch(url, {
       method: 'POST',
       headers: resolverAuthHeaders(),
       body: JSON.stringify(payload || {}),
@@ -181,6 +196,39 @@
     try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
     if (!res.ok || data?.ok === false) throw new Error(data?.error?.message || data?.detail || data?.message || ('HTTP ' + res.status));
     return data || {};
+  }
+
+  async function postResolverFeedback(payload) {
+    const root = resolverBackendRoot();
+    if (!root) {
+      resolverFeedbackStatus('Resolver outcome not recorded: no Memory/backend URL configured.', 'warn');
+      return { ok: false, skipped: true, reason: 'missing-backend-url' };
+    }
+
+    // Stage 19N1P2 writes directly to the canonical memory reward endpoints.
+    // 19N1P used /debate/record-branch-outcome, which may not populate edit_outcomes.
+    const editOutcome = await postJsonForResolverFeedback(root + '/memory/edit-outcome', payload);
+    let rewardEvent = null;
+    try {
+      rewardEvent = await postJsonForResolverFeedback(root + '/memory/reward', {
+        ...payload,
+        id: undefined,
+        eventType: 'resolver_ai_edit_outcome',
+        relatedActionId: payload?.actionId || payload?.relatedActionId || '',
+        relatedAgentRunId: payload?.agentRunId || payload?.relatedAgentRunId || '',
+      });
+    } catch (rewardErr) {
+      // Keep the edit_outcomes write as success; reward_events is useful but not required.
+      console.warn('[Latexai] Resolver reward event logging failed after edit outcome succeeded', rewardErr);
+      rewardEvent = { ok: false, warning: String(rewardErr?.message || rewardErr) };
+    }
+    return {
+      ok: true,
+      stage: STAGE,
+      editOutcome,
+      rewardEvent,
+      rewardValue: editOutcome?.rewardValue ?? payload?.rewardValue,
+    };
   }
 
   function recordResolverFeedback(pair, keep, keptText) {
