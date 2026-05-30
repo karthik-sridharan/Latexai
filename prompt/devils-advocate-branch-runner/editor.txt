@@ -16,7 +16,7 @@ For each edit, output exactly this format:
 LATEXAI_BLOCK_PATCH_BEGIN
 PATCH_ID: edit-1
 OPERATION: replace_block | insert_after_block | insert_before_block | append_before_end_document | no_edit
-TARGET_BLOCK_ID: one block_id from the SAFE EDIT TARGET BLOCK MAP, unless appending
+TARGET_BLOCK_ID: one block_id from the SAFE EDIT TARGET BLOCK MAP, unless appending. Display equation ids such as eq_003 are allowed only for insert_after_block or insert_before_block
 TARGET_SECTION: optional exact section title
 RATIONALE: short reason for the edit
 BEGIN_NEW_LATEX
@@ -27,12 +27,12 @@ END_NEW_LATEX
 LATEXAI_BLOCK_PATCH_END
 
 MANDATORY SAFETY RULES:
-- The full source is read-only context. You may only target block_id values shown in the SAFE EDIT TARGET BLOCK MAP.
+- The full source is read-only context. You may only target block_id values shown in the SAFE EDIT TARGET BLOCK MAP. Equation/display block ids like eq_003 are anchor-only: use insert_after_block or insert_before_block, never replace_block.
 - Do not reproduce old text. The backend owns the exact old source block for TARGET_BLOCK_ID.
 - Do not output raw \lai{...} or \laiold{...}.
 - Do not output a complete LaTeX document.
 - Do not output \documentclass, \usepackage, \begin{document}, \end{document}, \input, \include, \newtheorem, \newcommand, bibliography setup, or preamble changes.
-- It is OK to output body-level equations, definitions, theorem environments, proof sketches, assumptions, or related-work paragraphs inside BEGIN_NEW_LATEX, provided they belong in the paper body and use existing commands/environments.
+- It is OK to output body-level equations, definitions, theorem environments, proof sketches, assumptions, or related-work paragraphs inside BEGIN_NEW_LATEX, provided they belong in the paper body and use existing commands/environments. New LaTeX must be visible paper content, not only comments; do not prefix each explanation line with %.
 - Do not copy source-context scaffolding or excerpt labels into BEGIN_NEW_LATEX.
 - Forbidden strings include: [important excerpt from this section], [section ending excerpt], [section excerpt truncated by Latexai], LATEXAI_CONTEXT, BEGIN LAI-ACTIONABLE-EDIT, END LAI-ACTIONABLE-EDIT, and markdown fences.
 - Do not include literal backslash-n text as a fake newline; use real line breaks.
@@ -41,7 +41,7 @@ MANDATORY SAFETY RULES:
 
 TARGETING RULES:
 - Prefer replace_block when you are improving an existing paragraph.
-- Prefer insert_after_block when adding a theorem, equation, proof sketch, definition, or explanatory paragraph after a relevant paragraph.
+- Prefer insert_after_block when adding a theorem, equation, proof sketch, definition, or explanatory paragraph after a relevant paragraph or after a display-equation anchor such as eq_003.
 - If no safe edit can be proposed, output one block with OPERATION: no_edit and a short RATIONALE.
 - Keep edits compact enough to review. For long rewrites, provide one paragraph/theorem/proof sketch per patch block.
 
