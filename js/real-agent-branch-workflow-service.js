@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2e-raw-latex-block-patch-protocol-20260530-1';
+  const STAGE = 'stage19t2f-equation-anchor-safe-insertions-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1180,14 +1180,20 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return [
       'MATH EQUATION COVERAGE MODE ACTIVE.',
       'The user specifically asked for mathematical equation / derivation explanations.',
-      'The final editor must provide an explanatory edit below EACH listed equation id, not citation-only or introduction-only edits.',
-      'Use this exact block form for each equation explanation:',
-      '\\lai{%',
-      '% Target equation id: <equation id>',
-      '% Target section: <containing section/unit>',
-      '<short LaTeX-ready explanatory text that should appear immediately below the equation>',
-      '}',
-      'Do not output "No edits recommended" for a listed equation unless the user explicitly asked to skip obvious equations. For this task, every listed equation should get an explanation.',
+      'The final editor must provide an explanatory edit below each listed equation id when useful.',
+      'Use the Stage 19T2F raw block patch protocol, NOT \lai comments. Example:',
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: eq-explain-1',
+      'OPERATION: insert_after_block',
+      'TARGET_BLOCK_ID: <equation id such as eq_003>',
+      'TARGET_SECTION: <containing section/unit>',
+      'RATIONALE: explain why this equation needs clarification',
+      'BEGIN_NEW_LATEX',
+      '<visible LaTeX-ready explanatory text that should appear immediately below the equation>',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END',
+      'Do not prefix the explanation with %. Comment-only edits are invisible and will be rejected by the Safe Edit Compiler.',
+      'Do not output "No edits recommended" for a listed equation unless the equation is already fully explained by nearby text.',
       'Detected display equations visible to the model:',
       items + omitted
     ].join('\n');
@@ -1237,23 +1243,46 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       secIdx += 1;
       const body = String(sec.body || '').slice(Math.max(0, (sec.headerEnd || sec.start || 0) - (sec.start || 0)));
       let pIdx = 0;
-      String(body || '').split(/\n\s*\n+/).forEach((para) => {
+      String(body || '').split(/
+\s*
++/).forEach((para) => {
         const text = String(para || '').trim();
         if (!safeEditTargetableParagraph(text)) { if (text) skippedUnsafe += 1; return; }
         pIdx += 1;
         if (pIdx > 8) return;
         const blockId = 'sec-' + secIdx + '-p-' + pIdx;
-        lines.push(blockId + ' | section=' + sec.title + ' | text=' + truncateMiddle(text.replace(/\s+/g, ' '), 900, ''));
+        lines.push(blockId + ' | type=body_paragraph | ops=replace_block,insert_after_block,insert_before_block | section=' + sec.title + ' | text=' + truncateMiddle(text.replace(/\s+/g, ' '), 900, ''));
       });
     });
-    if (!lines.length) return 'SAFE EDIT TARGET BLOCK MAP: no safe body prose paragraph blocks detected. Return no_edit rather than editing preamble/macros.';
+
+    const targetKeys = (targets || []).map((t) => titleKeyForMatch(t)).filter(Boolean);
+    const eqsAll = extractDisplayEquationTargets(s, { maxCount: 120 });
+    const eqs = targetKeys.length ? eqsAll.filter((eq) => {
+      const secKey = titleKeyForMatch(eq.section || '');
+      return targetKeys.some((t) => secKey === t || secKey.includes(t) || t.includes(secKey));
+    }) : eqsAll;
+    eqs.slice(0, 36).forEach((eq) => {
+      lines.push([
+        eq.id + ' | type=display_equation_anchor | ops=insert_after_block,insert_before_block only',
+        'section=' + (eq.section || 'Document'),
+        'before=' + truncateMiddle(String(eq.before || '').replace(/\s+/g, ' '), 260, ''),
+        'equation=' + truncateMiddle(String(eq.body || '').replace(/\s+/g, ' '), 700, ''),
+        'after=' + truncateMiddle(String(eq.after || '').replace(/\s+/g, ' '), 260, '')
+      ].join(' | '));
+    });
+
+    if (!lines.length) return 'SAFE EDIT TARGET BLOCK MAP: no safe body paragraph or display-equation anchor blocks detected. Return no_edit rather than editing preamble/macros.';
     return [
-      'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR (BODY PROSE ONLY):',
+      'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR (BODY PARAGRAPHS + EQUATION ANCHORS):',
       'Use only these block_id values. Preamble, macro definitions, theorem declarations, bibliography setup, command-heavy blocks, and environment boundaries are intentionally hidden and cannot be edited.',
-      'Return the Stage 19T2E RAW LATEX BLOCK PATCH protocol, not JSON and not raw \\lai markup. Use TARGET_BLOCK_ID from this map and place replacement/inserted LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
+      'Body paragraph blocks may be replaced or used as insertion anchors. Display-equation blocks like eq_003 are anchor-only: use insert_after_block or insert_before_block, never replace_block.',
+      'Return the Stage 19T2F RAW LATEX BLOCK PATCH protocol, not JSON and not raw \lai markup. Use TARGET_BLOCK_ID from this map and place replacement/inserted visible LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
+      'For explanatory text below equations, do NOT prefix each line with %. Comment-only edits are rejected because they are invisible in the PDF.',
       skippedUnsafe ? ('Unsafe non-prose blocks hidden from the final editor: ' + skippedUnsafe + '.') : '',
-      lines.join('\n')
-    ].filter(Boolean).join('\n');
+      lines.join('
+')
+    ].filter(Boolean).join('
+');
   }
 
   function buildSafeEditorVisibleContext(runPayload) {
