@@ -180,7 +180,46 @@
     return { ...validation, routeKey, requestedProvider: explicitProvider, requestedModel: explicitModel };
   }
 
+
+  function scrubInternalChangeMarkersFromAiText(value) {
+    let s = String(value || '');
+    // Remove common internal macro-definition blocks and source-level markers from model-visible payloads.
+    s = s.replace(/\n?% --- Latexai old-content highlighting macro ---[\s\S]*?% --- end Latexai old-content highlighting macro ---\n?/gi, '\n');
+    s = s.replace(/\n?% --- Latexai AI-change highlighting macro ---[\s\S]*?% --- end Latexai AI-change highlighting macro ---\n?/gi, '\n');
+    s = s.split(/\r?\n/).filter((line) => {
+      const x = line.trim();
+      if (/^\\newif\\iflaishowchanges\b/i.test(x)) return false;
+      if (/^\\laishowchanges(?:true|false)\b/i.test(x)) return false;
+      if (/^\\(?:long\\def|def)\\lai(?:old)?\b/i.test(x)) return false;
+      if (/^\\(?:newcommand|providecommand|renewcommand)\s*\{\\lai(?:old)?\}/i.test(x)) return false;
+      return true;
+    }).join('\n');
+    // Keep the content roughly visible but hide the internal command names.
+    s = s.replace(/\\laiold\s*\{/g, '{');
+    s = s.replace(/\\lai\s*\{/g, '{');
+    s = s.replace(/\\laiold\b/g, 'internal-old-change-marker');
+    s = s.replace(/\\lai\b/g, 'internal-new-change-marker');
+    s = s.replace(/\blaiold\b/gi, 'internal old change marker');
+    s = s.replace(/\blai\b/gi, 'internal change marker');
+    s = s.replace(/\\laishowchanges(?:true|false)?\b/g, 'internal-change-display-toggle');
+    s = s.replace(/\blaishowchanges(?:true|false)?\b/gi, 'internal change display toggle');
+    return s;
+  }
+
+  function scrubInternalChangeMarkersFromAiValue(value) {
+    if (typeof value === 'string') return scrubInternalChangeMarkersFromAiText(value);
+    if (Array.isArray(value)) return value.map(scrubInternalChangeMarkersFromAiValue);
+    if (value && typeof value === 'object') {
+      const out = {};
+      Object.entries(value).forEach(([k, v]) => { out[k] = scrubInternalChangeMarkersFromAiValue(v); });
+      return out;
+    }
+    return value;
+  }
+
   async function ask(payload, meta = {}) {
+    payload = scrubInternalChangeMarkersFromAiValue(payload || {});
+    meta = scrubInternalChangeMarkersFromAiValue(meta || {});
     if (NS.ModelRegistryService?.syncVisibleProviderModel && !meta.modelRoutingBypass && !payload?.modelRoutingBypass) {
       try { NS.ModelRegistryService.syncVisibleProviderModel({ repair: true }); } catch (_err) {}
     }
