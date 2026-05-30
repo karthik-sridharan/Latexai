@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t-knowledge-aware-review-agents-20260530-1';
+  const STAGE = 'stage19t2-safe-edit-compiler-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -589,7 +589,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   }
 
   function normalizeLaiDraftForCompilation(text, mode) {
-    let s = ensureLatexaiColorMacros(String(text || ''));
+    let s = ensureLatexaiColorMacros(decodeAiEscapedControlCharsForInsertion(text));
     // Append-only drafts from Stage 19M2 may include \lai blocks after \end{document}.
     // LaTeX ignores anything after \end{document}, so move those suggestions just before it.
     if (mode === 'append' || containsLaiMarkup(s.slice((findLastEndDocument(s)?.end || s.length)))) {
@@ -985,7 +985,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const mode = payloadSourceMode();
     const src = stripLatexaiVisibleEditBlocks(getActiveSource());
     if (mode === 'omit_full_source') return '';
-    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '... [payload latexSource truncated by Latexai Stage 19N1H] ...');
+    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '');
     return src;
   }
 
@@ -1086,10 +1086,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       const key = Math.floor(pos / 400);
       if (seen.has(key)) continue;
       seen.add(key);
-      chunks.push('\n% ... [important excerpt from this section] ...\n' + body.slice(pos, Math.min(body.length, pos + 900)));
+      chunks.push('\n' + body.slice(pos, Math.min(body.length, pos + 900)));
     }
-    chunks.push('\n% ... [section ending excerpt] ...\n' + body.slice(-last));
-    return truncateMiddle(chunks.join('\n'), budget + 700, '% ... [section excerpt truncated by Latexai] ...');
+    chunks.push('\n' + body.slice(-last));
+    return truncateMiddle(chunks.join('\n'), budget + 700, '');
   }
 
 
@@ -1189,6 +1189,40 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     ].join('\n');
   }
 
+  function buildSafeEditBlockMapForPrompt(source, targets) {
+    const s = String(source || '');
+    const units = topLevelSections(s);
+    const chosen = [];
+    (targets || []).forEach((t) => {
+      const hit = unitByTitle(units, t);
+      if (hit && !chosen.includes(hit)) chosen.push(hit);
+    });
+    const use = chosen.length ? chosen : units.slice(0, 8);
+    const lines = [];
+    let secIdx = 0;
+    use.forEach((sec) => {
+      secIdx += 1;
+      const body = String(sec.body || '').slice(Math.max(0, (sec.headerEnd || sec.start || 0) - (sec.start || 0)));
+      let pIdx = 0;
+      String(body || '').split(/\n\s*\n+/).forEach((para) => {
+        const text = String(para || '').trim();
+        if (!text || /^%/.test(text)) return;
+        if (text.length < 30) return;
+        pIdx += 1;
+        if (pIdx > 8) return;
+        const blockId = 'sec-' + secIdx + '-p-' + pIdx;
+        lines.push(blockId + ' | section=' + sec.title + ' | text=' + truncateMiddle(text.replace(/\s+/g, ' '), 900, ''));
+      });
+    });
+    if (!lines.length) return 'SAFE EDIT TARGET BLOCK MAP: no paragraph blocks detected; use target_section plus insert_after_paragraph only.';
+    return [
+      'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR:',
+      'Use these block_id values when choosing where edits should go. The backend Safe Edit Compiler will reject invented block ids or stale replacement text.',
+      'Do not copy excerpt labels or omitted text into edits. Return edit intent only; do not output raw \\lai markup as the authoritative patch.',
+      lines.join('\n')
+    ].join('\n');
+  }
+
   function buildSectionAwareExcerpt(runPayload) {
     const source = sourceForAgentVisiblePrompt();
     const units = topLevelSections(source);
@@ -1199,14 +1233,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
     contextParts.push('Document section/chapter/subsection outline:\n' + outline);
     contextParts.push('Visible context mode: ' + mode + '.');
+    contextParts.push(buildSafeEditBlockMapForPrompt(source, targets));
 
     if (mode === 'whole_truncated_selected_focus') {
-      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, '% ... [whole paper middle truncated by Latexai Stage 19N1H] ...'));
+      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, ''));
     } else if (mode === 'full_source_if_safe') {
       if (source.length <= 65000) {
         contextParts.push('===== FULL PAPER CONTEXT (VISIBLE TO MODEL) =====\n' + source);
       } else {
-        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, '% ... [full paper truncated by Latexai Stage 19N1H for prompt length] ...'));
+        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, ''));
       }
     } else if (mode === 'selected_excerpts_only') {
       // No full outline beyond the compact outline above; selected excerpts follow below.
@@ -2349,6 +2384,43 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return out;
   }
 
+
+
+  function decodeAiEscapedControlCharsForInsertion(text) {
+    let s = String(text || '');
+    if (!s) return s;
+    // Final editor JSON sometimes double-escapes newlines, leaving literal
+    // backslash-n text in the source. Decode these only in AI-generated edit
+    // fragments, not in the user's whole source.
+    s = s.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\t/g, '  ');
+    return s;
+  }
+
+  function containsLatexaiContextScaffold(text) {
+    const s = String(text || '');
+    return /\[\s*(?:important\s+excerpt\s+from\s+this\s+section|section\s+ending\s+excerpt|section\s+excerpt\s+truncated\s+by\s+Latexai)\s*\]/i.test(s)
+      || /LATEXAI_CONTEXT_|LAI-ACTIONABLE-EDIT|BEGIN\s+LAI-ACTIONABLE|END\s+LAI-ACTIONABLE/i.test(s)
+      || /%\s*\.\.\.\s*\[(?:important|section)\b/i.test(s);
+  }
+
+  function sanitizeAiPatchTextForInsertion(text) {
+    let s = decodeAiEscapedControlCharsForInsertion(text).trim();
+    if (!s) return '';
+    // These strings are source-context scaffolds used to keep prompts short.
+    // If they appear in a proposed edit, the model copied context rather than
+    // writing paper-ready text. Drop the edit instead of inserting malformed
+    // LaTeX such as literal \n's or "[important excerpt...]" placeholders.
+    if (containsLatexaiContextScaffold(s)) return '';
+    s = s
+      .replace(/^```(?:latex|tex|json)?\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .replace(/^\s*%\s*(?:BEGIN|END)\s+LAI[^\n]*\n?/gim, '')
+      .replace(/^\s*%\s*LATEXAI_CONTEXT[^\n]*\n?/gim, '')
+      .trim();
+    if (containsLatexaiContextScaffold(s)) return '';
+    return s;
+  }
+
   function stripLeadingMatchingSectionCommand(text, targetSection) {
     let value = String(text || '').trim();
     const target = normalizeSectionTitle(targetSection || '').toLowerCase();
@@ -2369,11 +2441,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function structuredEditLatexBlock(edit) {
     const e = edit || {};
     const targetType = normalizeStructuredTargetType(e.targetType);
-    const action = normalizeStructuredAction(e.action);
+    let action = normalizeStructuredAction(e.action);
     const targetSection = clean(e.targetSection || '');
     const targetId = clean(e.targetId || '');
-    let latex = sanitizeStructuredLatexTextForCompile(String(e.latex || '').trim());
-    let oldLatex = sanitizeStructuredLatexTextForCompile(String(e.oldLatex || '').trim());
+    let latex = sanitizeAiPatchTextForInsertion(e.latex || '');
+    let oldLatex = sanitizeAiPatchTextForInsertion(e.oldLatex || '');
+    if (action !== 'no_edit' && !latex) return '';
+    if (action === 'replace' && !oldLatex) action = 'insert_after';
+    latex = sanitizeStructuredLatexTextForCompile(latex.trim());
+    oldLatex = sanitizeStructuredLatexTextForCompile(oldLatex.trim());
     if (targetSection) {
       latex = stripLeadingMatchingSectionCommand(latex, targetSection);
       oldLatex = stripLeadingMatchingSectionCommand(oldLatex, targetSection);
@@ -2519,8 +2595,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const kept = [];
     const skipped = [];
     (blocks || []).forEach((block) => {
-      const b = String(block || '').trim();
+      const b = decodeAiEscapedControlCharsForInsertion(String(block || '')).trim();
       if (!b) return;
+      if (containsLatexaiContextScaffold(b)) {
+        skipped.push('dropped copied context/excerpt scaffold block: ' + canonicalizeLaiBlock(b).slice(0, 90));
+        return;
+      }
       if (isPatchStyleLaiBlock(b)) kept.push(b);
       else skipped.push('dropped advisory/non-patch block: ' + canonicalizeLaiBlock(b).slice(0, 90));
     });
@@ -2921,6 +3001,16 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   }
 
   function enhanceInsertionDataWithMultiSectionDrafts(data) {
+    if (data && data.safeCompiler && data.safeCompiler.enabled) {
+      return {
+        ...data,
+        multiSectionFrontendInsertion: false,
+        warnings: [
+          ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
+          'Stage 19T2 Safe Edit Compiler is authoritative: raw AI LaTeX was not inserted directly.'
+        ]
+      };
+    }
     const source = getActiveSource();
     const targets = desiredTargetSections(selectedRealPayload() || lastRealRunData || lastSelectionData || {});
     const blocks = laiBlocksForInsertion();
@@ -2971,8 +3061,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       executionPlan,
       realAgentRunResult: lastRealRunData || null,
       cleanerResult: lastCleanerData || null,
+      structuredEditorData: lastStructuredEditorData || refreshStructuredEditorData(),
       cleanedLaiBlocks: lastCleanerData?.insertableLaiBlocks || lastCleanerData?.validVisibleLaiBlocks || lastRealRunData?.insertableLaiBlocks || lastRealRunData?.visibleLaiBlocks || [],
-      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}) }
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}), safeEditCompilerRequested: true }
     };
   }
 
@@ -2984,6 +3075,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const chosenDraft = inputValue('branchWorkflowInsertMode', 'targeted') === 'append' ? appendDraft : normalizeLaiDraftForCompilation(targetedDraft, 'targeted');
     const body =
       '<div class="settings-note"><strong>safeToInsert:</strong> ' + esc(data?.safeToInsert) + ' · safeToAutoApply=' + esc(data?.safeToAutoApply) + ' · blocks=' + esc(data?.blockCount || 0) + '</div>' +
+      (data?.safeCompiler?.enabled ? '<div class="settings-note good"><strong>Safe Edit Compiler active:</strong> AI output was treated as untrusted edit intent and deterministically compiled. Version: ' + esc(data.safeCompiler.version || '') + '</div>' : '') +
+      (Array.isArray(data?.validationErrors) && data.validationErrors.length ? '<div class="settings-note bad"><strong>Validation errors:</strong> ' + esc(data.validationErrors.join('; ')) + '</div>' : '') +
+      (Array.isArray(data?.rejectedEdits) && data.rejectedEdits.length ? '<details open><summary>Rejected unsafe edits</summary><pre>' + esc(JSON.stringify(data.rejectedEdits, null, 2)) + '</pre></details>' : '') +
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || (Array.isArray(data?.targetSections) ? data.targetSections.join(', ') : 'append/end')) + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
       (data?.multiSectionFrontendInsertion ? '<div class="settings-note good">Multi-section frontend insertion is active. Block targets: ' + esc((data.blockSectionTargets || []).join(', ') || 'none inferred') + '</div>' : '') +
       '<details open><summary>Structured edit schema preview</summary>' + renderStructuredEditorPreviewHtml(lastStructuredEditorData || refreshStructuredEditorData()) + '</details>' +
@@ -3007,7 +3101,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     lastInsertionData = data;
     renderInsertion(data);
     try { await saveCurrentBranchRun('insertion_preview_prepared', { quiet: true }); } catch (_err) {}
-    status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '. Preview is shown in the dock above and in the output box below.', 'good');
+    status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '. Preview is shown in the dock above and in the output box below.', data.safeToInsert ? 'good' : 'bad');
     revealWorkflowPreview();
     return data;
   }
@@ -3411,7 +3505,7 @@ async function learnedSelectBranch() {
   }
 
   function laiBlocksFromDraftFragment(text) {
-    const fragment = stripAccidentalPreambleFromFragment(text);
+    const fragment = stripAccidentalPreambleFromFragment(decodeAiEscapedControlCharsForInsertion(text));
     const laiBlocks = parseLatexMacroBlocks(fragment, 'lai');
     const oldBlocks = parseLatexMacroBlocks(fragment, 'laiold');
     if (!laiBlocks.length) {
@@ -3456,6 +3550,10 @@ async function learnedSelectBranch() {
       throw new Error('Blocked unsafe Devil’s Advocate apply: a package command would be placed before \\documentclass.');
     }
 
+    if (containsLatexaiContextScaffold(visualText)) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: the generated insertion still contains prompt excerpt placeholders such as [important excerpt from this section]. Re-run the branch after the Stage 19T1 prompt/sanitizer fix.');
+    }
+
     // Stage 19N1R7: never silently accept a no-op insertion. If the cleaned
     // draft equals the current paper, or adds no visible \lai/\laiold blocks,
     // build a conservative visible fallback from the final editor/schema text.
@@ -3480,6 +3578,12 @@ async function learnedSelectBranch() {
 
   async function applyDraft(kind) {
     if (!lastInsertionData) await prepareInsertion();
+    if (lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert !== true) {
+      throw new Error('Safe Edit Compiler blocked apply: ' + ((lastInsertionData.validationErrors || []).join('; ') || (lastInsertionData.warnings || []).join('; ') || 'unsafe or empty edit proposal'));
+    }
+    if (lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert !== true) {
+      throw new Error('Safe Edit Compiler blocked apply: ' + ((lastInsertionData.validationErrors || []).join('; ') || (lastInsertionData.warnings || []).join('; ') || 'unsafe or empty edit proposal'));
+    }
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
@@ -3599,7 +3703,7 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T ready. Knowledge retriever context is available for Devil’s Advocate runs; preview insertion before applying edits.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2 ready. Safe Edit Compiler is active: preview validates AI edit intent before any LAI insertion.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
