@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2c-backslash-preservation-safe-edit-guard-20260530-1';
+  const STAGE = 'stage19t2d-body-only-safe-edit-targets-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1193,6 +1193,29 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     ].join('\n');
   }
 
+  function safeEditBodyBounds(source) {
+    const s = String(source || '');
+    const b = s.indexOf('\\begin{document}');
+    const e = s.lastIndexOf('\\end{document}');
+    const start = b >= 0 ? b + '\\begin{document}'.length : 0;
+    const end = e > start ? e : s.length;
+    return { start, end };
+  }
+
+  function safeEditTargetableParagraph(text) {
+    const t = String(text || '').trim();
+    if (!t || t.length < 30) return false;
+    if (/^%/.test(t)) return false;
+    if (t.split(/\n/).filter(Boolean).every((ln) => /^\s*%/.test(ln))) return false;
+    if (/^\s*\\(?:documentclass|usepackage|RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|DeclareRobustCommand|def|let|newtheorem|theoremstyle|title|author|date|bibliography|bibliographystyle|bibpunct|input|include)\b/im.test(t)) return false;
+    const lines = t.split(/\n/).filter((ln) => ln.trim());
+    const commandLines = lines.filter((ln) => /^\s*\\[A-Za-z@]+/.test(ln));
+    if (lines.length && commandLines.length / Math.max(1, lines.length) >= 0.55) return false;
+    const commandCount = (t.match(/\\[A-Za-z@]+/g) || []).length;
+    if (commandCount > Math.max(8, Math.floor(t.length / 90))) return false;
+    return true;
+  }
+
   function buildSafeEditBlockMapForPrompt(source, targets) {
     const s = String(source || '');
     const units = topLevelSections(s);
@@ -1201,30 +1224,66 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       const hit = unitByTitle(units, t);
       if (hit && !chosen.includes(hit)) chosen.push(hit);
     });
-    const use = chosen.length ? chosen : units.slice(0, 8);
+    const bodyBounds = safeEditBodyBounds(s);
+    const bodyUnits = units.filter((u) => {
+      const st = Number(u.start || 0);
+      return st >= bodyBounds.start && st < bodyBounds.end;
+    });
+    const use = chosen.length ? chosen : bodyUnits.slice(0, 8);
     const lines = [];
     let secIdx = 0;
+    let skippedUnsafe = 0;
     use.forEach((sec) => {
       secIdx += 1;
       const body = String(sec.body || '').slice(Math.max(0, (sec.headerEnd || sec.start || 0) - (sec.start || 0)));
       let pIdx = 0;
       String(body || '').split(/\n\s*\n+/).forEach((para) => {
         const text = String(para || '').trim();
-        if (!text || /^%/.test(text)) return;
-        if (text.length < 30) return;
+        if (!safeEditTargetableParagraph(text)) { if (text) skippedUnsafe += 1; return; }
         pIdx += 1;
         if (pIdx > 8) return;
         const blockId = 'sec-' + secIdx + '-p-' + pIdx;
         lines.push(blockId + ' | section=' + sec.title + ' | text=' + truncateMiddle(text.replace(/\s+/g, ' '), 900, ''));
       });
     });
-    if (!lines.length) return 'SAFE EDIT TARGET BLOCK MAP: no paragraph blocks detected; use target_section plus insert_after_paragraph only.';
+    if (!lines.length) return 'SAFE EDIT TARGET BLOCK MAP: no safe body prose paragraph blocks detected. Return no_edit rather than editing preamble/macros.';
     return [
-      'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR:',
-      'Use these block_id values when choosing where edits should go. The backend Safe Edit Compiler will reject invented block ids or stale replacement text.',
-      'Do not copy excerpt labels or omitted text into edits. Return edit intent only; do not output raw \\lai markup as the authoritative patch.',
+      'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR (BODY PROSE ONLY):',
+      'Use only these block_id values. Preamble, macro definitions, theorem declarations, bibliography setup, command-heavy blocks, and environment boundaries are intentionally hidden and cannot be edited.',
+      'Return edit intent only; do not output raw \\lai markup as the authoritative patch. Prefer prose-only new_text. If LaTeX commands are unavoidable in JSON, double-escape backslashes, but avoid preamble/structural commands entirely.',
+      skippedUnsafe ? ('Unsafe non-prose blocks hidden from the final editor: ' + skippedUnsafe + '.') : '',
       lines.join('\n')
-    ].join('\n');
+    ].filter(Boolean).join('\n');
+  }
+
+  function buildSafeEditorVisibleContext(runPayload) {
+    const source = sourceForAgentVisiblePrompt();
+    const units = topLevelSections(source);
+    const targets = desiredTargetSections(runPayload);
+    const outline = units.length ? units.map((u, i) => String(i + 1) + '. ' + latexStructureLabel(u)).join('\n') : '(no LaTeX structural headings detected)';
+    const chosen = [];
+    (targets || []).forEach((t) => {
+      const hit = unitByTitle(units, t);
+      if (hit && !chosen.includes(hit)) chosen.push(hit);
+    });
+    const use = chosen.length ? chosen : units.slice(0, 6);
+    const excerpts = [];
+    use.forEach((sec) => {
+      const paras = [];
+      String(sec.body || '').split(/\n\s*\n+/).forEach((para) => {
+        const text = String(para || '').trim();
+        if (safeEditTargetableParagraph(text) && paras.length < 4) paras.push(text.replace(/\s+/g, ' '));
+      });
+      if (paras.length) {
+        excerpts.push('===== SAFE BODY PROSE EXCERPT: ' + latexStructureLabel(sec) + ' =====\n' + paras.map((p, i) => 'P' + (i + 1) + ': ' + truncateMiddle(p, 1200, '')).join('\n\n'));
+      }
+    });
+    return [
+      'Document outline only; raw preamble/macros are intentionally not shown to the final editor.',
+      outline,
+      buildSafeEditBlockMapForPrompt(source, targets),
+      excerpts.length ? excerpts.join('\n\n') : 'No safe body prose excerpts available; return no_edit.'
+    ].join('\n\n');
   }
 
   function buildSectionAwareExcerpt(runPayload) {
@@ -1573,7 +1632,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       equationCoverageActive: equationCoverageActive() ? 'true' : 'false',
       paperSummary: inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.'),
       reviewText: inputValue('branchWorkflowReviewText', inputValue('branchWorkflowQuery', '')),
-      visibleContext: buildSectionAwareExcerpt(runPayload),
+      visibleContext: /editor|final|visible-lai|implementation-plan/i.test(String(step?.agentRole || '') + ' ' + String(step?.taskType || '') + ' ' + String(step?.expectedOutput || '')) ? buildSafeEditorVisibleContext(runPayload) : buildSectionAwareExcerpt(runPayload),
       stage: STAGE
     });
   }
@@ -3763,7 +3822,7 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2B ready. Safe Edit Compiler + one-pass structured JSON repair are active before any LAI insertion.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2D ready. Safe Edit Compiler uses body-only safe targets; preamble/macros are hidden from the final editor and cannot be edited.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
