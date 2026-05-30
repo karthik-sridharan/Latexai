@@ -10,42 +10,16 @@ Coverage rule for the final editor step:
 
 Equation-focused override:
 - If MATH EQUATION COVERAGE MODE ACTIVE appears later in the prompt, the editor must prioritize the equation inventory and output one explanatory block per listed equation id.
-- Equation explanations must use `% Target equation id: eq_###` so the frontend can place them immediately below the corresponding equation.
+- Equation explanations must target the listed equation id using TARGET_BLOCK_ID: eq_### with OPERATION: insert_after_block.
 - In equation mode, do not drift into citation-only, related-work-only, or introduction-only edits.
 
-Patch-style block requirements:
-- DO NOT output review/advice prose such as "Add a paragraph...", "Insert after...", "Replace the current paragraph with...", or "Consider citing..." inside \lai.
-- Instead, output the actual LaTeX-ready text to insert, or a true replacement pair using \laiold{old text}\lai{new text}.
-- Put the target label as a LaTeX comment inside the block, not as visible paper text.
+Raw patch protocol requirements:
+- The editor must use LATEXAI_BLOCK_PATCH_BEGIN / LATEXAI_BLOCK_PATCH_END blocks.
+- Put metadata in PATCH_ID, OPERATION, TARGET_BLOCK_ID, TARGET_SECTION, and RATIONALE fields.
+- Put only the actual visible LaTeX content between BEGIN_NEW_LATEX and END_NEW_LATEX.
+- Do not output Latexai internal change-marker macros. The deterministic compiler adds all old/new wrappers.
+- Do not prefix visible paper text with %.
 
-Insertion block format:
-\lai{%
-% Target section: <exact section title>
-<actual LaTeX-ready text to insert in the paper>
-}
+Deduplication rule: repeated citation-gap, related-work, assumption, novelty, limitation, positioning, or equation-explanation edits should be consolidated by the final editor into one best raw patch per target whenever possible. Earlier debate agents should discuss candidates, but only the final editor should output final raw patch blocks.
 
-Equation explanation block format:
-\lai{%
-% Target equation id: <exact equation id>
-% Target section: <containing section/unit>
-<actual LaTeX-ready explanation to appear immediately below that equation>
-}
-
-Replacement block format:
-\laiold{<short exact old text being replaced>}\lai{%
-% Target section: <exact section title>
-<actual LaTeX-ready replacement text>
-}
-
-No-edit block format:
-\lai{%
-% Target section: <exact section title>
-\emph{No edits recommended.}
-}
-
-Deduplication rule: repeated citation-gap, related-work, assumption, novelty, limitation, positioning, or equation-explanation edits should be consolidated by the final editor into one best patch per target whenever possible. Earlier debate agents should discuss candidates, but only the final editor should output final \lai or \laiold blocks.
-
-Stage 19N1K structured editor schema note:
-- The final editor should encode the final answer in the structured JSON schema requested by editor.txt.
-- Section coverage should be represented by one or more JSON edit objects per requested target.
-- Equation coverage should be represented by one JSON edit object per equation id.
+Safety rule: Never include source-context scaffolding in visible edits. Do not output `[important excerpt from this section]`, `[section ending excerpt]`, `[section excerpt truncated by Latexai]`, legacy source-context begin/end markers, or literal `\n` backslash-n text inside BEGIN_NEW_LATEX.

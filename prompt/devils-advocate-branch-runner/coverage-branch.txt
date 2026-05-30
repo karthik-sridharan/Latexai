@@ -1,29 +1,16 @@
 Section coverage mode: selected branch target only.
 Requested target sections/units: {{requestedTargets}}.
-For every requested target section/unit, the final editor step must provide at least one patch-style coverage block.
+For every requested target section/unit, the final editor step must provide at least one raw LaTeX block patch when an actionable edit is useful.
 
 Equation-focused override:
 - If MATH EQUATION COVERAGE MODE ACTIVE appears later in the prompt, the final editor must prioritize the equation inventory and output one explanatory block per listed equation id.
-- Equation explanations must use `% Target equation id: eq_###` so the frontend can place them immediately below the corresponding equation.
+- Equation explanations must target the listed equation id using TARGET_BLOCK_ID: eq_### with OPERATION: insert_after_block.
 - In equation mode, do not drift into citation-only, related-work-only, or introduction-only edits.
 
-If no edit is needed for a section, use exactly:
-\lai{%
-% Target section: <exact section title>
-\emph{No edits recommended.}
-}
+If no edit is needed for a section, the final editor should return OPERATION: no_edit in the raw block patch protocol.
 
-If an edit is needed, do NOT output advice text like "Insert after" or "Replace the paragraph with". Output actual LaTeX-ready inserted text or a true \laiold{old}\lai{new} replacement pair. Put the target label as a LaTeX comment inside the block.
+If an edit is needed, the final editor must output actual LaTeX-ready inserted/replacement content inside BEGIN_NEW_LATEX. Do not output Latexai internal change-marker macros; the compiler adds all wrappers.
 
-Equation explanation block format:
-\lai{%
-% Target equation id: <exact equation id>
-% Target section: <containing section/unit>
-<actual LaTeX-ready explanation to appear immediately below that equation>
-}
+Deduplication rule: if multiple agents propose the same edit, the final editor should keep one best version only and should not output shorter paraphrases of the same recommendation. Earlier debate agents should not output final raw patch blocks.
 
-Deduplication rule: if multiple agents propose the same edit, the final editor should keep one best version only and should not output shorter paraphrases of the same recommendation. Earlier debate agents should not output final \lai or \laiold blocks.
-
-Stage 19N1K structured editor schema note:
-- The final editor should encode the final answer in the structured JSON schema requested by editor.txt.
-- The JSON schema is authoritative; optional \lai blocks are only a human-readable mirror.
+Safety rule: Never include source-context scaffolding in visible edits. Do not output `[important excerpt from this section]`, `[section ending excerpt]`, `[section excerpt truncated by Latexai]`, legacy source-context begin/end markers, or literal `\n` backslash-n text inside BEGIN_NEW_LATEX.

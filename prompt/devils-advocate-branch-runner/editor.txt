@@ -7,7 +7,7 @@ Full prior debate transcript:
 {{transcript}}
 
 CRITICAL ARCHITECTURE RULE:
-You do not output \lai or \laiold, and you do not return a full modified document. A deterministic Safe Edit Compiler will decide exactly where the edit goes, wrap the old source in \laiold{...}, wrap your new content in \lai{...}, validate a shadow copy, and only then allow Apply.
+You do not output Latexai internal change-marker macros, and you do not return a full modified document. A deterministic Safe Edit Compiler will decide exactly where the edit goes, wrap old/new content itself, validate a shadow copy, and only then allow Apply.
 
 Use the RAW LATEX BLOCK PATCH protocol below. This protocol is intentionally NOT JSON, so LaTeX backslashes like \theta, \newcommand, \begin{theorem}, and \[ ... \] are not damaged by JSON escape parsing.
 
@@ -29,12 +29,12 @@ LATEXAI_BLOCK_PATCH_END
 MANDATORY SAFETY RULES:
 - The full source is read-only context. You may only target block_id values shown in the SAFE EDIT TARGET BLOCK MAP. Equation/display block ids like eq_003 are anchor-only: use insert_after_block or insert_before_block, never replace_block.
 - Do not reproduce old text. The backend owns the exact old source block for TARGET_BLOCK_ID.
-- Do not output raw \lai{...} or \laiold{...}.
+- Do not output Latexai internal change-marker macros.
 - Do not output a complete LaTeX document.
 - Do not output \documentclass, \usepackage, \begin{document}, \end{document}, \input, \include, \newtheorem, \newcommand, bibliography setup, or preamble changes.
 - It is OK to output body-level equations, definitions, theorem environments, proof sketches, assumptions, or related-work paragraphs inside BEGIN_NEW_LATEX, provided they belong in the paper body and use existing commands/environments. New LaTeX must be visible paper content, not only comments; do not prefix each explanation line with %.
 - Do not copy source-context scaffolding or excerpt labels into BEGIN_NEW_LATEX.
-- Forbidden strings include: [important excerpt from this section], [section ending excerpt], [section excerpt truncated by Latexai], LATEXAI_CONTEXT, BEGIN LAI-ACTIONABLE-EDIT, END LAI-ACTIONABLE-EDIT, and markdown fences.
+- Forbidden strings include: [important excerpt from this section], [section ending excerpt], [section excerpt truncated by Latexai], LATEXAI_CONTEXT, legacy source-context begin/end markers, and markdown fences.
 - Do not include literal backslash-n text as a fake newline; use real line breaks.
 - Do not duplicate section headings. Normally BEGIN_NEW_LATEX should not start with \section{...}.
 - Do not invent citations. Use citation placeholders only if the user already uses placeholders or explicitly asks.
