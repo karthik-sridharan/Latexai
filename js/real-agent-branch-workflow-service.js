@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2d-body-only-safe-edit-targets-20260530-1';
+  const STAGE = 'stage19t2e-raw-latex-block-patch-protocol-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1250,7 +1250,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return [
       'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR (BODY PROSE ONLY):',
       'Use only these block_id values. Preamble, macro definitions, theorem declarations, bibliography setup, command-heavy blocks, and environment boundaries are intentionally hidden and cannot be edited.',
-      'Return edit intent only; do not output raw \\lai markup as the authoritative patch. Prefer prose-only new_text. If LaTeX commands are unavoidable in JSON, double-escape backslashes, but avoid preamble/structural commands entirely.',
+      'Return the Stage 19T2E RAW LATEX BLOCK PATCH protocol, not JSON and not raw \\lai markup. Use TARGET_BLOCK_ID from this map and place replacement/inserted LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
       skippedUnsafe ? ('Unsafe non-prose blocks hidden from the final editor: ' + skippedUnsafe + '.') : '',
       lines.join('\n')
     ].filter(Boolean).join('\n');
@@ -1800,7 +1800,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         promptSeed: prompt,
         dryRun: true,
         latencyMs: 0,
-        outputText: isFinal ? '[DRY RUN] Final safe edit intent after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\nLATEXAI_STRUCTURED_EDIT_JSON_BEGIN\n' + JSON.stringify({ ok: true, editMode: 'safe_edit_intent_v1', edits: [{ kind: 'insert_after_paragraph', target_block_id: '', target_section: (desiredTargetSections(runPayload)[0] || 'Introduction'), old_text_exact: '', new_text: equationCoverageActive() ? 'This equation states the key mathematical condition and should be read together with the surrounding definitions.' : 'This paragraph records the selected branch improvement after reviewing the debate transcript.', rationale: 'dry-run structured safe edit intent example' }], warnings: ['dry-run safe edit intent example'] }, null, 2) + '\nLATEXAI_STRUCTURED_EDIT_JSON_END' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
+        outputText: isFinal ? '[DRY RUN] Final raw LaTeX block patch after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\nLATEXAI_BLOCK_PATCH_BEGIN\nPATCH_ID: dry-run-edit-1\nOPERATION: insert_after_block\nTARGET_BLOCK_ID: sec-1-p-1\nTARGET_SECTION: ' + (desiredTargetSections(runPayload)[0] || 'Introduction') + '\nRATIONALE: dry-run raw LaTeX block patch example\nBEGIN_NEW_LATEX\n' + (equationCoverageActive() ? 'This equation states the key mathematical condition and should be read together with the surrounding definitions.\n\\[\nL(\\theta)=\\sum_{i=1}^n \\ell(\\theta;X_i).\n\\]' : 'This paragraph records the selected branch improvement after reviewing the debate transcript.') + '\nEND_NEW_LATEX\nLATEXAI_BLOCK_PATCH_END' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
       };
       publishPromptDebugEvent('dry-run output generated', step, prompt, aiPayload, { status: 'dry-run-output-generated', outputText: dryOutput.outputText });
       return dryOutput;
@@ -2296,8 +2296,60 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit' || e.kind === 'no_edit');
   }
 
+  function parseRawLatexBlockPatchOutputText(text) {
+    const raw = String(text || '');
+    const result = { ok: false, source: 'none', editMode: 'raw_latex_block_patch_v1', edits: [], warnings: [] };
+    const blocks = [];
+    const re = /LATEXAI_BLOCK_PATCH_BEGIN\s*([\s\S]*?)\s*LATEXAI_BLOCK_PATCH_END/ig;
+    let m;
+    while ((m = re.exec(raw))) blocks.push(m[1] || '');
+    const xmlRe = /<latexai-edit\b([^>]*)>([\s\S]*?)<\/latexai-edit>/ig;
+    while ((m = xmlRe.exec(raw))) blocks.push((m[0] || ''));
+    blocks.forEach((block, idx) => {
+      const b = String(block || '');
+      const meta = {};
+      b.split(/\n/).forEach((ln) => {
+        const mm = String(ln || '').match(/^\s*([A-Z_][A-Z0-9_]*)\s*:\s*(.*?)\s*$/i);
+        if (mm) meta[mm[1].toLowerCase()] = mm[2];
+      });
+      let latex = '';
+      const lm = b.match(/BEGIN_NEW_LATEX\s*\n([\s\S]*?)\n\s*END_NEW_LATEX/i);
+      if (lm) latex = lm[1] || '';
+      const xmlLatex = b.match(/<new_latex>([\s\S]*?)<\/new_latex>/i);
+      if (!latex && xmlLatex) latex = xmlLatex[1] || '';
+      const action = normalizeStructuredAction(meta.operation || meta.op || meta.action || 'insert_after_block');
+      const targetBlockId = clean(meta.target_block_id || meta.target || meta.block_id || '');
+      const targetSection = clean(meta.target_section || meta.section || '');
+      result.edits.push({
+        index: idx + 1,
+        targetType: 'section',
+        targetId: targetBlockId,
+        targetBlockId,
+        target_block_id: targetBlockId,
+        targetSection,
+        action,
+        kind: meta.operation || action,
+        latex: latex.trim(),
+        new_text: latex.trim(),
+        oldLatex: '',
+        old_text_exact: '',
+        note: clean(meta.rationale || meta.reason || ''),
+        rawPatchProtocol: 'stage19t2e-raw-latex-block-patch'
+      });
+    });
+    result.edits = result.edits.filter((e) => e.latex || /no_edit/i.test(e.action + ' ' + e.kind));
+    if (result.edits.length) {
+      result.ok = true;
+      result.source = 'raw-latex-block-patch-protocol';
+      result.warnings.push('Parsed Stage 19T2E raw LaTeX block patch protocol. LaTeX payload was not JSON-decoded, preserving backslashes.');
+    }
+    return result;
+  }
+
   function parseStructuredEditorOutputText(text) {
     const rawText = String(text || '');
+    const rawPatch = parseRawLatexBlockPatchOutputText(rawText);
+    if (rawPatch.ok) return rawPatch;
     const jsonText = extractStructuredEditorJsonText(rawText);
     const result = { ok: false, source: 'none', editMode: '', edits: [], warnings: [] };
     if (!rawText.trim()) {
@@ -3822,7 +3874,7 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2D ready. Safe Edit Compiler uses body-only safe targets; preamble/macros are hidden from the final editor and cannot be edited.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2E ready. Devil’s Advocate uses the raw LaTeX block patch protocol: AI returns target block + raw LaTeX payload; backend wraps/validates before apply.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
