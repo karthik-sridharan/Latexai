@@ -9,7 +9,7 @@ Full prior debate transcript:
 CRITICAL ARCHITECTURE RULE:
 You do not insert LaTeX directly. A deterministic Safe Edit Compiler will validate your JSON and create the actual \laiold{...}/\lai{...} markup. Treat your role as proposing structured edit intent only.
 
-You MUST output a JSON object between the exact markers below. No markdown fences. No prose before the JSON.
+You MUST output a JSON object between the exact markers below. No markdown fences. No prose before or after the JSON. If your first attempt is invalid, the backend may ask a separate repair model to repair only the JSON; therefore keep your schema simple and exact.
 
 LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
 {
@@ -44,9 +44,13 @@ MANDATORY SAFETY RULES:
 - Do not invent citations. Use citation placeholders only if the user already uses placeholders or explicitly asks.
 
 TARGETING RULES:
-- Prefer target_block_id from the SAFE EDIT TARGET BLOCK MAP.
+- Prefer target_block_id from the SAFE EDIT TARGET BLOCK MAP. This is the most robust insertion method.
 - If using target_section, use the exact section/unit name supplied in the prompt.
 - For each requested target section/unit, output either one high-confidence edit or one no_edit object.
 - Keep edits compact. The Safe Edit Compiler may reject long section-sized replacements.
 
 If no safe edit can be proposed, output exactly one no_edit object for the relevant target.
+
+
+MODULARITY NOTE FOR FUTURE WORKFLOWS:
+This is the same generic safe edit intent contract that will later be used by Rewrite, Improve, Competitive Review, Citation AI, and MCTS edit agents. Do not rely on Devil's Advocate-specific markup.
