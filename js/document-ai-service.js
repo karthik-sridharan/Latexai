@@ -1082,6 +1082,29 @@
     ].join('\n');
   }
 
+  function containsResolverJsonBackslashDamage(text) {
+    const s = String(text || '');
+    if (new RegExp('[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]').test(s)) return true;
+    if (/\t/.test(s)) return true;
+    if (/(^|\n)\s*(?:itle\s*\{|uthor\s*\{|ate\s*\{|ewtheorem\b|ocumentclass\b|sepackage\b|egin\s*\{document\}|nd\s*\{document\})/i.test(s)) return true;
+    if (/(^|\n)\s*(?:title\s*\{|author\s*\{|date\s*\{|newtheorem\b|documentclass\b|usepackage\b|begin\s*\{document\}|end\s*\{document\})/i.test(s)) return true;
+    return false;
+  }
+
+  function validateResolverNextSource(before, after, kept) {
+    const b = String(before || '');
+    const a = String(after || '');
+    const k = String(kept || '');
+    if (containsResolverJsonBackslashDamage(k) || containsResolverJsonBackslashDamage(a)) {
+      return 'Blocked resolver accept/reject: detected JSON/backslash-damaged LaTeX command remnants, e.g. \\title became tab+itle or \\newtheorem became newline+ewtheorem.';
+    }
+    const structural = ['\\documentclass', '\\begin{document}', '\\end{document}', '\\title', '\\newtheorem'];
+    for (const cmd of structural) {
+      if (b.includes(cmd) && !a.includes(cmd)) return 'Blocked resolver: accepting this edit would remove structural command ' + cmd + '.';
+    }
+    return '';
+  }
+
   function resolvePair(pair, keep) {
     if (!pair || !['new', 'old'].includes(keep)) {
       setStatus('Choose an unresolved AI edit first.');
@@ -1106,6 +1129,12 @@
 
     const kept = resolveReplacementTextForKeep(current, keep);
     const next = text.slice(0, current.rangeStart) + kept + text.slice(current.rangeEnd);
+    const resolverSafetyProblem = validateResolverNextSource(text, next, kept);
+    if (resolverSafetyProblem) {
+      setStatus(resolverSafetyProblem);
+      toast(resolverSafetyProblem);
+      return { ok: false, reason: 'json-backslash-damage-guard', message: resolverSafetyProblem };
+    }
     State()?.updateFile?.(pair.path, next);
 
     try { State()?.setActivePath?.(pair.path); } catch (_err) {}

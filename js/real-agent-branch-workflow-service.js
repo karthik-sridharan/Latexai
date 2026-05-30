@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2b-structured-edit-proposal-repair-20260530-1';
+  const STAGE = 'stage19t2c-backslash-preservation-safe-edit-guard-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -3536,6 +3536,18 @@ async function learnedSelectBranch() {
     }
   }
 
+  function containsJsonBackslashDamagedLatex(text) {
+    const s = String(text || '');
+    // Raw JSON strings that contain LaTeX backslashes must double-escape them.
+    // If not, \\title may become a tab + "itle" and \\newtheorem may become
+    // a line break + "ewtheorem". Treat these as unsafe source-corruption signs.
+    if (new RegExp('[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]').test(s)) return true;
+    if (/\t/.test(s)) return true;
+    if (/(^|\n)\s*(?:itle\s*\{|uthor\s*\{|ate\s*\{|ewtheorem\b|ocumentclass\b|sepackage\b|egin\s*\{document\}|nd\s*\{document\})/i.test(s)) return true;
+    if (/(^|\n)\s*(?:title\s*\{|author\s*\{|date\s*\{|newtheorem\b|documentclass\b|usepackage\b|begin\s*\{document\}|end\s*\{document\})/i.test(s)) return true;
+    return false;
+  }
+
   function looksLikeCompleteLatexDocument(text) {
     const s = String(text || '');
     return /\\documentclass(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/.test(s) && /\\begin\s*\{document\}/.test(s) && /\\end\s*\{document\}/.test(s);
@@ -3586,6 +3598,10 @@ async function learnedSelectBranch() {
 
     let visualText = normalizeLaiDraftForCompilation(raw, kind);
     visualText = sanitizeLatexChangedRegionForCompile(before, visualText);
+
+    if (containsJsonBackslashDamagedLatex(visualText)) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: detected JSON/backslash-damaged LaTeX command remnants such as tab+itle or newline+ewtheorem. Source was not changed.');
+    }
 
     if (looksLikeCompleteLatexDocument(before) && !looksLikeCompleteLatexDocument(visualText)) {
       throw new Error('Blocked unsafe Devil’s Advocate apply: the generated draft is not a complete LaTeX document. Use Preview insertion/Copy report and do not replace main.tex.');
