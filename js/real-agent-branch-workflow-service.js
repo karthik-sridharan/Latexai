@@ -1243,9 +1243,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       secIdx += 1;
       const body = String(sec.body || '').slice(Math.max(0, (sec.headerEnd || sec.start || 0) - (sec.start || 0)));
       let pIdx = 0;
-      String(body || '').split(/
-\s*
-+/).forEach((para) => {
+      String(body || '').split(/\n\s*\n+/).forEach((para) => {
         const text = String(para || '').trim();
         if (!safeEditTargetableParagraph(text)) { if (text) skippedUnsafe += 1; return; }
         pIdx += 1;
@@ -1276,13 +1274,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR (BODY PARAGRAPHS + EQUATION ANCHORS):',
       'Use only these block_id values. Preamble, macro definitions, theorem declarations, bibliography setup, command-heavy blocks, and environment boundaries are intentionally hidden and cannot be edited.',
       'Body paragraph blocks may be replaced or used as insertion anchors. Display-equation blocks like eq_003 are anchor-only: use insert_after_block or insert_before_block, never replace_block.',
-      'Return the Stage 19T2F RAW LATEX BLOCK PATCH protocol, not JSON and not raw \lai markup. Use TARGET_BLOCK_ID from this map and place replacement/inserted visible LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
+      'Return the Stage 19T2F RAW LATEX BLOCK PATCH protocol, not JSON and not raw \\lai markup. Use TARGET_BLOCK_ID from this map and place replacement/inserted visible LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
       'For explanatory text below equations, do NOT prefix each line with %. Comment-only edits are rejected because they are invisible in the PDF.',
       skippedUnsafe ? ('Unsafe non-prose blocks hidden from the final editor: ' + skippedUnsafe + '.') : '',
-      lines.join('
-')
-    ].filter(Boolean).join('
-');
+      lines.join('\n')
+    ].filter(Boolean).join('\n');
   }
 
   function buildSafeEditorVisibleContext(runPayload) {
