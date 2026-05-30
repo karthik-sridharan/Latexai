@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1r7-accept-lai-no-duplicate-sections-20260529-1';
+  const STAGE = 'stage19t-knowledge-aware-review-agents-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -19,6 +19,7 @@
   let lastInsertionData = null;
   let lastStructuredEditorData = null;
   let lastOutcomeData = null;
+  let lastKnowledgeContextData = null;
   let lastInsertionDedupeNotes = [];
   let mounted = false;
   const PROMPT_TEMPLATE_ROOT = 'prompt/devils-advocate-branch-runner/';
@@ -35,6 +36,114 @@
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
   function getStored(key, fallback = '') { try { return W.localStorage?.getItem?.(key) || fallback; } catch (_err) { return fallback; } }
   function setStored(key, value) { try { W.localStorage?.setItem?.(key, String(value ?? '')); } catch (_err) {} }
+
+
+  const KNOWLEDGE_ENABLED_KEY = 'latexai:knowledge-retriever:devils-enabled';
+  const KNOWLEDGE_TOPK_KEY = 'latexai:knowledge-retriever:devils-topk';
+
+  function knowledgeRetrieverEnabled() {
+    const node = $('branchWorkflowUseKnowledge');
+    if (node) return !!node.checked;
+    return getStored(KNOWLEDGE_ENABLED_KEY, 'true') !== 'false';
+  }
+
+  function knowledgeRetrieverTopK() {
+    const node = $('branchWorkflowKnowledgeTopK');
+    const raw = node ? node.value : getStored(KNOWLEDGE_TOPK_KEY, '5');
+    const n = Number(raw || 5);
+    return Math.max(1, Math.min(12, Number.isFinite(n) ? Math.round(n) : 5));
+  }
+
+  function persistKnowledgeRetrieverSettings() {
+    setStored(KNOWLEDGE_ENABLED_KEY, knowledgeRetrieverEnabled() ? 'true' : 'false');
+    setStored(KNOWLEDGE_TOPK_KEY, String(knowledgeRetrieverTopK()));
+  }
+
+  function renderKnowledgeContextCards(data) {
+    const results = Array.isArray(data?.results) ? data.results : [];
+    if (!results.length) return '<div class="settings-note compact">No ingested-library papers were retrieved yet.</div>';
+    return '<div class="branch-knowledge-card-list">' + results.map((r, idx) => {
+      const authors = Array.isArray(r.authors) ? r.authors.slice(0, 5).join(', ') + (r.authors.length > 5 ? ', et al.' : '') : '';
+      const chunk = r.bestChunk || {};
+      const score = Number(r.score || 0);
+      return '<article class="branch-knowledge-card">' +
+        '<div class="branch-knowledge-card-head"><strong>[' + esc(idx + 1) + '] ' + esc(r.title || 'Untitled') + '</strong><span class="branch-knowledge-score">score=' + esc(Number.isFinite(score) ? score.toFixed(3) : r.score || '') + '</span></div>' +
+        '<div class="small muted">' + esc([authors, r.year, r.arxiv_id ? 'arXiv:' + r.arxiv_id : ''].filter(Boolean).join(' · ')) + '</div>' +
+        '<div class="small muted">' + esc(r.url || r.source_url || '') + '</div>' +
+        '<div class="settings-note compact">' + esc(chunk.snippet || '') + '</div>' +
+      '</article>';
+    }).join('') + '</div>';
+  }
+
+  function renderKnowledgeContextPanel(data) {
+    const node = $('branchWorkflowKnowledgeStatus');
+    if (!node) return;
+    if (!data) {
+      node.innerHTML = '<strong>Knowledge retriever:</strong> not run yet.';
+      return;
+    }
+    node.innerHTML = '<strong>Knowledge retriever:</strong> ' + esc(data.resultCount || 0) + ' paper(s) retrieved · topK=' + esc(data.topK || '') +
+      (data.searchSchema ? ' · ' + esc(data.searchSchema) : '') + renderKnowledgeContextCards(data);
+  }
+
+  function paperTextForKnowledgeQuery() {
+    const src = getActiveSource();
+    return truncateMiddle(src, 60000, '\n% ... [paper truncated for knowledge retrieval] ...\n');
+  }
+
+  async function retrieveKnowledgeContextForPayload(payload) {
+    if (!knowledgeRetrieverEnabled()) {
+      lastKnowledgeContextData = null;
+      renderKnowledgeContextPanel(null);
+      return null;
+    }
+    const topK = knowledgeRetrieverTopK();
+    status('Retrieving relevant papers from the knowledge database...', 'warn');
+    const data = await backendPost('/research/context-for-paper', {
+      topK,
+      latexSource: paperTextForKnowledgeQuery(),
+      paperSummary: inputValue('branchWorkflowPaperSummary', ''),
+      reviewText: inputValue('branchWorkflowReviewText', ''),
+      query: inputValue('branchWorkflowQuery', ''),
+      workflow: 'devils-advocate-branch-runner',
+      metadata: { frontendStage: STAGE, activePath: activePath() }
+    });
+    lastKnowledgeContextData = data;
+    renderKnowledgeContextPanel(data);
+    if (payload && typeof payload === 'object') {
+      payload.knowledgeRetrieval = data;
+      payload.metadata = { ...(payload.metadata || {}), knowledgeRetrieverEnabled: true, knowledgeTopK: topK, knowledgeResultCount: data.resultCount || 0 };
+    }
+    return data;
+  }
+
+  async function attachKnowledgeContext(payload, options = {}) {
+    const out = payload && typeof payload === 'object' ? payload : {};
+    if (!knowledgeRetrieverEnabled()) {
+      out.knowledgeRetrieval = null;
+      return out;
+    }
+    if (out.knowledgeRetrieval?.promptContext && !options.force) return out;
+    try {
+      const data = await retrieveKnowledgeContextForPayload(out);
+      out.knowledgeRetrieval = data;
+    } catch (err) {
+      const message = err?.message || String(err || 'knowledge retrieval failed');
+      out.knowledgeRetrieval = { ok: false, error: message, promptContext: 'Knowledge retriever failed: ' + message };
+      lastKnowledgeContextData = out.knowledgeRetrieval;
+      renderKnowledgeContextPanel(out.knowledgeRetrieval);
+      status('Knowledge retrieval failed; continuing without retrieved context: ' + message, 'warn');
+    }
+    return out;
+  }
+
+  function knowledgePromptContext(runPayload) {
+    const data = runPayload?.knowledgeRetrieval || lastKnowledgeContextData;
+    if (!knowledgeRetrieverEnabled()) return 'Knowledge retriever is disabled for this run.';
+    if (!data) return 'Knowledge retriever has not run yet for this branch.';
+    if (data.ok === false) return String(data.promptContext || ('Knowledge retriever failed: ' + (data.error || 'unknown error')));
+    return String(data.promptContext || 'No knowledge retriever context was returned.');
+  }
 
   function promptDebugEnabled() {
     try {
@@ -712,6 +821,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     checks.push(await get('AI/key status', root + '/ai/status'));
     checks.push(await get('Live provider model list', root + '/models?refresh=1'));
     checks.push(await post('Learned selector route exists', root + '/debate/select-learned-branch', { branches: [{ title: 'Verifier branch', branchType: 'verifier', selectionScore: 0.5 }], selectedBranchLimit: 1, latexSource: getActiveSource().slice(0, 4000), query: 'verifier' }));
+    checks.push(await post('Knowledge retriever context route', root + '/research/context-for-paper', { query: inputValue('branchWorkflowQuery', 'latex paper verifier'), latexSource: getActiveSource().slice(0, 6000), topK: 3 }));
     const normalized = checks.map((c) => {
       let detail = '';
       if (c.data?.stage) detail += 'stage=' + c.data.stage + ' ';
@@ -1418,6 +1528,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       latexEditHint: branch.latexEditHint || '',
       memoryIds: memoryIds.join(', ') || 'none',
       memoryContext: buildPerRoundMemoryContext(step, priorOutputs, runPayload),
+      knowledgeContext: knowledgePromptContext(runPayload),
       sectionCoverageInstruction: await sectionCoverageInstruction(runPayload),
       equationCoverageContext: buildEquationCoverageContext(runPayload),
       equationCoverageActive: equationCoverageActive() ? 'true' : 'false',
@@ -1680,6 +1791,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return '<div class="branch-dashboard-tabs">' +
       '<section class="branch-dashboard-section"><h3>Transcript</h3><div class="settings-note compact">Critic, supporter, and final synthesis/editor outputs from the completed run.</div>' + renderAgentTranscriptCards(outputs) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Branch candidates</h3>' + renderBranchCandidatesCards(snap) + '</section>' +
+      '<section class="branch-dashboard-section"><h3>Retrieved literature context</h3>' + renderKnowledgeContextCards(snap.knowledgeRetrieval || snap.realRunData?.knowledgeRetrieval || snap.selectionData?.knowledgeRetrieval || lastKnowledgeContextData) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Structured LaTeX edits</h3>' + renderStructuredEditorPreviewHtml(structured) + '</section>' +
       (extraHtml ? '<section class="branch-dashboard-section"><h3>Insertion preview</h3>' + extraHtml + '</section>' : '') +
       '<section class="branch-dashboard-section"><h3>Saved run / model trace</h3><div class="settings-note compact">Run id: ' + esc(snap.runId || '') + ' · saved: ' + esc(snap.savedAt || '') + '</div><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(snap.routeSummary || {}, null, 2)) + '</pre></section>' +
@@ -1730,7 +1842,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     clearInlinePreview();
     setStored('latexai:memory-backend-url', ($('memoryBackendUrl')?.value || '').trim() || getStored('latexai:memory-backend-url', ''));
     status('Planning selected branch with backend policy/value/rollout/selector...', 'warn');
-    const data = applySectionScopeToSelection(await backendPost('/debate/select-branch', planPayload()));
+    const payload = await attachKnowledgeContext(planPayload());
+    const data = applySectionScopeToSelection(await backendPost('/debate/select-branch', payload));
+    if (payload.knowledgeRetrieval) {
+      data.knowledgeRetrieval = payload.knowledgeRetrieval;
+      if (data.realAgentRunPayload) data.realAgentRunPayload.knowledgeRetrieval = payload.knowledgeRetrieval;
+    }
     lastSelectionData = data;
     renderSelection(data);
     const scopeTargets = desiredTargetSections(data?.realAgentRunPayload || data || {});
@@ -1758,6 +1875,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       runPayload = selectedRealPayload();
     }
     if (!runPayload?.executionPlan?.steps?.length) throw new Error('No selected execution plan available.');
+    runPayload = await attachKnowledgeContext(runPayload);
+    if (lastSelectionData?.realAgentRunPayload) lastSelectionData.realAgentRunPayload.knowledgeRetrieval = runPayload.knowledgeRetrieval || null;
     const steps = buildConfigurableDebateSteps(runPayload);
     if (promptDebugEnabled()) {
       ensurePromptDebugWindow('debate run starting');
@@ -1798,7 +1917,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       paperSummary: inputValue('branchWorkflowPaperSummary', ''),
       query: inputValue('branchWorkflowQuery', ''),
       agentOutputs: outputs,
-      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(runPayload), modelRoutingSource: 'settings-devils-advocate-routes', devilAdvocateRoutes: debateRouteSummaryObject() }
+      knowledgeRetrieval: runPayload.knowledgeRetrieval || lastKnowledgeContextData || null,
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(runPayload), modelRoutingSource: 'settings-devils-advocate-routes', devilAdvocateRoutes: debateRouteSummaryObject(), knowledgeRetrieverEnabled: knowledgeRetrieverEnabled(), knowledgeTopK: knowledgeRetrieverTopK(), knowledgeResultCount: (runPayload.knowledgeRetrieval || lastKnowledgeContextData || {}).resultCount || 0 }
     };
     const data = await backendPost('/debate/run-real-agent-branch', body);
     lastRealRunData = data;
@@ -2951,7 +3071,8 @@ function currentBranchRunSnapshot(reason) {
     cleanerData: lastCleanerData || null,
     insertionData: lastInsertionData || null,
     structuredEditorData: structured || null,
-    outcomeData: lastOutcomeData || null
+    outcomeData: lastOutcomeData || null,
+    knowledgeRetrieval: lastKnowledgeContextData || lastRealRunData?.knowledgeRetrieval || lastSelectionData?.knowledgeRetrieval || null
   };
   snapshot.reportMarkdown = buildBranchRunReport(snapshot);
   return snapshot;
@@ -2998,6 +3119,21 @@ function buildBranchRunReport(snapshot) {
   lines.push('**Review signal:**');
   lines.push('');
   lines.push(snap.reviewText || '_No review signal supplied._');
+  lines.push('');
+  const knowledge = snap.knowledgeRetrieval || run.knowledgeRetrieval || snap.selectionData?.knowledgeRetrieval || {};
+  lines.push('## Retrieved literature context');
+  if (knowledge && Array.isArray(knowledge.results) && knowledge.results.length) {
+    knowledge.results.forEach((r, i) => {
+      const authors = Array.isArray(r.authors) ? r.authors.slice(0, 6).join(', ') + (r.authors.length > 6 ? ', et al.' : '') : '';
+      const score = Number(r.score || 0);
+      lines.push((i + 1) + '. **' + (r.title || 'Untitled') + '** (' + (r.year || 'n.d.') + ') — score=' + (Number.isFinite(score) ? score.toFixed(3) : r.score || ''));
+      lines.push('   - Authors: ' + (authors || 'unknown'));
+      lines.push('   - URL: ' + (r.url || r.source_url || ''));
+      if (r.bestChunk?.snippet) lines.push('   - Snippet: ' + String(r.bestChunk.snippet).slice(0, 400));
+    });
+  } else {
+    lines.push('_No knowledge-retriever context recorded for this run._');
+  }
   lines.push('');
   lines.push('## Agent transcript');
   if (!outputs.length) lines.push('_No agent outputs recorded._');
@@ -3414,12 +3550,13 @@ async function learnedSelectBranch() {
     card.id = 'realAgentBranchCard';
     card.className = 'devils-debate-card real-agent-branch-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19N1R4</div><h2>Devil’s Advocate branch runner</h2></div></div>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI · Stage 19T</div><h2>Devil’s Advocate branch runner</h2></div></div>',
       '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → structured actionable LaTeX edits → saved/reloadable run artifacts → insertion preview → outcome reward → learned branch selection. Add ?laiPromptDebug=1 to index.html to open a live prompt-debug tab showing each agent prompt.</p>',
       '<div class="settings-note compact branch-workflow-action-map"><strong>Action labels:</strong> <em>Insert localized edits</em> inserts targeted <code>\\laiold</code>/<code>\\lai</code> edits near relevant sections. <em>Append final improvement plan</em> appends the final plan before <code>\\end{document}</code>. Use <em>Preview insertion</em> first to inspect what will be inserted.</div>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
       '<label class="field">Math/equation coverage <select id="branchWorkflowEquationCoverageMode"><option value="auto" selected>auto-detect from focus/query</option><option value="on">force equation-by-equation edits</option><option value="off">off</option></select></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
+      '<div class="settings-card-subtle"><div class="field-grid two"><label class="field checkbox-field"><input id="branchWorkflowUseKnowledge" type="checkbox" checked /> Use knowledge retriever context</label><label class="field">Knowledge topK <input id="branchWorkflowKnowledgeTopK" type="number" min="1" max="12" step="1" value="5" /></label></div><div id="branchWorkflowKnowledgeStatus" class="settings-note compact"><strong>Knowledge retriever:</strong> will retrieve relevant ingested papers before planning/running.</div></div>',
       '<label class="field">Paper summary <textarea id="branchWorkflowPaperSummary" rows="2" placeholder="Optional short paper summary"></textarea></label>',
       '<div class="field-grid two">',
       '<label class="field">Run mode <select id="branchWorkflowRunMode"><option value="dry_run_no_model_calls" selected>dry_run_no_model_calls</option><option value="call_ai_proxy_expensive">call_ai_proxy_expensive</option></select></label>',
@@ -3462,7 +3599,7 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19N1R7 ready. Preview insertion, then use Insert localized edits or Append final improvement plan. Saved runs and learned branch selection remain available. Provider/model is inherited from Settings → Model/provider routing.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T ready. Knowledge retriever context is available for Devil’s Advocate runs; preview insertion before applying edits.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -3493,6 +3630,11 @@ async function learnedSelectBranch() {
     bindButton('branchWorkflowCompileCheckBtn', compileAfterInsertionCheck);
     bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); maybeWarnRepeatedHeadings('Target refresh warning'); });
     bindButton('branchWorkflowCleanPreviousAiBtn', cleanPreviousAiSuggestions);
+    const knowledgeToggle = $('branchWorkflowUseKnowledge');
+    if (knowledgeToggle) { knowledgeToggle.checked = getStored(KNOWLEDGE_ENABLED_KEY, 'true') !== 'false'; knowledgeToggle.addEventListener('change', () => { persistKnowledgeRetrieverSettings(); renderKnowledgeContextPanel(lastKnowledgeContextData); }, true); }
+    const knowledgeTopK = $('branchWorkflowKnowledgeTopK');
+    if (knowledgeTopK) { knowledgeTopK.value = String(knowledgeRetrieverTopK()); knowledgeTopK.addEventListener('change', () => { persistKnowledgeRetrieverSettings(); }, true); }
+    renderKnowledgeContextPanel(lastKnowledgeContextData);
     ['branchWorkflowSectionScope','branchWorkflowTargetPicker','branchWorkflowVisibleContextMode','branchWorkflowPayloadSourceMode'].forEach((id) => { const n = $(id); if (n) n.addEventListener('change', () => { renderTargetModeNote(); }, true); });
     if (D.documentElement.dataset.stage19n1rBranchRouteSummaryBound !== 'true') {
       D.documentElement.dataset.stage19n1rBranchRouteSummaryBound = 'true';
@@ -3542,7 +3684,9 @@ async function learnedSelectBranch() {
     refreshSavedRunsFromBackend,
     loadSavedBranchRunFromPicker,
     buildBranchRunReport,
-    learnedSelectBranch
+    learnedSelectBranch,
+    retrieveKnowledgeContextForPayload,
+    getLastKnowledgeContext: () => lastKnowledgeContextData
   };
 
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init, { once: true });
