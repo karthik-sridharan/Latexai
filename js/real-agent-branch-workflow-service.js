@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2a-safe-edit-compiler-blocked-ui-20260530-1';
+  const STAGE = 'stage19t2b-structured-edit-proposal-repair-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1741,7 +1741,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         promptSeed: prompt,
         dryRun: true,
         latencyMs: 0,
-        outputText: isFinal ? '[DRY RUN] Final structured edit draft after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\nLATEXAI_STRUCTURED_EDIT_JSON_BEGIN\n' + JSON.stringify({ ok: true, editMode: equationCoverageActive() ? 'equation_coverage' : 'section_coverage', edits: [{ targetType: equationCoverageActive() ? 'equation' : 'section', targetId: equationCoverageActive() ? 'eq_001' : '', targetSection: (desiredTargetSections(runPayload)[0] || 'Introduction'), action: 'insert_after', latex: equationCoverageActive() ? 'This equation states the key mathematical condition and should be read together with the surrounding definitions.' : 'This paragraph records the selected branch improvement after reviewing the debate transcript.' }], warnings: ['dry-run structured schema example'] }, null, 2) + '\nLATEXAI_STRUCTURED_EDIT_JSON_END\n\n\\lai{%\n% Target section: ' + (desiredTargetSections(runPayload)[0] || 'Introduction') + '\nThis paragraph records the selected branch improvement after reviewing real agent outputs.\n}' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
+        outputText: isFinal ? '[DRY RUN] Final safe edit intent after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\nLATEXAI_STRUCTURED_EDIT_JSON_BEGIN\n' + JSON.stringify({ ok: true, editMode: 'safe_edit_intent_v1', edits: [{ kind: 'insert_after_paragraph', target_block_id: '', target_section: (desiredTargetSections(runPayload)[0] || 'Introduction'), old_text_exact: '', new_text: equationCoverageActive() ? 'This equation states the key mathematical condition and should be read together with the surrounding definitions.' : 'This paragraph records the selected branch improvement after reviewing the debate transcript.', rationale: 'dry-run structured safe edit intent example' }], warnings: ['dry-run safe edit intent example'] }, null, 2) + '\nLATEXAI_STRUCTURED_EDIT_JSON_END' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
       };
       publishPromptDebugEvent('dry-run output generated', step, prompt, aiPayload, { status: 'dry-run-output-generated', outputText: dryOutput.outputText });
       return dryOutput;
@@ -2173,14 +2173,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       if (c && typeof c === 'object') return [c];
     }
     // Some models return a single edit object as the root.
-    if (parsed.targetType || parsed.targetId || parsed.targetSection || parsed.latex || parsed.action) return [parsed];
+    if (parsed.targetType || parsed.targetId || parsed.target_block_id || parsed.targetBlockId || parsed.targetSection || parsed.target_section || parsed.latex || parsed.new_text || parsed.newText || parsed.action || parsed.kind) return [parsed];
     return [];
   }
 
 
   function looksLikeStructuredEditObject(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-    return !!(obj.targetType || obj.type || obj.targetId || obj.target_id || obj.equationId || obj.equation_id || obj.targetSection || obj.section || obj.target || obj.action || obj.latex || obj.text || obj.content || obj.explanation);
+    return !!(obj.targetType || obj.type || obj.targetId || obj.target_id || obj.target_block_id || obj.targetBlockId || obj.block_id || obj.equationId || obj.equation_id || obj.targetSection || obj.target_section || obj.section || obj.target || obj.action || obj.kind || obj.latex || obj.new_text || obj.newText || obj.text || obj.content || obj.explanation);
   }
 
   function markerSegmentForStructuredOutput(text) {
@@ -2226,14 +2226,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function normalizeStructuredEditsFromArray(edits) {
     return (Array.isArray(edits) ? edits : []).map((e, idx) => {
       const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
-      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
-      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
-      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
-      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
-      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
+      const action = normalizeStructuredAction(e?.kind || e?.action || e?.editAction || e?.mode || e?.operation || (e?.old_text_exact || e?.oldTextExact || e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
+      const targetBlockId = clean(e?.target_block_id || e?.targetBlockId || e?.block_id || e?.blockId || '');
+      const targetId = clean(targetBlockId || e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
+      const targetSection = clean(e?.target_section || e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
+      const latex = String(e?.new_text || e?.newText || e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
+      const oldLatex = String(e?.old_text_exact || e?.oldTextExact || e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
       const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
-      return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
-    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+      return { index: idx + 1, targetType, targetId, targetBlockId, target_block_id: targetBlockId, targetSection, action, kind: e?.kind || action, latex, new_text: latex, oldLatex, old_text_exact: oldLatex, note, raw: e };
+    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit' || e.kind === 'no_edit');
   }
 
   function parseStructuredEditorOutputText(text) {
@@ -2252,16 +2253,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
         result.raw = { edits: salvaged };
         result.warnings.push('Stage 19N1L: recovered complete edit object(s) from a partial/truncated structured JSON response. The model likely omitted the closing JSON object or END marker.');
-        result.edits = salvaged.map((e, idx) => {
-          const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
-          const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
-          const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
-          const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
-          const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
-          const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
-          const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
-          return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
-        }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+        result.edits = normalizeStructuredEditsFromArray(salvaged);
         if (result.edits.length) return result;
       }
       result.warnings.push('No complete structured JSON edit schema was found in the final editor output. This usually means the final editor ignored the JSON contract or returned a truncated schema with no complete edit objects. Re-run with prompt debug enabled to inspect the editor prompt/output.');
@@ -2303,16 +2295,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     result.editMode = clean(parsed?.editMode || parsed?.mode || (equationCoverageActive() ? 'equation_coverage' : 'structured_edits'));
     result.raw = parsed;
     result.warnings = Array.isArray(parsed?.warnings) ? parsed.warnings.map((x) => String(x || '')).filter(Boolean) : [];
-    result.edits = edits.map((e, idx) => {
-      const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
-      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
-      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
-      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
-      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
-      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
-      const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
-      return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
-    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+    result.edits = normalizeStructuredEditsFromArray(edits);
     if (!result.edits.length) {
       const salvaged = salvageStructuredEditObjectsFromPartialJson(rawText);
       const normalized = normalizeStructuredEditsFromArray(salvaged);
@@ -3057,6 +3040,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function insertionPayload() {
     const selected = lastSelectionData?.selectedBranch || lastRealRunData?.selectedBranch || selectedRealPayload()?.selectedBranch || {};
     const executionPlan = lastSelectionData?.executionPlan || lastRealRunData?.executionPlan || selectedRealPayload()?.executionPlan || {};
+    const repairRoute = configuredDebateRoute('debate-synthesizer');
     return {
       latexSource: getActiveSource(),
       targetSectionOverride: splitTargetSections(inputValue('branchWorkflowTargetSection', '')).join(', '),
@@ -3067,7 +3051,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       cleanerResult: lastCleanerData || null,
       structuredEditorData: lastStructuredEditorData || refreshStructuredEditorData(),
       cleanedLaiBlocks: lastCleanerData?.insertableLaiBlocks || lastCleanerData?.validVisibleLaiBlocks || lastRealRunData?.insertableLaiBlocks || lastRealRunData?.visibleLaiBlocks || [],
-      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}), safeEditCompilerRequested: true }
+      allowAiRepair: true,
+      safeEditRepairRequested: true,
+      safeEditRepairRoute: { provider: repairRoute.provider, model: repairRoute.model, routeKey: repairRoute.routeKey },
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}), safeEditCompilerRequested: true, safeEditRepairRequested: true, safeEditCompilerClient: 'devils_advocate' }
     };
   }
 
@@ -3077,6 +3064,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function compactUnsafeEditReason(data) {
     const parts = [];
+    if (data?.repairAttempted) parts.push('Repair loop: ' + (data.repairStatus || 'attempted'));
+    if (data?.repairError) parts.push('Repair error: ' + data.repairError);
     if (Array.isArray(data?.validationErrors)) parts.push(...data.validationErrors);
     if (Array.isArray(data?.warnings)) parts.push(...data.warnings);
     if (Array.isArray(data?.rejectedEdits)) {
@@ -3129,6 +3118,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const body =
       '<div class="settings-note"><strong>safeToInsert:</strong> ' + esc(data?.safeToInsert) + ' · safeToAutoApply=' + esc(data?.safeToAutoApply) + ' · blocks=' + esc(data?.blockCount || 0) + '</div>' +
       (data?.safeCompiler?.enabled ? '<div class="settings-note good"><strong>Safe Edit Compiler active:</strong> AI output was treated as untrusted edit intent and deterministically compiled. Version: ' + esc(data.safeCompiler.version || '') + '</div>' : '') +
+      (data?.repairAttempted ? '<div class="settings-note ' + (data.safeToInsert ? 'good' : 'warn') + '"><strong>Structured edit repair:</strong> ' + esc(data.repairStatus || 'attempted') + (data.repairModelRoutingAudit ? ' via ' + esc((data.repairModelRoutingAudit.provider || '') + ' / ' + (data.repairModelRoutingAudit.model || '')) : '') + '</div>' : '') +
       (Array.isArray(data?.validationErrors) && data.validationErrors.length ? '<div class="settings-note bad"><strong>Validation errors:</strong> ' + esc(data.validationErrors.join('; ')) + '</div>' : '') +
       (Array.isArray(data?.rejectedEdits) && data.rejectedEdits.length ? '<details open><summary>Rejected unsafe edits</summary><pre>' + esc(JSON.stringify(data.rejectedEdits, null, 2)) + '</pre></details>' : '') +
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || (Array.isArray(data?.targetSections) ? data.targetSections.join(', ') : 'append/end')) + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
@@ -3757,7 +3747,7 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2 ready. Safe Edit Compiler is active: preview validates AI edit intent before any LAI insertion.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2B ready. Safe Edit Compiler + one-pass structured JSON repair are active before any LAI insertion.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
