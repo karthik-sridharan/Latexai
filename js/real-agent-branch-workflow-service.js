@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2-safe-edit-compiler-20260530-1';
+  const STAGE = 'stage19t2a-safe-edit-compiler-blocked-ui-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -752,14 +752,18 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return h;
   }
 
-  async function backendPost(path, body) {
+  async function backendPost(path, body, options = {}) {
     const root = backendRoot();
     if (!root) throw new Error('Missing memory/backend URL. Set Memory backend URL in Settings.');
     const res = await fetch(root + path, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body || {}) });
     const text = await res.text();
     let data = null;
     try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
-    if (!res.ok || data?.ok === false) throw new Error(data?.error?.message || data?.detail || data?.message || ('HTTP ' + res.status + ': ' + text));
+    if (!res.ok || (data?.ok === false && !options.allowOkFalse)) {
+      const msg = data?.error?.message || data?.detail || data?.message || ('HTTP ' + res.status + ': ' + text);
+      throw new Error(msg);
+    }
+    if (data && typeof data === 'object') data.httpStatus = res.status;
     return data;
   }
 
@@ -3067,8 +3071,57 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     };
   }
 
+  function safeCompilerBlocked(data) {
+    return !!(data && data.safeCompiler && data.safeCompiler.enabled && data.safeToInsert !== true);
+  }
+
+  function compactUnsafeEditReason(data) {
+    const parts = [];
+    if (Array.isArray(data?.validationErrors)) parts.push(...data.validationErrors);
+    if (Array.isArray(data?.warnings)) parts.push(...data.warnings);
+    if (Array.isArray(data?.rejectedEdits)) {
+      data.rejectedEdits.slice(0, 4).forEach((e) => {
+        const why = e?.reason || e?.message || e?.kind || '';
+        if (why) parts.push('Rejected edit: ' + why);
+      });
+    }
+    return parts.filter(Boolean).slice(0, 8);
+  }
+
+  function updateSafeApplyButtonState(data) {
+    const blocked = safeCompilerBlocked(data);
+    ['branchWorkflowApplyTargetedBtn', 'branchWorkflowApplyAppendBtn', 'branchWorkflowCopyTargetedBtn'].forEach((id) => {
+      const node = $(id);
+      if (node) {
+        node.disabled = blocked;
+        node.title = blocked ? 'Safe Edit Compiler blocked this AI edit proposal. Nothing can be applied until preview validates.' : '';
+      }
+    });
+  }
+
+  function renderBlockedSafeCompilerHtml(data) {
+    const reasons = compactUnsafeEditReason(data);
+    const rejected = Array.isArray(data?.rejectedEdits) ? data.rejectedEdits : [];
+    return '' +
+      '<div class="settings-note bad"><strong>Safe Edit Compiler blocked insertion.</strong> No AI-generated raw LaTeX was inserted into <code>main.tex</code>.</div>' +
+      '<div class="settings-note compact">This is the intended fail-closed behavior: the agent proposed an unsafe or non-actionable edit, so the editor refused to apply it rather than corrupting the source.</div>' +
+      (reasons.length ? '<div class="settings-note warn"><strong>Why blocked:</strong><ul>' + reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul></div>' : '') +
+      (rejected.length ? '<details><summary>Rejected edit diagnostics</summary><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(rejected.slice(0, 10), null, 2)) + '</pre></details>' : '') +
+      '<details><summary>Structured edit schema preview</summary>' + renderStructuredEditorPreviewHtml(lastStructuredEditorData || refreshStructuredEditorData()) + '</details>' +
+      '<div class="settings-note compact"><strong>Next action:</strong> rerun the branch or use append-only report. Localized apply buttons are disabled until a proposal validates.</div>';
+  }
+
   function renderInsertion(data) {
     const diff = data?.diffSummary || {};
+    const blocked = safeCompilerBlocked(data);
+    if (blocked) {
+      const body = renderBlockedSafeCompilerHtml(data);
+      renderSummary('Safe Edit Compiler blocked unsafe insertion', renderRunDashboard(currentBranchRunSnapshot('insertion_blocked'), body));
+      renderInlinePreview('Insertion blocked by Safe Edit Compiler', body);
+      updateSafeApplyButtonState(data);
+      revealWorkflowPreview();
+      return;
+    }
     const targetedDraft = data?.targetedInsertionDraft || data?.insertableLatexDraft || '';
     const rawAppendDraft = data?.appendOnlyDraft || '';
     const appendDraft = rawAppendDraft ? normalizeLaiDraftForCompilation(rawAppendDraft, 'append') : '';
@@ -3081,14 +3134,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || (Array.isArray(data?.targetSections) ? data.targetSections.join(', ') : 'append/end')) + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
       (data?.multiSectionFrontendInsertion ? '<div class="settings-note good">Multi-section frontend insertion is active. Block targets: ' + esc((data.blockSectionTargets || []).join(', ') || 'none inferred') + '</div>' : '') +
       '<details open><summary>Structured edit schema preview</summary>' + renderStructuredEditorPreviewHtml(lastStructuredEditorData || refreshStructuredEditorData()) + '</details>' +
-      '<div class="settings-note warn">The source editor shows raw <code>\\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
+      '<div class="settings-note warn">The source editor shows raw <code>\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
       '<details open><summary>Visual colored LAI preview</summary>' + renderLaiColorPreviewHtml(chosenDraft || targetedDraft || appendDraft) + '</details>' +
       '<details><summary>Targeted insertion draft source</summary><pre class="branch-workflow-latex-source-preview">' + esc(targetedDraft) + '</pre></details>' +
       '<details><summary>Append-only draft source</summary><pre class="branch-workflow-latex-source-preview">' + esc(appendDraft) + '</pre></details>' +
-      (rawAppendDraft && rawAppendDraft !== appendDraft ? '<div class="settings-note good">Append preview was normalized: any \\lai blocks after <code>\\end{document}</code> were moved before <code>\\end{document}</code> so they compile.</div>' : '');
+      (rawAppendDraft && rawAppendDraft !== appendDraft ? '<div class="settings-note good">Append preview was normalized: any \lai blocks after <code>\end{document}</code> were moved before <code>\end{document}</code> so they compile.</div>' : '');
     renderSummary('Preview cleaned LAI insertion', renderRunDashboard(currentBranchRunSnapshot('insertion_preview'), body));
     renderInlinePreview('Insertion preview ready', body);
+    updateSafeApplyButtonState(data);
     revealWorkflowPreview();
   }
 
@@ -3096,12 +3150,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     if (!lastCleanerData && lastRealRunData) await cleanLastRealRun();
     if (!lastCleanerData && !lastRealRunData) throw new Error('Run agents and clean result before previewing insertion.');
     status('Preparing targeted/append insertion preview...', 'warn');
-    let data = await backendPost('/debate/prepare-lai-insertion', insertionPayload());
+    let data = await backendPost('/debate/prepare-lai-insertion', insertionPayload(), { allowOkFalse: true });
     data = enhanceInsertionDataWithMultiSectionDrafts(data);
     lastInsertionData = data;
     renderInsertion(data);
     try { await saveCurrentBranchRun('insertion_preview_prepared', { quiet: true }); } catch (_err) {}
-    status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '. Preview is shown in the dock above and in the output box below.', data.safeToInsert ? 'good' : 'bad');
+    status(data.safeToInsert ? ('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=true. Preview is shown in the dock above and in the output box below.') : 'Safe Edit Compiler blocked unsafe insertion. No source changes were made.', data.safeToInsert ? 'good' : 'bad');
     revealWorkflowPreview();
     return data;
   }
