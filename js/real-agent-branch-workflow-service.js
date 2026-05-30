@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2h-raw-patch-validator-relaxation-shadow-compile-20260530-1';
+  const STAGE = 'stage19t2i-backend-authoritative-apply-path-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -3745,7 +3745,7 @@ async function learnedSelectBranch() {
     }).filter(Boolean);
   }
 
-  function normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource) {
+  function normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource, options = {}) {
     const before = String(beforeSource || '');
     let raw = String(text || '');
     if (!raw.trim()) return '';
@@ -3767,7 +3767,14 @@ async function learnedSelectBranch() {
     let visualText = normalizeLaiDraftForCompilation(raw, kind);
     visualText = sanitizeLatexChangedRegionForCompile(before, visualText);
 
-    if (containsJsonBackslashDamagedLatex(visualText)) {
+    // Stage 19T2I: when the backend Safe Edit Compiler has already returned
+    // safeToInsert=true, the frontend must not re-run the old broad
+    // JSON/backslash-damage detector over the whole generated document. That
+    // stale detector confuses ordinary raw LaTeX math/macros in the existing
+    // source (for example \newcommand, \inner, \sigma) with earlier JSON
+    // transport-corruption patterns. The backend compiler is authoritative;
+    // frontend keeps only document-shape and no-scaffolding guards here.
+    if (!options.backendSafeCompilerAccepted && containsJsonBackslashDamagedLatex(visualText)) {
       throw new Error('Blocked unsafe Devil’s Advocate apply: detected JSON/backslash-damaged LaTeX command remnants such as tab+itle or newline+ewtheorem. Source was not changed.');
     }
 
@@ -3809,13 +3816,10 @@ async function learnedSelectBranch() {
     if (lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert !== true) {
       throw new Error('Safe Edit Compiler blocked apply: ' + ((lastInsertionData.validationErrors || []).join('; ') || (lastInsertionData.warnings || []).join('; ') || 'unsafe or empty edit proposal'));
     }
-    if (lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert !== true) {
-      throw new Error('Safe Edit Compiler blocked apply: ' + ((lastInsertionData.validationErrors || []).join('; ') || (lastInsertionData.warnings || []).join('; ') || 'unsafe or empty edit proposal'));
-    }
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
-    const visualText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
+    const visualText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource, { backendSafeCompilerAccepted: !!(lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert === true) });
     if (!W.confirm('Apply the ' + kind + ' LAI draft to the active editor source? A complete-document safety guard will block fragment-only or no-op overwrites.')) return;
     setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros. Stage 19N1R7 guarded against fragment-only and no-op source replacement.', { kind });
     await recordOutcome(kind === 'append' ? 'inserted_append' : 'inserted_targeted');
@@ -3826,7 +3830,7 @@ async function learnedSelectBranch() {
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
-    const copiedText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
+    const copiedText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource, { backendSafeCompilerAccepted: !!(lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert === true) });
     await navigator.clipboard.writeText(copiedText);
     await recordOutcome('copied');
     status('Copied ' + kind + ' draft and recorded copied outcome. Stage 19N1R7 guarded against fragment-only and no-op source replacement.', 'good');
