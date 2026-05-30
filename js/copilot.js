@@ -321,7 +321,7 @@ ${fallback}`;
   "summary": "short human-readable summary",
   "replacementLatex": "replacement LaTeX only"
 }
-Do not include Markdown fences. Do not include the old selected text. Do not wrap in \lai; Latexai will add the comments and \lai{...}.`
+Do not include Markdown fences. Do not include the old selected text. Do not add internal editor change-tracking wrappers; Latexai will add all change-tracking wrappers after validation.`
       : (NS.PatchManager?.isPatchWorkflow?.(task)
         ? `Return ONLY valid JSON using this shape:
 {
@@ -361,7 +361,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   function systemPromptFor(task) {
     const base = 'You are Lumina LaTeX Copilot inside a browser-based Overleaf-like editor. Be precise, preserve mathematical meaning, avoid unnecessary rewrites, and never invent packages unless needed.';
     if (task === 'fix-error-patch') return `${base} Fix the current LaTeX compile error. Return exactly one safe patch as valid JSON.`;
-    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Return ONLY JSON with replacementLatex. Latexai will wrap it in \lai{...}.`;
+    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Return ONLY JSON with replacementLatex. Latexai will add all change-tracking wrappers after validation.`;
     if (task === 'insert-section-patch') return `${base} Draft a polished LaTeX section or subsection to insert. Return valid JSON patch.`;
     if (task === 'beamer-outline-patch') return `${base} Return a Beamer-compatible outline with frames as a JSON patch.`;
     if (task === 'table-helper-patch') return `${base} Create a clean LaTeX table, tabular, align, or array environment as a JSON patch.`;

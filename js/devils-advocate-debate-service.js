@@ -612,7 +612,7 @@ ${details.output || ''}`),
       'Critic: make the strongest critical case against the current draft.',
       'Synthesizer: produce a balanced improvement plan using both sides.',
       'Be concrete, section-specific, and constructive.',
-      'The final synthesis should include a fenced latexai_actionable_edits JSON block with exact oldText/newText edits for \\laiold/\\lai insertion.'
+      'The final synthesis should include a fenced latexai_actionable_edits JSON block with exact oldText/newText edits. Do not emit internal editor change-tracking wrappers.'
     ].join('\n');
   }
 
@@ -782,10 +782,10 @@ ${details.output || ''}`),
         '',
         'You are the SYNTHESIZER agent.',
         'Use both the advocate and critic arguments to produce a balanced, constructive improvement plan.',
-        'Return Markdown with: summary, strongest positives, most serious risks, prioritized edits, citation/related-work fixes, theorem/proof fixes, predicted acceptance impact, and suggested visible \\lai edits.',
+        'Return Markdown with: summary, strongest positives, most serious risks, prioritized edits, citation/related-work fixes, theorem/proof fixes, predicted acceptance impact, and suggested actionable LaTeX edits.',
         'Also include one fenced code block labelled latexai_actionable_edits.',
         'That block must be JSON with schema {"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"optional tex path","targetHint":"section or paragraph hint","oldText":"exact source substring for replace/anchor","newText":"LaTeX replacement or insertion","confidence":0.0}],"appendPlan":"optional high-level LaTeX plan"}.',
-        'For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
+        'For replace edits, oldText must be copied exactly from the draft excerpt when possible. Do not emit Latexai internal change-marker macros; Latexai will add all old/new wrappers deterministically.',
         'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
         'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
       ].filter(Boolean).join('\n');
@@ -1247,7 +1247,7 @@ ${details.output || ''}`),
     const re = /\\laiold\s*\{([\s\S]*?)\}\s*\\lai\s*\{([\s\S]*?)\}/g;
     let match;
     while ((match = re.exec(String(text || '')))) {
-      const edit = normalizeActionableEdit({ mode: 'replace', oldText: match[1], newText: match[2], targetHint: 'AI-provided \\laiold/\\lai pair' }, pairs.length);
+      const edit = normalizeActionableEdit({ mode: 'replace', oldText: match[1], newText: match[2], targetHint: 'AI-provided tracked old/new pair' }, pairs.length);
       if (edit) pairs.push(edit);
     }
     return { source: pairs.length ? 'laiold_lai_pairs' : 'none', edits: pairs, appendPlan: '' };
@@ -1278,7 +1278,7 @@ ${details.output || ''}`),
     ensureRootLaiMacros();
     const parsed = extractActionableEdits(lastSynthesis);
     if (!parsed.edits.length) {
-      setStatus('No exact actionable edit JSON or \\laiold/\\lai pairs found. Use Append \\lai plan instead.');
+      setStatus('No exact actionable edit JSON or tracked old/new pairs found. Use append plan instead.');
       return { ok: false, applied: 0, skipped: 0, source: parsed.source };
     }
 

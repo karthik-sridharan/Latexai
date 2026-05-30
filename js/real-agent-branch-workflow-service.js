@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2f-equation-anchor-safe-insertions-20260530-1';
+  const STAGE = 'stage19t2g3-prompt-literal-scrub-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -488,15 +488,47 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return s;
   }
 
-  function stripLatexaiVisibleEditBlocks(text) {
-    let s = removeLatexaiSuggestionCommentRegions(text);
-    // Remove visible AI edit blocks from prompt context. Keep macro definitions
-    // because parseLatexMacroBlocks only catches actual \lai{...} calls.
+  function stripLatexaiInternalChangeMarkupForAgentContext(text) {
+    let s = removeLatexaiSuggestionCommentRegions(String(text || ''));
+    // Stage 19T2G: keep Latexai's internal change-markup macros entirely out of
+    // model-visible source. They are implementation details owned by the editor,
+    // not syntax the agents should imitate. Existing marked suggestions are
+    // replaced by neutral placeholders; macro definitions are removed.
+    s = s.replace(/\n?% --- Latexai old-content highlighting macro ---[\s\S]*?% --- end Latexai old-content highlighting macro ---\n?/gi, '\n');
+    s = s.replace(/\n?% --- Latexai AI-change highlighting macro ---[\s\S]*?% --- end Latexai AI-change highlighting macro ---\n?/gi, '\n');
     const blocks = parseLatexMacroBlocks(s, 'lai').concat(parseLatexMacroBlocks(s, 'laiold')).sort((a, b) => b.start - a.start);
     blocks.forEach((b) => {
-      s = s.slice(0, b.start) + '\n% [Latexai previous visible AI edit omitted from debate context]\n' + s.slice(b.end);
+      s = s.slice(0, b.start) + '\n% [Latexai previous internal edit marker omitted from agent context]\n' + s.slice(b.end);
     });
-    return s;
+    const lines = s.split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i] || '';
+      const trimmed = line.trim();
+      if (/Latexai.*(?:visible|change|old-content|AI-change).*markup/i.test(trimmed)) continue;
+      if (/^\\newif\\iflaishowchanges\b|^\\laishowchanges(?:true|false)\b/.test(trimmed)) continue;
+      if (/^\\usepackage\{xcolor\}%\s*added by Latexai/i.test(trimmed)) continue;
+      if (/^\\(?:long\\def|def)\\lai(?:old)?#?\d*/.test(trimmed) || /^\\(?:newcommand|providecommand|renewcommand)\s*\{\\lai(?:old)?\}/.test(trimmed)) {
+        // Skip a small balanced macro-definition body if it spans multiple lines.
+        let depth = 0;
+        let sawBrace = false;
+        for (let j = i; j < Math.min(lines.length, i + 30); j += 1) {
+          for (const ch of String(lines[j] || '')) {
+            if (ch === '{') { depth += 1; sawBrace = true; }
+            else if (ch === '}') depth -= 1;
+          }
+          i = j;
+          if (sawBrace && depth <= 0) break;
+        }
+        continue;
+      }
+      out.push(line);
+    }
+    return out.join('\n').replace(/\n{4,}/g, '\n\n\n');
+  }
+
+  function stripLatexaiVisibleEditBlocks(text) {
+    return stripLatexaiInternalChangeMarkupForAgentContext(text);
   }
 
   function removeLooseTargetSectionSuggestionText(text) {
@@ -1181,7 +1213,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       'MATH EQUATION COVERAGE MODE ACTIVE.',
       'The user specifically asked for mathematical equation / derivation explanations.',
       'The final editor must provide an explanatory edit below each listed equation id when useful.',
-      'Use the Stage 19T2F raw block patch protocol, NOT \lai comments. Example:',
+      'Use the Stage 19T2G raw block patch protocol. Do not output Latexai internal change-markup macros. Example:',
       'LATEXAI_BLOCK_PATCH_BEGIN',
       'PATCH_ID: eq-explain-1',
       'OPERATION: insert_after_block',
@@ -1274,7 +1306,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR (BODY PARAGRAPHS + EQUATION ANCHORS):',
       'Use only these block_id values. Preamble, macro definitions, theorem declarations, bibliography setup, command-heavy blocks, and environment boundaries are intentionally hidden and cannot be edited.',
       'Body paragraph blocks may be replaced or used as insertion anchors. Display-equation blocks like eq_003 are anchor-only: use insert_after_block or insert_before_block, never replace_block.',
-      'Return the Stage 19T2F RAW LATEX BLOCK PATCH protocol, not JSON and not raw \\lai markup. Use TARGET_BLOCK_ID from this map and place replacement/inserted visible LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
+      'Return the Stage 19T2G RAW LATEX BLOCK PATCH protocol, not JSON and not Latexai internal change-markup macros. Use TARGET_BLOCK_ID from this map and place replacement/inserted visible LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
       'For explanatory text below equations, do NOT prefix each line with %. Comment-only edits are rejected because they are invisible in the PDF.',
       skippedUnsafe ? ('Unsafe non-prose blocks hidden from the final editor: ' + skippedUnsafe + '.') : '',
       lines.join('\n')
@@ -1382,7 +1414,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       if (equationCoverageActive()) {
         const eqTargets = selectedEquationTargets(data?.realAgentRunPayload || data || {});
         const mathTitle = 'Explain mathematical equations and derivation steps';
-        const mathHint = 'For every detected display equation in the requested scope, produce a short LaTeX-ready \\lai explanation immediately below that equation.';
+        const mathHint = 'For every detected display equation in the requested scope, produce a short LaTeX-ready raw patch explanation immediately below that equation.';
         data.selectedBranch = { ...(data.selectedBranch || {}), title: mathTitle, branchType: 'math_equation_exposition', latexEditHint: mathHint, targetSections: targets };
         data.executionPlan = { ...(data.executionPlan || {}), title: mathTitle, selectedBranchType: 'math_equation_exposition', targetSections: targets, latexEditTargets: eqTargets.map((eq) => ({ equationId: eq.id, section: eq.section, mode: 'insert-below-equation' })) };
         if (data.realAgentRunPayload) {
@@ -1401,7 +1433,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const sectionScope = targetSelectorMode();
     const queryBase = inputValue('branchWorkflowQuery', 'novelty theorem assumptions citation coverage clarity limitations');
     const coverageNote = sectionScope === 'branch' ? '' : ('\n\nSection coverage request: evaluate and propose edits across these sections, not only the Introduction: ' + sectionTargets.join(', '));
-    const equationNote = equationCoverageActive() ? '\n\nEquation coverage request: explain every detected display equation in the requested scope and produce a visible \lai edit immediately below each equation. Do not substitute citation/related-work edits for this task.' : '';
+    const equationNote = equationCoverageActive() ? '\n\nEquation coverage request: explain every detected display equation in the requested scope and produce a visible raw patch insertion immediately below each equation. Do not substitute citation/related-work edits for this task.' : '';
     const query = queryBase + (sectionScope === 'branch' ? '' : ' multi-section section-aware whole-paper revision') + (equationCoverageActive() ? ' equation explanation derivation below each equation' : '');
     const reviewText = inputValue('branchWorkflowReviewText', queryBase) + coverageNote + equationNote;
     const paperSummary = inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.');
@@ -1777,7 +1809,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const synthT = findTemplateStep(planSteps, /synthesizer/i, 'synthesizer');
     const editorT = findTemplateStep(planSteps, /editor|final/i, 'editor');
     out.push({ ...synthT, agentRole: 'synthesizer', stepIndex: out.length + 1, debatePhase: 'synthesize', debateRound: rounds, taskType: 'synthesize ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'analysis' });
-    out.push({ ...editorT, agentRole: 'editor', stepIndex: out.length + 1, debatePhase: 'editor', debateRound: rounds, taskType: 'produce visible \\lai edits after ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'visible-lai-edits-and-implementation-plan' });
+    out.push({ ...editorT, agentRole: 'editor', stepIndex: out.length + 1, debatePhase: 'editor', debateRound: rounds, taskType: 'produce raw LaTeX block patch edits after ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'raw-latex-block-patch-and-implementation-plan' });
     return out;
   }
 
@@ -2522,7 +2554,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function containsLatexaiContextScaffold(text) {
     const s = String(text || '');
     return /\[\s*(?:important\s+excerpt\s+from\s+this\s+section|section\s+ending\s+excerpt|section\s+excerpt\s+truncated\s+by\s+Latexai)\s*\]/i.test(s)
-      || /LATEXAI_CONTEXT_|LAI-ACTIONABLE-EDIT|BEGIN\s+LAI-ACTIONABLE|END\s+LAI-ACTIONABLE/i.test(s)
+      || /LATEXAI_CONTEXT_|LEGACY_ACTIONABLE_EDIT_MARKER|BEGIN\s+LEGACY_ACTIONABLE|END\s+LEGACY_ACTIONABLE/i.test(s)
       || /%\s*\.\.\.\s*\[(?:important|section)\b/i.test(s);
   }
 
@@ -3864,7 +3896,7 @@ async function learnedSelectBranch() {
       '</div>',
       '<div class="field-grid two">',
       '<label class="field">Target mode <select id="branchWorkflowSectionScope"><option value="branch">selected branch target only</option><option value="selected">user-selected sections/subsections</option><option value="salient" selected>salient sections</option><option value="first6">first 6 detected units</option><option value="whole">whole paper: every detected unit</option></select></label>',
-      '<div id="branchWorkflowTargetModeNote" class="settings-note compact">Choose target sections/chapters/subsections. Whole paper requires the editor to return an edit or <code>\lai{no edits recommended}</code> marker for every detected unit.</div>',
+      '<div id="branchWorkflowTargetModeNote" class="settings-note compact">Choose target sections/chapters/subsections. Whole paper requires the editor to return an edit or an explicit no-edit marker for every detected unit.</div>',
       '</div>',
       '<label class="field">Detected target sections / chapters / subsections <select id="branchWorkflowTargetPicker" multiple size="7" class="branch-target-picker"></select></label>',
       '<div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRefreshTargetsBtn" class="btn mini" type="button">Refresh detected targets</button><button id="branchWorkflowCleanPreviousAiBtn" class="btn mini warn" type="button">Clean previous AI suggestions</button><span id="branchWorkflowTargetSummary" class="settings-note compact">Target list not loaded yet.</span></div>',

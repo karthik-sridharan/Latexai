@@ -1130,7 +1130,7 @@ ${input}` : input,
       'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy. Make the final strategy paper-editable rather than generic advice.',
       'Also include a fenced code block labelled latexai_actionable_edits containing JSON:',
       '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"optional tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor","newText":"LaTeX replacement or insertion","confidence":0.0}],"appendPlan":"optional LaTeX plan"}.',
-      'Use visible Latexai edit semantics: newText should be compatible with later \laiold/\lai insertion. Generate localized source-aware edits where possible; do not overwrite the entire source unless explicitly necessary.',
+      'Use source-aware edit semantics: newText should be compatible with later deterministic old/new tracking by the editor. Generate localized edits where possible; do not overwrite the entire source unless explicitly necessary. Do not emit internal editor change-tracking wrappers.',
       'When hidden memory mentions successful paper edit patterns, notation preferences, rejected rewrite styles, or previously failed insertion anchors, use that information to choose more exact oldText anchors and avoid repeating failed edits.',
       'If a suggestion cannot be localized exactly, put it in appendPlan rather than fabricating oldText.',
       'Avoid preamble edits, Markdown inside LaTeX, and invented exact oldText strings.'

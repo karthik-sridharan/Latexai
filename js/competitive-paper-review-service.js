@@ -483,7 +483,7 @@
     const gap = clean(e.gap || e.competitiveGap || e.addressesGap || edit.gap || edit.reason || '');
     const sourceIds = sourceIdsFromAny(e.sourceIds || e.evidence || e.evidenceIds || e.sources || edit.sourceIds || edit.evidence || edit.rankingEffect || expectedImpact);
     const evidence = clean(e.evidence || e.evidenceSummary || e.sourceEvidence || '');
-    const insertionMode = clean(e.insertionMode || e.insertMode || edit.insertionMode || '') || (edit.mode === 'replace' ? 'inline \\laiold/\\lai' : 'inline \\lai insert');
+    const insertionMode = clean(e.insertionMode || e.insertMode || edit.insertionMode || '') || (edit.mode === 'replace' ? 'inline \\laiold/\\lai' : 'tracked insertion');
     return {
       editIndex: index + 1,
       competitors,
@@ -762,8 +762,8 @@
       'You are Latexai Competitive Paper Reviewer.',
       'Rank competitor papers from the supplied URLs/notes, compare the current draft, and produce a concrete improvement roadmap.',
       'Do not claim to have read URLs unless their content is provided in notes.',
-      'Return Markdown with: ranked competitors, current draft position, weaknesses, concrete edits, predicted rank shift, and suggested lai/laiold edits.',
-      'Also include a fenced latexai_actionable_edits JSON block with exact oldText/newText edits that can be inserted using \\laiold and \\lai.'
+      'Return Markdown with: ranked competitors, current draft position, weaknesses, concrete edits, predicted rank shift, and suggested structured actionable edits.',
+      'Also include a fenced latexai_actionable_edits JSON block with exact oldText/newText edits that can be wrapped by the frontend/backend deterministic change-marker layer.'
     ].join('\n');
   }
 
@@ -1964,8 +1964,8 @@
           'Include an Evidence-cited ranking table with source IDs, an evidence coverage summary, and a sources consulted ledger.',
           'Every substantive competitor claim must cite source IDs like [S1] when source evidence is available; if not, mark it as weak/uncited.',
           'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
-          'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0,\"rankingEffect\":{\"competitors\":[\"#1 Paper A\"],\"gap\":\"which competitor weakness this edit addresses\",\"sourceIds\":[\"S1\"],\"before\":\"draft estimated #4 of 5\",\"after\":\"likely #3 of 5 after this edit\",\"expectedImpact\":\"one-sentence ranking movement rationale\",\"insertionMode\":\"inline \\laiold/\\lai or append \\lai plan\"}}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
-          'For every edit, include a rankingEffect object with competitors, gap, sourceIds, before, after, expectedImpact, and insertionMode. This is used to render the Latexai Edit impact map. For replace edits, oldText must be copied exactly from the draft excerpt when possible so Latexai can insert \\laiold{oldText} and \\lai{newText} at the right location.',
+          'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0,\"rankingEffect\":{\"competitors\":[\"#1 Paper A\"],\"gap\":\"which competitor weakness this edit addresses\",\"sourceIds\":[\"S1\"],\"before\":\"draft estimated #4 of 5\",\"after\":\"likely #3 of 5 after this edit\",\"expectedImpact\":\"one-sentence ranking movement rationale\",\"insertionMode\":\"tracked replacement or append-only plan\"}}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
+          'For every edit, include a rankingEffect object with competitors, gap, sourceIds, before, after, expectedImpact, and insertionMode. This is used to render the Latexai Edit impact map. For replace edits, oldText must be copied exactly from the draft excerpt when possible. Do not emit Latexai internal change-marker macros; Latexai will add all old/new wrappers deterministically.',
           'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
           'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
         ].filter(Boolean).join('\n'),
@@ -2246,10 +2246,10 @@ ${input}` : input,
     return [
       'Return exactly one fenced code block labelled latexai_actionable_edits containing valid JSON.',
       'JSON schema:',
-      '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor copied from the provided LaTeX source","newText":"compile-safe LaTeX body fragment","confidence":0.0,"rankingEffect":{"competitors":["competitor title or rank"],"gap":"gap addressed","sourceIds":["S1"],"before":"current estimated position","after":"projected position","expectedImpact":"why this improves competitive standing","insertionMode":"inline \\laiold/\\lai or append \\lai plan"}}],"appendPlan":"Markdown fallback plan, only for suggestions that cannot be localized exactly"}.',
+      '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor copied from the provided LaTeX source","newText":"compile-safe LaTeX body fragment","confidence":0.0,"rankingEffect":{"competitors":["competitor title or rank"],"gap":"gap addressed","sourceIds":["S1"],"before":"current estimated position","after":"projected position","expectedImpact":"why this improves competitive standing","insertionMode":"localized_replace_or_append_plan"}}],"appendPlan":"Markdown fallback plan, only for suggestions that cannot be localized exactly"}.',
       inline
         ? 'For inline mode, prioritize 3-8 localized actionableEdits whose oldText is an exact substring of the supplied source. Prefer small section/paragraph anchors over huge replacements. Do not fabricate oldText.'
-        : 'For append mode, actionableEdits may be empty; put the complete final improvement/rewrite plan in appendPlan. The appendPlan should be suitable to convert into a visible end-of-paper \\lai block.',
+        : 'For append mode, actionableEdits may be empty; put the complete final improvement/rewrite plan in appendPlan. Do not include Latexai internal change-marker macros; Latexai will wrap the append plan deterministically.',
       'newText must be body-level LaTeX only: no Markdown fences, no \\documentclass, no \\usepackage, no \\begin{document}, no \\end{document}.',
       'Preserve known notation and citation decisions from hidden memory. Do not repeat negative-memory suggestions or previously failed rewrite styles.',
       'If memory mentions successful paper edit patterns or failed anchors, use that to choose safer oldText anchors.'
@@ -2268,7 +2268,7 @@ ${input}` : input,
       'You are Latexai\'s final paper rewrite agent.',
       'Use the competitive review, ranked competitor evidence, draft comparison, edit impact map, and hidden research memory to produce actionable LaTeX edits for the current paper.',
       'The goal is not another generic review. The goal is to transform review insight into concrete visible Latexai edits that improve the paper\'s competitive standing.',
-      'Use \\laiold{old text} / \\lai{new text} semantics indirectly through the JSON schema; Latexai will wrap replacements itself.',
+      'Use only oldText/newText fields in the JSON schema. Do not emit Latexai internal change-marker macros; Latexai will wrap replacements itself.',
       'Respect all hidden memory constraints: notation glossary, citation memories, prior reviewer concerns, negative memories, and successful/failed edit patterns.',
       finalRewritePromptSchema(mode),
       memoryBlock ? `\n${memoryBlock}` : ''
@@ -2765,7 +2765,7 @@ ${input}` : input,
     const re = /\\laiold\s*\{([\s\S]*?)\}\s*\\lai\s*\{([\s\S]*?)\}/g;
     let match;
     while ((match = re.exec(String(text || '')))) {
-      const edit = normalizeActionableEdit({ mode: 'replace', oldText: match[1], newText: match[2], targetHint: 'AI-provided \\laiold/\\lai pair' }, pairs.length);
+      const edit = normalizeActionableEdit({ mode: 'replace', oldText: match[1], newText: match[2], targetHint: 'AI-provided tracked old/new pair' }, pairs.length);
       if (edit) pairs.push(edit);
     }
     return { source: pairs.length ? 'laiold_lai_pairs' : 'none', edits: pairs, appendPlan: '' };
@@ -2807,8 +2807,8 @@ ${input}` : input,
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
     }
-    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + insert \lai edits'))) {
-      setStatus('Insert \lai edits cancelled because GitHub checkpoint did not complete.');
+    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + insert tracked edits'))) {
+      setStatus('Insert tracked edits cancelled because GitHub checkpoint did not complete.');
       return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
     }
 
@@ -2818,7 +2818,7 @@ ${input}` : input,
     ensureRootLaiMacros();
     const parsed = extractActionableEdits(insertionSource);
     if (!parsed.edits.length) {
-      setStatus('No exact actionable edit JSON or \\laiold/\\lai pairs found. Use Append \\lai plan instead.');
+      setStatus('No exact actionable edit JSON or tracked old/new pairs found. Use append plan instead.');
       const result = { ok: false, applied: 0, skipped: 0, source: parsed.source, rewriteAttempted: Boolean(rewrite?.stepName), rewriteError: rewrite?.error || '' };
       await markMemoryUse('competitive-lai-insert', 'failure', 'No exact actionable edit JSON or laiold/lai pairs found for insertion.');
       await savePaperEditMemory('competitive-lai-insert', result, { reason: 'no_actionable_edits' });
@@ -2888,8 +2888,8 @@ ${input}` : input,
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
     }
-    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + append \lai plan'))) {
-      setStatus('Append \lai plan cancelled because GitHub checkpoint did not complete.');
+    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + append tracked plan'))) {
+      setStatus('Append tracked plan cancelled because GitHub checkpoint did not complete.');
       return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
     }
 
