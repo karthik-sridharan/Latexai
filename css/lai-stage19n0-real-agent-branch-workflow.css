@@ -399,3 +399,11 @@
 .branch-verifier-item.pass .branch-verifier-icon { color: #86efac; }
 .branch-verifier-item.fail .branch-verifier-icon { color: #fecaca; }
 #realAgentBranchCard .devils-actions .btn { min-width: 0; }
+
+/* Stage 19T: knowledge-retriever context cards for Devil's Advocate branch runner. */
+.branch-knowledge-card-list{display:grid;gap:10px;margin-top:8px;}
+.branch-knowledge-card{border:1px solid rgba(90,120,180,.22);border-radius:12px;padding:10px;background:rgba(255,255,255,.04);}
+.branch-knowledge-card-head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;}
+.branch-knowledge-score{font-size:11px;padding:2px 7px;border-radius:999px;background:rgba(78,142,255,.14);color:#77a4ff;white-space:nowrap;}
+.checkbox-field{display:flex;align-items:center;gap:8px;min-height:42px;}
+.checkbox-field input[type="checkbox"]{width:18px;height:18px;}
