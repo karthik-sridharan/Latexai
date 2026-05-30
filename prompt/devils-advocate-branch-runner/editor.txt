@@ -21,7 +21,7 @@ LATEXAI_STRUCTURED_EDIT_JSON_BEGIN
       "target_block_id": "one block_id from the SAFE EDIT TARGET BLOCK MAP, or empty if using target_section",
       "target_section": "exact requested section/unit title",
       "old_text_exact": "exact current source text only for replacement edits; otherwise empty",
-      "new_text": "paper-ready LaTeX text only, without outer \\lai wrapper",
+      "new_text": "compact body prose for the paper, without outer \\lai wrapper; avoid LaTeX commands unless unavoidable",
       "rationale": "short internal explanation, not paper text"
     }
   ],
@@ -32,7 +32,7 @@ LATEXAI_STRUCTURED_EDIT_JSON_END
 MANDATORY SAFETY RULES:
 - Do not output raw \lai{...} or \laiold{...} as the authoritative patch.
 - Do not output a complete LaTeX document.
-- Do not output \documentclass, \usepackage, \begin{document}, \end{document}, \input, \include, or macro definitions.
+- Do not output \documentclass, \usepackage, \begin{document}, \end{document}, \input, \include, theorem declarations, bibliography setup, or macro definitions. Do not edit preamble or command-heavy blocks.
 - Do not copy source-context scaffolding or excerpt labels into new_text or old_text_exact.
 - Forbidden strings include: [important excerpt from this section], [section ending excerpt], [section excerpt truncated by Latexai], LATEXAI_CONTEXT, BEGIN LAI-ACTIONABLE-EDIT, END LAI-ACTIONABLE-EDIT, LATEXAI_STRUCTURED_EDIT_JSON_BEGIN inside fields, and literal backslash-n text.
 - Do not use markdown fences.
@@ -40,7 +40,7 @@ MANDATORY SAFETY RULES:
 - For replacements, old_text_exact must be a short exact substring from the current source. If unsure, use insert_after_paragraph instead.
 - new_text must be actual paper text, not advice like "Add a paragraph saying...".
 - Do not duplicate section headings. Normally new_text should not start with \section{...}.
-- Preserve LaTeX syntax: escape text-mode underscores as \_, use math mode for symbols, and escape bare percent signs as \%.
+- Prefer plain prose. If LaTeX commands are unavoidable inside JSON strings, double-escape backslashes, e.g. \\theta not \theta. Never output preamble/structural commands.
 - Do not invent citations. Use citation placeholders only if the user already uses placeholders or explicitly asks.
 
 TARGETING RULES:
