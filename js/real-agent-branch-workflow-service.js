@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2g3-prompt-literal-scrub-20260530-1';
+  const STAGE = 'stage19t2h-raw-patch-validator-relaxation-shadow-compile-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
