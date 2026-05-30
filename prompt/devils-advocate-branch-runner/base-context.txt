@@ -7,6 +7,8 @@ Memory ids to use: {{memoryIds}}
 
 {{memoryContext}}
 
+{{knowledgeContext}}
+
 {{sectionCoverageInstruction}}
 
 {{equationCoverageContext}}
