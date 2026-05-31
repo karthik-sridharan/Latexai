@@ -1,4 +1,4 @@
-Latexai Stage 19T2W in-place edit protocol.
+Latexai Stage 19T2Z in-place edit protocol.
 
 Return source edits using the raw LATEXAI_BLOCK_PATCH protocol. Do not return JSON. Do not return Markdown fences. Do not output \lai, \laiold, BEGIN LAI-ACTIONABLE-EDIT, or other internal change-tracking markup. Latexai will add visible old/new markup only after the Safe Edit Compiler validates the patch.
 
@@ -20,3 +20,9 @@ Rules:
 - BEGIN_NEW_LATEX must contain paper-ready visible content, not instructions to the user and not comment-only text.
 - If exact localization is unsafe, use append_before_end_document with a clear section or subsection.
 - If no edit is appropriate, return one block with OPERATION: no_edit.
+Additional Stage 19T2Z rules for paper-level AI:
+- Do not return review notes as the patch payload when the user asked for source changes. The payload should be the exact LaTeX/prose to insert.
+- Do not use OPERATION: append_review_note. Use OPERATION: append_before_end_document.
+- For a new introduction, overview, related-work, assumptions, theorem, proof, or appendix section, use a section-level operation rather than replacing the whole file.
+- Keep each BEGIN_NEW_LATEX payload reasonably sized. If a section is long, split it into multiple patches with the same operation/section or subsections.
+- If you need theorem/proof environments but the preamble may lack theorem definitions, use plain section/subsection headings and displayed equations rather than adding \newtheorem.
