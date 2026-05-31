@@ -1,4 +1,4 @@
-/* Latexai Stage 19I5 ReviewerRebuttalSimulatorService
+/* Latexai Stage 19T2W ReviewerRebuttalSimulatorService
  * Stage: stage19i6-reviewer-rebuttal-explicit-role-context-fix-20260526-1
  *
  * Foundation workflow:
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i6-reviewer-rebuttal-explicit-role-context-fix-20260526-1';
+  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -35,6 +35,7 @@
   let reviewerWorkflowBusy = false;
   let reviewerStatusTimer = null;
   let trajectoryAgentRuns = [];
+  let lastCompiledSynthesis = null;
   const AI_CALL_TIMEOUT_MS = 180000;
 
   function State() { return NS.State; }
@@ -70,6 +71,49 @@
     let file = getFile(path);
     if (!file) { path = rootPath(); file = getFile(path); }
     return { path, text: fileText(file) };
+  }
+
+
+  function rawPatchPipeline() {
+    return NS.LaiSafeEditPipelineService || null;
+  }
+
+  function rawPatchProtocolInstructions(goal) {
+    return rawPatchPipeline()?.rawPatchProtocolInstructions?.({
+      goal: goal || 'reviewer/rebuttal final paper edits',
+      extra: 'Reviewer/rebuttal synthesis may include a Markdown explanation, but source edits must be LATEXAI_BLOCK_PATCH blocks. Do not output JSON edit schemas or Latexai internal change markers.'
+    }) || 'Return source edits as LATEXAI_BLOCK_PATCH blocks, not JSON and not \\lai markup.';
+  }
+
+  async function compileReviewerSynthesis(rawText) {
+    const pipe = rawPatchPipeline();
+    if (!pipe?.compileRawPatch) return { ok: false, safeToInsert: false, error: 'LaiSafeEditPipelineService is not loaded.' };
+    return await pipe.compileRawPatch({
+      finalOutput: rawText,
+      workflow: 'reviewer-rebuttal-final-synthesis',
+      insertionMode: 'targeted',
+      allowAiRepair: true,
+      metadata: { reviewerRebuttalStage: STAGE, activePath: activePath() }
+    });
+  }
+
+  async function applyReviewerCompiledSynthesis() {
+    const pipe = rawPatchPipeline();
+    if (!pipe?.applyCompiledDraft) return { ok: false, error: 'LaiSafeEditPipelineService is not loaded.' };
+    if (!lastCompiledSynthesis) lastCompiledSynthesis = await compileReviewerSynthesis(lastSynthesis || fullReport());
+    return pipe.applyCompiledDraft(lastCompiledSynthesis, { kind: 'targeted', preferRoot: true });
+  }
+
+  function reviewerCompilerReport(compiled) {
+    return JSON.stringify({
+      safeToInsert: compiled?.safeToInsert,
+      blockCount: compiled?.blockCount || compiled?.compiledEditCount || 0,
+      repairAttempted: compiled?.repairAttempted,
+      repairStatus: compiled?.repairStatus,
+      warnings: compiled?.warnings || [],
+      validationErrors: compiled?.validationErrors || [],
+      rejectedEdits: compiled?.rejectedEdits || []
+    }, null, 2);
   }
   function draftExcerpt(text, maxChars = 55000) {
     const s = String(text || '');
@@ -1128,12 +1172,11 @@ ${input}` : input,
       'You are the final synthesis agent for a paper revision workflow.',
       'Use the simulated reviews, user guidance, and AI rebuttal to propose the strongest final revision.',
       'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy. Make the final strategy paper-editable rather than generic advice.',
-      'Also include a fenced code block labelled latexai_actionable_edits containing JSON:',
-      '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"optional tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor","newText":"LaTeX replacement or insertion","confidence":0.0}],"appendPlan":"optional LaTeX plan"}.',
-      'Use source-aware edit semantics: newText should be compatible with later deterministic old/new tracking by the editor. Generate localized edits where possible; do not overwrite the entire source unless explicitly necessary. Do not emit internal editor change-tracking wrappers.',
-      'When hidden memory mentions successful paper edit patterns, notation preferences, rejected rewrite styles, or previously failed insertion anchors, use that information to choose more exact oldText anchors and avoid repeating failed edits.',
-      'If a suggestion cannot be localized exactly, put it in appendPlan rather than fabricating oldText.',
-      'Avoid preamble edits, Markdown inside LaTeX, and invented exact oldText strings.'
+      rawPatchProtocolInstructions('reviewer/rebuttal final revision source edits'),
+      'For every concrete source edit, include a LATEXAI_BLOCK_PATCH block. Use append_before_end_document for a final revision plan if exact localization is unsafe.',
+      'Do not emit JSON edit schemas, \lai, \laiold, or internal editor change-tracking wrappers. The app/backend adds visible old/new markup after safe validation.',
+      'When hidden memory mentions successful paper edit patterns, notation preferences, rejected rewrite styles, or previously failed insertion anchors, use that information to choose safer patch targets and avoid repeating failed edits.',
+      'Avoid preamble edits, Markdown fences inside BEGIN_NEW_LATEX, full-document rewrites, and invented exact oldText strings.'
     ].join('\n');
     const input = [
       '--- Paper metadata ---', JSON.stringify({ targetVenue: payload.targetVenue, paperGoal: payload.paperGoal, activePath: payload.activePath }, null, 2), '',
@@ -1158,6 +1201,7 @@ ${input}` : input,
         'latexai-final-review-synthesis',
         { stepName, memoryContext, memoryBlock, agentRole: 'editor' }
       )).trim();
+      lastCompiledSynthesis = lastSynthesis ? await compileReviewerSynthesis(lastSynthesis) : null;
       await markMemoryUse(stepName, lastSynthesis ? 'success' : 'used', lastSynthesis ? 'Final synthesis completed with memory context.' : 'Final synthesis returned empty text.');
       await saveReviewerMemory('final_synthesis', lastSynthesis, payload);
       const synthesisResult = { ok: Boolean(lastSynthesis), accepted: Boolean(lastSynthesis), mode: 'reviewer-final-synthesis', rewardValue: lastSynthesis ? 0.75 : -0.35, rewardLabel: lastSynthesis ? 'positive' : 'negative', note: lastSynthesis ? 'Reviewer/rebuttal final synthesis completed.' : 'Reviewer/rebuttal final synthesis returned empty text.' };
@@ -1198,11 +1242,44 @@ ${input}` : input,
   }
 
 
+  async function prepareReviewerFinalInsertion() {
+    if (!lastSynthesis) {
+      setStatus('Run final synthesis first.');
+      return { ok: false, error: 'No final synthesis' };
+    }
+    setStatus('Preparing reviewer/rebuttal final synthesis through Safe Edit Compiler...');
+    lastCompiledSynthesis = await compileReviewerSynthesis(lastSynthesis);
+    setOutput([fullReport(), '', '--- Stage 19T2W reviewer/rebuttal safe compiler preview ---', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
+    setStatus(lastCompiledSynthesis.safeToInsert
+      ? `Prepared ${lastCompiledSynthesis.blockCount || lastCompiledSynthesis.compiledEditCount || 0} safe reviewer/rebuttal edit block(s). Click Apply final edits.`
+      : 'Safe Edit Compiler blocked reviewer/rebuttal final edits. No source changes made.');
+    return lastCompiledSynthesis;
+  }
+
+  async function applyReviewerFinalInsertion() {
+    if (!lastSynthesis) {
+      setStatus('Run final synthesis first.');
+      return { ok: false, error: 'No final synthesis' };
+    }
+    if (!lastCompiledSynthesis || lastCompiledSynthesis.safeToInsert !== true) {
+      lastCompiledSynthesis = await compileReviewerSynthesis(lastSynthesis);
+    }
+    const applied = await applyReviewerCompiledSynthesis();
+    if (!applied.ok) {
+      setOutput([fullReport(), '', '--- Stage 19T2W reviewer/rebuttal apply blocked ---', applied.error || 'blocked', '', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
+      setStatus('Safe Edit Compiler blocked reviewer/rebuttal apply. No source changes made.');
+      return applied;
+    }
+    setOutput([fullReport(), '', '--- Stage 19T2W reviewer/rebuttal safe insertion applied ---', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
+    setStatus(`Inserted ${applied.blockCount || 0} reviewer/rebuttal final edit block(s). Use Resolve AI edits to accept/reject.`);
+    return applied;
+  }
+
   function bindReviewerDelegatedEvents() {
     if (reviewerDelegatedEventsBound) return;
     reviewerDelegatedEventsBound = true;
     D.addEventListener('click', (event) => {
-      const target = event.target?.closest?.('#runReviewerSimBtn,#generateReviewerRebuttalBtn,#synthesizeReviewerFinalBtn,#runReviewerFullLoopBtn,#cancelReviewerSimBtn,#copyReviewerSimBtn');
+      const target = event.target?.closest?.('#runReviewerSimBtn,#generateReviewerRebuttalBtn,#synthesizeReviewerFinalBtn,#prepareReviewerFinalInsertBtn,#applyReviewerFinalInsertBtn,#runReviewerFullLoopBtn,#cancelReviewerSimBtn,#copyReviewerSimBtn');
       if (!target) return;
       event.preventDefault();
       event.stopPropagation();
@@ -1215,6 +1292,8 @@ ${input}` : input,
         if (id === 'runReviewerSimBtn') { void runWorkflowWithBusy('Starting reviewer simulation', runReviews); return; }
         if (id === 'generateReviewerRebuttalBtn') { void runWorkflowWithBusy('Starting rebuttal generation', generateRebuttal); return; }
         if (id === 'synthesizeReviewerFinalBtn') { void runWorkflowWithBusy('Starting final synthesis', synthesizeFinalRevision); return; }
+        if (id === 'prepareReviewerFinalInsertBtn') { void runWorkflowWithBusy('Preparing final insertion', prepareReviewerFinalInsertion); return; }
+        if (id === 'applyReviewerFinalInsertBtn') { void runWorkflowWithBusy('Applying final insertion', applyReviewerFinalInsertion); return; }
         if (id === 'runReviewerFullLoopBtn') { void runWorkflowWithBusy('Starting full reviewer/rebuttal loop', runFullLoop); return; }
       } catch (err) {
         const message = err?.message || String(err);
@@ -1259,6 +1338,8 @@ ${input}` : input,
       '  <button id="runReviewerSimBtn" class="btn mini primary" type="button">Run reviews</button>',
       '  <button id="generateReviewerRebuttalBtn" class="btn mini" type="button">Generate rebuttal</button>',
       '  <button id="synthesizeReviewerFinalBtn" class="btn mini" type="button">Synthesize final revision</button>',
+      '  <button id="prepareReviewerFinalInsertBtn" class="btn mini" type="button">Preview final edits</button>',
+      '  <button id="applyReviewerFinalInsertBtn" class="btn mini" type="button">Apply final edits</button>',
       '  <button id="runReviewerFullLoopBtn" class="btn mini" type="button">Run full loop</button>',
       '  <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>',
@@ -1290,6 +1371,8 @@ ${input}` : input,
     generateRebuttal,
     synthesizeFinalRevision,
     runFullLoop,
+    prepareReviewerFinalInsertion,
+    applyReviewerFinalInsertion,
     cancelLoop,
     buildPayload,
     getLastReviews: () => lastReviews,

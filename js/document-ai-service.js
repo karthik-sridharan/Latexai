@@ -1,4 +1,4 @@
-/* Latexai Stage 19T2O DocumentAIService
+/* Latexai Stage 19T2W DocumentAIService
  * Stage: stage19t2o-resolver-macro-unwrapper-hard-fix-20260530-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2p-resolver-accept-red-unblocks-lai-20260530-1';
+  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -27,7 +27,7 @@
 
   const FALLBACK_PROMPTS = {
     [COMMON_PROMPT_PATH]: 'You are Latexai document-level AI. Return useful paper-level output. User instructions: {{USER_INSTRUCTIONS}}. Mode: {{MODE}}. Workflow: {{WORKFLOW}}.',
-    [INPLACE_PROMPT_PATH]: 'Return JSON only with {"edits":[{"path":"main.tex","oldText":"exact existing text","newText":"replacement LaTeX","reason":"why"}],"summary":"..."}',
+    [INPLACE_PROMPT_PATH]: 'Return the LATEXAI_BLOCK_PATCH protocol only for paper source edits. Do not return JSON and do not emit \\lai or \\laiold. Use replace_block, insert_after_block, insert_before_block, insert_before_section, or append_before_end_document as appropriate.',
     [WORKFLOW_PROMPTS.review]: 'Workflow: Review and suggested improvements. Critically review the paper and return prioritized actionable suggestions.',
     [WORKFLOW_PROMPTS.remake]: 'Workflow: Total remake plan. Propose a large-scale paper remake plan.',
     [WORKFLOW_PROMPTS.ranking]: 'Workflow: Ranking / acceptance improver. Return ranked recommendations that would improve acceptance odds.',
@@ -404,6 +404,43 @@
     return rootText;
   }
 
+
+  function rawPatchPipeline() {
+    return NS.LaiSafeEditPipelineService || null;
+  }
+
+  function rawPatchProtocolInstructions(goal) {
+    return rawPatchPipeline()?.rawPatchProtocolInstructions?.({
+      goal: goal || 'document-level paper improvement',
+      extra: 'For document AI in-place mode, return actionable source-edit patch blocks. For append/review mode, the app may wrap the review as append_before_end_document; do not emit Latexai internal change macros yourself.'
+    }) || [
+      'Return source edits using LATEXAI_BLOCK_PATCH blocks, not JSON.',
+      'Do not output \\lai or \\laiold; Latexai will add visible change markup after safe validation.'
+    ].join('\n');
+  }
+
+  function rawPatchBlock(options) {
+    return rawPatchPipeline()?.rawPatchBlock?.(options) || String(options?.latex || '');
+  }
+
+  async function compileDocumentAiOutput(rawText, workflow, mode) {
+    const pipe = rawPatchPipeline();
+    if (!pipe?.compileRawPatch) return { ok: false, safeToInsert: false, error: 'LaiSafeEditPipelineService is not loaded.' };
+    return await pipe.compileRawPatch({
+      finalOutput: rawText,
+      workflow: 'document-ai-' + (workflow || 'review') + '-' + (mode || 'append'),
+      insertionMode: 'targeted',
+      allowAiRepair: true,
+      metadata: { documentAiStage: STAGE, mode: mode || 'append', workflow: workflow || 'review' }
+    });
+  }
+
+  async function applyCompiledDocumentAiPatch(compiled, mode) {
+    const pipe = rawPatchPipeline();
+    if (!pipe?.applyCompiledDraft) return { ok: false, error: 'LaiSafeEditPipelineService is not loaded.' };
+    return pipe.applyCompiledDraft(compiled, { kind: mode === 'append' ? 'append' : 'targeted', preferRoot: true });
+  }
+
   function workflowLabel(workflow) {
     return {
       review: 'Review and suggested improvements',
@@ -434,15 +471,15 @@
     ];
 
     if (mode === 'inplace') {
-      pieces.push('', '--- In-place edit JSON format prompt file ---', templateFill(inplacePrompt, values));
+      pieces.push('', '--- In-place raw patch protocol prompt file ---', templateFill(inplacePrompt, values), '', rawPatchProtocolInstructions('in-place document-level paper rewrite/edit'));
     }
 
     pieces.push('', '--- Project context follows ---', context);
 
     return {
       instructions: mode === 'inplace'
-        ? 'Return JSON only. No markdown fences. No prose outside JSON.'
-        : 'Return LaTeX only. No markdown fences. No JSON.',
+        ? 'Return LATEXAI_BLOCK_PATCH markup for source edits. No JSON. No \\lai or \\laiold; the app will add change markup after safe validation.'
+        : 'Return LaTeX/prose only. No markdown fences. No JSON. The app will wrap append output safely.',
       input: pieces.join('\n'),
       promptSource: {
         kind: 'frontend-static-files',
@@ -571,63 +608,28 @@
     return true;
   }
 
-  function applyInplacePatch(patch = lastPatch) {
-    if (!patch || !Array.isArray(patch.edits)) {
-      setStatus('No in-place AI patch to apply. Run paper AI in in-place mode first.');
-      return { ok: false, applied: 0, skipped: 0 };
+  async function applyInplacePatch(patch = lastPatch) {
+    if (!patch) {
+      setStatus('No in-place raw-patch output to apply. Run paper AI in in-place mode first.');
+      return { ok: false };
     }
-
-    ensureRootLaiMacro();
-
-    let applied = 0;
-    let skipped = 0;
-    const messages = [];
-
-    patch.edits.forEach((edit, index) => {
-      const path = normalizePath(edit.path || rootPath());
-      const file = State()?.getFile?.(path);
-      if (!file || !textFile(file)) {
-        skipped += 1;
-        messages.push(`SKIP ${path}: file not found or not text.`);
-        return;
-      }
-
-      const text = fileText(file);
-      const oldText = String(edit.oldText || '');
-      const at = text.indexOf(oldText);
-      if (at < 0) {
-        skipped += 1;
-        messages.push(`SKIP ${path}: oldText was not an exact substring.`);
-        return;
-      }
-
-      const replacement = wrapInplaceReplacement({ ...edit, path }, index);
-      const next = text.slice(0, at) + replacement + text.slice(at + oldText.length);
-      State()?.updateFile?.(path, next);
-      applied += 1;
-      messages.push(`APPLY ${path}: ${edit.reason || 'AI edit applied.'}`);
-    });
-
-    try { State()?.setActivePath?.(rootPath()); } catch (_err) {}
-    try { NS.Editor?.render?.(); } catch (_err) {}
-    try { NS.FileTree?.render?.(); } catch (_err) {}
-    try { State()?.save?.(); } catch (_err) {}
-    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
-
-    const report = [
-      'In-place AI patch apply report',
-      '==============================',
-      '',
-      `Applied: ${applied}`,
-      `Skipped: ${skipped}`,
-      '',
-      ...messages
-    ].join('\n');
-
-    setOutput(report);
-    setStatus(`Applied ${applied} in-place edit(s); skipped ${skipped}.`);
-    if (applied) toast(`Applied ${applied} paper-level AI edit(s).`);
-    return { ok: applied > 0, applied, skipped, messages };
+    const result = await applyCompiledDocumentAiPatch(patch, 'targeted');
+    if (!result.ok) {
+      setStatus('Safe Edit Compiler did not allow applying this Document AI patch: ' + (result.error || 'blocked'));
+      setOutput([
+        'Document AI safe apply blocked',
+        '==============================',
+        '',
+        result.error || 'Safe compiler blocked insertion.',
+        '',
+        'Compiler diagnostics:',
+        JSON.stringify(patch, null, 2).slice(0, 8000)
+      ].join('\n'));
+      return result;
+    }
+    setStatus(`Applied ${result.blockCount || 0} compiler-managed Document AI edit block(s). Use Resolve AI edits to accept/reject.`);
+    toast('Document AI safe edits inserted.');
+    return result;
   }
 
   async function runDocumentAi() {
@@ -659,11 +661,11 @@
       lastRaw = NS.AIProvider.extractText(response);
 
       if (mode === 'inplace') {
-        lastPatch = parseInplacePatch(lastRaw);
         lastSection = '';
+        lastPatch = await compileDocumentAiOutput(lastRaw, workflow, mode);
         setOutput([
-          'Document AI in-place patch output',
-          '=================================',
+          'Document AI raw-patch output',
+          '============================',
           '',
           `Workflow: ${workflowLabel(workflow)}`,
           `Mode: ${mode}`,
@@ -672,15 +674,17 @@
           `In-place prompt: ${payload.promptSource.inplacePrompt}`,
           `Context: ${lastContextSummary}`,
           '',
-          lastPatch.ok ? `Parsed edits: ${lastPatch.edits.length}` : lastPatch.error,
-          lastPatch.summary ? `Summary: ${lastPatch.summary}` : '',
+          `Safe compiler: safeToInsert=${Boolean(lastPatch.safeToInsert)}, blocks=${lastPatch.blockCount || lastPatch.compiledEditCount || 0}`,
+          lastPatch.repairAttempted ? `Repair: ${lastPatch.repairStatus || 'attempted'}` : '',
+          (lastPatch.validationErrors || []).length ? `Validation errors: ${(lastPatch.validationErrors || []).join('; ')}` : '',
+          (lastPatch.warnings || []).length ? `Warnings: ${(lastPatch.warnings || []).slice(0, 6).join('; ')}` : '',
           '',
           'Raw AI output:',
           lastRaw
-        ].join('\n'));
-        setStatus(lastPatch.ok
-          ? `Document AI returned ${lastPatch.edits.length} exact in-place edit(s). Click Apply to paper to insert with LAI comments.`
-          : `Document AI did not return parseable JSON. ${lastPatch.error}`);
+        ].filter(Boolean).join('\n'));
+        setStatus(lastPatch.safeToInsert
+          ? `Document AI produced ${lastPatch.blockCount || lastPatch.compiledEditCount || 0} safe raw-patch edit(s). Click Apply to paper to insert app-managed \lai markup.`
+          : 'Document AI output was blocked by the Safe Edit Compiler. No source changes made.');
         return lastPatch;
       }
 
@@ -707,7 +711,7 @@
     }
   }
 
-  function appendLastToPaper() {
+  async function appendLastToPaper() {
     const mode = el('documentAiMode')?.value || 'append';
     if (mode === 'inplace') return applyInplacePatch(lastPatch);
 
@@ -723,19 +727,29 @@
     }
 
     const workflow = el('documentAiWorkflow')?.value || 'review';
-    const insertion = wrapAppendixSection(lastSection, workflow);
-    const withMacro = ensureLai(fileText(root));
-    const next = insertBeforeEndDocument(withMacro, insertion);
-
-    State()?.updateFile?.(normalizePath(root.path), next);
-    try { State()?.setActivePath?.(normalizePath(root.path)); } catch (_err) {}
-    try { NS.Editor?.render?.(); } catch (_err) {}
-    try { State()?.save?.(); } catch (_err) {}
-    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
-
-    setStatus(`Appended document AI section to ${normalizePath(root.path)}.`);
-    toast('Document AI section appended.');
-    return { ok: true, path: normalizePath(root.path) };
+    const body = cleanAiLatex(lastSection);
+    const rawPatch = rawPatchBlock({
+      operation: 'append_before_end_document',
+      targetSection: 'Document AI Review',
+      rationale: 'Append document-level AI output using app-managed Latexai change markup.',
+      latex: body,
+      patchId: 'document-ai-append'
+    });
+    lastPatch = await compileDocumentAiOutput(rawPatch, workflow, 'append');
+    const result = await applyCompiledDocumentAiPatch(lastPatch, 'append');
+    if (!result.ok) {
+      setStatus('Safe Edit Compiler blocked Document AI append. No source changes were made.');
+      setOutput([
+        lastSection,
+        '',
+        '--- Safe compiler blocked Document AI append ---',
+        JSON.stringify(lastPatch, null, 2).slice(0, 8000)
+      ].join('\n'));
+      return result;
+    }
+    setStatus(`Appended Document AI output through Safe Edit Compiler to ${normalizePath(root.path)}.`);
+    toast('Document AI safe append inserted.');
+    return result;
   }
 
   async function runAndAppendDocumentAi() {
@@ -1317,7 +1331,7 @@
     card.innerHTML = [
       '<h3>Paper-level AI</h3>',
       '<div class="document-ai-grid">',
-      '  <div class="document-ai-help">Stage 11G uses developer-managed static frontend prompt files in <code>/prompt/</code>. Append mode adds a final AI section. In-place mode applies exact AI JSON edits by commenting old content and inserting <code>\\lai{...}</code>.</div>',
+      '  <div class="document-ai-help">Stage 19T2W uses developer-managed static frontend prompt files in <code>/prompt/</code>. In-place mode now asks for raw <code>LATEXAI_BLOCK_PATCH</code> text, and append mode is compiled through the Safe Edit Compiler; the app/backend, not the AI, creates <code>\\lai{...}</code> markup.</div>',
       '  <div class="document-ai-two">',
       '    <label>Workflow',
       '      <select id="documentAiWorkflow">',
@@ -1343,7 +1357,7 @@
       '    <button id="runAppendDocumentAiBtn" class="btn mini primary" type="button">Run + append</button>',
       '    <button id="copyDocumentAiBtn" class="btn mini" type="button">Copy output</button>',
       '  </div>',
-      '  <div id="documentAiStatus" class="document-ai-status">Paper-level AI ready. Base prompts are developer-managed frontend files in /prompt/.</div>',
+      '  <div id="documentAiStatus" class="document-ai-status">Paper-level AI ready. Source edits use raw block-patch protocol plus Safe Edit Compiler.</div>',
       '  <pre id="documentAiOutput" class="document-ai-output"></pre>',
       '  <div class="document-ai-resolver">',
       '    <h4>Resolve AI edits</h4>',

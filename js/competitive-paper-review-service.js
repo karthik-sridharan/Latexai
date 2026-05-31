@@ -1,4 +1,4 @@
-/* Latexai Stage 19F CompetitivePaperReviewService
+/* Latexai Stage 19T2W CompetitivePaperReviewService
  * Stage: stage19i-agent-role-specific-context-policy-20260526-1
  *
  * Competitive paper comparison workflow.
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19i-agent-role-specific-context-policy-20260526-1';
+  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -98,6 +98,53 @@
     const file = getFile(path);
     const text = editorText || fileText(file);
     return { path, file, text };
+  }
+
+
+  function rawPatchPipeline() {
+    return NS.LaiSafeEditPipelineService || null;
+  }
+
+  function rawPatchProtocolInstructions(goal) {
+    return rawPatchPipeline()?.rawPatchProtocolInstructions?.({
+      goal: goal || 'competitive review paper edits',
+      extra: 'For competitive review, keep ranking/evidence prose in Markdown, but source modifications must be LATEXAI_BLOCK_PATCH blocks. Include source IDs/evidence in RATIONALE or nearby prose, not JSON.'
+    }) || 'Return source edits as LATEXAI_BLOCK_PATCH blocks, not JSON and not \\lai markup.';
+  }
+
+  function rawPatchBlock(options) {
+    return rawPatchPipeline()?.rawPatchBlock?.(options) || String(options?.latex || '');
+  }
+
+  async function compileCompetitiveRawPatch(finalOutput, workflow, kind) {
+    const pipe = rawPatchPipeline();
+    if (!pipe?.compileRawPatch) return { ok: false, safeToInsert: false, error: 'LaiSafeEditPipelineService is not loaded.' };
+    return await pipe.compileRawPatch({
+      finalOutput,
+      workflow: workflow || 'competitive-paper-review',
+      insertionMode: kind === 'append' ? 'append' : 'targeted',
+      allowAiRepair: true,
+      metadata: { competitiveReviewStage: STAGE, kind: kind || 'targeted' }
+    });
+  }
+
+  async function applyCompetitiveCompiledPatch(compiled, kind) {
+    const pipe = rawPatchPipeline();
+    if (!pipe?.applyCompiledDraft) return { ok: false, error: 'LaiSafeEditPipelineService is not loaded.' };
+    return pipe.applyCompiledDraft(compiled, { kind: kind === 'append' ? 'append' : 'targeted', preferRoot: true });
+  }
+
+  function compilerReportText(compiled) {
+    return JSON.stringify({
+      safeToInsert: compiled?.safeToInsert,
+      blockCount: compiled?.blockCount || compiled?.compiledEditCount || 0,
+      repairAttempted: compiled?.repairAttempted,
+      repairStatus: compiled?.repairStatus,
+      warnings: compiled?.warnings || [],
+      validationErrors: compiled?.validationErrors || [],
+      rejectedEdits: compiled?.rejectedEdits || [],
+      plannedOperations: compiled?.compiledEdits?.map?.((e) => ({ kind: e.kind, target_block_id: e.target_block_id, target_section: e.target_section })) || []
+    }, null, 2);
   }
 
   function writeProjectFile(path, content) {
@@ -483,7 +530,7 @@
     const gap = clean(e.gap || e.competitiveGap || e.addressesGap || edit.gap || edit.reason || '');
     const sourceIds = sourceIdsFromAny(e.sourceIds || e.evidence || e.evidenceIds || e.sources || edit.sourceIds || edit.evidence || edit.rankingEffect || expectedImpact);
     const evidence = clean(e.evidence || e.evidenceSummary || e.sourceEvidence || '');
-    const insertionMode = clean(e.insertionMode || e.insertMode || edit.insertionMode || '') || (edit.mode === 'replace' ? 'inline \\laiold/\\lai' : 'tracked insertion');
+    const insertionMode = clean(e.insertionMode || e.insertMode || edit.insertionMode || '') || (edit.mode === 'replace' ? 'inline \\laiold/\\lai' : 'inline \\lai insert');
     return {
       editIndex: index + 1,
       competitors,
@@ -763,7 +810,7 @@
       'Rank competitor papers from the supplied URLs/notes, compare the current draft, and produce a concrete improvement roadmap.',
       'Do not claim to have read URLs unless their content is provided in notes.',
       'Return Markdown with: ranked competitors, current draft position, weaknesses, concrete edits, predicted rank shift, and suggested structured actionable edits.',
-      'Also include a fenced latexai_actionable_edits JSON block with exact oldText/newText edits that can be wrapped by the frontend/backend deterministic change-marker layer.'
+      'Also include LATEXAI_BLOCK_PATCH blocks for concrete source edits; the Safe Edit Compiler and app will add deterministic change-marker markup.'
     ].join('\n');
   }
 
@@ -1954,7 +2001,7 @@
       const finalReviewStartedAt = Date.now();
       const finalReviewInstructionsForLog = [
         'Return a structured Markdown competitive review report. Be critical, concrete, source-cited, and action-oriented.',
-        'Include evidence-cited rankings, concrete improvement roadmap, and latexai_actionable_edits JSON.'
+        'Include evidence-cited rankings, concrete improvement roadmap, and LATEXAI_BLOCK_PATCH edit blocks.'
       ].join(' ');
       const response = await NS.AIProvider.ask({
         workflow: 'competitive-web-review-improvement',
@@ -1963,11 +2010,10 @@
           'Return a structured Markdown competitive review report. Be critical, concrete, source-cited, and action-oriented.',
           'Include an Evidence-cited ranking table with source IDs, an evidence coverage summary, and a sources consulted ledger.',
           'Every substantive competitor claim must cite source IDs like [S1] when source evidence is available; if not, mark it as weak/uncited.',
-          'In addition to the prose report, include one fenced code block labelled latexai_actionable_edits.',
-          'That block must be JSON with schema {\"actionableEdits\":[{\"mode\":\"replace|insert_after|insert_before\",\"path\":\"optional tex path\",\"targetHint\":\"section or paragraph hint\",\"oldText\":\"exact source substring for replace/anchor\",\"newText\":\"LaTeX replacement or insertion\",\"confidence\":0.0,\"rankingEffect\":{\"competitors\":[\"#1 Paper A\"],\"gap\":\"which competitor weakness this edit addresses\",\"sourceIds\":[\"S1\"],\"before\":\"draft estimated #4 of 5\",\"after\":\"likely #3 of 5 after this edit\",\"expectedImpact\":\"one-sentence ranking movement rationale\",\"insertionMode\":\"tracked replacement or append-only plan\"}}],\"appendPlan\":\"optional high-level LaTeX plan\"}.',
-          'For every edit, include a rankingEffect object with competitors, gap, sourceIds, before, after, expectedImpact, and insertionMode. This is used to render the Latexai Edit impact map. For replace edits, oldText must be copied exactly from the draft excerpt when possible. Do not emit Latexai internal change-marker macros; Latexai will add all old/new wrappers deterministically.',
-          'newText must be a compile-safe LaTeX body fragment: no Markdown fences, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.',
-          'Do not target the document preamble; if a suggestion cannot be localized in the document body safely, put it in appendPlan rather than inventing an oldText.'
+          rawPatchProtocolInstructions('competitive source-cited improvement edits'),
+          'For each concrete source edit, include one LATEXAI_BLOCK_PATCH block. Use replace_block/insert_after_block/insert_before_block only with safe target ids if the prompt lists them; use append_before_end_document for a high-level improvement plan when exact localization is not safe.',
+          'Do not emit Latexai internal change-marker macros; Latexai will add all old/new wrappers deterministically after the Safe Edit Compiler accepts the patch.',
+          'New LaTeX must be a compile-safe body fragment: no Markdown fences inside BEGIN_NEW_LATEX, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.'
         ].filter(Boolean).join('\n'),
         input: memoryBlock ? `${memoryBlock}\n\n${input}` : input,
         temperature: 0.2,
@@ -2244,15 +2290,13 @@ ${input}` : input,
   function finalRewritePromptSchema(mode) {
     const inline = mode === 'inline';
     return [
-      'Return exactly one fenced code block labelled latexai_actionable_edits containing valid JSON.',
-      'JSON schema:',
-      '{"actionableEdits":[{"mode":"replace|insert_after|insert_before","path":"tex path","targetHint":"section/paragraph hint","oldText":"exact source substring or anchor copied from the provided LaTeX source","newText":"compile-safe LaTeX body fragment","confidence":0.0,"rankingEffect":{"competitors":["competitor title or rank"],"gap":"gap addressed","sourceIds":["S1"],"before":"current estimated position","after":"projected position","expectedImpact":"why this improves competitive standing","insertionMode":"localized_replace_or_append_plan"}}],"appendPlan":"Markdown fallback plan, only for suggestions that cannot be localized exactly"}.',
+      rawPatchProtocolInstructions(inline ? 'localized competitive source edits' : 'appendable competitive improvement plan'),
       inline
-        ? 'For inline mode, prioritize 3-8 localized actionableEdits whose oldText is an exact substring of the supplied source. Prefer small section/paragraph anchors over huge replacements. Do not fabricate oldText.'
-        : 'For append mode, actionableEdits may be empty; put the complete final improvement/rewrite plan in appendPlan. Do not include Latexai internal change-marker macros; Latexai will wrap the append plan deterministically.',
-      'newText must be body-level LaTeX only: no Markdown fences, no \\documentclass, no \\usepackage, no \\begin{document}, no \\end{document}.',
-      'Preserve known notation and citation decisions from hidden memory. Do not repeat negative-memory suggestions or previously failed rewrite styles.',
-      'If memory mentions successful paper edit patterns or failed anchors, use that to choose safer oldText anchors.'
+        ? 'For inline mode, produce 3-8 localized LATEXAI_BLOCK_PATCH blocks when safe. Prefer insert_after_block or insert_before_block around existing body/equation anchors; use replace_block only if a safe target block id is available. Do not fabricate old text.'
+        : 'For append mode, produce one append_before_end_document LATEXAI_BLOCK_PATCH block containing the complete final improvement/rewrite plan as body-level LaTeX.',
+      'Use the source IDs/evidence in RATIONALE or surrounding report prose. Do not emit JSON and do not emit \\lai or \\laiold.',
+      'BEGIN_NEW_LATEX content must be body-level LaTeX only: no Markdown fences, no \\documentclass, no \\usepackage, no \\begin{document}, no \\end{document}.',
+      'Preserve known notation and citation decisions from hidden memory. Do not repeat negative-memory suggestions or previously failed rewrite styles.'
     ].join('\n');
   }
 
@@ -2765,7 +2809,7 @@ ${input}` : input,
     const re = /\\laiold\s*\{([\s\S]*?)\}\s*\\lai\s*\{([\s\S]*?)\}/g;
     let match;
     while ((match = re.exec(String(text || '')))) {
-      const edit = normalizeActionableEdit({ mode: 'replace', oldText: match[1], newText: match[2], targetHint: 'AI-provided tracked old/new pair' }, pairs.length);
+      const edit = normalizeActionableEdit({ mode: 'replace', oldText: match[1], newText: match[2], targetHint: 'AI-provided \\laiold/\\lai pair' }, pairs.length);
       if (edit) pairs.push(edit);
     }
     return { source: pairs.length ? 'laiold_lai_pairs' : 'none', edits: pairs, appendPlan: '' };
@@ -2807,79 +2851,35 @@ ${input}` : input,
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
     }
-    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + insert tracked edits'))) {
+    if (!(await checkpointBeforeRiskySourceAction('competitive raw-patch safe insertion'))) {
       setStatus('Insert tracked edits cancelled because GitHub checkpoint did not complete.');
       return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
     }
 
-    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-insert', 16, lastReport.slice(0, 10000));
+    const memoryContext = await loadCompetitiveMemoryContext('competitive-raw-patch-insert', 16, lastReport.slice(0, 10000));
     const rewrite = await generateMemoryAwareFinalPaperRewrite('inline', memoryContext);
     const insertionSource = rewrite?.ok && rewrite.text ? rewrite.text : lastReport;
-    ensureRootLaiMacros();
-    const parsed = extractActionableEdits(insertionSource);
-    if (!parsed.edits.length) {
-      setStatus('No exact actionable edit JSON or tracked old/new pairs found. Use append plan instead.');
-      const result = { ok: false, applied: 0, skipped: 0, source: parsed.source, rewriteAttempted: Boolean(rewrite?.stepName), rewriteError: rewrite?.error || '' };
-      await markMemoryUse('competitive-lai-insert', 'failure', 'No exact actionable edit JSON or laiold/lai pairs found for insertion.');
-      await savePaperEditMemory('competitive-lai-insert', result, { reason: 'no_actionable_edits' });
-      await logCompetitiveEditOutcome('competitive_lai_insert', result, { stepName: 'competitive-lai-insert', memoryContext, note: 'No exact actionable edit JSON or laiold/lai pairs found.', metadata: { reason: 'no_actionable_edits' } });
+    const compiled = await compileCompetitiveRawPatch(insertionSource, 'competitive-raw-patch-insert', 'targeted');
+    const applied = await applyCompetitiveCompiledPatch(compiled, 'targeted');
+    if (!applied.ok) {
+      setStatus('Safe Edit Compiler blocked competitive raw-patch insertion. No source changes were made.');
+      const result = { ok: false, applied: 0, skipped: 0, compiled, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
+      setOutput([lastReport, '', '--- Competitive raw-patch insertion blocked ---', compilerReportText(compiled), '', '--- Source used for safe compiler ---', insertionSource.slice(0, 12000)].join('\n'));
+      await markMemoryUse('competitive-raw-patch-insert', 'failure', 'Safe compiler blocked competitive raw-patch insertion.');
+      await savePaperEditMemory('competitive-raw-patch-insert', result, { safeToInsert: false, validationErrors: (compiled?.validationErrors || []).length, warnings: (compiled?.warnings || []).length });
+      await logCompetitiveEditOutcome('competitive_raw_patch_insert', { ...result, accepted: false, rewardValue: -1.0, rewardLabel: 'negative', editMode: 'raw-patch-safe-insert' }, { stepName: 'competitive-raw-patch-insert', memoryContext, note: 'Safe compiler blocked competitive raw-patch insertion.' });
       return result;
     }
 
-    const queued = new Map();
-    const messages = [];
-    const validationReports = [];
-    let skipped = 0;
-
-    parsed.edits.forEach((edit, index) => {
-      const path = normalizePath(edit.path || activePath());
-      const file = getFile(path);
-      if (!file) { skipped += 1; messages.push(`SKIP ${path}: file not found for ${edit.targetHint}.`); return; }
-      const text = fileText(file);
-      const anchor = String(edit.oldText || '');
-      const at = text.indexOf(anchor);
-      if (at < 0) { skipped += 1; messages.push(`SKIP ${path}: exact oldText/anchor not found for ${edit.targetHint}.`); return; }
-      const locationIssue = unsafeInsertionLocationReason(text, at);
-      if (locationIssue) { skipped += 1; messages.push(`SKIP ${path}: ${locationIssue} for ${edit.targetHint}.`); return; }
-      const wrapped = wrapActionableReplacement({ ...edit, path }, index);
-      if (!wrapped.ok) { skipped += 1; messages.push(`SKIP ${path}: unsafe LaTeX for ${edit.targetHint}: ${wrapped.reason}.`); return; }
-      const replacement = wrapped.text;
-      const validation = validateGeneratedLaiEditText(replacement, { mode: edit.mode, path, sourceText: text });
-      validationReports.push({ ...validation, path, label: edit.targetHint });
-      if (!validation.ok) { skipped += 1; messages.push(`SKIP ${path}: Stage 19B safety pass failed for ${edit.targetHint}: ${validation.errors.join('; ')}.`); return; }
-      const start = edit.mode === 'insert_before' ? at : at;
-      const end = edit.mode === 'replace' ? at + anchor.length : edit.mode === 'insert_after' ? at + anchor.length : at;
-      const insert = edit.mode === 'replace' ? replacement : edit.mode === 'insert_after' ? `${anchor}\n\n${replacement}` : `${replacement}\n\n${anchor}`;
-      if (!queued.has(path)) queued.set(path, []);
-      queued.get(path).push({ start, end, insert, targetHint: edit.targetHint });
-    });
-
-    let applied = 0;
-    for (const [path, ops] of queued.entries()) {
-      const file = getFile(path);
-      let text = fileText(file);
-      ops.sort((a, b) => b.start - a.start);
-      for (const op of ops) {
-        text = text.slice(0, op.start) + op.insert + text.slice(op.end);
-        applied += 1;
-        messages.push(`APPLY ${path}: ${op.targetHint}`);
-      }
-      updateProjectSource(path, text);
-    }
-
-    const modifiedPaths = [...queued.keys()];
-    const combinedValidation = combineValidationReports(validationReports);
-    refreshPaperAiReview(modifiedPaths, 'Competitive Review');
-    updateWorkflowStatus('insert', `inserted ${applied}; skipped ${skipped}.`);
+    refreshPaperAiReview([applied.path], 'Competitive Review');
+    updateWorkflowStatus('insert', `safe raw-patch insertion blocks=${applied.blockCount || 0}.`);
     renderEditImpactMap();
-    const validationText = formatLaiValidationReport(combinedValidation, 'Stage 19B Latexai edit safety pass');
-    const validationSuffix = combinedValidation.warnings.length ? ` Safety warnings: ${combinedValidation.warnings.length}.` : '';
-    setStatus(`Inserted ${applied} competitive \\lai edit(s) at exact matches; skipped ${skipped}.${validationSuffix} Paper-level edit review refreshed.`);
-    setOutput([lastReport, '', '--- Stage 19B memory-aware final rewrite used for insertion ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)', '', '--- Latexai actionable edit insertion report ---', `Source: ${parsed.source}`, `Applied: ${applied}`, `Skipped: ${skipped}`, ...messages, '', validationText].join('\n'));
-    const result = { ok: applied > 0 && combinedValidation.ok, applied, skipped, messages, source: parsed.source, paths: [...queued.keys()], validation: combinedValidation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
-    await markMemoryUse('competitive-lai-insert', applied > 0 ? 'success' : 'failure', `Applied ${applied} competitive lai edits; skipped ${skipped}.`);
-    await savePaperEditMemory('competitive-lai-insert', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: Boolean(combinedValidation.ok), validationWarnings: combinedValidation.warnings.length, validationErrors: combinedValidation.errors.length });
-    await logCompetitiveEditOutcome('competitive_lai_insert', { ...result, accepted: applied > 0, rewardValue: applied > 0 && combinedValidation.ok ? 1.1 : -0.8, rewardLabel: applied > 0 && combinedValidation.ok ? 'positive' : 'negative', editMode: 'inline-lai', validation: combinedValidation }, { stepName: 'competitive-lai-insert', memoryContext, note: `Applied ${applied}; skipped ${skipped}.`, metadata: { finalRewriteOk: Boolean(rewrite?.ok) } });
+    setStatus(`Inserted ${applied.blockCount || 0} competitive edit block(s) through Safe Edit Compiler. Use Resolve AI edits to accept/reject.`);
+    setOutput([lastReport, '', '--- Competitive raw-patch safe insertion report ---', compilerReportText(compiled), '', '--- Stage 19T2W source used for insertion ---', rewrite?.text || '(used current report; rewrite generation failed or returned empty)'].join('\n'));
+    const result = { ok: true, applied: applied.blockCount || 0, skipped: 0, path: applied.path, compiled, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
+    await markMemoryUse('competitive-raw-patch-insert', 'success', `Inserted ${result.applied} competitive raw-patch edits.`);
+    await savePaperEditMemory('competitive-raw-patch-insert', result, { safeToInsert: true, blockCount: result.applied });
+    await logCompetitiveEditOutcome('competitive_raw_patch_insert', { ...result, accepted: true, rewardValue: 1.1, rewardLabel: 'positive', editMode: 'raw-patch-safe-insert' }, { stepName: 'competitive-raw-patch-insert', memoryContext, note: `Inserted ${result.applied} competitive raw-patch edits.` });
     return result;
   }
 
@@ -2888,44 +2888,44 @@ ${input}` : input,
       setStatus('Run competitive review first.');
       return { ok: false, error: 'No report' };
     }
-    if (!(await checkpointBeforeRiskySourceAction('competitive AI remake + append tracked plan'))) {
+    if (!(await checkpointBeforeRiskySourceAction('competitive raw-patch append plan'))) {
       setStatus('Append tracked plan cancelled because GitHub checkpoint did not complete.');
       return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
     }
 
-    const memoryContext = await loadCompetitiveMemoryContext('competitive-lai-append-plan', 16, lastReport.slice(0, 10000));
+    const memoryContext = await loadCompetitiveMemoryContext('competitive-raw-patch-append-plan', 16, lastReport.slice(0, 10000));
     const rewrite = await generateMemoryAwareFinalPaperRewrite('append', memoryContext);
     const appendSource = rewrite?.ok && rewrite.text ? rewrite.text : lastReport;
-    ensureRootLaiMacros();
-    const root = getFile(rootPath());
-    const active = root ? { path: rootPath(), file: root, text: fileText(root) } : activeSource();
     const parsed = extractActionableEdits(appendSource);
     const planText = parsed.appendPlan && parsed.appendPlan.trim() ? parsed.appendPlan : appendSource;
-    const insertion = wrapLaiPlanBlock(markdownToLaiPlan(planText, 'Latexai Competitive Review Improvement Plan'), active.path);
-    const validation = validateGeneratedLaiEditText(insertion, { mode: 'append', path: active.path, sourceText: active.text, expectedAppend: true });
-    if (!validation.ok) {
-      const validationText = formatLaiValidationReport(validation, 'Stage 19B append-plan safety pass');
-      setStatus(`Append \\lai plan blocked by safety pass: ${validation.errors.join('; ')}`);
-      setOutput([lastReport, '', '--- Stage 19B append-plan safety pass blocked insertion ---', validationText, '', '--- AI-generated append source ---', appendSource].join('\n'));
-      const result = { ok: false, path: active.path, mode: 'append-lai-plan', validation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
-      await markMemoryUse('competitive-lai-append-plan', 'failure', `Append lai plan blocked by Stage 19B safety pass: ${validation.errors.join('; ')}`);
-      await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: false, validationErrors: validation.errors.length, validationWarnings: validation.warnings.length });
-      await logCompetitiveEditOutcome('competitive_lai_append_plan', { ...result, accepted: false, rewardValue: -1.0, rewardLabel: 'negative', editMode: 'append-lai-plan', validation }, { stepName: 'competitive-lai-append-plan', memoryContext, note: `Append blocked by safety pass: ${validation.errors.join('; ')}`, metadata: { finalRewriteOk: Boolean(rewrite?.ok) } });
+    const safePlanLatex = markdownToLaiPlan(planText, 'Latexai Competitive Review Improvement Plan');
+    const rawPatch = rawPatchBlock({
+      operation: 'append_before_end_document',
+      targetSection: 'Competitive Review Improvement Plan',
+      rationale: 'Append competitive review improvement plan using compiler-managed Latexai markup.',
+      latex: safePlanLatex,
+      patchId: 'competitive-append-plan'
+    });
+    const compiled = await compileCompetitiveRawPatch(rawPatch, 'competitive-raw-patch-append-plan', 'append');
+    const applied = await applyCompetitiveCompiledPatch(compiled, 'append');
+    if (!applied.ok) {
+      setStatus('Safe Edit Compiler blocked competitive append plan. No source changes were made.');
+      const result = { ok: false, path: activePath(), mode: 'raw-patch-append-plan', compiled, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
+      setOutput([lastReport, '', '--- Competitive append plan blocked ---', compilerReportText(compiled), '', '--- AI-generated append source ---', appendSource.slice(0, 12000)].join('\n'));
+      await markMemoryUse('competitive-raw-patch-append-plan', 'failure', 'Safe compiler blocked competitive append plan.');
+      await savePaperEditMemory('competitive-raw-patch-append-plan', result, { safeToInsert: false, validationErrors: (compiled?.validationErrors || []).length, warnings: (compiled?.warnings || []).length });
+      await logCompetitiveEditOutcome('competitive_raw_patch_append_plan', { ...result, accepted: false, rewardValue: -1.0, rewardLabel: 'negative', editMode: 'raw-patch-append-plan' }, { stepName: 'competitive-raw-patch-append-plan', memoryContext, note: 'Safe compiler blocked competitive append plan.' });
       return result;
     }
-    const next = insertBeforeEndDocument(active.text, insertion);
-    updateProjectSource(active.path, next);
-    refreshPaperAiReview([active.path], 'Competitive Review');
-    updateWorkflowStatus('insert', `appended visible \\lai plan to ${active.path}.`);
+    refreshPaperAiReview([applied.path], 'Competitive Review');
+    updateWorkflowStatus('insert', `appended safe raw-patch plan to ${applied.path}.`);
     renderEditImpactMap();
-    const validationText = formatLaiValidationReport(validation, 'Stage 19B append-plan safety pass');
-    const warningSuffix = validation.warnings.length ? ` Safety warnings: ${validation.warnings.length}.` : '';
-    setStatus(`Appended competitive improvement plan as visible \\lai markup to ${active.path}.${warningSuffix} Paper-level edit review refreshed.`);
-    setOutput([lastReport, '', '--- Stage 19B append-plan safety pass ---', validationText, '', '--- Stage 19B memory-aware append rewrite source ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)'].join('\n'));
-    const result = { ok: true, path: active.path, mode: 'append-lai-plan', validation, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
-    await markMemoryUse('competitive-lai-append-plan', 'success', `Appended competitive lai plan to ${active.path}.`);
-    await savePaperEditMemory('competitive-lai-append-plan', result, { memoryFactsUsed: Array.isArray(memoryContext?.facts) ? memoryContext.facts.length : 0, finalRewriteStep: rewrite?.stepName || '', finalRewriteOk: Boolean(rewrite?.ok), validationOk: Boolean(validation.ok), validationWarnings: validation.warnings.length, validationErrors: validation.errors.length });
-    await logCompetitiveEditOutcome('competitive_lai_append_plan', { ...result, accepted: true, rewardValue: validation.ok ? 0.9 : 0.35, rewardLabel: validation.ok ? 'positive' : 'neutral', editMode: 'append-lai-plan', validation }, { stepName: 'competitive-lai-append-plan', memoryContext, note: `Appended competitive lai plan to ${active.path}.`, metadata: { finalRewriteOk: Boolean(rewrite?.ok) } });
+    setStatus(`Appended competitive improvement plan through Safe Edit Compiler to ${applied.path}. Use Resolve AI edits to accept/reject.`);
+    setOutput([lastReport, '', '--- Competitive raw-patch append report ---', compilerReportText(compiled), '', '--- Stage 19T2W append source ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)'].join('\n'));
+    const result = { ok: true, path: applied.path, mode: 'raw-patch-append-plan', compiled, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
+    await markMemoryUse('competitive-raw-patch-append-plan', 'success', `Appended competitive raw-patch plan to ${applied.path}.`);
+    await savePaperEditMemory('competitive-raw-patch-append-plan', result, { safeToInsert: true, blockCount: applied.blockCount || 0 });
+    await logCompetitiveEditOutcome('competitive_raw_patch_append_plan', { ...result, accepted: true, rewardValue: 0.9, rewardLabel: 'positive', editMode: 'raw-patch-append-plan' }, { stepName: 'competitive-raw-patch-append-plan', memoryContext, note: `Appended competitive raw-patch plan to ${applied.path}.` });
     return result;
   }
 

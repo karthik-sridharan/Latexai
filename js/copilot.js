@@ -4,6 +4,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
+  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
 
   const FALLBACK_MODELS = {
     openai: [
@@ -285,7 +286,7 @@
       if (task === 'rewrite-selection-patch') {
         const applied = applyRewriteSelectionWithLai(context, text);
         output.textContent = applied.ok
-          ? `Stage 6 applied rewrite to ${applied.path}. The old source was commented and the replacement was wrapped in \lai{...}.`
+          ? `Stage 19T2W applied raw replacement to ${applied.path}. The app wrapped the old/new text in \lai markup.`
           : `Stage 6 could not apply rewrite: ${applied.message}
 
 AI response:
@@ -316,12 +317,7 @@ ${fallback}`;
   function buildUserPrompt(task, prompt, context) {
     const problemLines = context.diagnostics.problems.map((p, i) => `${i + 1}. ${p.level || 'info'} ${p.file || context.activeFile.path || ''}${p.line ? ':' + p.line : ''} — ${p.message}`).join('\n') || 'No diagnostics recorded.';
     const outputMode = task === 'rewrite-selection-patch'
-      ? `Return ONLY valid JSON using this shape:
-{
-  "summary": "short human-readable summary",
-  "replacementLatex": "replacement LaTeX only"
-}
-Do not include Markdown fences. Do not include the old selected text. Do not add internal editor change-tracking wrappers; Latexai will add all change-tracking wrappers after validation.`
+      ? `Return ONLY the raw replacement LaTeX/prose for the selected text. Do not return JSON. Do not include Markdown fences. Do not include the old selected text. Do not output \\lai, \\laiold, or internal editor change-tracking wrappers; Latexai will add all change-tracking wrappers after validation.`
       : (NS.PatchManager?.isPatchWorkflow?.(task)
         ? `Return ONLY valid JSON using this shape:
 {
@@ -361,7 +357,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   function systemPromptFor(task) {
     const base = 'You are Lumina LaTeX Copilot inside a browser-based Overleaf-like editor. Be precise, preserve mathematical meaning, avoid unnecessary rewrites, and never invent packages unless needed.';
     if (task === 'fix-error-patch') return `${base} Fix the current LaTeX compile error. Return exactly one safe patch as valid JSON.`;
-    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Return ONLY JSON with replacementLatex. Latexai will add all change-tracking wrappers after validation.`;
+    if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Return ONLY raw replacement LaTeX/prose, not JSON. Latexai will add all change-tracking wrappers after validation.`;
     if (task === 'insert-section-patch') return `${base} Draft a polished LaTeX section or subsection to insert. Return valid JSON patch.`;
     if (task === 'beamer-outline-patch') return `${base} Return a Beamer-compatible outline with frames as a JSON patch.`;
     if (task === 'table-helper-patch') return `${base} Create a clean LaTeX table, tabular, align, or array environment as a JSON patch.`;
@@ -389,7 +385,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
       }, null, 2);
     }
     const insertion = prompt || context.selection.text || '% Add your LaTeX here.';
-    if (task === 'rewrite-selection-patch') return JSON.stringify({ summary: `${message}. Local fallback replacement.`, replacementLatex: insertion }, null, 2);
+    if (task === 'rewrite-selection-patch') return insertion;
     return JSON.stringify({
       summary: `${message}. Local fallback will insert the available prompt/selection as a draft snippet.`,
       patch: { path: context.activeFile.path || context.project.rootFile || 'main.tex', operation: context.selection.text ? 'replace-selection' : 'insert-at-cursor', text: insertion }
@@ -422,7 +418,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
     if (task === 'rewrite-selection-patch') {
       const applied = applyRewriteSelectionWithLai(captureContext(), text);
       document.getElementById('copilotOutput').textContent = applied.ok
-        ? `Stage 4H applied existing Copilot output to ${applied.path} with \lai{...}.`
+        ? `Stage 19T2W applied existing Copilot raw replacement to ${applied.path} with app-managed \lai markup.`
         : `Stage 4H could not apply existing output: ${applied.message}`;
       return;
     }
@@ -434,7 +430,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
     if (!text.trim() || text.startsWith('Copilot responses')) return;
     const applied = applyRewriteSelectionWithLai(captureContext(), text);
     document.getElementById('copilotOutput').textContent = applied.ok
-      ? `Stage 4H applied existing Copilot output to ${applied.path} with \lai{...}.`
+      ? `Stage 19T2W applied existing Copilot raw replacement to ${applied.path} with app-managed \lai markup.`
       : `Stage 4H could not apply with \lai{...}: ${applied.message}`;
   }
 
@@ -442,5 +438,5 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.Copilot = { STAGE: 'stage6abc-modular-selection-patchservice-1', init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips, applyRewriteSelectionWithLai };
+  NS.Copilot = { STAGE, init, models: null, getConfig, callProxy, extractText, askCopilot, captureContext, renderContextChips, applyRewriteSelectionWithLai };
 })();
