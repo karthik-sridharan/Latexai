@@ -18,7 +18,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage17s-lai-insertion-safety-1';
+  const STAGE = 'stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('paper-ai-polish-service')) {
     NS.PaperAiPolishService = {
@@ -573,6 +573,22 @@
     return lines.join('\n');
   }
 
+  function fixLaiMacrosNow() {
+    try {
+      const result = NS.LaiSafeEditPipelineService?.fixLaiMacrosInRoot?.({ force: false });
+      if (result?.changed) setStatus('Inserted missing LatexAI macro definitions in the preamble after \\documentclass and before \\begin{document}.');
+      else if (result?.warning) setStatus(result.warning);
+      else setStatus('LatexAI macro definitions already present, or no unresolved \\lai edits were found.');
+      return result;
+    } catch (err) {
+      setStatus('Could not fix LatexAI macros: ' + (err?.message || String(err)));
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+  function macroStatusForText(text) {
+    try { return NS.LaiSafeEditPipelineService?.laiMacroStatusForSource?.(text) || null; } catch (_err) { return null; }
+  }
+
   function scan() {
     const active = activeSource();
     return scanPath(active.path, { open: false });
@@ -854,6 +870,7 @@
       '  <button id="paperAiAcceptAllNewBtn" class="btn mini primary" type="button">Accept all new \\lai</button>',
       '  <button id="paperAiRejectAllBtn" class="btn mini" type="button">Reject all; keep \\laiold</button>',
       '  <button id="paperAiRepairUnsafeBtn" class="btn mini" type="button">Repair unsafe AI edits</button>',
+      '  <button id="paperAiFixLaiMacrosBtn" class="btn mini" type="button">Fix \\lai macros</button>',
       '  <button id="paperAiCopyReportBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
       '<label class="paper-ai-check"><input id="paperAiRunRegressionAfterApply" type="checkbox" checked /> Run regression checklist after applying</label>',
@@ -876,6 +893,7 @@
     el('paperAiAcceptAllNewBtn')?.addEventListener('click', acceptAllNew, true);
     el('paperAiRejectAllBtn')?.addEventListener('click', rejectAllKeepOld, true);
     el('paperAiRepairUnsafeBtn')?.addEventListener('click', () => repairUnsafeAiEditBlocks(), true);
+    el('paperAiFixLaiMacrosBtn')?.addEventListener('click', fixLaiMacrosNow, true);
     el('paperAiCopyReportBtn')?.addEventListener('click', copyReport, true);
 
     return true;
@@ -899,6 +917,7 @@
     acceptAllNew,
     rejectAllKeepOld,
     repairUnsafeAiEditBlocks,
+    fixLaiMacrosNow,
     getLastScan: () => lastScan,
     getLastReport: () => lastReport
   };

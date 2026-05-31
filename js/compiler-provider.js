@@ -457,6 +457,71 @@
     return { rootFile: rootFile, activePath: activePath, files: files };
   }
 
+  function localHasLaiEditMarkup(text) {
+    return /\\lai(?:old)?\s*\{/.test(String(text || ''));
+  }
+  function localHasPackageInPreamble(source, names) {
+    var s = String(source || '');
+    var begin = s.search(/\\begin\s*\{document\}/);
+    var preamble = begin >= 0 ? s.slice(0, begin) : s;
+    var wanted = (names || []).map(function (x) { return String(x || '').toLowerCase(); });
+    var re = /\\usepackage(?:\s*\[[^\]]*\])?\s*\{([^}]*)\}/g;
+    var m;
+    while ((m = re.exec(preamble))) {
+      var parts = String(m[1] || '').split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+      if (parts.some(function (x) { return wanted.indexOf(x) >= 0; })) return true;
+    }
+    return false;
+  }
+  function localHasCommandDefinition(source, name) {
+    var s = String(source || '');
+    var n = String(name || '').replace(/^\\/, '');
+    if (!n) return false;
+    return new RegExp('\\\\(?:providecommand|newcommand|renewcommand|DeclareRobustCommand)\\s*\\{\\\\' + n + '\\}', 'm').test(s)
+      || new RegExp('\\\\(?:providecommand|newcommand|renewcommand|DeclareRobustCommand)\\s*\\\\' + n + '\\b', 'm').test(s)
+      || new RegExp('\\\\(?:long\\s*)?def\\s*\\\\' + n + '\\b|\\\\long\\\\def\\s*\\\\' + n + '\\b', 'm').test(s);
+  }
+  function localEnsureLaiMacrosInSource(source, options) {
+    var svc = root.LuminaLatex && root.LuminaLatex.LaiSafeEditPipelineService;
+    if (svc && typeof svc.ensureLaiMacrosInSource === 'function') return svc.ensureLaiMacrosInSource(source, options || {});
+    var s = String(source || '');
+    var hasEditMarkup = localHasLaiEditMarkup(s);
+    var hasLai = localHasCommandDefinition(s, 'lai');
+    var hasLaiOld = localHasCommandDefinition(s, 'laiold');
+    if (!hasEditMarkup && !(options && options.force)) return { text: s, changed: false };
+    if (hasLai && hasLaiOld) return { text: s, changed: false };
+    var docMatch = s.match(/\\documentclass(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/);
+    var begin = s.search(/\\begin\s*\{document\}/);
+    var docEnd = docMatch ? (docMatch.index + docMatch[0].length) : -1;
+    if (!docMatch || begin < 0 || begin <= docEnd) return { text: s, changed: false, warning: 'cannot insert LatexAI macros outside a normal preamble' };
+    var missing = [];
+    if (!localHasPackageInPreamble(s, ['xcolor', 'color'])) missing.push('\\usepackage{xcolor}');
+    if (!hasLaiOld) missing.push('\\providecommand{\\laiold}[1]{{\\color{blue}#1}}');
+    if (!hasLai) missing.push('\\providecommand{\\lai}[1]{{\\color{red}#1}}');
+    var block = ['% --- LatexAI visible edit macros ---'].concat(missing, ['% --- end LatexAI visible edit macros ---']).join('\n') + '\n';
+    var preamble = s.slice(docEnd, begin);
+    var re = /\\usepackage(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/g;
+    var last = -1, m;
+    while ((m = re.exec(preamble))) last = docEnd + m.index + m[0].length;
+    var insertAt = last >= 0 ? last : docEnd;
+    if (!(insertAt >= docEnd && insertAt < begin)) return { text: s, changed: false, warning: 'refused to insert macros outside preamble' };
+    var next = s.slice(0, insertAt).trimEnd() + '\n' + block + s.slice(insertAt).replace(/^\s*\n?/, '\n');
+    return { text: next, changed: next !== s };
+  }
+  function applyLaiMacroFixToEditorIfRoot(path, text) {
+    try {
+      var svc = root.LuminaLatex && root.LuminaLatex.LaiSafeEditPipelineService;
+      if (svc && typeof svc.updateSource === 'function') {
+        svc.updateSource(path, text, { ensureLaiMacros: false });
+        return;
+      }
+    } catch (err) {}
+    try {
+      var ed = root.document && root.document.getElementById('sourceEditor');
+      if (ed) { ed.value = text; ed.dispatchEvent(new Event('input', { bubbles: true })); }
+    } catch (err2) {}
+  }
+
   function summarizePayload(rootFile, files) {
     files = files || {};
     var rootText = String(files[rootFile] || '');
@@ -477,7 +542,13 @@
     settings = normalizeSettings(settings || getGlobalSettings());
     project = isObject(project) && (project.project || project.settings) ? (project.project || project) : (project || getGlobalProject());
     var collected = collectFiles(project, settings);
+    var macroFixed = localEnsureLaiMacrosInSource(collected.files[collected.rootFile]);
+    if (macroFixed && macroFixed.changed) {
+      collected.files[collected.rootFile] = macroFixed.text;
+      applyLaiMacroFixToEditorIfRoot(collected.rootFile, macroFixed.text);
+    }
     var summary = summarizePayload(collected.rootFile, collected.files);
+    if (macroFixed && macroFixed.changed) summary.laiMacroAutoInjectedBeforeCompile = true;
 
     if (!summary.rootLength) {
       throw new Error('Root file ' + collected.rootFile + ' is empty before compile. Frontend did not provide actual LaTeX source.');

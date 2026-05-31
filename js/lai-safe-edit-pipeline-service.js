@@ -1,5 +1,5 @@
 /* Latexai Stage 19T2X LaiSafeEditPipelineService
- * Stage: stage19t3a-unified-safe-edit-protocol-hardening-20260531-1
+ * Stage: stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1
  *
  * Shared frontend bridge for all paper-editing AI features:
  * - AI agents return human-readable text plus LATEXAI_BLOCK_PATCH markup, not JSON edit payloads.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t3a-unified-safe-edit-protocol-hardening-20260531-1';
+  const STAGE = 'stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1';
 
   function el(id) { return D.getElementById(id); }
   function clean(value) { return String(value || '').trim(); }
@@ -87,6 +87,91 @@
   function safePatchId(prefix = 'edit') {
     return String(prefix || 'edit').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 28) + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
   }
+  function hasLaiEditMarkup(text) {
+    return /\\lai(?:old)?\s*\{/.test(String(text || ''));
+  }
+  function hasPackageInPreamble(source, names) {
+    const s = String(source || '');
+    const begin = s.search(/\\begin\s*\{document\}/);
+    const preamble = begin >= 0 ? s.slice(0, begin) : s;
+    const wanted = new Set((names || []).map((x) => String(x || '').toLowerCase()));
+    const re = /\\usepackage(?:\s*\[[^\]]*\])?\s*\{([^}]*)\}/g;
+    let m;
+    while ((m = re.exec(preamble))) {
+      const parts = String(m[1] || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+      if (parts.some((x) => wanted.has(x))) return true;
+    }
+    return false;
+  }
+  function hasCommandDefinition(source, name) {
+    const s = String(source || '');
+    const n = String(name || '').replace(/^\\/, '');
+    if (!n) return false;
+    const braced = new RegExp('\\\\(?:providecommand|newcommand|renewcommand|DeclareRobustCommand)\\s*\\{\\\\' + n + '\\}', 'm');
+    const unbraced = new RegExp('\\\\(?:providecommand|newcommand|renewcommand|DeclareRobustCommand)\\s*\\\\' + n + '\\b', 'm');
+    const defed = new RegExp('\\\\(?:long\\s*)?def\\s*\\\\' + n + '\\b|\\\\long\\\\def\\s*\\\\' + n + '\\b', 'm');
+    return braced.test(s) || unbraced.test(s) || defed.test(s);
+  }
+  function laiMacroStatusForSource(source) {
+    const s = String(source || '');
+    const hasEditMarkup = hasLaiEditMarkup(s);
+    const hasLai = hasCommandDefinition(s, 'lai');
+    const hasLaiOld = hasCommandDefinition(s, 'laiold');
+    const hasColorPackage = hasPackageInPreamble(s, ['xcolor', 'color']);
+    const hasDocumentClass = /\\documentclass\b/.test(s);
+    const docMatch = s.match(/\\documentclass(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/);
+    const begin = s.search(/\\begin\s*\{document\}/);
+    const documentClassEnd = docMatch ? (docMatch.index + docMatch[0].length) : -1;
+    return {
+      hasEditMarkup,
+      hasLai,
+      hasLaiOld,
+      hasColorPackage,
+      hasDocumentClass,
+      hasBeginDocument: begin >= 0,
+      documentClassEnd,
+      beginDocumentIndex: begin,
+      missingMacroBlock: hasEditMarkup && (!hasLai || !hasLaiOld),
+      safeInsertionPossible: !!docMatch && begin >= 0 && begin > documentClassEnd
+    };
+  }
+  function ensureLaiMacrosInSource(source, options = {}) {
+    const s = String(source || '');
+    const status = laiMacroStatusForSource(s);
+    if (!status.hasEditMarkup && !options.force) return { text: s, changed: false, status, note: 'no unresolved \\lai markup' };
+    if (status.hasLai && status.hasLaiOld) return { text: s, changed: false, status, note: 'macros already defined' };
+    if (!status.safeInsertionPossible) {
+      return { text: s, changed: false, status, warning: 'Cannot auto-inject LatexAI macros because the root file does not have a normal \\documentclass ... \\begin{document} preamble order.' };
+    }
+    const missing = [];
+    if (!status.hasColorPackage) missing.push('\\usepackage{xcolor}');
+    if (!status.hasLaiOld) missing.push('\\providecommand{\\laiold}[1]{{\\color{blue}#1}}');
+    if (!status.hasLai) missing.push('\\providecommand{\\lai}[1]{{\\color{red}#1}}');
+    if (!missing.length) return { text: s, changed: false, status, note: 'nothing missing' };
+    const block = ['% --- LatexAI visible edit macros ---', ...missing, '% --- end LatexAI visible edit macros ---'].join('\n') + '\n';
+    const preamble = s.slice(status.documentClassEnd, status.beginDocumentIndex);
+    const pkgRe = /\\usepackage(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/g;
+    let lastPackageEnd = -1;
+    let m;
+    while ((m = pkgRe.exec(preamble))) lastPackageEnd = status.documentClassEnd + m.index + m[0].length;
+    const insertAt = lastPackageEnd >= 0 ? lastPackageEnd : status.documentClassEnd;
+    // Critical invariant: never insert before \documentclass and never after \begin{document}.
+    if (!(insertAt >= status.documentClassEnd && insertAt < status.beginDocumentIndex)) {
+      return { text: s, changed: false, status, warning: 'Refused LatexAI macro insertion because insertion point was outside the preamble.' };
+    }
+    const next = s.slice(0, insertAt).trimEnd() + '\n' + block + s.slice(insertAt).replace(/^\s*\n?/, '\n');
+    return { text: next, changed: next !== s, status: laiMacroStatusForSource(next), note: 'inserted LatexAI macros after \\documentclass and before \\begin{document}' };
+  }
+  function ensureLaiMacrosForRootIfNeeded(source, options = {}) {
+    return ensureLaiMacrosInSource(source, options);
+  }
+  function fixLaiMacrosInRoot(options = {}) {
+    const active = activeSource(true);
+    const fixed = ensureLaiMacrosInSource(active.text, { force: !!options.force });
+    if (fixed.changed) updateSource(active.path, fixed.text);
+    return { ...fixed, path: active.path };
+  }
+
   function stripUnsafeFullDocument(text) {
     let s = String(text || '').trim();
     s = s.replace(/^```(?:latex|tex|text)?\s*/i, '').replace(/```$/i, '').trim();
@@ -183,29 +268,34 @@
     }
     return data;
   }
-  function updateSource(path, text) {
+  function updateSource(path, text, options = {}) {
     const normalized = normalizePath(path || rootPath());
+    let nextText = String(text || '');
+    if (options.ensureLaiMacros !== false && normalizePath(normalized) === normalizePath(rootPath())) {
+      const fixed = ensureLaiMacrosInSource(nextText);
+      if (fixed.changed) nextText = fixed.text;
+    }
     try {
-      if (State()?.updateFile) State().updateFile(normalized, text);
+      if (State()?.updateFile) State().updateFile(normalized, nextText);
       else {
         const f = getFile(normalized);
-        if (f) f.text = text;
+        if (f) f.text = nextText;
       }
     } catch (_err) {
       const f = getFile(normalized);
-      if (f) f.text = text;
+      if (f) f.text = nextText;
     }
     try { State()?.setActivePath?.(normalized); } catch (_err) {}
     const ed = el('sourceEditor');
     if (ed && normalizePath(activePath()) === normalized) {
-      try { ed.value = text; ed.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+      try { ed.value = nextText; ed.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
     }
-    try { NS.Editor?.setText?.(text); } catch (_err) {}
+    try { NS.Editor?.setText?.(nextText); } catch (_err) {}
     try { NS.Editor?.render?.(); } catch (_err) {}
     try { NS.FileTree?.render?.(); } catch (_err) {}
     try { State()?.save?.(); } catch (_err) {}
     try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
-    return { ok: true, path: normalized, sourceLength: String(text || '').length };
+    return { ok: true, path: normalized, sourceLength: String(nextText || '').length };
   }
   function looksLikeFullDocument(text) {
     const s = String(text || '');
@@ -298,18 +388,22 @@
     let d = String(draft || '');
     if (!d.trim()) return { ok: false, error: 'Safe Edit Compiler returned no insertion draft.' };
     if (looksLikeFullDocument(d)) {
+      const fixed = ensureLaiMacrosInSource(d);
+      d = fixed.text;
       const problem = validateFullDocumentDraft(source, d);
-      return problem ? { ok: false, error: problem } : { ok: true, text: d, mode: 'full-document' };
+      return problem ? { ok: false, error: problem } : { ok: true, text: d, mode: fixed.changed ? 'full-document+lai-macros' : 'full-document' };
     }
     if (/\\documentclass\b/.test(source) && String(kind || '') === 'append') {
       let fragment = stripDocumentWrapperFromFragment(d);
       const hoisted = hoistPreambleLinesIntoSource(source, fragment);
       const next = insertBeforeEndDocument(hoisted.source, hoisted.fragment);
-      const problem = validateFullDocumentDraft(source, next);
-      return problem ? { ok: false, error: problem } : { ok: true, text: next, mode: 'append-fragment-merged' };
+      const fixed = ensureLaiMacrosInSource(next);
+      const problem = validateFullDocumentDraft(source, fixed.text);
+      return problem ? { ok: false, error: problem } : { ok: true, text: fixed.text, mode: fixed.changed ? 'append-fragment-merged+lai-macros' : 'append-fragment-merged' };
     }
-    const problem = validateFullDocumentDraft(source, d);
-    return problem ? { ok: false, error: problem } : { ok: true, text: d, mode: 'as-returned' };
+    const fixed = ensureLaiMacrosInSource(d);
+    const problem = validateFullDocumentDraft(source, fixed.text);
+    return problem ? { ok: false, error: problem } : { ok: true, text: fixed.text, mode: fixed.changed ? 'as-returned+lai-macros' : 'as-returned' };
   }
   function applyCompiledDraft(data, options = {}) {
     if (!data || data.safeToInsert !== true) {
@@ -341,6 +435,12 @@
     compiledDraftText,
     updateSource,
     stripUnsafeFullDocument,
-    extractRawPatchProtocol
+    extractRawPatchProtocol,
+    hasLaiEditMarkup,
+    hasCommandDefinition,
+    laiMacroStatusForSource,
+    ensureLaiMacrosInSource,
+    ensureLaiMacrosForRootIfNeeded,
+    fixLaiMacrosInRoot
   };
 })();

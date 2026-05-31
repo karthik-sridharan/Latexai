@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t3a-unified-safe-edit-protocol-hardening-20260531-1';
+  const STAGE = 'stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';

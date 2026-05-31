@@ -4,7 +4,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
+  const STAGE = 'stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1';
 
   const FALLBACK_MODELS = {
     openai: [
