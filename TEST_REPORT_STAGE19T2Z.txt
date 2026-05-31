@@ -1,0 +1,23 @@
+Stage 19T2Z local verification
+================================
+
+Frontend JS syntax checks:
+PASS js/ai-provider.js
+PASS js/devils-advocate-debate-service.js
+PASS js/lai-rewrite-enforcer.js
+PASS js/lai-safe-edit-pipeline-service.js
+PASS js/document-ai-service.js
+PASS js/reviewer-rebuttal-simulator-service.js
+PASS js/competitive-paper-review-service.js
+
+Frontend AIProvider protocol harness:
+PASS gpt5 temperature stripped
+PASS final synthesis raw-patch injected
+PASS critic no raw-patch injection
+
+Notes:
+- The harness stubs the browser DOM and AI proxy fetch layer, then calls LuminaLatex.AIProvider.ask exactly as reviewer/debate workflows do.
+- It verifies the centralized protocol behavior without requiring live provider API keys.
+
+Chromium note:
+- Chromium is installed in the sandbox, but its headless dump/remote-debugging run was unstable in this container and did not produce a reliable DOM result. The browser-facing AIProvider behavior above was therefore verified with a DOM/fetch stub harness plus Node syntax validation.
