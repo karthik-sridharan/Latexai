@@ -1,18 +1,15 @@
-/* Latexai Stage 19T2W DocumentAIService
+/* Latexai Stage 19T2X DocumentAIService
  * Stage: stage19t2o-resolver-macro-unwrapper-hard-fix-20260530-1
  *
- * Extends Stage 11D with a safe in-place mode for paper-level AI:
- * - prompts remain developer-managed static frontend files under /prompt/
- * - append mode behaves like Stage 11D/11A
- * - in-place mode asks AI for exact JSON edits
- * - each applied edit comments old content and inserts \lai{...}
+ * Stage 19T2Z: paper-level AI uses raw LATEXAI_BLOCK_PATCH text for in-place edits.
+ * The app/backend, not the AI model, validates patches and inserts \lai{...}.
  */
 (function () {
   'use strict';
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
+  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -412,7 +409,7 @@
   function rawPatchProtocolInstructions(goal) {
     return rawPatchPipeline()?.rawPatchProtocolInstructions?.({
       goal: goal || 'document-level paper improvement',
-      extra: 'For document AI in-place mode, return actionable source-edit patch blocks. For append/review mode, the app may wrap the review as append_before_end_document; do not emit Latexai internal change macros yourself.'
+      extra: 'For document AI in-place mode, return actionable source-edit patch blocks. Never use append_review_note. For append/review mode, the app may wrap the review as append_before_end_document; do not emit Latexai internal change macros yourself. Split large generated sections into smaller blocks.'
     }) || [
       'Return source edits using LATEXAI_BLOCK_PATCH blocks, not JSON.',
       'Do not output \\lai or \\laiold; Latexai will add visible change markup after safe validation.'
@@ -487,7 +484,7 @@
         workflowPrompt: workflowPath,
         inplacePrompt: mode === 'inplace' ? INPLACE_PROMPT_PATH : ''
       },
-      temperature: mode === 'inplace' ? 0.05 : 0.2,
+      temperature: mode === 'inplace' ? 0 : 0.2,
       maxOutputTokens: mode === 'inplace' ? 7000 : 5000
     };
   }
@@ -1331,7 +1328,7 @@
     card.innerHTML = [
       '<h3>Paper-level AI</h3>',
       '<div class="document-ai-grid">',
-      '  <div class="document-ai-help">Stage 19T2W uses developer-managed static frontend prompt files in <code>/prompt/</code>. In-place mode now asks for raw <code>LATEXAI_BLOCK_PATCH</code> text, and append mode is compiled through the Safe Edit Compiler; the app/backend, not the AI, creates <code>\\lai{...}</code> markup.</div>',
+      '  <div class="document-ai-help">Stage 19T2X uses developer-managed static frontend prompt files in <code>/prompt/</code>. In-place mode now asks for raw <code>LATEXAI_BLOCK_PATCH</code> text, and append mode is compiled through the Safe Edit Compiler; the app/backend, not the AI, creates <code>\\lai{...}</code> markup.</div>',
       '  <div class="document-ai-two">',
       '    <label>Workflow',
       '      <select id="documentAiWorkflow">',

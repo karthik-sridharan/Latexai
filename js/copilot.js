@@ -4,7 +4,7 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
-  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
+  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
 
   const FALLBACK_MODELS = {
     openai: [
@@ -286,7 +286,7 @@
       if (task === 'rewrite-selection-patch') {
         const applied = applyRewriteSelectionWithLai(context, text);
         output.textContent = applied.ok
-          ? `Stage 19T2W applied raw replacement to ${applied.path}. The app wrapped the old/new text in \lai markup.`
+          ? `Stage 19T2X applied raw replacement to ${applied.path}. The app wrapped the old/new text in \lai markup.`
           : `Stage 6 could not apply rewrite: ${applied.message}
 
 AI response:
@@ -418,7 +418,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
     if (task === 'rewrite-selection-patch') {
       const applied = applyRewriteSelectionWithLai(captureContext(), text);
       document.getElementById('copilotOutput').textContent = applied.ok
-        ? `Stage 19T2W applied existing Copilot raw replacement to ${applied.path} with app-managed \lai markup.`
+        ? `Stage 19T2X applied existing Copilot raw replacement to ${applied.path} with app-managed \lai markup.`
         : `Stage 4H could not apply existing output: ${applied.message}`;
       return;
     }
@@ -430,7 +430,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
     if (!text.trim() || text.startsWith('Copilot responses')) return;
     const applied = applyRewriteSelectionWithLai(captureContext(), text);
     document.getElementById('copilotOutput').textContent = applied.ok
-      ? `Stage 19T2W applied existing Copilot raw replacement to ${applied.path} with app-managed \lai markup.`
+      ? `Stage 19T2X applied existing Copilot raw replacement to ${applied.path} with app-managed \lai markup.`
       : `Stage 4H could not apply with \lai{...}: ${applied.message}`;
   }
 

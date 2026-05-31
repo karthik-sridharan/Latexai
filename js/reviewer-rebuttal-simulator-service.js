@@ -1,4 +1,4 @@
-/* Latexai Stage 19T2W ReviewerRebuttalSimulatorService
+/* Latexai Stage 19T2X ReviewerRebuttalSimulatorService
  * Stage: stage19i6-reviewer-rebuttal-explicit-role-context-fix-20260526-1
  *
  * Foundation workflow:
@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
+  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -1174,7 +1174,7 @@ ${input}` : input,
       'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy. Make the final strategy paper-editable rather than generic advice.',
       rawPatchProtocolInstructions('reviewer/rebuttal final revision source edits'),
       'For every concrete source edit, include a LATEXAI_BLOCK_PATCH block. Use append_before_end_document for a final revision plan if exact localization is unsafe.',
-      'Do not emit JSON edit schemas, \lai, \laiold, or internal editor change-tracking wrappers. The app/backend adds visible old/new markup after safe validation.',
+      'Do not emit JSON edit schemas, \\lai, \\laiold, or internal editor change-tracking wrappers. The app/backend adds visible old/new markup after safe validation.',
       'When hidden memory mentions successful paper edit patterns, notation preferences, rejected rewrite styles, or previously failed insertion anchors, use that information to choose safer patch targets and avoid repeating failed edits.',
       'Avoid preamble edits, Markdown fences inside BEGIN_NEW_LATEX, full-document rewrites, and invented exact oldText strings.'
     ].join('\n');
@@ -1249,7 +1249,7 @@ ${input}` : input,
     }
     setStatus('Preparing reviewer/rebuttal final synthesis through Safe Edit Compiler...');
     lastCompiledSynthesis = await compileReviewerSynthesis(lastSynthesis);
-    setOutput([fullReport(), '', '--- Stage 19T2W reviewer/rebuttal safe compiler preview ---', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
+    setOutput([fullReport(), '', '--- Stage 19T2X reviewer/rebuttal safe compiler preview ---', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
     setStatus(lastCompiledSynthesis.safeToInsert
       ? `Prepared ${lastCompiledSynthesis.blockCount || lastCompiledSynthesis.compiledEditCount || 0} safe reviewer/rebuttal edit block(s). Click Apply final edits.`
       : 'Safe Edit Compiler blocked reviewer/rebuttal final edits. No source changes made.');
@@ -1266,11 +1266,11 @@ ${input}` : input,
     }
     const applied = await applyReviewerCompiledSynthesis();
     if (!applied.ok) {
-      setOutput([fullReport(), '', '--- Stage 19T2W reviewer/rebuttal apply blocked ---', applied.error || 'blocked', '', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
+      setOutput([fullReport(), '', '--- Stage 19T2X reviewer/rebuttal apply blocked ---', applied.error || 'blocked', '', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
       setStatus('Safe Edit Compiler blocked reviewer/rebuttal apply. No source changes made.');
       return applied;
     }
-    setOutput([fullReport(), '', '--- Stage 19T2W reviewer/rebuttal safe insertion applied ---', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
+    setOutput([fullReport(), '', '--- Stage 19T2X reviewer/rebuttal safe insertion applied ---', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
     setStatus(`Inserted ${applied.blockCount || 0} reviewer/rebuttal final edit block(s). Use Resolve AI edits to accept/reject.`);
     return applied;
   }

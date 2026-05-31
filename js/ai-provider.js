@@ -217,31 +217,135 @@
     return value;
   }
 
+
+  function isOpenAiTemperatureUnsafe(provider, model) {
+    const p = String(provider || '').toLowerCase();
+    const m = String(model || '').toLowerCase();
+    return p === 'openai' && (/^gpt-5/.test(m) || /^o[0-9](?:$|-)/.test(m) || m.includes('reasoning'));
+  }
+
+  function isTemperatureUnsupportedMessage(text) {
+    const s = String(text || '').toLowerCase();
+    return s.includes('temperature') && (s.includes('unsupported') || s.includes('not supported') || s.includes('unknown parameter'));
+  }
+
+  function stripTemperatureDeep(value) {
+    if (Array.isArray(value)) return value.map(stripTemperatureDeep);
+    if (value && typeof value === 'object') {
+      const out = {};
+      Object.entries(value).forEach(([k, v]) => {
+        if (k === 'temperature') return;
+        out[k] = stripTemperatureDeep(v);
+      });
+      return out;
+    }
+    return value;
+  }
+
+  function shouldInjectRawPatchContract(payload = {}, meta = {}) {
+    const haystack = [
+      meta.task,
+      meta.routeKey,
+      meta.context?.workflow,
+      meta.context?.mode,
+      meta.context?.agentRole,
+      payload?.task,
+      payload?.workflow,
+      payload?.documentWorkflow,
+      payload?.mode,
+      payload?.instructions
+    ].map((v) => String(v || '').toLowerCase()).join(' ');
+
+    if (/citation|tikz|image|figure|presentation|slide|compile-log|diagnostic|embedding|memory/.test(haystack)) return false;
+    if (/debate-(advocate|critic)|paper-debate-(advocate|critic)|\badvocate\b|\bcritic\b/.test(haystack) && !/synthes|final|edit|rewrite|improve/.test(haystack)) return false;
+
+    return /document-ai|paper.*rewrite|paper.*improve|paper.*edit|reviewer-rebuttal|competitive.*improve|competitive.*review|synthes|final.*edit|rewrite-selection-patch|safe-edit|raw-patch/.test(haystack);
+  }
+
+  function rawPatchContractText() {
+    return [
+      '',
+      'Latexai unified source-edit protocol (Stage 19T2Z):',
+      '- For any concrete paper/source modification, return LATEXAI_BLOCK_PATCH blocks, not JSON edit schemas.',
+      '- Never output \\lai, \\laiold, BEGIN LAI-ACTIONABLE-EDIT, or internal change-markup wrappers; the app/backend creates visible review markup after validation.',
+      '- Never output a full LaTeX document or preamble edits. Do not output \\documentclass, \\usepackage, \\begin{document}, \\end{document}, \\newcommand, or \\newtheorem.',
+      '- Use insert_before_section for a requested new front/middle section, append_before_end_document for appendices/end material, and insert_after_block/insert_before_block only with listed safe anchors.',
+      '- Split large edits into several focused blocks. If no safe source edit is possible, return OPERATION: no_edit.',
+      '',
+      'Required block format:',
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: edit-1',
+      'OPERATION: replace_block | insert_after_block | insert_before_block | insert_before_section | append_before_end_document | no_edit',
+      'TARGET_BLOCK_ID: optional safe id, only when using a listed anchor',
+      'TARGET_SECTION: optional exact section title',
+      'RATIONALE: short reason',
+      'BEGIN_NEW_LATEX',
+      'Paper-ready visible LaTeX/prose body content goes here.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END'
+    ].join('\n');
+  }
+
+  function withRawPatchContract(payload = {}, meta = {}) {
+    if (!shouldInjectRawPatchContract(payload, meta)) return payload;
+    const next = { ...(payload || {}) };
+    const contract = rawPatchContractText();
+    const instr = String(next.instructions || next.system || '');
+    if (!instr.includes('LATEXAI_BLOCK_PATCH_BEGIN')) {
+      next.instructions = (instr ? instr + '\n\n' : '') + contract;
+    }
+    next.latexaiEditProtocol = 'raw-patch-v2-app-managed-lai';
+    next.forbidLatexaiInternalMarkup = true;
+    next.noJsonSourceEdits = true;
+    return next;
+  }
+
+  async function postAiProxy(requestUrl, headers, body) {
+    const response = await fetch(requestUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok === false) {
+      const msg = data?.error?.message || data?.detail || data?.message || `AI proxy failed with HTTP ${response.status} at ${requestUrl}. Check Settings → AI backend proxy URL; it should end in /api/lumina/ai.`;
+      const err = new Error(msg);
+      err.status = response.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
   async function ask(payload, meta = {}) {
     payload = scrubInternalChangeMarkersFromAiValue(payload || {});
     meta = scrubInternalChangeMarkersFromAiValue(meta || {});
+    payload = withRawPatchContract(payload, meta);
     if (NS.ModelRegistryService?.syncVisibleProviderModel && !meta.modelRoutingBypass && !payload?.modelRoutingBypass) {
       try { NS.ModelRegistryService.syncVisibleProviderModel({ repair: true }); } catch (_err) {}
     }
     const config = persistConfig();
     const modelDecision = validateRequestModel(config.provider, config.model, payload || {}, meta || {});
+    const provider = modelDecision.provider || config.provider;
+    const model = modelDecision.model || config.model;
     const headers = { 'Content-Type': 'application/json' };
     if (config.proxyToken) headers.Authorization = `Bearer ${config.proxyToken}`;
+    let normalizedPayload = payload;
+    const omitTemperature = isOpenAiTemperatureUnsafe(provider, model) || Boolean(payload?.omitTemperature || meta?.context?.omitTemperature);
+    if (omitTemperature) normalizedPayload = stripTemperatureDeep({ ...payload, omitTemperature: true });
     const body = {
       schema: 'lumina-latex-ai-request-v1',
-      provider: modelDecision.provider || config.provider,
-      model: modelDecision.model || config.model,
+      provider,
+      model,
       task: meta.task || 'latex-copilot',
-      payload,
+      payload: normalizedPayload,
       context: {
         ...(meta.context || {}),
+        omitTemperature,
+        latexaiEditProtocol: normalizedPayload?.latexaiEditProtocol || '',
         modelRoutingAudit: {
           stage: 'stage18a-model-routing-audit-validation-lock-1',
           routeKey: modelDecision.routeKey,
           requestedProvider: modelDecision.requestedProvider,
           requestedModel: modelDecision.requestedModel,
-          provider: modelDecision.provider || config.provider,
-          model: modelDecision.model || config.model,
+          provider,
+          model,
           repaired: Boolean(modelDecision.repaired),
           reason: modelDecision.reason || ''
         }
@@ -249,9 +353,21 @@
       client: { app: 'lumina-latex-editor', stage: W.LUMINA_LATEX_STAGE || 'stage1e', sentAt: new Date().toISOString() }
     };
     const requestUrl = normalizeAiProxyUrl(config.proxyUrl);
-    const response = await fetch(requestUrl, { method: 'POST', headers, body: JSON.stringify(body) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok === false) throw new Error(data?.error?.message || data?.message || `AI proxy failed with HTTP ${response.status} at ${requestUrl}. Check Settings → AI backend proxy URL; it should end in /api/lumina/ai.`);
+    let data;
+    try {
+      data = await postAiProxy(requestUrl, headers, body);
+    } catch (err) {
+      if (isTemperatureUnsupportedMessage(err?.message || '') && !body.context.omitTemperature) {
+        const retryBody = {
+          ...body,
+          payload: stripTemperatureDeep({ ...(body.payload || {}), omitTemperature: true }),
+          context: { ...(body.context || {}), omitTemperature: true, temperatureRetryByFrontend: true }
+        };
+        data = await postAiProxy(requestUrl, headers, retryBody);
+      } else {
+        throw err;
+      }
+    }
     if (modelDecision.repaired) data.modelRoutingAudit = body.context.modelRoutingAudit;
     return data;
   }

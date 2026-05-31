@@ -1,5 +1,5 @@
-/* Latexai Stage 19T2W LaiSafeEditPipelineService
- * Stage: stage19t2w-raw-patch-all-paper-ai-features-20260531-1
+/* Latexai Stage 19T2X LaiSafeEditPipelineService
+ * Stage: stage19t2z-unified-safe-ai-edit-protocol-20260531-1
  *
  * Shared frontend bridge for all paper-editing AI features:
  * - AI agents return human-readable text plus LATEXAI_BLOCK_PATCH markup, not JSON edit payloads.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
+  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
 
   function el(id) { return D.getElementById(id); }
   function clean(value) { return String(value || '').trim(); }
@@ -191,18 +191,119 @@
     try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
     return { ok: true, path: normalized, sourceLength: String(text || '').length };
   }
-  function compiledDraftText(data, kind = 'targeted') {
+  function looksLikeFullDocument(text) {
+    const s = String(text || '');
+    return /\\documentclass\b/.test(s) && /\\begin\s*\{document\}/.test(s);
+  }
+  function firstUsepackageIndex(text) {
+    const m = String(text || '').match(/\\usepackage(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/);
+    return m ? m.index : -1;
+  }
+  function validateFullDocumentDraft(before, after) {
+    const b = String(before || '');
+    const a = String(after || '');
+    if (/LATEXAI_BLOCK_PATCH_BEGIN|BEGIN_NEW_LATEX|END_NEW_LATEX|LATEXAI_BLOCK_PATCH_END/.test(a)) {
+      return 'Blocked unsafe apply: raw patch protocol markers would be inserted into the .tex file.';
+    }
+    if (/\\documentclass\b/.test(b)) {
+      const cls = a.search(/\\documentclass\b/);
+      if (cls < 0) return 'Blocked unsafe apply: compiled draft would remove \\documentclass from the root file.';
+      const begin = a.search(/\\begin\s*\{document\}/);
+      if (begin >= 0 && begin < cls) return 'Blocked unsafe apply: compiled draft would put \\begin{document} before \\documentclass.';
+      const pkg = firstUsepackageIndex(a);
+      if (pkg >= 0 && pkg < cls) return 'Blocked unsafe apply: compiled draft would put \\usepackage before \\documentclass.';
+      if (/\\begin\s*\{document\}/.test(b) && begin < 0) return 'Blocked unsafe apply: compiled draft would remove \\begin{document}.';
+      if (/\\end\s*\{document\}/.test(b) && !/\\end\s*\{document\}/.test(a)) return 'Blocked unsafe apply: compiled draft would remove \\end{document}.';
+    }
+    return '';
+  }
+  function insertBeforeBeginDocument(source, line) {
+    const s = String(source || '');
+    const cleanLine = String(line || '').trim();
+    if (!cleanLine) return s;
+    const escaped = cleanLine.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try { if (new RegExp(escaped.replace(/\\s\+/g, '\\s+')).test(s)) return s; } catch (_err) { if (s.includes(cleanLine)) return s; }
+    const begin = s.search(/\\begin\s*\{document\}/);
+    if (begin >= 0) return s.slice(0, begin).trimEnd() + '\n' + cleanLine + '\n' + s.slice(begin);
+    const cls = s.match(/\\documentclass(?:\s*\[[^\]]*\])?\s*\{[^}]+\}\s*/);
+    if (cls) return s.slice(0, cls.index + cls[0].length) + cleanLine + '\n' + s.slice(cls.index + cls[0].length);
+    return cleanLine + '\n' + s;
+  }
+  function hoistPreambleLinesIntoSource(source, fragment) {
+    let src = String(source || '');
+    let body = String(fragment || '');
+    const linesToHoist = [];
+    body = body.replace(/^\s*\\usepackage(?:\s*\[[^\]]*\])?\s*\{[^}]+\}\s*$/gm, (m) => { linesToHoist.push(m.trim()); return ''; });
+    body = body.replace(/^\s*\\newtheorem\s*\{[^}]+\}\s*\{[^}]+\}\s*$/gm, (m) => { linesToHoist.push(m.trim()); return ''; });
+    for (const line of linesToHoist) src = insertBeforeBeginDocument(src, line);
+    return { source: src, fragment: body };
+  }
+  function stripDocumentWrapperFromFragment(text) {
+    let s = String(text || '').trim();
+    s = s.replace(/^```(?:latex|tex|text)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    s = s.replace(/\\documentclass(?:\s*\[[^\]]*\])?\s*\{[^}]+\}\s*/gi, '');
+    s = s.replace(/\\begin\s*\{document\}/gi, '');
+    s = s.replace(/\\end\s*\{document\}/gi, '');
+    return s.trim();
+  }
+  function insertBeforeEndDocument(source, insertion) {
+    const s = String(source || '');
+    const ins = String(insertion || '').trim();
+    if (!ins) return s;
+    const m = /\\end\s*\{document\}/g;
+    let last = null;
+    for (const match of s.matchAll(m)) last = match;
+    if (last && Number.isFinite(last.index)) return s.slice(0, last.index).trimEnd() + '\n\n' + ins + '\n\n' + s.slice(last.index);
+    return s.trimEnd() + '\n\n' + ins + '\n';
+  }
+  function draftCandidates(data, kind = 'targeted') {
+    const values = [];
+    const push = (v, label) => { const text = String(v || ''); if (text.trim()) values.push({ text, label }); };
+    if (kind === 'append') {
+      push(data?.targetedInsertionDraft, 'targetedInsertionDraft');
+      push(data?.insertableLatexDraft, 'insertableLatexDraft');
+      push(data?.appendOnlyDraft, 'appendOnlyDraft');
+    } else {
+      push(data?.targetedInsertionDraft, 'targetedInsertionDraft');
+      push(data?.insertableLatexDraft, 'insertableLatexDraft');
+      push(data?.appendOnlyDraft, 'appendOnlyDraft');
+    }
+    return values;
+  }
+  function compiledDraftText(data, kind = 'targeted', currentSource = '') {
     if (!data || data.safeToInsert !== true) return '';
-    return String(kind === 'append' ? (data.appendOnlyDraft || data.targetedInsertionDraft || data.insertableLatexDraft || '') : (data.targetedInsertionDraft || data.insertableLatexDraft || data.appendOnlyDraft || ''));
+    const candidates = draftCandidates(data, kind);
+    const full = candidates.find((c) => looksLikeFullDocument(c.text));
+    if (full) return full.text;
+    return candidates[0]?.text || '';
+  }
+  function coerceCompiledDraftToFullSource(currentSource, draft, kind) {
+    const source = String(currentSource || '');
+    let d = String(draft || '');
+    if (!d.trim()) return { ok: false, error: 'Safe Edit Compiler returned no insertion draft.' };
+    if (looksLikeFullDocument(d)) {
+      const problem = validateFullDocumentDraft(source, d);
+      return problem ? { ok: false, error: problem } : { ok: true, text: d, mode: 'full-document' };
+    }
+    if (/\\documentclass\b/.test(source) && String(kind || '') === 'append') {
+      let fragment = stripDocumentWrapperFromFragment(d);
+      const hoisted = hoistPreambleLinesIntoSource(source, fragment);
+      const next = insertBeforeEndDocument(hoisted.source, hoisted.fragment);
+      const problem = validateFullDocumentDraft(source, next);
+      return problem ? { ok: false, error: problem } : { ok: true, text: next, mode: 'append-fragment-merged' };
+    }
+    const problem = validateFullDocumentDraft(source, d);
+    return problem ? { ok: false, error: problem } : { ok: true, text: d, mode: 'as-returned' };
   }
   function applyCompiledDraft(data, options = {}) {
     if (!data || data.safeToInsert !== true) {
       return { ok: false, error: 'Safe Edit Compiler did not mark this insertion safe.', data };
     }
     const active = activeSource(options.preferRoot !== false);
-    const draft = compiledDraftText(data, options.kind || 'targeted');
-    if (!draft.trim()) return { ok: false, error: 'Safe Edit Compiler returned no insertion draft.', data };
-    return { ...updateSource(options.path || data.activePath || active.path, draft), safeToInsert: true, blockCount: data.blockCount || data.compiledEditCount || 0, data };
+    const draft = compiledDraftText(data, options.kind || 'targeted', active.text);
+    const coerced = coerceCompiledDraftToFullSource(active.text, draft, options.kind || 'targeted');
+    if (!coerced.ok) return { ok: false, error: coerced.error, data };
+    return { ...updateSource(options.path || data.activePath || active.path, coerced.text), safeToInsert: true, blockCount: data.blockCount || data.compiledEditCount || 0, data, draftMode: coerced.mode };
   }
   async function compileAndApply(options = {}) {
     const data = await compileRawPatch(options);

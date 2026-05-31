@@ -173,9 +173,7 @@
     const activeFileText = context?.activeFile?.text || editor()?.value || '';
     return [
       'Workflow: rewrite-selection-patch',
-      'Return ONLY valid JSON. Do not include markdown fences.',
-      'JSON shape:',
-      '{"summary":"short summary","replacementLatex":"replacement LaTeX only"}',
+      'Return ONLY the replacement LaTeX/prose fragment. Do not include markdown fences, JSON, or explanation.',
       'Do not include the old selected text. Do not wrap in \\lai. Latexai will add \\lai.',
       `User instruction:\n${userPrompt || '(rewrite clearly while preserving math and LaTeX structure)'}`,
       `Active path: ${selection.path}`,
@@ -216,7 +214,7 @@
       let result;
       if (typeof NS.Copilot?.callProxy === 'function') {
         result = await NS.Copilot.callProxy(
-          { instructions: 'You are a LaTeX rewriting assistant. Return only JSON with replacementLatex.', input: user, temperature: 0.15, maxOutputTokens: 5200 },
+          { instructions: 'You are a LaTeX rewriting assistant. Return only the replacement LaTeX/prose fragment. Do not output JSON and do not output \\lai or \\laiold.', input: user, maxOutputTokens: 5200 },
           { task: 'rewrite-selection-patch', stage: STAGE, forcedLai: true }
         );
       } else {

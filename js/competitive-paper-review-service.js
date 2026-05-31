@@ -1,4 +1,4 @@
-/* Latexai Stage 19T2W CompetitivePaperReviewService
+/* Latexai Stage 19T2X CompetitivePaperReviewService
  * Stage: stage19i-agent-role-specific-context-policy-20260526-1
  *
  * Competitive paper comparison workflow.
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2w-raw-patch-all-paper-ai-features-20260531-1';
+  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
   const PROMPT_PATH = 'prompt/ai-competitive-paper-review.txt';
 
   if (W.LatexaiSafeMode?.shouldDisableOptionalScript?.('competitive-paper-review-service')) {
@@ -2875,7 +2875,7 @@ ${input}` : input,
     updateWorkflowStatus('insert', `safe raw-patch insertion blocks=${applied.blockCount || 0}.`);
     renderEditImpactMap();
     setStatus(`Inserted ${applied.blockCount || 0} competitive edit block(s) through Safe Edit Compiler. Use Resolve AI edits to accept/reject.`);
-    setOutput([lastReport, '', '--- Competitive raw-patch safe insertion report ---', compilerReportText(compiled), '', '--- Stage 19T2W source used for insertion ---', rewrite?.text || '(used current report; rewrite generation failed or returned empty)'].join('\n'));
+    setOutput([lastReport, '', '--- Competitive raw-patch safe insertion report ---', compilerReportText(compiled), '', '--- Stage 19T2X source used for insertion ---', rewrite?.text || '(used current report; rewrite generation failed or returned empty)'].join('\n'));
     const result = { ok: true, applied: applied.blockCount || 0, skipped: 0, path: applied.path, compiled, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-raw-patch-insert', 'success', `Inserted ${result.applied} competitive raw-patch edits.`);
     await savePaperEditMemory('competitive-raw-patch-insert', result, { safeToInsert: true, blockCount: result.applied });
@@ -2921,7 +2921,7 @@ ${input}` : input,
     updateWorkflowStatus('insert', `appended safe raw-patch plan to ${applied.path}.`);
     renderEditImpactMap();
     setStatus(`Appended competitive improvement plan through Safe Edit Compiler to ${applied.path}. Use Resolve AI edits to accept/reject.`);
-    setOutput([lastReport, '', '--- Competitive raw-patch append report ---', compilerReportText(compiled), '', '--- Stage 19T2W append source ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)'].join('\n'));
+    setOutput([lastReport, '', '--- Competitive raw-patch append report ---', compilerReportText(compiled), '', '--- Stage 19T2X append source ---', rewrite?.text || '(rewrite generation failed or returned empty; used existing report)'].join('\n'));
     const result = { ok: true, path: applied.path, mode: 'raw-patch-append-plan', compiled, rewriteAttempted: Boolean(rewrite?.stepName), rewriteOk: Boolean(rewrite?.ok), rewriteError: rewrite?.error || '' };
     await markMemoryUse('competitive-raw-patch-append-plan', 'success', `Appended competitive raw-patch plan to ${applied.path}.`);
     await savePaperEditMemory('competitive-raw-patch-append-plan', result, { safeToInsert: true, blockCount: applied.blockCount || 0 });
