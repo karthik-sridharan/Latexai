@@ -1,7 +1,7 @@
-/* Latexai Stage 19U KnowledgeContextService
+/* Latexai Stage 19U2 KnowledgeContextService
  * Shared literature/knowledge retrieval bridge for AI review/edit workflows.
- * Uses the existing backend /api/lumina/research/context-for-paper route and
- * returns a compact promptContext packet that agents can consume.
+ * Adds retrieved-context preview, pin/exclude controls, retrieval modes,
+ * and evidence-audit prompt text while keeping source edits on the safe protocol.
  */
 (function () {
   'use strict';
@@ -9,10 +9,11 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u1-reviewer-knowledge-service-scope-fix-20260531-1';
+  const STAGE = 'stage19u2-knowledge-context-preview-pinning-evidence-audit-20260531-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
+  let previewEventsBound = false;
 
   function el(id) { return D.getElementById(id); }
   function clean(value) { return String(value || '').trim(); }
@@ -20,6 +21,111 @@
     try { const v = W.localStorage?.getItem?.(key); return v == null || v === '' ? fallback : v; } catch (_err) { return fallback; }
   }
   function setStored(key, value) { try { W.localStorage?.setItem?.(key, String(value)); } catch (_err) {} }
+  function jsonStored(key, fallback) {
+    try {
+      const raw = W.localStorage?.getItem?.(key);
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed == null ? fallback : parsed;
+    } catch (_err) { return fallback; }
+  }
+  function setJsonStored(key, value) {
+    try { W.localStorage?.setItem?.(key, JSON.stringify(value)); } catch (_err) {}
+  }
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function compactText(value, max = 420) {
+    const s = String(value || '').replace(/\s+/g, ' ').trim();
+    return s.length <= max ? s : s.slice(0, Math.max(0, max - 1)).trimEnd() + '…';
+  }
+  function resultKey(result) {
+    const r = result || {};
+    return clean(r.paper_id || r.paperId || r.id || r.url || r.source_url || r.arxiv_id || r.doi || r.title || '').toLowerCase().slice(0, 500);
+  }
+  function normalizeResult(result) {
+    const r = result || {};
+    const chunk = r.bestChunk && typeof r.bestChunk === 'object' ? r.bestChunk : {};
+    return {
+      key: resultKey(r),
+      title: clean(r.title || r.name || 'Untitled paper'),
+      authors: Array.isArray(r.authors) ? r.authors.slice(0, 12).map(String) : [],
+      year: clean(r.year || r.published || ''),
+      url: clean(r.url || r.source_url || r.sourceUrl || ''),
+      score: r.score,
+      arxiv_id: clean(r.arxiv_id || r.arxivId || ''),
+      snippet: clean(chunk.snippet || r.snippet || r.abstract || r.summary || ''),
+      raw: r
+    };
+  }
+  function pinnedKey(feature) { return 'latexai:knowledge-pinned:' + String(feature || 'knowledge'); }
+  function excludedKey(feature) { return 'latexai:knowledge-excluded:' + String(feature || 'knowledge'); }
+  function modeKey(feature) { return 'latexai:knowledge-mode:' + String(feature || 'knowledge'); }
+  function pinnedResults(feature) {
+    const arr = jsonStored(pinnedKey(feature), []);
+    return Array.isArray(arr) ? arr.filter((r) => r && r.key) : [];
+  }
+  function excludedKeys(feature) {
+    const arr = jsonStored(excludedKey(feature), []);
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  }
+  function retrievalMode(feature, fallback = 'automatic_pinned') {
+    const node = el(String(feature || 'knowledge') + 'KnowledgeMode');
+    const raw = clean(node?.value || getStored(modeKey(feature), fallback));
+    return ['automatic', 'pinned_only', 'automatic_pinned'].includes(raw) ? raw : fallback;
+  }
+  function storeRetrievalMode(feature) {
+    const node = el(String(feature || 'knowledge') + 'KnowledgeMode');
+    if (node) setStored(modeKey(feature), retrievalMode(feature));
+  }
+  function pinResult(feature, result) {
+    const nr = normalizeResult(result);
+    if (!nr.key) return false;
+    const list = pinnedResults(feature).filter((r) => r.key !== nr.key);
+    list.unshift(nr);
+    setJsonStored(pinnedKey(feature), list.slice(0, 20));
+    return true;
+  }
+  function unpinResult(feature, key) {
+    const k = String(key || '');
+    setJsonStored(pinnedKey(feature), pinnedResults(feature).filter((r) => r.key !== k));
+  }
+  function excludeResult(feature, resultOrKey) {
+    const key = typeof resultOrKey === 'string' ? resultOrKey : normalizeResult(resultOrKey).key;
+    if (!key) return false;
+    const set = excludedKeys(feature);
+    set.add(key);
+    setJsonStored(excludedKey(feature), Array.from(set).slice(-80));
+    return true;
+  }
+  function includeResult(feature, key) {
+    const set = excludedKeys(feature);
+    set.delete(String(key || ''));
+    setJsonStored(excludedKey(feature), Array.from(set));
+  }
+  function buildFilteredData(feature, data) {
+    const mode = retrievalMode(feature);
+    const pinned = pinnedResults(feature);
+    const excluded = excludedKeys(feature);
+    const autoRaw = Array.isArray(data?.results) ? data.results.map(normalizeResult).filter((r) => r.key) : [];
+    let merged = [];
+    if (mode === 'pinned_only') merged = pinned.slice();
+    else if (mode === 'automatic_pinned') merged = pinned.concat(autoRaw.filter((r) => !pinned.some((p) => p.key === r.key)));
+    else merged = autoRaw;
+    merged = merged.filter((r) => !excluded.has(r.key));
+    const out = Object.assign({}, data || { ok: true }, {
+      results: merged.map((r) => r.raw || r),
+      normalizedResults: merged,
+      resultCount: merged.length,
+      retrievalMode: mode,
+      pinnedCount: pinned.length,
+      excludedCount: excluded.size,
+    });
+    out.promptContext = formatPromptContextFromResults(out);
+    return out;
+  }
   function State() { return NS.State; }
   function project() { return State()?.state?.project || {}; }
   function normalizePath(path) {
@@ -103,8 +209,10 @@
     return Math.max(1, Math.min(12, Number.isFinite(value) ? value : defaultValue));
   }
   function rememberUi(feature) {
+    bindPreviewEvents();
     const cb = el(checkboxId(feature));
     const tk = el(topKId(feature));
+    const mode = el(String(feature || 'knowledge') + 'KnowledgeMode');
     if (cb) setStored('latexai:knowledge-enabled:' + feature, cb.checked ? 'true' : 'false');
     if (tk) setStored('latexai:knowledge-topk:' + feature, topK(feature));
   }
@@ -114,16 +222,121 @@
     node.textContent = String(message || '');
     node.dataset.kind = kind || '';
   }
+  function resultAuthors(result) {
+    const authors = Array.isArray(result?.authors) ? result.authors : [];
+    const text = authors.slice(0, 6).join(', ');
+    return authors.length > 6 ? text + ', et al.' : text;
+  }
+  function scoreText(score) {
+    try { return Number.isFinite(Number(score)) ? Number(score).toFixed(3) : clean(score); } catch (_err) { return clean(score); }
+  }
+  function formatPromptContextFromResults(data) {
+    const results = (data?.normalizedResults || (Array.isArray(data?.results) ? data.results.map(normalizeResult) : [])).filter((r) => r && r.key);
+    if (!results.length) return data?.ok === false ? ('Knowledge/literature retrieval failed: ' + (data.error || data.detail || 'unknown error')) : 'No relevant ingested-library papers were retrieved.';
+    const lines = [
+      '=== RETRIEVED LITERATURE / KNOWLEDGE CONTEXT ===',
+      `Retrieval mode: ${data?.retrievalMode || 'automatic'}; papers provided: ${results.length}.`,
+      'Use these retrieved works as evidence for novelty, related-work, assumptions, and positioning. Do not invent claims beyond the snippets.',
+      'When writing a review/report, include a short "Literature context used" audit naming which retrieved papers influenced the analysis. When writing source edits, use the evidence but still return only LATEXAI_BLOCK_PATCH source edits.'
+    ];
+    results.forEach((r, idx) => {
+      lines.push(`\n[${idx + 1}] ${r.title || 'Untitled paper'}${r.year ? ' (' + r.year + ')' : ''}`);
+      lines.push('Authors: ' + (resultAuthors(r) || 'unknown'));
+      if (r.url) lines.push('URL: ' + r.url);
+      if (r.arxiv_id) lines.push('arXiv: ' + r.arxiv_id);
+      if (r.score != null && r.score !== '') lines.push('Similarity score: ' + scoreText(r.score));
+      lines.push('Evidence snippet: ' + (compactText(r.snippet, 900) || '(no snippet available)'));
+    });
+    lines.push('\nEvidence-audit instruction: explicitly say which retrieved paper numbers [1], [2], ... were used, and say if none were useful. Never paste this context block directly into the LaTeX source.');
+    return lines.join('\n');
+  }
   function resultsSummary(data) {
     if (!data) return 'Knowledge context disabled.';
     if (data.ok === false) return 'Knowledge retriever failed: ' + (data.error || data.detail || 'unknown error');
-    return `Knowledge retriever: ${data.resultCount || 0} paper(s) retrieved` + (data.searchSchema ? ` · ${data.searchSchema}` : '') + (data.topK ? ` · topK=${data.topK}` : '');
+    const mode = data.retrievalMode ? ` · mode=${data.retrievalMode.replace(/_/g, '+')}` : '';
+    const pins = data.pinnedCount ? ` · pinned=${data.pinnedCount}` : '';
+    return `Knowledge retriever: ${data.resultCount || 0} paper(s) provided` + (data.searchSchema ? ` · ${data.searchSchema}` : '') + (data.topK ? ` · topK=${data.topK}` : '') + mode + pins;
   }
   function promptBlock(data) {
     if (!data) return 'Knowledge/literature context is disabled for this run.';
     if (data.ok === false) return 'Knowledge/literature retrieval failed: ' + (data.error || data.detail || 'unknown error');
-    const ctx = clean(data.promptContext || '');
+    const ctx = clean(data.promptContext || formatPromptContextFromResults(data));
     return ctx || 'No relevant ingested-library papers were retrieved.';
+  }
+  function previewId(feature) { return String(feature || 'knowledge') + 'KnowledgePreview'; }
+  function resultCardHtml(feature, result, idx, pinnedSet, excludedSet) {
+    const r = normalizeResult(result);
+    const isPinned = pinnedSet.has(r.key);
+    const isExcluded = excludedSet.has(r.key);
+    const authors = resultAuthors(r);
+    return [
+      '<div class="knowledge-result-card" data-knowledge-key="' + escapeHtml(r.key) + '">',
+      '  <div><strong>' + escapeHtml(String(idx + 1) + '. ' + (r.title || 'Untitled paper')) + '</strong>' + (r.year ? ' <span class="muted">(' + escapeHtml(r.year) + ')</span>' : '') + '</div>',
+      authors ? '  <div class="muted">Authors: ' + escapeHtml(authors) + '</div>' : '',
+      r.score != null && r.score !== '' ? '  <div class="muted">Score: ' + escapeHtml(scoreText(r.score)) + '</div>' : '',
+      r.snippet ? '  <div class="knowledge-snippet">' + escapeHtml(compactText(r.snippet, 500)) + '</div>' : '  <div class="knowledge-snippet muted">No snippet available.</div>',
+      '  <div class="knowledge-result-actions">',
+      isPinned ? '    <button class="btn mini" type="button" data-knowledge-action="unpin" data-knowledge-feature="' + escapeHtml(feature) + '" data-knowledge-key="' + escapeHtml(r.key) + '">Unpin</button>' : '    <button class="btn mini" type="button" data-knowledge-action="pin" data-knowledge-feature="' + escapeHtml(feature) + '" data-knowledge-key="' + escapeHtml(r.key) + '">Pin to next review</button>',
+      isExcluded ? '    <button class="btn mini" type="button" data-knowledge-action="include" data-knowledge-feature="' + escapeHtml(feature) + '" data-knowledge-key="' + escapeHtml(r.key) + '">Include again</button>' : '    <button class="btn mini" type="button" data-knowledge-action="exclude" data-knowledge-feature="' + escapeHtml(feature) + '" data-knowledge-key="' + escapeHtml(r.key) + '">Exclude from this run</button>',
+      r.url ? '    <a class="btn mini" target="_blank" rel="noopener" href="' + escapeHtml(r.url) + '">Open</a>' : '',
+      '  </div>',
+      '</div>'
+    ].filter(Boolean).join('');
+  }
+  function renderPreview(feature, data) {
+    const node = el(previewId(feature));
+    if (!node) return;
+    const pinned = pinnedResults(feature);
+    const pinnedSet = new Set(pinned.map((r) => r.key));
+    const excluded = excludedKeys(feature);
+    const norm = (data?.normalizedResults || (Array.isArray(data?.results) ? data.results.map(normalizeResult) : [])).filter((r) => r && r.key);
+    const mode = retrievalMode(feature);
+    if (!data && !pinned.length) {
+      node.innerHTML = '<div class="settings-note compact">Retrieved context preview will appear here. Pin papers to force them into later reviews.</div>';
+      return;
+    }
+    const header = `<div class="knowledge-preview-head"><strong>Retrieved literature context</strong><br><span class="muted">${norm.length} paper(s) provided · mode=${escapeHtml(mode.replace(/_/g, '+'))} · pinned=${pinned.length}</span></div>`;
+    const cards = norm.length ? norm.map((r, i) => resultCardHtml(feature, r, i, pinnedSet, excluded)).join('') : '<div class="settings-note compact">No papers selected for this run. Try automatic mode, raise topK, or pin a known relevant paper.</div>';
+    node.innerHTML = header + cards;
+  }
+  function refreshFeaturePreview(feature) {
+    renderPreview(feature, lastByFeature[feature] || buildFilteredData(feature, { ok: true, results: [], topK: topK(feature), searchSchema: 'local-pins' }));
+  }
+  function bindPreviewEvents() {
+    if (previewEventsBound) return;
+    previewEventsBound = true;
+    D.addEventListener('click', (event) => {
+      const btn = event.target?.closest?.('[data-knowledge-action]');
+      if (!btn) return;
+      const action = btn.getAttribute('data-knowledge-action');
+      const feature = btn.getAttribute('data-knowledge-feature') || 'knowledge';
+      const key = btn.getAttribute('data-knowledge-key') || '';
+      const data = lastByFeature[feature];
+      const all = [];
+      if (Array.isArray(data?.normalizedResults)) all.push(...data.normalizedResults);
+      if (Array.isArray(data?.results)) all.push(...data.results.map(normalizeResult));
+      all.push(...pinnedResults(feature));
+      const result = all.find((r) => r.key === key);
+      if (action === 'pin' && result) pinResult(feature, result);
+      if (action === 'unpin') unpinResult(feature, key);
+      if (action === 'exclude') excludeResult(feature, key);
+      if (action === 'include') includeResult(feature, key);
+      if (data) lastByFeature[feature] = buildFilteredData(feature, data.rawData || data);
+      refreshFeaturePreview(feature);
+      setStatus(feature, resultsSummary(lastByFeature[feature] || null), 'good');
+    }, true);
+    D.addEventListener('click', async (event) => {
+      const btn = event.target?.closest?.('[data-knowledge-preview-action]');
+      if (!btn) return;
+      const action = btn.getAttribute('data-knowledge-preview-action');
+      const feature = btn.getAttribute('data-knowledge-feature') || 'knowledge';
+      if (action === 'clear-pins') { setJsonStored(pinnedKey(feature), []); refreshFeaturePreview(feature); setStatus(feature, 'Cleared pinned literature context.', 'muted'); }
+      if (action === 'clear-excluded') { setJsonStored(excludedKey(feature), []); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); setStatus(feature, 'Cleared excluded literature context.', 'muted'); }
+      if (action === 'preview') {
+        const q = clean(el(feature + 'KnowledgeManualQuery')?.value || el(feature + 'KnowledgeManualSearch')?.value || '');
+        await retrieve({ feature, query: q, focus: q, workflow: feature + '-manual-preview', defaultEnabled: true, forceEnabled: true, topK: topK(feature) });
+      }
+    }, true);
   }
   function sourceForRetrieval(options = {}) {
     const explicit = clean(options.latexSource || options.source || '');
@@ -133,7 +346,7 @@
   }
   async function retrieve(options = {}) {
     const feature = clean(options.feature || 'knowledge');
-    if (!enabled(feature, !!options.defaultEnabled)) {
+    if (!options.forceEnabled && !enabled(feature, !!options.defaultEnabled)) {
       lastByFeature[feature] = null;
       setStatus(feature, 'Knowledge/literature context disabled for this run.', 'muted');
       return null;
@@ -155,20 +368,26 @@
     };
     setStatus(feature, `Retrieving literature context from knowledge database (topK=${k})...`, 'warn');
     try {
-      const data = await postBackend('/research/context-for-paper', payload, { allowOkFalse: true });
+      const rawData = await postBackend('/knowledge/context-for-paper', payload, { allowOkFalse: true });
+      const data = buildFilteredData(feature, rawData);
+      data.rawData = rawData;
       lastByFeature[feature] = data;
       setStatus(feature, resultsSummary(data), data?.ok === false ? 'bad' : 'good');
+      renderPreview(feature, data);
       return data;
     } catch (err) {
       const data = { ok: false, error: err?.message || String(err), promptContext: 'Knowledge retriever failed: ' + (err?.message || String(err)) };
       lastByFeature[feature] = data;
       setStatus(feature, resultsSummary(data), 'bad');
+      renderPreview(feature, data);
       return data;
     }
   }
   function installUiPersistence(feature) {
+    bindPreviewEvents();
     const cb = el(checkboxId(feature));
     const tk = el(topKId(feature));
+    const mode = el(String(feature || 'knowledge') + 'KnowledgeMode');
     if (cb) {
       const stored = getStored('latexai:knowledge-enabled:' + feature, '');
       if (stored) cb.checked = stored === 'true';
@@ -179,6 +398,12 @@
       if (stored) tk.value = stored;
       tk.addEventListener('change', () => rememberUi(feature));
     }
+    if (mode) {
+      const storedMode = getStored(modeKey(feature), 'automatic_pinned');
+      mode.value = retrievalMode(feature, storedMode);
+      mode.addEventListener('change', () => { storeRetrievalMode(feature); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); });
+    }
+    refreshFeaturePreview(feature);
   }
   function controlHtml(feature, label = 'Use knowledge/literature context', defaultTopK = DEFAULT_TOP_K) {
     const f = String(feature || 'knowledge');
@@ -188,7 +413,21 @@
       '    <label class="field checkbox-field"><input id="' + f + 'UseKnowledge" type="checkbox" /> ' + label + '</label>',
       '    <label class="field">Knowledge topK <input id="' + f + 'KnowledgeTopK" type="number" min="1" max="12" step="1" value="' + defaultTopK + '" /></label>',
       '  </div>',
+      '  <div class="field-grid two">',
+      '    <label class="field">Retrieval mode <select id="' + f + 'KnowledgeMode">',
+      '      <option value="automatic_pinned">automatic + pinned</option>',
+      '      <option value="automatic">automatic only</option>',
+      '      <option value="pinned_only">pinned only</option>',
+      '    </select></label>',
+      '    <label class="field">Manual preview query <input id="' + f + 'KnowledgeManualQuery" type="text" placeholder="optional search/preview query" /></label>',
+      '  </div>',
+      '  <div class="document-ai-actions knowledge-preview-actions">',
+      '    <button class="btn mini" type="button" data-knowledge-preview-action="preview" data-knowledge-feature="' + f + '">Preview retrieved context</button>',
+      '    <button class="btn mini" type="button" data-knowledge-preview-action="clear-pins" data-knowledge-feature="' + f + '">Clear pins</button>',
+      '    <button class="btn mini" type="button" data-knowledge-preview-action="clear-excluded" data-knowledge-feature="' + f + '">Clear exclusions</button>',
+      '  </div>',
       '  <div id="' + f + 'KnowledgeStatus" class="settings-note compact">Knowledge/literature context is off. Enable it to retrieve relevant ingested-library papers before the AI run.</div>',
+      '  <div id="' + f + 'KnowledgePreview" class="knowledge-context-preview"><div class="settings-note compact">Retrieved context preview will appear here. Pin papers to force them into later reviews.</div></div>',
       '</div>'
     ].join('');
   }
@@ -201,6 +440,14 @@
     promptBlock,
     resultsSummary,
     controlHtml,
+    renderPreview,
+    refreshFeaturePreview,
+    pinResult,
+    unpinResult,
+    excludeResult,
+    includeResult,
+    pinnedResults,
+    retrievalMode,
     installUiPersistence,
     getLast: (feature) => lastByFeature[feature] || null,
     backendRoot,

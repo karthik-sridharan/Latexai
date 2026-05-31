@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u1-reviewer-knowledge-service-scope-fix-20260531-1';
+  const STAGE = 'stage19u2-knowledge-context-preview-pinning-evidence-audit-20260531-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -1396,6 +1396,7 @@ ${input}` : input,
       '</div>',
       '<label class="field">Paper goal / intended contribution <input id="reviewerSimGoal" type="text" placeholder="Optional: what the paper is trying to establish" /></label>',
       '<label class="field">Global review instructions <textarea id="reviewerSimInstructions" rows="2" placeholder="Optional: ask reviewers to be very critical, focus on theory, compare to a venue, etc."></textarea></label>',
+      (NS.KnowledgeContextService?.controlHtml?.('reviewerSim', 'Use knowledge/literature context for Reviewer/Rebuttal simulator', 5) || ''),
       '<div id="reviewerSimRows" class="devils-agent-grid"></div>',
       '<label class="field">Your rebuttal guidance after reading reviews <textarea id="reviewerSimRebuttalGuidance" rows="3" placeholder="Optional: tell the rebuttal agent what to concede, defend, emphasize, or promise to revise."></textarea></label>',
       '<div class="devils-actions">',
