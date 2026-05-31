@@ -1,5 +1,5 @@
-/* Latexai Stage 19T2N DocumentAIService
- * Stage: stage19t2n-resolver-direct-editor-apply-20260530-1
+/* Latexai Stage 19T2O DocumentAIService
+ * Stage: stage19t2o-resolver-macro-unwrapper-hard-fix-20260530-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
  * - prompts remain developer-managed static frontend files under /prompt/
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2n-resolver-direct-editor-apply-20260530-1';
+  const STAGE = 'stage19t2p-resolver-accept-red-unblocks-lai-20260530-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -39,6 +39,7 @@
   let lastPatch = null;
   let lastContextSummary = '';
   let promptCache = new Map();
+  let suppressResolverEditorSyncUntil = 0;
 
   function State() { return NS.State; }
   function el(id) { return document.getElementById(id); }
@@ -800,6 +801,7 @@
 
   function syncActiveEditorToStateForResolve() {
     try {
+      if (Date.now() < suppressResolverEditorSyncUntil) return false;
       const editor = NS.Editor?.editor || document.getElementById('sourceEditor');
       const path = normalizePath(project().activePath || rootPath());
       if (!editor || !path) return false;
@@ -962,7 +964,7 @@
     try {
       if (State()?.getFile?.(normalized) && active !== normalized) {
         State()?.setActivePath?.(normalized);
-        active = normalized;
+        active = activeResolverPath();
       }
     } catch (_err) {}
 
@@ -970,13 +972,20 @@
     const editor = NS.Editor?.editor || document.getElementById('sourceEditor');
     if (!editor) return false;
 
+    const nextText = String(text ?? '');
     const oldScrollTop = Number(editor.scrollTop || 0);
-    editor.value = String(text ?? '');
+
+    // Prefer the public editor API when available. In deployed stages the visible
+    // textarea and project state can otherwise get out of sync after resolver edits.
+    try { NS.Editor?.setText?.(nextText); } catch (_err) {}
+
+    editor.value = nextText;
     try {
       const cursor = Math.max(0, Math.min(Number(cursorAt) || 0, editor.value.length));
       editor.setSelectionRange(cursor, cursor);
     } catch (_err) {}
     try { editor.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+    try { editor.dispatchEvent(new Event('change', { bubbles: true })); } catch (_err) {}
     try { editor.scrollTop = oldScrollTop; } catch (_err) {}
     return true;
   }
@@ -989,9 +998,15 @@
       const file = State()?.getFile?.(normalized);
       if (file && textFile(file)) {
         file.text = String(text ?? '');
+        try { file.updatedAt = new Date().toISOString(); } catch (_err) {}
         ok = true;
       }
     }
+
+    // Do not let resolver refresh immediately re-import stale visible text after
+    // accepting/rejecting an edit.
+    suppressResolverEditorSyncUntil = Date.now() + 1500;
+
     forceEditorSourceForResolvedPath(normalized, text, cursorAt);
     try { NS.Editor?.render?.(); } catch (_err) {}
     forceEditorSourceForResolvedPath(normalized, text, cursorAt);
@@ -1001,11 +1016,22 @@
     return ok;
   }
 
+  function unwrapResolverMacroInner(value) {
+    let s = String(value ?? '');
+    // Most safe insertions are emitted as \lai{%\n...\n}; the leading percent
+    // is a TeX whitespace guard and should not survive as accepted content.
+    s = s.replace(/^\s*%\s*(?:\r?\n|$)/, '');
+    // Also tolerate a trailing standalone whitespace-guard percent before the
+    // closing brace in older generated blocks.
+    s = s.replace(/(?:\r?\n)?\s*%\s*$/, '');
+    return s.trim();
+  }
+
   function resolveReplacementTextForKeep(pair, keep) {
     if (!pair || !['new', 'old'].includes(keep)) return '';
-    if (pair.type === 'standalone-new') return keep === 'new' ? pair.newText : '';
-    if (pair.type === 'standalone-old') return keep === 'old' ? pair.oldText : '';
-    return keep === 'new' ? pair.newText : pair.oldText;
+    if (pair.type === 'standalone-new') return keep === 'new' ? unwrapResolverMacroInner(pair.newText) : '';
+    if (pair.type === 'standalone-old') return keep === 'old' ? unwrapResolverMacroInner(pair.oldText) : '';
+    return keep === 'new' ? unwrapResolverMacroInner(pair.newText) : unwrapResolverMacroInner(pair.oldText);
   }
 
   function scanResolvedPairsInText(text, path) {
@@ -1031,10 +1057,10 @@
             markerPath,
             rangeStart: expanded.rangeStart,
             rangeEnd: expandResolveEnd(s, next.end),
-            oldText: block.inner.trim(),
-            newText: next.inner.trim(),
-            oldPreview: block.inner.trim().slice(0, 180),
-            newPreview: next.inner.trim().slice(0, 180),
+            oldText: unwrapResolverMacroInner(block.inner),
+            newText: unwrapResolverMacroInner(next.inner),
+            oldPreview: unwrapResolverMacroInner(block.inner).slice(0, 180),
+            newPreview: unwrapResolverMacroInner(next.inner).slice(0, 180),
             line: lineNumberAt(s, expanded.rangeStart),
             command: '\\laiold + \\lai'
           });
@@ -1051,9 +1077,9 @@
           markerPath: expanded.markerPath || normalizePath(path || rootPath()),
           rangeStart: expanded.rangeStart,
           rangeEnd: expandResolveEnd(s, block.end),
-          oldText: block.inner.trim(),
+          oldText: unwrapResolverMacroInner(block.inner),
           newText: '',
-          oldPreview: block.inner.trim().slice(0, 180),
+          oldPreview: unwrapResolverMacroInner(block.inner).slice(0, 180),
           newPreview: '(no paired \\lai new content; keep red/new will remove this old-only marker)',
           line: lineNumberAt(s, expanded.rangeStart),
           command: '\\laiold'
@@ -1074,9 +1100,9 @@
           rangeStart: expandedNew.rangeStart,
           rangeEnd: expandedNew.rangeEnd,
           oldText: '',
-          newText: block.inner.trim(),
+          newText: unwrapResolverMacroInner(block.inner),
           oldPreview: '(no blue \\laiold content; keep blue/old will reject/remove this insertion)',
-          newPreview: block.inner.trim().slice(0, 180),
+          newPreview: unwrapResolverMacroInner(block.inner).slice(0, 180),
           line: lineNumberAt(s, expandedNew.rangeStart),
           command: '\\lai'
         });
@@ -1172,23 +1198,28 @@
     ].join('\n');
   }
 
-  function containsResolverJsonBackslashDamage(text) {
+  function containsResolverUnsafeControlCharacters(text) {
     const s = String(text || '');
-    if (new RegExp('[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]').test(s)) return true;
-    if (/\t/.test(s)) return true;
-    if (/(^|\n)\s*(?:itle\s*\{|uthor\s*\{|ate\s*\{|ewtheorem\b|ocumentclass\b|sepackage\b|egin\s*\{document\}|nd\s*\{document\})/i.test(s)) return true;
-    if (/(^|\n)\s*(?:title\s*\{|author\s*\{|date\s*\{|newtheorem\b|documentclass\b|usepackage\b|begin\s*\{document\}|end\s*\{document\})/i.test(s)) return true;
-    return false;
+    // Stage 19T2P: resolver acceptance is a LOCAL unwrapping operation. At this
+    // point the source already contains visible \lai / \laiold markup; the user is
+    // explicitly choosing which side to keep. Do not reject normal LaTeX/prose
+    // simply because it contains words like "newtheorem" or "title" at line start.
+    // That older heuristic repeatedly blocked legitimate Keep red/new clicks.
+    // Only reject impossible source-level control bytes; ordinary tabs/newlines are fine.
+    return new RegExp('[\x00-\x08\x0b\x0c\x0e-\x1f]').test(s);
   }
 
   function validateResolverNextSource(before, after, kept) {
     const b = String(before || '');
     const a = String(after || '');
     const k = String(kept || '');
-    if (containsResolverJsonBackslashDamage(k) || containsResolverJsonBackslashDamage(a)) {
-      return 'Blocked resolver accept/reject: detected JSON/backslash-damaged LaTeX command remnants, e.g. \\title became tab+itle or \\newtheorem became newline+ewtheorem.';
+    if (containsResolverUnsafeControlCharacters(k)) {
+      return 'Blocked resolver accept/reject: kept text contains unsafe control characters.';
     }
-    const structural = ['\\documentclass', '\\begin{document}', '\\end{document}', '\\title', '\\newtheorem'];
+    // Keep only the structural-command preservation guard. This catches a truly
+    // bad range parse that would delete the preamble or document boundary, while
+    // allowing normal \lai unwrapping to proceed.
+    const structural = ['\\documentclass', '\\begin{document}', '\\end{document}', '\\title', '\\author', '\\date', '\\newtheorem'];
     for (const cmd of structural) {
       if (b.includes(cmd) && !a.includes(cmd)) return 'Blocked resolver: accepting this edit would remove structural command ' + cmd + '.';
     }
