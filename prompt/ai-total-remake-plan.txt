@@ -10,4 +10,13 @@ Focus on:
 - which examples, figures, experiments, or explanations would make the paper clearer;
 - a concrete step-by-step rewrite plan.
 
-Return a LaTeX section that is a complete remake plan, not a direct rewrite of the paper.
+Return a LaTeX section that is a complete remake plan only when the mode is append/review.
+
+If requested mode is inplace, DO NOT insert a section called "Remake Plan" and DO NOT return only a plan, checklist, or instructions to the user. Instead, return paper-ready LATEXAI_BLOCK_PATCH edits containing the actual rewritten introduction, contribution overview, problem setup, theorem/result framing, related-work text, discussion, or appendix material.
+
+For in-place total remake:
+- Use OPERATION: insert_before_section when creating a new section before an existing section.
+- Use OPERATION: append_before_end_document only for appendices, discussion/future-work sections, or when exact localization is unsafe.
+- Use OPERATION: replace_block only with a real safe TARGET_BLOCK_ID; if only a section title is known, use insert_before_section or append_before_end_document.
+- Do not fabricate target section titles that are not in the source unless the payload itself creates that new section.
+- Split large generated content into multiple patch blocks.
