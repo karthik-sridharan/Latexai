@@ -1,4 +1,4 @@
-/* Latexai Stage 19U5 KnowledgeContextService
+/* Latexai Stage 19U6 KnowledgeContextService
  * Shared literature/knowledge retrieval bridge for AI review/edit workflows.
  * Adds retrieved-context preview, pin/exclude controls, retrieval modes,
  * and evidence-audit prompt text while keeping source edits on the safe protocol.
@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u5-author-paper-graph-retrieval-boost-20260531-1';
+  const STAGE = 'stage19u6-external-literature-metadata-enrichment-20260531-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
@@ -60,8 +60,14 @@
       semanticScore: r.semanticScore ?? chunk.semanticScore ?? null,
       hybridScore: r.hybridScore ?? r.score ?? null,
       scoreBreakdown: (r.scoreBreakdown && typeof r.scoreBreakdown === 'object') ? r.scoreBreakdown : ((chunk.scoreBreakdown && typeof chunk.scoreBreakdown === 'object') ? chunk.scoreBreakdown : null),
-      retrievalReasons: Array.isArray(r.retrievalReasons) ? r.retrievalReasons.slice(0, 8).map(String) : [],
+      retrievalReasons: Array.isArray(r.retrievalReasons) ? r.retrievalReasons.slice(0, 10).map(String) : [],
       searchSchema: clean(r.searchSchema || ''),
+      metadata: (r.metadata && typeof r.metadata === 'object') ? r.metadata : {},
+      doi: clean(r.doi || (r.metadata && r.metadata.externalIds && (r.metadata.externalIds.DOI || r.metadata.externalIds.doi)) || ''),
+      semanticScholarId: clean((r.metadata && r.metadata.semanticScholar && r.metadata.semanticScholar.paperId) || (r.metadata && r.metadata.externalIds && (r.metadata.externalIds.SemanticScholar || r.metadata.externalIds.S2)) || ''),
+      dblpKey: clean((r.metadata && r.metadata.dblp && r.metadata.dblp.key) || (r.metadata && r.metadata.externalIds && r.metadata.externalIds.DBLP) || ''),
+      canonicalAuthorKeys: Array.isArray(r.metadata?.canonicalAuthorKeys) ? r.metadata.canonicalAuthorKeys.slice(0, 12).map(String) : [],
+      enrichment: (r.metadata && r.metadata.metadataEnrichment && typeof r.metadata.metadataEnrichment === 'object') ? r.metadata.metadataEnrichment : null,
       raw: r
     };
   }
@@ -261,6 +267,10 @@
       lines.push('Authors: ' + (resultAuthors(r) || 'unknown'));
       if (r.url) lines.push('URL: ' + r.url);
       if (r.arxiv_id) lines.push('arXiv: ' + r.arxiv_id);
+      if (r.doi) lines.push('DOI: ' + r.doi);
+      if (r.semanticScholarId) lines.push('Semantic Scholar paper id: ' + r.semanticScholarId);
+      if (r.dblpKey) lines.push('DBLP key: ' + r.dblpKey);
+      if (r.canonicalAuthorKeys && r.canonicalAuthorKeys.length) lines.push('Canonical author keys: ' + r.canonicalAuthorKeys.join(', '));
       if (r.score != null && r.score !== '') lines.push('Hybrid retrieval score: ' + scoreText(r.score));
       if (r.semanticScore != null && r.semanticScore !== '') lines.push('Semantic score: ' + scoreText(r.semanticScore));
       if (r.retrievalReasons && r.retrievalReasons.length) lines.push('Why retrieved: ' + r.retrievalReasons.join('; '));
@@ -289,7 +299,7 @@
     const b = r && r.scoreBreakdown && typeof r.scoreBreakdown === 'object' ? r.scoreBreakdown : null;
     if (!b) return '';
     const parts = [];
-    ['semantic', 'titleKeywordBoost', 'titlePhraseBoost', 'authorKeywordBoost', 'authorExactBoost', 'authorPartialBoost', 'snippetKeywordBoost', 'metadataKeywordBoost', 'arxivBoost', 'urlBoost', 'citationKeyBoost', 'pinnedBoost', 'final'].forEach((k) => {
+    ['semantic', 'titleKeywordBoost', 'titlePhraseBoost', 'authorKeywordBoost', 'authorExactBoost', 'authorPartialBoost', 'snippetKeywordBoost', 'metadataKeywordBoost', 'arxivBoost', 'doiBoost', 'semanticScholarBoost', 'urlBoost', 'citationKeyBoost', 'authorGraphQueryBoost', 'authorGraphPinnedBoost', 'coauthorNeighborhoodBoost', 'pinnedBoost', 'final'].forEach((k) => {
       if (b[k] != null && b[k] !== '' && Number(b[k]) !== 0) parts.push(k.replace(/Boost$/, '') + '=' + scoreText(b[k]));
     });
     return parts.join(' · ');
@@ -305,6 +315,8 @@
       '<div class="knowledge-result-card" data-knowledge-key="' + escapeHtml(r.key) + '">',
       '  <div><strong>' + escapeHtml(String(idx + 1) + '. ' + (r.title || 'Untitled paper')) + '</strong>' + (r.year ? ' <span class="muted">(' + escapeHtml(r.year) + ')</span>' : '') + '</div>',
       authors ? '  <div class="muted">Authors: ' + escapeHtml(authors) + '</div>' : '',
+      (r.arxiv_id || r.doi || r.semanticScholarId || r.dblpKey || (r.canonicalAuthorKeys && r.canonicalAuthorKeys.length)) ? '  <div class="muted">Metadata: ' + escapeHtml([r.arxiv_id ? 'arXiv ' + r.arxiv_id : '', r.doi ? 'DOI ' + r.doi : '', r.semanticScholarId ? 'S2 ' + r.semanticScholarId : '', r.dblpKey ? 'DBLP ' + r.dblpKey : '', (r.canonicalAuthorKeys && r.canonicalAuthorKeys.length) ? 'author keys ' + r.canonicalAuthorKeys.slice(0,4).join(', ') : ''].filter(Boolean).join(' · ')) + '</div>' : '',
+      (r.enrichment && Array.isArray(r.enrichment.matched) && r.enrichment.matched.length) ? '  <div class="muted">Enriched via: ' + escapeHtml(r.enrichment.matched.join(', ')) + '</div>' : '',
       r.score != null && r.score !== '' ? '  <div class="muted">Hybrid score: ' + escapeHtml(scoreText(r.score)) + (r.semanticScore != null ? ' · semantic=' + escapeHtml(scoreText(r.semanticScore)) : '') + '</div>' : '',
       breakdown ? '  <details class="knowledge-score-breakdown"><summary>Score breakdown / why retrieved</summary><div class="muted">' + escapeHtml(breakdown) + '</div>' + (reasons ? '<div class="muted">Reasons: ' + escapeHtml(reasons) + '</div>' : '') + '</details>' : (reasons ? '  <div class="muted">Why retrieved: ' + escapeHtml(reasons) + '</div>' : ''),
       r.snippet ? '  <div class="knowledge-snippet">' + escapeHtml(compactText(r.snippet, 500)) + '</div>' : '  <div class="knowledge-snippet muted">No snippet available.</div>',
@@ -329,8 +341,9 @@
       return;
     }
     const graphFlag = data?.authorGraphRanking ? ' · author graph on' : '';
+    const enrichedFlag = /enriched|metadata/i.test(String(data?.searchSchema || data?.storage?.metadataEnrichment || '')) ? ' · metadata enriched' : '';
     const schemaText = data?.searchSchema ? ' · ' + escapeHtml(String(data.searchSchema).replace(/^lumina-research-/, '').replace(/-search-v1$/, '')) : '';
-    const header = `<div class="knowledge-preview-head"><strong>Retrieved literature context</strong><br><span class="muted">${norm.length} paper(s) provided · mode=${escapeHtml(mode.replace(/_/g, '+'))} · pinned=${pinned.length}${graphFlag}${schemaText}</span></div>`;
+    const header = `<div class="knowledge-preview-head"><strong>Retrieved literature context</strong><br><span class="muted">${norm.length} paper(s) provided · mode=${escapeHtml(mode.replace(/_/g, '+'))} · pinned=${pinned.length}${graphFlag}${enrichedFlag}${schemaText}</span></div>`;
     const cards = norm.length ? norm.map((r, i) => resultCardHtml(feature, r, i, pinnedSet, excluded)).join('') : '<div class="settings-note compact">No papers selected for this run. Try automatic mode, raise topK, or pin a known relevant paper.</div>';
     node.innerHTML = header + cards;
   }
