@@ -1,0 +1,39 @@
+Stage 19T3A local verification
+==============================
+
+Goal
+----
+Harden the unified safe AI edit protocol so all source-editing AI features share the same path:
+AI raw LATEXAI_BLOCK_PATCH text -> backend safe compiler -> app-managed \lai wrappers -> resolver -> compile.
+
+Backend checks run
+------------------
+1. Python syntax check on stage19t3a_backend/main.py: PASS.
+2. Built-in safe-edit stress cases from _safe_edit_stress_cases(): 21/21 PASS.
+3. User-reported malformed competitive review patch inside Markdown fence, missing END_NEW_LATEX and containing terminal \end{document}: PASS. Parsed, sanitized boundary artifact, compiled safe.
+4. Existing-source Markdown/scaffold should not poison future safe edits: PASS. Validation now checks newly introduced scaffolding, not legacy text already in source.
+5. replace_block with TARGET_SECTION but no TARGET_BLOCK_ID: PASS. Converted to a section-level visible \lai insertion instead of rejecting the whole workflow.
+6. Multi-block competitive-improver style patch with equation anchor insertion plus append_before_end_document: PASS.
+
+Frontend checks run
+-------------------
+1. node --check js/lai-safe-edit-pipeline-service.js: PASS.
+2. node --check js/ai-provider.js: PASS.
+3. node --check js/document-ai-service.js: PASS.
+4. node --check js/competitive-paper-review-service.js: PASS.
+5. node --check js/reviewer-rebuttal-simulator-service.js: PASS.
+6. Node functional smoke for LaiSafeEditPipelineService.extractRawPatchProtocol: PASS. It strips surrounding Markdown/report text and sends only LATEXAI_BLOCK_PATCH blocks to the compiler.
+
+Chromium note
+-------------
+A local HTTP server was started and Chromium headless was attempted. Chromium launched but timed out in this sandbox with DBus/zygote/inotify errors before a useful DOM test completed. I therefore did not claim a browser end-to-end pass. The checks above are local backend/compiler and frontend functional/syntax checks.
+
+Fixes covered
+-------------
+- Competitive review reports that include patch blocks inside Markdown no longer send the full report as source-edit input.
+- Malformed patch blocks that omit END_NEW_LATEX can still be recovered if the block boundary is clear.
+- Accidental terminal \end{document} inside a malformed patch payload is stripped as a boundary artifact.
+- Safe compiler validation no longer blocks all future edits merely because the original user source already contains old scaffolding/Markdown from previous runs.
+- Section-level replace requests without safe block ids no longer fail closed; they become visible section-level \lai suggestions.
+- append_before_end_document is preserved as its own semantic operation instead of being collapsed into legacy append_review_note naming.
+- Repair prompts now demand patch-only output, no Markdown report, no code fences, and no document/preamble commands inside BEGIN_NEW_LATEX.
