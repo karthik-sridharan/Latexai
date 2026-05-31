@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2r-user-request-coverage-verifier-20260530-1';
+  const STAGE = 'stage19t2s-end-to-end-regression-audit-panel-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -2071,17 +2071,261 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     }).join('') + '</div>';
   }
 
+
+  function extractRawPatchBlocksForAudit(text) {
+    const s = String(text || '');
+    const blocks = [];
+    const re = /LATEXAI_BLOCK_(?:PATCH|EDIT)_BEGIN\s*([\s\S]*?)\s*LATEXAI_BLOCK_(?:PATCH|EDIT)_END/ig;
+    let m = null;
+    while ((m = re.exec(s))) {
+      const raw = m[0];
+      const inner = String(m[1] || '');
+      const bodyMatch = inner.match(/BEGIN_NEW_LATEX\s*:?\s*([\s\S]*?)\s*END_NEW_LATEX\s*:?/i);
+      const meta = bodyMatch ? inner.slice(0, bodyMatch.index) : inner;
+      const field = (name) => {
+        const fm = meta.match(new RegExp('^\\s*' + name + '\\s*:\\s*([^\\n\\r]*)', 'im'));
+        return clean(fm && fm[1] ? fm[1] : '');
+      };
+      blocks.push({
+        raw,
+        patchId: field('PATCH_ID') || field('EDIT_ID') || field('ID'),
+        operation: field('OPERATION').toLowerCase(),
+        targetBlockId: field('TARGET_BLOCK_ID'),
+        targetSection: field('TARGET_SECTION'),
+        rationale: field('RATIONALE'),
+        latex: clean(bodyMatch ? bodyMatch[1] : '')
+      });
+    }
+    return blocks;
+  }
+
+  function patchOperationLabelForAudit(block) {
+    const pieces = [block?.operation || 'unknown'];
+    if (block?.targetBlockId) pieces.push(block.targetBlockId);
+    if (block?.targetSection) pieces.push(block.targetSection);
+    return pieces.filter(Boolean).join(' → ');
+  }
+
+  function renderPatchOperationSummaryHtml(data, finalTextOverride) {
+    const text = String(finalTextOverride || finalEditorOutputText() || data?.repairRawOutputPreview || '');
+    const blocks = extractRawPatchBlocksForAudit(text);
+    const backendCount = Number(data?.blockCount || 0);
+    if (!blocks.length && !backendCount) {
+      return '<div class="settings-note warn"><strong>Planned edit operations:</strong> no raw patch operations were detected yet.</div>';
+    }
+    const rows = blocks.length ? blocks.map((b, i) => {
+      const bodyPreview = clean(String(b.latex || '').replace(/\s+/g, ' ')).slice(0, 160);
+      return '<tr><td>' + esc(i + 1) + '</td><td><code>' + esc(b.operation || 'unknown') + '</code></td><td>' + esc(b.targetBlockId || '—') + '</td><td>' + esc(b.targetSection || '—') + '</td><td>' + esc(bodyPreview || b.rationale || '') + '</td></tr>';
+    }).join('') : '<tr><td colspan="5">Backend reports blockCount=' + esc(backendCount) + ', but frontend raw-patch text is unavailable.</td></tr>';
+    return '<details open><summary>Patch-operation summary before apply</summary>' +
+      '<div class="settings-note compact">Use this checklist before inserting. It should visibly include every independent request: introduction, equation explanations, appendix, theorem/proof, etc.</div>' +
+      '<table class="branch-regression-table"><thead><tr><th>#</th><th>Operation</th><th>Block</th><th>Section</th><th>Preview</th></tr></thead><tbody>' + rows + '</tbody></table></details>';
+  }
+
+  function normalizedParagraphFingerprintForAudit(text) {
+    return String(text || '')
+      .replace(/%.*$/gm, '')
+      .replace(/\\(?:laiold|lai)\s*\{/g, '')
+      .replace(/[{}\\]/g, ' ')
+      .replace(/\$+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function repeatedParagraphWarningsForAudit(text) {
+    const s = String(text || '');
+    const paras = s.split(/\n\s*\n+/).map((p) => clean(p)).filter(Boolean);
+    const seen = new Map();
+    const warnings = [];
+    paras.forEach((p, idx) => {
+      if (p.length < 160) return;
+      if (/^\\(?:begin|end)\b/.test(p) || /^\s*\[?\$/.test(p)) return;
+      const fp = normalizedParagraphFingerprintForAudit(p).slice(0, 360);
+      if (fp.length < 120) return;
+      if (seen.has(fp)) warnings.push({ first: seen.get(fp) + 1, second: idx + 1, preview: p.replace(/\s+/g, ' ').slice(0, 220) });
+      else seen.set(fp, idx);
+    });
+    return warnings.slice(0, 12);
+  }
+
+  function requestedBodySectionTitleFromSignalForAudit(signal) {
+    const sig = String(signal || '');
+    const patterns = [
+      /\b(?:add|write|create|draft|include)\s+(?:an?\s+)?(?:new\s+)?([A-Za-z][A-Za-z0-9'’\- ]{2,80}?)\s+section\b/i,
+      /\b(?:add|write|create|draft|include)\s+(?:an?\s+)?section\s+(?:called|titled|named)\s+["“']?([^"”'.,;\n]{2,80})/i
+    ];
+    for (const re of patterns) {
+      const m = sig.match(re);
+      if (!m) continue;
+      let title = clean(m[1] || '');
+      title = title.replace(/\b(?:explaining|that|which|with|about|for|on|and)\b[\s\S]*$/i, '').trim();
+      title = title.replace(/^the\s+/i, '').trim().replace(/\s+/g, ' ');
+      if (!title || /appendix|appendices/i.test(title)) continue;
+      return title.charAt(0).toUpperCase() + title.slice(1);
+    }
+    return '';
+  }
+
+  function userRequestedTheoremStatement(signal) { return /\btheorem\s+statement\b|\bstatement\s+of\s+(?:the\s+)?(?:theorem|lemma|proposition|inequality)\b/i.test(signal || ''); }
+  function userRequestedProof(signal) { return /\bproof\b|\bprove\b|\bderivation\b/i.test(signal || ''); }
+  function userRequestedPlainWords(signal) { return /\bplain\s+words\b|\bexplain(?:ing|ed|s)?\b|\bintuitive\b|\bintuition\b/i.test(signal || ''); }
+
+  function buildCoverageAuditItems(text, options = {}) {
+    const signal = clean(options.signal || userRequestSignalText());
+    const sourceText = String(text || '');
+    const blocks = extractRawPatchBlocksForAudit(sourceText);
+    const all = (sourceText + '\n' + blocks.map((b) => [b.operation, b.targetBlockId, b.targetSection, b.rationale, b.latex].join('\n')).join('\n')).toLowerCase();
+    const items = [];
+    items.push({ label: 'Focus/query captured', ok: !!signal, detail: signal ? truncateMiddle(signal, 260, ' ... ') : 'No Focus/query text was found.' });
+
+    const sectionTitle = clean(options.sectionTitle || requestedBodySectionTitleFromSignalForAudit(signal) || requestedBodySectionTitle());
+    if (sectionTitle) {
+      const key = titleKeyForMatch(sectionTitle);
+      const hasSectionPatch = blocks.some((b) => /insert_before_section|insert_after_section|append_before_end_document/i.test(b.operation || '') && titleKeyForMatch(b.latex || '').includes(key));
+      const hasSectionLatex = new RegExp('\\\\section\\s*\\{\\s*' + sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\}', 'i').test(sourceText);
+      items.push({ label: 'Requested section: ' + sectionTitle, ok: !!(hasSectionPatch || hasSectionLatex), detail: hasSectionPatch || hasSectionLatex ? 'Patch/text creates \\section{' + sectionTitle + '}.' : 'No matching section-creation patch found.' });
+    }
+
+    if (appendixRequestActive() || /\bappendix|appendices\b/i.test(signal)) {
+      const hasAppendixPatch = blocks.some((b) => /append_before_end_document/i.test(b.operation || '')) || /\\appendix\b/i.test(sourceText) || /\\section\s*\{[^}]*appendix[^}]*\}/i.test(sourceText);
+      items.push({ label: 'Requested appendix', ok: !!hasAppendixPatch, detail: hasAppendixPatch ? 'append_before_end_document or \\appendix was found.' : 'No appendix patch was found.' });
+    }
+
+    if (userRequestedTheoremStatement(signal)) {
+      const ok = /\btheorem\b|\binequality\b|\\paragraph\s*\{\s*(?:theorem|statement)/i.test(sourceText);
+      items.push({ label: 'Theorem statement requested', ok, detail: ok ? 'The final text contains theorem/statement language.' : 'No theorem-statement language detected.' });
+    }
+    if (userRequestedProof(signal)) {
+      const ok = /\bproof\b|\\paragraph\s*\{\s*proof|\\begin\s*\{proof\}/i.test(sourceText);
+      items.push({ label: 'Proof requested', ok, detail: ok ? 'Proof text was detected.' : 'No proof text detected.' });
+    }
+    if (userRequestedPlainWords(signal)) {
+      const ok = /\bplain\s+words\b|\bin\s+words\b|\bintuitively\b|\bintuition\b|\bmeans\b|\bexplanation\b|\bexplain/i.test(sourceText);
+      items.push({ label: 'Plain-word explanation requested', ok, detail: ok ? 'Explanatory/plain-language wording was detected.' : 'No plain-word explanation cue was detected.' });
+    }
+
+    if (equationCoverageActive() || /\bevery\s+equation\b|\bequations?\b/i.test(signal)) {
+      const eqPatches = blocks.filter((b) => /insert_after_block|insert_before_block/i.test(b.operation || '') && /eq_\d+/i.test(b.targetBlockId || b.raw || ''));
+      const expected = selectedEquationTargets(selectedRealPayload() || lastRealRunData || lastSelectionData || {}).length;
+      items.push({ label: 'Equation explanation patches', ok: eqPatches.length > 0, detail: eqPatches.length + ' equation-anchor patch(es)' + (expected ? ' for ' + expected + ' detected display equation(s).' : '.') });
+    }
+
+    if (lastInsertionData) {
+      items.push({ label: 'Safe compiler accepted insertion', ok: lastInsertionData.safeToInsert === true, detail: 'safeToInsert=' + String(lastInsertionData.safeToInsert) + ', blockCount=' + String(lastInsertionData.blockCount || 0) });
+      const draft = String(lastInsertionData.targetedInsertionDraft || lastInsertionData.insertableLatexDraft || lastInsertionData.appendOnlyDraft || '');
+      if (draft) items.push({ label: 'Targeted/append draft contains visible LAI edits', ok: countVisibleLaiBlocks(draft) > 0, detail: countVisibleLaiBlocks(draft) + ' visible \\lai/\\laiold block(s).' });
+    }
+    const unresolved = countVisibleLaiBlocks(getActiveSource());
+    if (unresolved) items.push({ label: 'Unresolved visible edits in current source', ok: false, soft: true, detail: unresolved + ' unresolved \\lai/\\laiold block(s). Use Resolve AI edits to accept/reject.' });
+    return items;
+  }
+
+  function renderCoverageAuditHtml(text, options = {}) {
+    const items = buildCoverageAuditItems(text, options);
+    const rows = items.map((it) => {
+      const mark = it.ok ? '✓' : (it.soft ? '!' : '✗');
+      const cls = it.ok ? 'good' : (it.soft ? 'warn' : 'bad');
+      return '<li class="settings-note compact ' + cls + '"><strong>' + esc(mark + ' ' + it.label) + '</strong><br>' + esc(it.detail || '') + '</li>';
+    }).join('');
+    return '<div class="branch-coverage-audit"><div class="settings-note compact"><strong>Stage 19T2S user-request coverage audit.</strong> This is a deterministic checklist over the Focus/query, final raw patch text, insertion preview, and current source. It does not replace the safe compiler; it catches omitted user-request components early.</div><ul class="branch-coverage-audit-list">' + rows + '</ul></div>';
+  }
+
+  function branchRegressionSnapshot() {
+    const source = getActiveSource();
+    const finalText = finalEditorOutputText();
+    const insertion = lastInsertionData || {};
+    return {
+      frontendStage: STAGE,
+      backendStage: insertion.stage || insertion.compilerVersion || insertion.safeCompiler?.version || '',
+      activePath: activePath(),
+      sourceLength: source.length,
+      sourceHash: compactHashText(source),
+      focusQuery: inputValue('branchWorkflowQuery', ''),
+      targetMode: targetSelectorMode(),
+      visiblePromptContextMode: visibleContextMode(),
+      payloadSourceMode: payloadSourceMode(),
+      rawPatchCount: extractRawPatchBlocksForAudit(finalText).length,
+      plannedOperations: extractRawPatchBlocksForAudit(finalText).map(patchOperationLabelForAudit),
+      insertionSafeToInsert: insertion.safeToInsert ?? null,
+      insertionBlockCount: insertion.blockCount ?? null,
+      unresolvedLaiBlockCount: countVisibleLaiBlocks(source),
+      duplicateParagraphWarnings: repeatedParagraphWarningsForAudit(source).length,
+      compileStatusText: $('compileStatusText')?.textContent || '',
+      compileJobIdText: $('compileJobIdText')?.textContent || '',
+      savedAt: new Date().toISOString()
+    };
+  }
+
+  function renderRegressionSnapshotHtml(snapshot) {
+    const snap = snapshot || branchRegressionSnapshot();
+    return '<details open><summary>Stage 19T2S regression snapshot</summary><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(snap, null, 2)) + '</pre></details>';
+  }
+
+  function runWorkflowRegressionAudit() {
+    const syntheticSignal = 'Add an introduction section explaining the writeup. Write an appendix section that has the theorem statement and proof and explains the statement in plain words.';
+    const syntheticOutput = [
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: test-intro',
+      'OPERATION: insert_before_section',
+      'TARGET_SECTION: Least Squares',
+      'BEGIN_NEW_LATEX',
+      '\\section{Introduction}',
+      'This introduction explains the writeup.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END',
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: test-appendix',
+      'OPERATION: append_before_end_document',
+      'TARGET_SECTION: Appendix',
+      'BEGIN_NEW_LATEX',
+      '\\appendix',
+      '\\section{Appendix: A Theorem}',
+      '\\paragraph{Theorem statement.} This is the theorem statement.',
+      '\\paragraph{Proof.} This is the proof.',
+      '\\paragraph{Plain words.} In plain words, the theorem means the requested idea.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END'
+    ].join('\n');
+    const duplicateFixture = 'This paragraph is intentionally repeated and long enough to trigger duplicate detection in the regression audit because duplicate generated introductions were a real failure mode.\n\nThis paragraph is intentionally repeated and long enough to trigger duplicate detection in the regression audit because duplicate generated introductions were a real failure mode.';
+    const tests = [];
+    const patches = extractRawPatchBlocksForAudit(syntheticOutput);
+    tests.push({ name: 'parse insert_before_section raw patch', ok: patches.some((p) => p.operation === 'insert_before_section') });
+    tests.push({ name: 'parse append_before_end_document raw patch', ok: patches.some((p) => p.operation === 'append_before_end_document') });
+    const auditItems = buildCoverageAuditItems(syntheticOutput, { signal: syntheticSignal });
+    tests.push({ name: 'coverage audit catches requested appendix', ok: auditItems.some((x) => /appendix/i.test(x.label) && x.ok) });
+    tests.push({ name: 'coverage audit catches theorem statement', ok: auditItems.some((x) => /theorem statement/i.test(x.label) && x.ok) });
+    tests.push({ name: 'coverage audit catches proof', ok: auditItems.some((x) => /proof requested/i.test(x.label) && x.ok) });
+    tests.push({ name: 'coverage audit catches plain-word explanation', ok: auditItems.some((x) => /plain-word/i.test(x.label) && x.ok) });
+    tests.push({ name: 'duplicate paragraph detector catches repeated generated text', ok: repeatedParagraphWarningsForAudit(duplicateFixture).length > 0 });
+    tests.push({ name: 'current source scan completed', ok: typeof getActiveSource() === 'string' });
+    const passed = tests.filter((t) => t.ok).length;
+    const body = '<div class="settings-note ' + (passed === tests.length ? 'good' : 'warn') + '"><strong>Stage 19T2S regression audit:</strong> ' + esc(passed + '/' + tests.length) + ' deterministic checks passed.</div>' +
+      '<ul>' + tests.map((t) => '<li class="settings-note compact ' + (t.ok ? 'good' : 'bad') + '">' + esc((t.ok ? 'PASS: ' : 'FAIL: ') + t.name) + '</li>').join('') + '</ul>' +
+      renderPatchOperationSummaryHtml(null, finalEditorOutputText()) +
+      renderCoverageAuditHtml(finalEditorOutputText() || syntheticOutput) +
+      renderRegressionSnapshotHtml(branchRegressionSnapshot());
+    const out = $('branchWorkflowRegressionOutput');
+    if (out) out.innerHTML = body;
+    renderInlinePreview('Stage 19T2S regression audit', body);
+    status('Stage 19T2S regression audit complete: ' + passed + '/' + tests.length + ' checks passed.', passed === tests.length ? 'good' : 'warn');
+    return { passed, total: tests.length, tests };
+  }
+
   function renderRunDashboard(snapshot, extraHtml = '') {
     const snap = snapshot || currentBranchRunSnapshot('dashboard');
     const outputs = Array.isArray(snap.realRunData?.agentOutputs) ? snap.realRunData.agentOutputs : [];
     const structured = snap.structuredEditorData || lastStructuredEditorData || refreshStructuredEditorData();
     const finalText = snap.realRunData?.finalOutput || outputs[outputs.length - 1]?.outputText || '';
     return '<div class="branch-dashboard-tabs">' +
+      '<section class="branch-dashboard-section"><h3>User-request coverage audit</h3>' + renderCoverageAuditHtml(finalText || '') + '</section>' +
+      '<section class="branch-dashboard-section"><h3>Planned patch operations</h3>' + renderPatchOperationSummaryHtml(snap.insertionData || lastInsertionData || {}, finalText || '') + '</section>' +
       '<section class="branch-dashboard-section"><h3>Transcript</h3><div class="settings-note compact">Critic, supporter, and final synthesis/editor outputs from the completed run.</div>' + renderAgentTranscriptCards(outputs) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Branch candidates</h3>' + renderBranchCandidatesCards(snap) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Retrieved literature context</h3>' + renderKnowledgeContextCards(snap.knowledgeRetrieval || snap.realRunData?.knowledgeRetrieval || snap.selectionData?.knowledgeRetrieval || lastKnowledgeContextData) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Structured LaTeX edits</h3>' + renderStructuredEditorPreviewHtml(structured) + '</section>' +
       (extraHtml ? '<section class="branch-dashboard-section"><h3>Insertion preview</h3>' + extraHtml + '</section>' : '') +
+      '<section class="branch-dashboard-section"><h3>Regression snapshot</h3>' + renderRegressionSnapshotHtml(snap.regressionSnapshot || branchRegressionSnapshot()) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Saved run / model trace</h3><div class="settings-note compact">Run id: ' + esc(snap.runId || '') + ' · saved: ' + esc(snap.savedAt || '') + '</div><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(snap.routeSummary || {}, null, 2)) + '</pre></section>' +
       '<section class="branch-dashboard-section"><h3>Final synthesis text</h3><pre class="branch-workflow-latex-source-preview">' + esc(finalText || 'No final synthesis text recorded yet.') + '</pre></section>' +
     '</div>';
@@ -2121,8 +2365,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function compileAfterInsertionCheck() {
     const btn = $('compileBtn') || $('compilePdfBtn');
-    if (!btn) { status('Compile button not found. Click Compile PDF manually to verify inserted \lai markup.', 'warn'); return; }
-    status('Starting Compile PDF after Devil’s Advocate insertion. Watch Logs/Preview for LaTeX errors.', 'warn');
+    const snap = branchRegressionSnapshot();
+    try { W.localStorage?.setItem?.('latexai:stage19t2s:last-compile-regression-snapshot', JSON.stringify(snap)); } catch (_err) {}
+    const body = renderCoverageAuditHtml(finalEditorOutputText() || '') + renderRegressionSnapshotHtml(snap);
+    renderInlinePreview('Compile-after-edit audit snapshot', body);
+    if (!btn) { status('Compile button not found. Click Compile PDF manually to verify inserted \\lai markup. Stage 19T2S audit snapshot was still saved locally.', 'warn'); return; }
+    status('Starting Compile PDF after Devil’s Advocate insertion. Stage 19T2S saved an audit snapshot; watch Logs/Preview for LaTeX errors.', 'warn');
     btn.click();
   }
 
@@ -3656,7 +3904,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       (Array.isArray(data?.rejectedEdits) && data.rejectedEdits.length ? '<details open><summary>Rejected unsafe edits</summary><pre>' + esc(JSON.stringify(data.rejectedEdits, null, 2)) + '</pre></details>' : '') +
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || (Array.isArray(data?.targetSections) ? data.targetSections.join(', ') : 'append/end')) + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
       (data?.multiSectionFrontendInsertion ? '<div class="settings-note good">Multi-section frontend insertion is active. Block targets: ' + esc((data.blockSectionTargets || []).join(', ') || 'none inferred') + '</div>' : '') +
+      renderPatchOperationSummaryHtml(data, finalEditorOutputText()) +
       '<details open><summary>Structured edit schema preview</summary>' + renderStructuredEditorPreviewHtml(lastStructuredEditorData || refreshStructuredEditorData()) + '</details>' +
+      (repeatedParagraphWarningsForAudit(chosenDraft || targetedDraft || appendDraft).length ? '<div class="settings-note warn"><strong>Duplicate-insertion warning:</strong> possible repeated generated paragraph(s): ' + esc(repeatedParagraphWarningsForAudit(chosenDraft || targetedDraft || appendDraft).map((w) => 'paragraph ' + w.first + ' repeats at ' + w.second).join('; ')) + '</div>' : '') +
       '<div class="settings-note warn">The source editor shows raw <code>\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
       '<details open><summary>Visual colored LAI preview</summary>' + renderLaiColorPreviewHtml(chosenDraft || targetedDraft || appendDraft) + '</details>' +
@@ -3743,7 +3993,9 @@ function currentBranchRunSnapshot(reason) {
     insertionData: lastInsertionData || null,
     structuredEditorData: structured || null,
     outcomeData: lastOutcomeData || null,
-    knowledgeRetrieval: lastKnowledgeContextData || lastRealRunData?.knowledgeRetrieval || lastSelectionData?.knowledgeRetrieval || null
+    knowledgeRetrieval: lastKnowledgeContextData || lastRealRunData?.knowledgeRetrieval || lastSelectionData?.knowledgeRetrieval || null,
+    requestCoverageAudit: buildCoverageAuditItems(finalEditorOutputText() || ''),
+    regressionSnapshot: branchRegressionSnapshot()
   };
   snapshot.reportMarkdown = buildBranchRunReport(snapshot);
   return snapshot;
@@ -3817,6 +4069,15 @@ function buildBranchRunReport(snapshot) {
     lines.push(String(o.outputText || '').trim() || '_Empty output._');
   });
   lines.push('');
+  lines.push('## User-request coverage audit');
+  const auditItems = snap.requestCoverageAudit || buildCoverageAuditItems(run.finalOutput || (outputs[outputs.length - 1]?.outputText || ''));
+  auditItems.forEach((item) => lines.push('- ' + (item.ok ? '[x] ' : '[ ] ') + item.label + ': ' + (item.detail || '')));
+  lines.push('');
+  lines.push('## Planned patch operations');
+  const patchOps = extractRawPatchBlocksForAudit(run.finalOutput || (outputs[outputs.length - 1]?.outputText || ''));
+  if (patchOps.length) patchOps.forEach((p, i) => lines.push((i + 1) + '. `' + patchOperationLabelForAudit(p) + '`'));
+  else lines.push('_No raw patch operations detected in the final synthesis text._');
+  lines.push('');
   lines.push('## Final structured LaTeX edits');
   lines.push(summarizeStructuredEditsForReport(structured));
   lines.push('');
@@ -3838,6 +4099,11 @@ function buildBranchRunReport(snapshot) {
     lines.push(String(insertion.appendOnlyDraft || '').slice(0, 20000));
     lines.push('```');
   }
+  lines.push('');
+  lines.push('## Stage 19T2S regression snapshot');
+  lines.push('```json');
+  lines.push(JSON.stringify(snap.regressionSnapshot || branchRegressionSnapshot(), null, 2));
+  lines.push('```');
   lines.push('');
   lines.push('## Outcome / learning signal');
   lines.push('```json');
@@ -4323,8 +4589,9 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowCopyTargetedBtn" class="btn mini" type="button">Copy localized edits</button>',
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
+      '<div class="branch-workflow-regression-card settings-card-subtle"><div class="section-head compact"><div><div class="smallcaps">Stage 19T2S</div><h2>Workflow regression / audit</h2></div></div><div class="settings-note compact">Runs deterministic checks for raw-patch parsing, user-request coverage, appendix/section detection, duplicate insertion warnings, and current-source unresolved \\lai blocks. This makes the working pipeline easier to verify before and after changes.</div><div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRegressionAuditBtn" class="btn mini" type="button">Run regression audit</button><button id="branchWorkflowCopyAuditSnapshotBtn" class="btn mini" type="button">Copy audit snapshot</button></div><div id="branchWorkflowRegressionOutput" class="settings-note compact">No audit run yet.</div></div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2E ready. Devil’s Advocate uses the raw LaTeX block patch protocol: AI returns target block + raw LaTeX payload; backend wraps/validates before apply.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2S ready. Devil’s Advocate uses raw LaTeX block patches plus a user-request coverage audit, patch-operation summary, duplicate-insertion warning, and compile snapshot.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -4353,6 +4620,12 @@ async function learnedSelectBranch() {
     bindButton('branchWorkflowExportReportBtn', exportCurrentBranchRunReport);
     bindButton('branchWorkflowSaveReviewsBtn', saveCurrentReportToReviews);
     bindButton('branchWorkflowCompileCheckBtn', compileAfterInsertionCheck);
+    bindButton('branchWorkflowRegressionAuditBtn', runWorkflowRegressionAudit);
+    bindButton('branchWorkflowCopyAuditSnapshotBtn', async () => {
+      const snap = branchRegressionSnapshot();
+      await navigator.clipboard.writeText(JSON.stringify(snap, null, 2));
+      status('Copied Stage 19T2S audit snapshot.', 'good');
+    });
     bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); maybeWarnRepeatedHeadings('Target refresh warning'); });
     bindButton('branchWorkflowCleanPreviousAiBtn', cleanPreviousAiSuggestions);
     const knowledgeToggle = $('branchWorkflowUseKnowledge');
