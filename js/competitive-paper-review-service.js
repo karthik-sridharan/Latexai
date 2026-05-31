@@ -841,6 +841,28 @@
     return true;
   }
 
+  function knowledgeService() { return NS.KnowledgeContextService || null; }
+  function competitiveKnowledgeBlock(payload) {
+    return knowledgeService()?.promptBlock?.(payload?.knowledgeRetrieval) || '';
+  }
+  async function enrichCompetitivePayloadWithKnowledge(payload, phase = 'competitive-review') {
+    const svc = knowledgeService();
+    if (!svc?.retrieve || !payload?.useKnowledgeContext) return payload;
+    const query = [payload.targetVenue, payload.targetAudience, (payload.comparisonModes || []).join(', '), payload.extraInstructions, (payload.competitorUrls || []).join('\n'), payload.competitorNotes, phase].filter(Boolean).join('\n\n');
+    const data = await svc.retrieve({
+      feature: 'competitive',
+      workflow: phase,
+      query,
+      focus: payload.extraInstructions || payload.targetVenue || '',
+      paperSummary: [payload.targetAudience, payload.targetVenue].filter(Boolean).join(' '),
+      reviewText: [lastRankingReport, lastComparisonReport, lastRoadmapReport, lastReport].filter(Boolean).join('\n\n').slice(0, 20000),
+      latexSource: payload.draftExcerpt || '',
+      metadata: { competitiveStage: STAGE, phase }
+    });
+    payload.knowledgeRetrieval = data;
+    return payload;
+  }
+
 
   const MEMORY_ENABLED_KEY = 'latexai:memory-enabled';
   let lastMemoryContextByStep = {};
@@ -1584,6 +1606,8 @@
         model: currentAiModel(),
         expectation: 'AI backend must use web search/open tools to research competitor URLs as source-discovery seeds; do not require PDF web research; every substantive ranking claim must be tied to source IDs from the source ledger.'
       },
+      useKnowledgeContext: knowledgeService()?.enabled?.('competitive') || false,
+      knowledgeTopK: knowledgeService()?.topK?.('competitive') || 5,
       draftExcerpt: draftExcerpt(active.text)
     };
   }
@@ -1870,7 +1894,7 @@
   }
 
   async function compareDraftAgainstRankedSet() {
-    const payload = buildPayload();
+    const payload = await enrichCompetitivePayloadWithKnowledge(buildPayload(), 'competitive-full-cited-review');
     const errors = validatePayload(payload);
     if (errors.length) { setStatus(errors.join(' ')); setOutput(errors.join('\n')); return { ok: false, errors }; }
     if (!lastRankingReport) {
@@ -1998,6 +2022,7 @@
       ].filter(Boolean).join('\n\n');
       const memoryContext = await loadCompetitiveMemoryContext('competitive-web-review-improvement', 12, memoryQuery);
       const memoryBlock = memoryContextMarkdown(memoryContext);
+      const knowledgeBlock = competitiveKnowledgeBlock(payload);
       const finalReviewStartedAt = Date.now();
       const finalReviewInstructionsForLog = [
         'Return a structured Markdown competitive review report. Be critical, concrete, source-cited, and action-oriented.',
@@ -2007,6 +2032,7 @@
         workflow: 'competitive-web-review-improvement',
         instructions: [
           memoryBlock,
+          knowledgeBlock,
           'Return a structured Markdown competitive review report. Be critical, concrete, source-cited, and action-oriented.',
           'Include an Evidence-cited ranking table with source IDs, an evidence coverage summary, and a sources consulted ledger.',
           'Every substantive competitor claim must cite source IDs like [S1] when source evidence is available; if not, mark it as weak/uncited.',
@@ -2015,7 +2041,7 @@
           'Do not emit Latexai internal change-marker macros; Latexai will add all old/new wrappers deterministically after the Safe Edit Compiler accepts the patch.',
           'New LaTeX must be a compile-safe body fragment: no Markdown fences inside BEGIN_NEW_LATEX, no preamble commands, no \\begin{document}/\\end{document}, balanced braces/environments, and text-mode special characters escaped.'
         ].filter(Boolean).join('\n'),
-        input: memoryBlock ? `${memoryBlock}\n\n${input}` : input,
+        input: [memoryBlock, knowledgeBlock, input].filter(Boolean).join('\n\n'),
         temperature: 0.2,
         maxOutputTokens: 7000,
         webSearchRequired: true,
@@ -2049,12 +2075,8 @@
         routeKey: 'competitive-improvement',
         provider: currentAiProvider(),
         model: currentAiModel(),
-        instructions: memoryBlock ? `${finalReviewInstructionsForLog}
-
-${memoryBlock}` : finalReviewInstructionsForLog,
-        input: memoryBlock ? `${memoryBlock}
-
-${input}` : input,
+        instructions: [finalReviewInstructionsForLog, memoryBlock, knowledgeBlock].filter(Boolean).join('\n\n'),
+        input: [memoryBlock, knowledgeBlock, input].filter(Boolean).join('\n\n'),
         output: lastReport,
         status: lastReport ? 'success' : 'empty',
         latencyMs: Date.now() - finalReviewStartedAt,
@@ -2301,16 +2323,19 @@ ${input}` : input,
   }
 
   async function generateMemoryAwareFinalPaperRewrite(mode, memoryContext = null) {
-    const payload = lastPayload || buildPayload();
+    let payload = lastPayload || buildPayload();
+    if (payload?.useKnowledgeContext && !payload.knowledgeRetrieval) payload = await enrichCompetitivePayloadWithKnowledge(payload, mode === 'append' ? 'competitive-final-append-rewrite' : 'competitive-final-inline-rewrite');
     const sourceSnapshot = texSourceSnapshotForRewrite();
     const report = String(lastReport || '').trim();
     if (!report || !sourceSnapshot.trim()) return { ok: false, text: '', error: 'Missing report or source snapshot.' };
     if (!NS.AIProvider?.ask) return { ok: false, text: '', error: 'AIProvider missing.' };
     const stepName = mode === 'append' ? 'memory-aware-final-paper-append-rewrite' : 'memory-aware-final-paper-inline-rewrite';
     const memoryBlock = memoryContextMarkdown(memoryContext) || '';
+    const knowledgeBlock = competitiveKnowledgeBlock(payload);
     const instructions = [
       'You are Latexai\'s final paper rewrite agent.',
-      'Use the competitive review, ranked competitor evidence, draft comparison, edit impact map, and hidden research memory to produce actionable LaTeX edits for the current paper.',
+      'Use the competitive review, ranked competitor evidence, draft comparison, edit impact map, hidden research memory, and retrieved literature context to produce actionable LaTeX edits for the current paper.',
+      knowledgeBlock ? 'Use retrieved literature to strengthen related-work positioning, novelty comparisons, missing assumptions, and citation-aware paper edits. Do not invent claims beyond retrieved snippets.' : '',
       'The goal is not another generic review. The goal is to transform review insight into concrete visible Latexai edits that improve the paper\'s competitive standing.',
       'Use only oldText/newText fields in the JSON schema. Do not emit Latexai internal change-marker macros; Latexai will wrap replacements itself.',
       'Respect all hidden memory constraints: notation glossary, citation memories, prior reviewer concerns, negative memories, and successful/failed edit patterns.',
@@ -2338,6 +2363,9 @@ ${input}` : input,
       '--- Current edit impact map ---',
       editImpactMarkdown(buildEditImpactMap(report)),
       '',
+      knowledgeBlock ? '--- Retrieved literature / knowledge context ---' : '',
+      knowledgeBlock,
+      knowledgeBlock ? '' : '',
       '--- Current LaTeX source snapshot ---',
       sourceSnapshot
     ].join('\n');
@@ -2346,7 +2374,7 @@ ${input}` : input,
       const response = await NS.AIProvider.ask({
         workflow: stepName,
         instructions,
-        input: memoryBlock ? `${memoryBlock}\n\n${input}` : input,
+        input: [memoryBlock, knowledgeBlock, input].filter(Boolean).join('\n\n'),
         temperature: 0.18,
         maxOutputTokens: mode === 'append' ? 6500 : 8000,
         competitiveReview: {
@@ -2369,9 +2397,7 @@ ${input}` : input,
         provider: currentAiProvider(),
         model: currentAiModel(),
         instructions,
-        input: memoryBlock ? `${memoryBlock}
-
-${input}` : input,
+        input: [memoryBlock, knowledgeBlock, input].filter(Boolean).join('\n\n'),
         output: text,
         status: text ? 'success' : 'empty',
         latencyMs: Date.now() - finalRewriteStartedAt,
@@ -3018,6 +3044,7 @@ ${input}` : input,
       '  <label><input data-competitive-mode="related work" type="checkbox" checked /> related work</label>',
       '  <label><input data-competitive-mode="overall competitiveness" type="checkbox" checked /> overall competitiveness</label>',
       '</div>',
+      (NS.KnowledgeContextService?.controlHtml?.('competitive', 'Use knowledge/literature context for competitive review/improver', 5) || ''),
       '<label class="field">Extra instructions',
       '  <textarea id="competitiveExtraInstructions" rows="3" placeholder="Optional: be extremely critical, focus on theorem statement, improve intro, etc."></textarea>',
       '</label>',
@@ -3041,6 +3068,7 @@ ${input}` : input,
     ].join('');
 
     panel.appendChild(card);
+    try { NS.KnowledgeContextService?.installUiPersistence?.('competitive'); } catch (_err) {}
 
     el('addCompetitiveUrlBtn')?.addEventListener('click', appendCompetitorUrlFromInput, true);
     el('competitiveAddUrlInput')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); appendCompetitorUrlFromInput(); } }, true);

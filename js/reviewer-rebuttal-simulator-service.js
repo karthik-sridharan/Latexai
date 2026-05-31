@@ -903,6 +903,8 @@
       globalInstructions: clean(el('reviewerSimInstructions')?.value),
       rebuttalGuidance: clean(el('reviewerSimRebuttalGuidance')?.value),
       reviewers: selectedReviewers(),
+      useKnowledgeContext: knowledgeService()?.enabled?.('reviewerSim') || false,
+      knowledgeTopK: knowledgeService()?.topK?.('reviewerSim') || 5,
       draftExcerpt: draftExcerpt(active.text)
     };
   }
@@ -935,6 +937,7 @@
       `Active file: ${payload.activePath}`,
       `Target venue: ${payload.targetVenue || '(not specified)'}`,
       `Paper goal: ${payload.paperGoal || '(not specified)'}`,
+      `Knowledge context: ${payload.knowledgeRetrieval ? (payload.knowledgeRetrieval.resultCount || 0) + ' retrieved paper(s)' : (payload.useKnowledgeContext ? 'requested' : 'off')}`,
       '',
       '## Reviewers',
       '',
@@ -968,12 +971,17 @@
     const errors = validatePayload(payload);
     if (errors.length) { setStatus(errors.join(' ')); setOutput(`Cannot run reviews:\n\n${errors.map((e) => `- ${e}`).join('\n')}`); return { ok: false, errors }; }
     lastPayload = payload;
+    if (payload.useKnowledgeContext) {
+      await retrieveReviewerKnowledge(payload, 'reviews');
+      lastPayload = payload;
+    }
     setOutput(fullReport());
 
     try {
       for (const reviewer of payload.reviewers) {
         if (cancelled) throw new Error('Review simulation cancelled.');
         setStatus(`${reviewer.name} is reviewing the paper...`);
+        const knowledgeBlock = reviewerKnowledgeBlock(payload);
         const instructions = [
           'You are an AI reviewer in a simulated academic review panel for a LaTeX research paper.',
           'You must review all key dimensions: correctness, clarity, novelty, significance, related work, assumptions, experiments/evidence, presentation, and venue fit.',
@@ -981,12 +989,16 @@
           'Be specific and actionable. Refer to sections/theorems/equations when possible.',
           'Use a realistic academic-review structure: summary, strengths, weaknesses, questions for authors, required changes, minor issues, score/confidence.',
           'Do not produce a rebuttal. Do not rewrite the paper yet.',
+          knowledgeBlock ? 'Use the retrieved literature context to assess novelty, missing comparisons, related work, assumptions, and positioning. Cite retrieved paper numbers like [1], [2] in review prose when useful.' : '',
           payload.globalInstructions ? `Extra global instructions: ${payload.globalInstructions}` : ''
         ].filter(Boolean).join('\n');
         const input = [
           '--- Paper metadata ---',
-          JSON.stringify({ targetVenue: payload.targetVenue, paperGoal: payload.paperGoal, activePath: payload.activePath }, null, 2),
+          JSON.stringify({ targetVenue: payload.targetVenue, paperGoal: payload.paperGoal, activePath: payload.activePath, knowledgeContext: payload.knowledgeRetrieval ? { resultCount: payload.knowledgeRetrieval.resultCount, topK: payload.knowledgeRetrieval.topK } : null }, null, 2),
           '',
+          knowledgeBlock ? '--- Retrieved literature / knowledge context ---' : '',
+          knowledgeBlock,
+          knowledgeBlock ? '' : '',
           '--- Draft excerpt ---',
           payload.draftExcerpt
         ].join('\n');
@@ -1027,10 +1039,12 @@ ${input}` : input,
     payload.rebuttalGuidance = clean(el('reviewerSimRebuttalGuidance')?.value);
     lastPayload = payload;
     setStatus('Generating AI rebuttal to simulated reviews...');
+    const knowledgeBlock = reviewerKnowledgeBlock(payload);
     const instructions = [
       'You are generating an author rebuttal to a set of simulated paper reviews.',
       'Be respectful, precise, and strategic. Defend the paper where appropriate, concede real weaknesses, and propose concrete revisions.',
       'Use the user rebuttal guidance when present, but do not make unsupported claims.',
+      knowledgeBlock ? 'Use retrieved literature context only for defensible positioning, missing-citation commitments, and evidence-grounded rebuttal points.' : '',
       'Structure the rebuttal by major concern and by reviewer when useful.',
       'Include explicit commitments for paper revisions.'
     ].join('\n');
@@ -1038,6 +1052,7 @@ ${input}` : input,
       '--- Paper metadata ---', JSON.stringify({ targetVenue: payload.targetVenue, paperGoal: payload.paperGoal }, null, 2), '',
       '--- User rebuttal guidance ---', payload.rebuttalGuidance || '(none)', '',
       '--- Reviews ---', reviewsMarkdown(), '',
+      knowledgeBlock ? '--- Retrieved literature / knowledge context ---' : '', knowledgeBlock, knowledgeBlock ? '' : '',
       '--- Draft excerpt ---', payload.draftExcerpt
     ].join('\n');
     try {
@@ -1167,10 +1182,16 @@ ${input}` : input,
       setStatus('Final synthesis cancelled because GitHub checkpoint did not complete.');
       return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
     }
+    if (payload.useKnowledgeContext && !payload.knowledgeRetrieval) {
+      await retrieveReviewerKnowledge(payload, 'final_synthesis');
+      lastPayload = payload;
+    }
+    const knowledgeBlock = reviewerKnowledgeBlock(payload);
     setStatus('Synthesizing final revision plan and paper rewrite proposal...');
     const instructions = [
       'You are the final synthesis agent for a paper revision workflow.',
-      'Use the simulated reviews, user guidance, and AI rebuttal to propose the strongest final revision.',
+      'Use the simulated reviews, user guidance, AI rebuttal, and retrieved literature context to propose the strongest final revision.',
+      knowledgeBlock ? 'Use retrieved literature to strengthen novelty positioning, related-work edits, missing assumptions, and citation-aware improvement suggestions. Do not invent beyond retrieved snippets.' : '',
       'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy. Make the final strategy paper-editable rather than generic advice.',
       rawPatchProtocolInstructions('reviewer/rebuttal final revision source edits'),
       'For every concrete source edit, include a LATEXAI_BLOCK_PATCH block. Use append_before_end_document for a final revision plan if exact localization is unsafe.',
@@ -1183,6 +1204,7 @@ ${input}` : input,
       '--- Reviews ---', reviewsMarkdown(), '',
       '--- User rebuttal guidance ---', clean(el('reviewerSimRebuttalGuidance')?.value) || '(none)', '',
       '--- AI rebuttal ---', lastRebuttal || '(none)', '',
+      knowledgeBlock ? '--- Retrieved literature / knowledge context ---' : '', knowledgeBlock, knowledgeBlock ? '' : '',
       '--- Draft excerpt ---', payload.draftExcerpt
     ].join('\n');
     try {
@@ -1306,6 +1328,7 @@ ${input}` : input,
   function bindCardEvents() {
     bindReviewerDelegatedEvents();
     syncReviewerRows();
+    try { NS.KnowledgeContextService?.installUiPersistence?.('reviewerSim'); } catch (_err) {}
     el('reviewerSimCount')?.addEventListener('change', syncReviewerRows, true);
     // Stage 19I3: buttons are handled by the delegated document listener above.
     // Avoid direct per-card listeners because this card is frequently remounted

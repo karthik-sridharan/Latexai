@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t3c-paper-remake-section-patch-hardening-20260531-1';
+  const STAGE = 'stage19u-knowledge-aware-review-agents-foundation-20260531-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -406,6 +406,23 @@
     return NS.LaiSafeEditPipelineService || null;
   }
 
+  function knowledgeService() { return NS.KnowledgeContextService || null; }
+  function knowledgePromptBlock(data) {
+    return knowledgeService()?.promptBlock?.(data) || 'Knowledge/literature context unavailable.';
+  }
+  async function retrieveDocumentKnowledge(workflow, userInstructions, context) {
+    const svc = knowledgeService();
+    if (!svc?.retrieve) return null;
+    return await svc.retrieve({
+      feature: 'documentAi',
+      workflow: 'document-ai-' + (workflow || 'review'),
+      query: [workflowLabel(workflow), userInstructions || ''].filter(Boolean).join('\n'),
+      focus: userInstructions || '',
+      latexSource: context,
+      metadata: { documentAiStage: STAGE, workflow: workflow || 'review' }
+    });
+  }
+
   function rawPatchProtocolInstructions(goal) {
     return rawPatchPipeline()?.rawPatchProtocolInstructions?.({
       goal: goal || 'document-level paper improvement',
@@ -450,6 +467,8 @@
   async function buildPromptPayload(workflow, userInstructions, mode) {
     const context = collectProjectContext();
     const { common, workflowPrompt, inplacePrompt, workflowPath } = await loadWorkflowPrompts(workflow, mode);
+    const knowledgeData = await retrieveDocumentKnowledge(workflow, userInstructions, context);
+    const knowledgeBlock = knowledgeData ? knowledgePromptBlock(knowledgeData) : '';
 
     const values = {
       USER_INSTRUCTIONS: userInstructions || '(none)',
@@ -471,6 +490,10 @@
       pieces.push('', '--- In-place raw patch protocol prompt file ---', templateFill(inplacePrompt, values), '', rawPatchProtocolInstructions('in-place document-level paper rewrite/edit'));
     }
 
+    if (knowledgeBlock) {
+      pieces.push('', '--- Retrieved literature / knowledge context ---', knowledgeBlock, '', 'Use the retrieved literature to improve positioning, identify missing comparisons/citations, and make concrete paper edits. Do not invent claims beyond the retrieved snippets.');
+    }
+
     pieces.push('', '--- Project context follows ---', context);
 
     return {
@@ -482,7 +505,8 @@
         kind: 'frontend-static-files',
         commonPrompt: COMMON_PROMPT_PATH,
         workflowPrompt: workflowPath,
-        inplacePrompt: mode === 'inplace' ? INPLACE_PROMPT_PATH : ''
+        inplacePrompt: mode === 'inplace' ? INPLACE_PROMPT_PATH : '',
+        knowledgeContext: knowledgeData ? { enabled: true, resultCount: knowledgeData.resultCount || 0, topK: knowledgeData.topK || 0 } : { enabled: false }
       },
       temperature: mode === 'inplace' ? 0 : 0.2,
       maxOutputTokens: mode === 'inplace' ? 10000 : 5000
@@ -1345,6 +1369,7 @@
       '      </select>',
       '    </label>',
       '  </div>',
+      (NS.KnowledgeContextService?.controlHtml?.('documentAi', 'Use knowledge/literature context for Paper-level AI', 5) || ''),
       '  <label>Extra one-off instructions',
       '    <textarea id="documentAiPrompt" placeholder="Example: focus on theorem statement clarity, missing citations, and how to improve the narrative. Frontend /prompt/ files provide the base prompt."></textarea>',
       '  </label>',
