@@ -1,24 +1,22 @@
-Mode: In-place with LAI comments.
+Latexai Stage 19T2W in-place edit protocol.
 
-Return JSON only. Do not return Markdown fences, prose, or LaTeX outside JSON.
+Return source edits using the raw LATEXAI_BLOCK_PATCH protocol. Do not return JSON. Do not return Markdown fences. Do not output \lai, \laiold, BEGIN LAI-ACTIONABLE-EDIT, or other internal change-tracking markup. Latexai will add visible old/new markup only after the Safe Edit Compiler validates the patch.
 
-Required JSON schema:
-{
-  "edits": [
-    {
-      "path": "main.tex",
-      "oldText": "exact existing LaTeX text copied from the project context",
-      "newText": "replacement LaTeX text",
-      "reason": "short reason for this edit"
-    }
-  ],
-  "summary": "short summary of the proposed edits"
-}
+Use this exact format for each edit:
+
+LATEXAI_BLOCK_PATCH_BEGIN
+PATCH_ID: edit-1
+OPERATION: replace_block | insert_after_block | insert_before_block | insert_before_section | append_before_end_document | no_edit
+TARGET_BLOCK_ID: use a listed safe block id when available; omit for append_before_end_document
+TARGET_SECTION: optional exact section title
+RATIONALE: short reason
+BEGIN_NEW_LATEX
+Raw visible LaTeX/prose body content goes here. Use real backslashes and real line breaks.
+END_NEW_LATEX
+LATEXAI_BLOCK_PATCH_END
 
 Rules:
-- Each oldText must be an exact substring of the corresponding file in the project context.
-- Do not invent file paths.
-- Prefer small section/subsection/paragraph-sized edits.
-- Do not include \lai{...} in newText; the frontend will wrap newText in \lai{...}.
-- Do not comment out oldText yourself; the frontend will preserve oldText as LAI-OLD comments.
-- If you are not confident, return {"edits":[],"summary":"No safe exact edits found."}.
+- Do not include \documentclass, \usepackage, \begin{document}, \end{document}, \newcommand, \newtheorem, bibliography setup, or preamble edits.
+- BEGIN_NEW_LATEX must contain paper-ready visible content, not instructions to the user and not comment-only text.
+- If exact localization is unsafe, use append_before_end_document with a clear section or subsection.
+- If no edit is appropriate, return one block with OPERATION: no_edit.
