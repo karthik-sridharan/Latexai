@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u4-hybrid-literature-retrieval-ranking-20260531-1';
+  const STAGE = 'stage19u5-author-paper-graph-retrieval-boost-20260531-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.

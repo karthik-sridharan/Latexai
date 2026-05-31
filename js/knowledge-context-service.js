@@ -1,4 +1,4 @@
-/* Latexai Stage 19U4 KnowledgeContextService
+/* Latexai Stage 19U5 KnowledgeContextService
  * Shared literature/knowledge retrieval bridge for AI review/edit workflows.
  * Adds retrieved-context preview, pin/exclude controls, retrieval modes,
  * and evidence-audit prompt text while keeping source edits on the safe protocol.
@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u4-hybrid-literature-retrieval-ranking-20260531-1';
+  const STAGE = 'stage19u5-author-paper-graph-retrieval-boost-20260531-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
@@ -137,6 +137,8 @@
       retrievalMode: mode,
       pinnedCount: pinned.length,
       excludedCount: excluded.size,
+      authorGraphRanking: !!data?.authorGraphRanking,
+      searchSchema: data?.searchSchema || '',
     });
     out.promptContext = formatPromptContextFromResults(out);
     return out;
@@ -326,7 +328,9 @@
       node.innerHTML = '<div class="settings-note compact">Retrieved context preview will appear here. Pin papers to force them into later reviews.</div>';
       return;
     }
-    const header = `<div class="knowledge-preview-head"><strong>Retrieved literature context</strong><br><span class="muted">${norm.length} paper(s) provided · mode=${escapeHtml(mode.replace(/_/g, '+'))} · pinned=${pinned.length}</span></div>`;
+    const graphFlag = data?.authorGraphRanking ? ' · author graph on' : '';
+    const schemaText = data?.searchSchema ? ' · ' + escapeHtml(String(data.searchSchema).replace(/^lumina-research-/, '').replace(/-search-v1$/, '')) : '';
+    const header = `<div class="knowledge-preview-head"><strong>Retrieved literature context</strong><br><span class="muted">${norm.length} paper(s) provided · mode=${escapeHtml(mode.replace(/_/g, '+'))} · pinned=${pinned.length}${graphFlag}${schemaText}</span></div>`;
     const cards = norm.length ? norm.map((r, i) => resultCardHtml(feature, r, i, pinnedSet, excluded)).join('') : '<div class="settings-note compact">No papers selected for this run. Try automatic mode, raise topK, or pin a known relevant paper.</div>';
     node.innerHTML = header + cards;
   }
@@ -393,6 +397,10 @@
       paperSummary: clean(options.paperSummary || ''),
       abstract: clean(options.abstract || ''),
       reviewText: clean(options.reviewText || ''),
+      pinnedPapers: pinnedResults(feature).slice(0, 20).map((r) => ({
+        key: r.key, title: r.title, authors: r.authors, year: r.year, url: r.url, arxiv_id: r.arxiv_id
+      })),
+      retrievalMode: retrievalMode(feature),
       latexSource: sourceForRetrieval(options),
       workflow: clean(options.workflow || feature),
       metadata: { frontendStage: STAGE, feature, activePath: activePath(), ...(options.metadata || {}) }
