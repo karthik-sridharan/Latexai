@@ -348,3 +348,45 @@ h1, h2, h3 { margin: 0; letter-spacing: -.035em; }
   font: 12px/1.43 var(--mono);
 }
 .patch-diff::selection { background: rgba(47,111,237,.46); }
+
+/* Stage 19U2: knowledge context preview, pinning, and evidence audit */
+.knowledge-context-controls {
+  margin-top: .7rem;
+}
+.knowledge-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin: .4rem 0;
+}
+.knowledge-context-preview {
+  margin-top: .55rem;
+}
+.knowledge-preview-head {
+  margin: .4rem 0 .45rem;
+  font-size: .86rem;
+  color: #172033;
+}
+.knowledge-result-card {
+  margin: .45rem 0;
+  padding: .62rem;
+  border: 1px solid rgba(47,111,237,.18);
+  border-radius: 14px;
+  background: rgba(255,255,255,.78);
+}
+.knowledge-snippet {
+  margin-top: .32rem;
+  font-size: .8rem;
+  line-height: 1.38;
+  color: #475569;
+}
+.knowledge-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-top: .45rem;
+}
+.muted {
+  color: #64748b;
+  font-weight: 500;
+}
