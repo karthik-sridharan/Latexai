@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1';
+  const STAGE = 'stage19u1-reviewer-knowledge-service-scope-fix-20260531-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -76,6 +76,47 @@
 
   function rawPatchPipeline() {
     return NS.LaiSafeEditPipelineService || null;
+  }
+
+  function knowledgeService() {
+    return NS.KnowledgeContextService || null;
+  }
+
+  function reviewerKnowledgeBlock(payload) {
+    if (!payload?.useKnowledgeContext) return '';
+    const svc = knowledgeService();
+    if (!svc?.promptBlock) return 'Knowledge/literature context was requested, but KnowledgeContextService is not loaded.';
+    return svc.promptBlock(payload?.knowledgeRetrieval);
+  }
+
+  async function retrieveReviewerKnowledge(payload, phase = 'reviews') {
+    if (!payload?.useKnowledgeContext) return null;
+    const svc = knowledgeService();
+    if (!svc?.retrieve) {
+      const data = { ok: false, error: 'KnowledgeContextService is not loaded.', promptContext: 'Knowledge retriever unavailable: KnowledgeContextService is not loaded.' };
+      payload.knowledgeRetrieval = data;
+      return data;
+    }
+    const focusParts = [
+      payload.paperGoal,
+      payload.targetVenue ? `Target venue: ${payload.targetVenue}` : '',
+      payload.globalInstructions,
+      payload.rebuttalGuidance,
+      (payload.reviewers || []).map((r) => `${r.name}: ${r.style}`).join('\n')
+    ].filter(Boolean);
+    const data = await svc.retrieve({
+      feature: 'reviewerSim',
+      workflow: `reviewer-rebuttal-${phase}`,
+      topK: payload.knowledgeTopK || svc.topK?.('reviewerSim') || 5,
+      paperTitle: extractLatexTitle(payload.draftExcerpt || '') || payload.paperGoal || '',
+      paperSummary: stripLatexForIdentity(payload.draftExcerpt || '').slice(0, 2500),
+      focus: focusParts.join('\n'),
+      userInstructions: payload.globalInstructions || payload.paperGoal || payload.targetVenue || '',
+      latexSource: payload.draftExcerpt || '',
+      metadata: { reviewerRebuttalStage: STAGE, phase, activePath: payload.activePath }
+    });
+    payload.knowledgeRetrieval = data;
+    return data;
   }
 
   function rawPatchProtocolInstructions(goal) {

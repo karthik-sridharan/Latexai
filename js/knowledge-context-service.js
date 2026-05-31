@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u-knowledge-aware-review-agents-foundation-20260531-1';
+  const STAGE = 'stage19u1-reviewer-knowledge-service-scope-fix-20260531-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
