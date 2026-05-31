@@ -1,4 +1,4 @@
-/* Latexai Stage 19T2X DocumentAIService
+/* Latexai Stage 19T3C DocumentAIService
  * Stage: stage19t2o-resolver-macro-unwrapper-hard-fix-20260530-1
  *
  * Stage 19T3A: paper-level AI uses raw LATEXAI_BLOCK_PATCH text for in-place edits.
@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1';
+  const STAGE = 'stage19t3c-paper-remake-section-patch-hardening-20260531-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -409,7 +409,7 @@
   function rawPatchProtocolInstructions(goal) {
     return rawPatchPipeline()?.rawPatchProtocolInstructions?.({
       goal: goal || 'document-level paper improvement',
-      extra: 'For document AI in-place mode, return actionable source-edit patch blocks. Never use append_review_note. For append/review mode, the app may wrap the review as append_before_end_document; do not emit Latexai internal change macros yourself. Split large generated sections into smaller blocks.'
+      extra: 'For document AI in-place mode, return actionable source-edit patch blocks containing final paper-ready LaTeX, not a meta-plan. Never use append_review_note. For total-remake in-place mode, do not insert a "Remake Plan" section unless the user explicitly asks for a plan; instead produce actual rewritten sections/paragraphs. For append/review mode, the app may wrap the review as append_before_end_document; do not emit Latexai internal change macros yourself. Split large generated sections into smaller blocks.'
     }) || [
       'Return source edits using LATEXAI_BLOCK_PATCH blocks, not JSON.',
       'Do not output \\lai or \\laiold; Latexai will add visible change markup after safe validation.'
@@ -485,7 +485,7 @@
         inplacePrompt: mode === 'inplace' ? INPLACE_PROMPT_PATH : ''
       },
       temperature: mode === 'inplace' ? 0 : 0.2,
-      maxOutputTokens: mode === 'inplace' ? 7000 : 5000
+      maxOutputTokens: mode === 'inplace' ? 10000 : 5000
     };
   }
 

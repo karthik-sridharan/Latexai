@@ -1,5 +1,5 @@
-/* Latexai Stage 19T2X LaiSafeEditPipelineService
- * Stage: stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1
+/* Latexai Stage 19T3C LaiSafeEditPipelineService
+ * Stage: stage19t3c-paper-remake-section-patch-hardening-20260531-1
  *
  * Shared frontend bridge for all paper-editing AI features:
  * - AI agents return human-readable text plus LATEXAI_BLOCK_PATCH markup, not JSON edit payloads.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t3b-lai-macro-autoinjection-resolve-hardening-20260531-1';
+  const STAGE = 'stage19t3c-paper-remake-section-patch-hardening-20260531-1';
 
   function el(id) { return D.getElementById(id); }
   function clean(value) { return String(value || '').trim(); }
