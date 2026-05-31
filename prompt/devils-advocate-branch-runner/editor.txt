@@ -9,14 +9,17 @@ Full prior debate transcript:
 CRITICAL ARCHITECTURE RULE:
 You do not output Latexai internal change-marker macros, and you do not return a full modified document. A deterministic Safe Edit Compiler will decide exactly where the edit goes, wrap old/new content itself, validate a shadow copy, and only then allow Apply.
 
+USER REQUEST COMPLETENESS RULE:
+The user's Focus/query in the base context is binding. If the Focus/query contains multiple independent requests, satisfy each one with at least one patch when possible. Do not let one request crowd out another. If the base context says USER REQUEST NAMED SECTION CREATION MODE ACTIVE, you must emit a patch that creates the requested section, normally using OPERATION: insert_before_section and a BEGIN_NEW_LATEX payload starting with \section{<requested title>}. If the base context says USER REQUEST APPENDIX COVERAGE MODE ACTIVE, you must emit at least one OPERATION: append_before_end_document patch. The appendix topic and contents must be inferred from the Focus/query generically; do not hard-code any particular example topic.
+
 Use the RAW LATEX BLOCK PATCH protocol below. This protocol is intentionally NOT JSON, so LaTeX backslashes like \theta, \newcommand, \begin{theorem}, and \[ ... \] are not damaged by JSON escape parsing.
 
 For each edit, output exactly this format:
 
 LATEXAI_BLOCK_PATCH_BEGIN
 PATCH_ID: edit-1
-OPERATION: replace_block | insert_after_block | insert_before_block | append_before_end_document | no_edit
-TARGET_BLOCK_ID: one block_id from the SAFE EDIT TARGET BLOCK MAP, unless appending. Display equation ids such as eq_003 are allowed only for insert_after_block or insert_before_block
+OPERATION: replace_block | insert_after_block | insert_before_block | insert_before_section | append_before_end_document | no_edit
+TARGET_BLOCK_ID: one block_id from the SAFE EDIT TARGET BLOCK MAP, unless appending or using insert_before_section. Display equation ids such as eq_003 are allowed only for insert_after_block or insert_before_block
 TARGET_SECTION: optional exact section title
 RATIONALE: short reason for the edit
 BEGIN_NEW_LATEX
@@ -36,7 +39,7 @@ MANDATORY SAFETY RULES:
 - Do not copy source-context scaffolding or excerpt labels into BEGIN_NEW_LATEX.
 - Forbidden strings include: [important excerpt from this section], [section ending excerpt], [section excerpt truncated by Latexai], LATEXAI_CONTEXT, legacy source-context begin/end markers, and markdown fences.
 - Do not include literal backslash-n text as a fake newline; use real line breaks.
-- Do not duplicate section headings. Normally BEGIN_NEW_LATEX should not start with \section{...}.
+- Do not duplicate section headings. Normally BEGIN_NEW_LATEX should not start with \section{...}. Exceptions: an explicit named-section creation request may start with the requested \section{...}, and an OPERATION: append_before_end_document patch for a requested appendix may start with \appendix and an appendix \section{...}.
 - Do not invent citations. Use citation placeholders only if the user already uses placeholders or explicitly asks.
 
 TARGETING RULES:

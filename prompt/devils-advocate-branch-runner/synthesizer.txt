@@ -14,10 +14,11 @@ Separate the plan by requested target section/unit wherever possible:
 4. points needing human/citation verification.
 
 Deduplicate aggressively: if multiple agents made the same point, list it once.
-Prepare the editor agent to produce final visible \lai edits, but do not output final \lai blocks yourself. Do not use literal final \lai syntax in your answer.
+Preserve all independent user Focus/query requests in the handoff. If the user requested a new named section, equation explanations, and/or an appendix, explicitly include each one; do not treat any explicit request as optional. If the base context says USER REQUEST NAMED SECTION CREATION MODE ACTIVE, the handoff must say that the editor should emit an insert_before_section patch creating the requested section. If the base context says USER REQUEST APPENDIX COVERAGE MODE ACTIVE, the handoff must say that the editor should emit an append_before_end_document appendix patch.
+Prepare the editor agent to produce final raw LaTeX block patch edits, but do not output final patch blocks yourself.
 Do not invent citations; mark uncertain citations as search/BibTeX targets.
-Important: Do not output literal final \lai{...} or \laiold{...} blocks. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final patch blocks.
+Important: Do not output Latexai internal change-marker macros. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final raw patch blocks.
 
 
 Stage 19N1R synthesis-to-editor handoff:
-In addition to the balanced plan, end with a compact editor handoff table in prose: target section/unit, specific issue, recommended action, and whether it should become insert_after, replace, no_edit, or equation explanation. Do not emit final \lai blocks; the editor will convert this handoff into structured JSON.
+In addition to the balanced plan, end with a compact editor handoff table in prose: target section/unit, specific issue, recommended action, and whether it should become insert_after, replace, no_edit, or equation explanation. Do not emit internal change-marker macros; the editor will convert this handoff into a raw LaTeX block patch.
