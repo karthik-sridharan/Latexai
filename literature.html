@@ -107,7 +107,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
 <script>
 (function(){
 'use strict';
-const STAGE='latex-stage19u7-standalone-literature-survey-assistant-20260531-1';
+const STAGE='latex-stage19u7a-literature-ingest-batch-result-handling-20260531-1';
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
@@ -137,16 +137,46 @@ function token(){return $('token').value.trim()}
 function headers(json=true){const h={}; if(json) h['Content-Type']='application/json'; const t=token(); if(t){h.Authorization='Bearer '+t; h['x-lumina-ingest-token']=t;} return h;}
 function raw(obj){$('rawOut').textContent=typeof obj==='string'?obj:JSON.stringify(obj,null,2)}
 function setBox(id,msg,cls='note'){const el=$(id); el.className=cls; el.innerHTML=msg;}
-async function fetchJson(path, opts={}){
+async function fetchJson(path, opts={}, cfg={}){
   const base=api(); if(!base) throw new Error('Missing API base. Paste your Cloud Run backend URL or /api/lumina URL.');
-  const res=await fetch(base+path, opts); const text=await res.text(); let data; try{data=JSON.parse(text)}catch(e){throw new Error('Non-JSON HTTP '+res.status+': '+text.slice(0,300));}
-  if(!res.ok || data.ok===false) throw new Error((data.detail||data.error||data.message||('HTTP '+res.status)));
+  const res=await fetch(base+path, opts);
+  const text=await res.text();
+  let data;
+  try{data=JSON.parse(text)}catch(e){throw new Error('Non-JSON HTTP '+res.status+': '+text.slice(0,300));}
+  if(!res.ok) throw new Error((data.detail||data.error||data.message||('HTTP '+res.status)));
+  if(data && data.ok===false && !cfg.allowApplicationError){
+    const resultErrors=Array.isArray(data.results)?data.results.filter(r=>r&&r.ok===false).map(r=>r.error||r.detail||r.url).filter(Boolean).slice(0,3):[];
+    const detail=resultErrors.length?resultErrors.join(' | '):(data.detail||data.error||data.message||('HTTP '+res.status));
+    throw new Error(detail);
+  }
   return data;
 }
 function saveSettings(){localStorage.setItem(LS_API, api()); localStorage.setItem(LS_TOKEN, token()); setBox('statusBox','Saved settings for this browser.','note good');}
 async function status(){try{const data=await fetchJson('/latex/status',{headers:headers(false)}); raw(data); const storage=data.knowledgeStorage||data.storage||{}; setBox('statusBox',`<strong>Connected.</strong><br>stage=${esc(data.stage||'')}<br>searchSchema=${esc(data.searchSchema||'')} · hybrid=${esc(data.hybridRanking)} · pgvector=${esc(storage.pgvectorReady||storage.pgvector_enabled||'')}`,'note good');}catch(e){setBox('statusBox','Connection failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
 function urlsFromText(t){return Array.from(new Set((String(t||'').match(/https?:\/\/[^\s,;<>"]+/g)||[]).map(u=>u.replace(/[).,;\]}]+$/,''))));}
-async function ingest(){const urls=urlsFromText($('urlList').value); if(!urls.length){setBox('ingestStatus','Enter at least one URL.','note warn');return;} setBox('ingestStatus','Ingesting '+urls.length+' URL(s)...','note'); try{const data=await fetchJson('/ingest/batch',{method:'POST',headers:headers(),body:JSON.stringify({urls})}); raw(data); setBox('ingestStatus',`Batch complete: ${esc(data.succeeded||0)} succeeded, ${esc(data.failed||0)} failed, ${esc(data.embeddingReady||0)} embedding-ready.`,'note good'); $('results').innerHTML=renderBatch(data);}catch(e){setBox('ingestStatus','Ingestion failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
+function ingestSummary(data){
+  const succeeded=Number(data.succeeded||0), failed=Number(data.failed||0), ready=Number(data.embeddingReady||0), requested=Number(data.requested||0);
+  const retryable=Array.isArray(data.retryableFailedUrls)?data.retryableFailedUrls.length:0;
+  let msg=`Batch finished: ${esc(succeeded)} succeeded, ${esc(failed)} failed, ${esc(ready)} embedding-ready.`;
+  if(retryable) msg+=`<br>${esc(retryable)} retryable arXiv/upstream failure(s).`;
+  if(failed && requested && failed===requested) msg+='<br><strong>No papers were ingested; see per-URL errors below.</strong>';
+  return msg;
+}
+async function ingest(){
+  const urls=urlsFromText($('urlList').value);
+  if(!urls.length){setBox('ingestStatus','Enter at least one URL.','note warn');return;}
+  setBox('ingestStatus','Ingesting '+urls.length+' URL(s)...','note');
+  try{
+    const data=await fetchJson('/ingest/batch',{method:'POST',headers:headers(),body:JSON.stringify({urls})},{allowApplicationError:true});
+    raw(data);
+    const cls=Number(data.failed||0)?(Number(data.succeeded||0)?'note warn':'note bad'):'note good';
+    setBox('ingestStatus',ingestSummary(data),cls);
+    $('results').innerHTML=renderBatch(data);
+  }catch(e){
+    setBox('ingestStatus','Ingestion request failed: '+esc(e.message),'note bad');
+    raw(String(e.stack||e));
+  }
+}
 async function lookup(){setBox('searchStatus','Looking up metadata...','note'); const body={title:$('lookupTitle').value,url:$('lookupUrl').value,doi:$('lookupDoi').value,arxivId:$('lookupArxiv').value,abstract:$('lookupAbstract').value}; try{const data=await fetchJson('/research/metadata/lookup',{method:'POST',headers:headers(),body:JSON.stringify(body)}); raw(data); $('lookupResults').innerHTML=renderWorkCard(data.work||{}, {lookup:true});}catch(e){$('lookupResults').innerHTML='<div class="note bad">Lookup failed: '+esc(e.message)+'</div>'; raw(String(e.stack||e));}}
 async function loadLibrary(){setBox('libraryStatus','Loading library...','note'); try{const data=await fetchJson('/research/works',{headers:headers(false)}); raw(data); const works=data.works||[]; setBox('libraryStatus',`Loaded ${works.length} work(s).`,'note good'); $('libraryResults').innerHTML=works.map(w=>renderWorkCard(w,{library:true})).join('')||'<div class="note">No works found.</div>'; }catch(e){setBox('libraryStatus','Library load failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
 async function enrichAll(){setBox('libraryStatus','Enriching library metadata...','note'); try{const data=await fetchJson('/research/enrich',{method:'POST',headers:headers(),body:JSON.stringify({all:true,limit:50})}); raw(data); setBox('libraryStatus',`Enrichment complete: requested=${esc(data.requested)}, changed=${esc(data.changed)}.`,'note good'); loadLibrary();}catch(e){setBox('libraryStatus','Enrich failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
