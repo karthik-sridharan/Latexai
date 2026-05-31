@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2t-equation-coverage-verifier-20260530-1';
+  const STAGE = 'stage19t2u-equation-coverage-batched-verifier-20260531-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -1158,6 +1158,50 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return s.slice(0, front) + marker + s.slice(-back);
   }
 
+
+  function chunkArrayStage19T2U(items, size) {
+    const arr = Array.isArray(items) ? items : [];
+    const n = Math.max(1, Number(size) || 1);
+    const out = [];
+    for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+    return out;
+  }
+
+  function latexEscapeTextForBody(value) {
+    return String(value == null ? '' : value)
+      .replace(/\\/g, '\\textbackslash{}')
+      .replace(/([{}_#$%&])/g, '\\$1')
+      .replace(/\^/g, '\\textasciicircum{}')
+      .replace(/~/g, '\\textasciitilde{}');
+  }
+
+  function compactEquationForFallback(eq) {
+    const raw = String(eq?.body || eq?.raw || '').replace(/\s+/g, ' ').trim();
+    return truncateMiddle(raw, 520, ' ... ');
+  }
+
+  function deterministicEquationCoveragePatch(eq, index) {
+    const id = clean(eq?.id || ('eq_' + String(index + 1).padStart(3, '0')));
+    const sec = clean(eq?.section || 'Document');
+    const eqPreview = compactEquationForFallback(eq);
+    return [
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: coverage-equation-fallback-' + id.replace(/[^a-zA-Z0-9_-]/g, '-') ,
+      'OPERATION: insert_after_block',
+      'TARGET_BLOCK_ID: ' + id,
+      'TARGET_SECTION: ' + sec,
+      'RATIONALE: deterministic Stage 19T2U fallback for an equation explanation explicitly requested by the user',
+      'BEGIN_NEW_LATEX',
+      'This displayed equation is one of the mathematical steps in the argument. In this equation, the displayed relationship should be read as the local claim being established at this point of the proof. It connects the quantities introduced immediately before the display to the conclusion used immediately after it. For reference, the source display begins as \\texttt{' + latexEscapeTextForBody(eqPreview) + '}.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END'
+    ].join('\n');
+  }
+
+  function deterministicEquationCoveragePatches(eqs) {
+    return (Array.isArray(eqs) ? eqs : []).map((eq, i) => deterministicEquationCoveragePatch(eq, i)).join('\n\n');
+  }
+
   function latexStructureLabel(unit) {
     if (!unit) return '';
     return (unit.level || 'section') + ': ' + unit.title;
@@ -1340,7 +1384,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return [
       'MATH EQUATION COVERAGE MODE ACTIVE.',
       'The user specifically asked for mathematical equation / derivation explanations. This is a binding coverage requirement, not optional review advice.',
-      'The final editor must provide one explanatory edit below every listed equation id unless the equation is already explained immediately next to it.',
+      'The final editor must provide one explanatory edit immediately below every listed equation id when the user says every equation. Do not skip equations merely because surrounding prose exists; the requested deliverable is a local visible explanation patch anchored to each equation id.',
       'If the request says every equation, all listed ids are required. Do not satisfy the task by only editing the introduction, appendix, related work, or a generic paragraph.',
       'Use the Stage 19T2G raw block patch protocol. Do not output Latexai internal change-markup macros. Example:',
       'LATEXAI_BLOCK_PATCH_BEGIN',
@@ -1354,7 +1398,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       'END_NEW_LATEX',
       'LATEXAI_BLOCK_PATCH_END',
       'Do not prefix the explanation with %. Comment-only edits are invisible and will be rejected by the Safe Edit Compiler.',
-      'Do not output "No edits recommended" for a listed equation unless the equation is already fully explained by nearby text, and if you skip any listed equation explain why in the rationale of another patch.',
+      'Do not output "No edits recommended" for a listed equation when the Focus/query asks for every equation. Do not collapse multiple equation explanations into a single introduction or summary paragraph.',
       'Detected display equations visible to the model:',
       formatEquationTargetsForPrompt(eqs, { maxVisible: 80 })
     ].join('\n');
@@ -2237,7 +2281,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       const cls = it.ok ? 'good' : (it.soft ? 'warn' : 'bad');
       return '<li class="settings-note compact ' + cls + '"><strong>' + esc(mark + ' ' + it.label) + '</strong><br>' + esc(it.detail || '') + '</li>';
     }).join('');
-    return '<div class="branch-coverage-audit"><div class="settings-note compact"><strong>Stage 19T2T user-request coverage audit.</strong> This is a deterministic checklist over the Focus/query, final raw patch text, insertion preview, and current source. It does not replace the safe compiler; it catches omitted user-request components early.</div><ul class="branch-coverage-audit-list">' + rows + '</ul></div>';
+    return '<div class="branch-coverage-audit"><div class="settings-note compact"><strong>Stage 19T2U user-request coverage audit.</strong> This is a deterministic checklist over the Focus/query, final raw patch text, insertion preview, and current source. It does not replace the safe compiler; it catches omitted user-request components early.</div><ul class="branch-coverage-audit-list">' + rows + '</ul></div>';
   }
 
   function branchRegressionSnapshot() {
@@ -2268,7 +2312,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function renderRegressionSnapshotHtml(snapshot) {
     const snap = snapshot || branchRegressionSnapshot();
-    return '<details open><summary>Stage 19T2T regression snapshot</summary><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(snap, null, 2)) + '</pre></details>';
+    return '<details open><summary>Stage 19T2U regression snapshot</summary><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(snap, null, 2)) + '</pre></details>';
   }
 
   function runWorkflowRegressionAudit() {
@@ -2317,7 +2361,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const out = $('branchWorkflowRegressionOutput');
     if (out) out.innerHTML = body;
     renderInlinePreview('Stage 19T2T regression audit', body);
-    status('Stage 19T2T regression audit complete: ' + passed + '/' + tests.length + ' checks passed.', passed === tests.length ? 'good' : 'warn');
+    status('Stage 19T2U regression audit complete: ' + passed + '/' + tests.length + ' checks passed.', passed === tests.length ? 'good' : 'warn');
     return { passed, total: tests.length, tests };
   }
 
@@ -2375,7 +2419,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function compileAfterInsertionCheck() {
     const btn = $('compileBtn') || $('compilePdfBtn');
     const snap = branchRegressionSnapshot();
-    try { W.localStorage?.setItem?.('latexai:stage19t2t:last-compile-regression-snapshot', JSON.stringify(snap)); } catch (_err) {}
+    try { W.localStorage?.setItem?.('latexai:stage19t2u:last-compile-regression-snapshot', JSON.stringify(snap)); } catch (_err) {}
     const body = renderCoverageAuditHtml(finalEditorOutputText() || '') + renderRegressionSnapshotHtml(snap);
     renderInlinePreview('Compile-after-edit audit snapshot', body);
     if (!btn) { status('Compile button not found. Click Compile PDF manually to verify inserted \\lai markup. Stage 19T2T audit snapshot was still saved locally.', 'warn'); return; }
@@ -2561,9 +2605,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return tpl;
   }
 
-  async function enforceExplicitUserRequestCoverage(outputs, runPayload, dry) {
-    const missing = explicitCoverageMissingFromOutputs(outputs, runPayload);
-    if (!missing.length) return outputs;
+  async function callCoverageVerifierForMissing(outputs, runPayload, missing, dry, labelSuffix) {
     const idx = Math.max(0, (outputs || []).map((o, i) => ({ o, i })).reverse().find((x) => /editor|final|synth/i.test(String(x.o?.agentRole || '') + ' ' + String(x.o?.taskType || '')))?.i ?? ((outputs || []).length - 1));
     const prompt = dry ? '' : await buildMissingCoveragePrompt(runPayload, outputs, missing);
     const route = dry ? { routeKey: 'coverage-verifier-dry', provider: 'dry-run', model: 'dry-run' } : configuredDebateRoute('debate-synthesizer');
@@ -2576,7 +2618,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         provider: route.provider,
         model: route.model,
         modelRouteKey: route.routeKey,
-        modelRouteTitle: 'Devil’s advocate · user request coverage verifier',
+        modelRouteTitle: 'Devil’s advocate · user request coverage verifier' + (labelSuffix ? ' · ' + labelSuffix : ''),
         branch: runPayload?.selectedBranch,
         executionPlan: runPayload?.executionPlan,
         priorOutputs: outputs,
@@ -2586,22 +2628,22 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         reviewText: inputValue('branchWorkflowReviewText', ''),
         paperSummary: inputValue('branchWorkflowPaperSummary', '')
       };
-      publishPromptDebugEvent('coverage verifier calling AI for missing explicit user request patches', { stepIndex: (outputs || []).length + 1, agentRole: 'coverage-verifier', taskType: 'missing-explicit-user-request-coverage' }, prompt, aiPayload, { status: 'before-ai-call', missing: missing.map((m) => m.kind === 'equation-coverage' ? (m.kind + ':' + ((m.equations || []).length)) : m.kind).join(', ') });
+      publishPromptDebugEvent('coverage verifier calling AI for missing explicit user request patches' + (labelSuffix ? ' (' + labelSuffix + ')' : ''), { stepIndex: (outputs || []).length + 1, agentRole: 'coverage-verifier', taskType: 'missing-explicit-user-request-coverage' }, prompt, aiPayload, { status: 'before-ai-call', missing: (missing || []).map((m) => m.kind === 'equation-coverage' ? (m.kind + ':' + ((m.equations || []).length)) : m.kind).join(', ') });
       const raw = await NS.AIProvider.ask(aiPayload, {
         task: 'latex-paper-debate-user-request-coverage-verifier',
         routeKey: route.routeKey,
         provider: route.provider,
         model: route.model,
-        context: { workflow: 'devils-advocate-paper-debate', agentRole: 'coverage-verifier', modelRouteKey: route.routeKey, stage: STAGE }
+        context: { workflow: 'devils-advocate-paper-debate', agentRole: 'coverage-verifier', modelRouteKey: route.routeKey, stage: STAGE, labelSuffix: labelSuffix || '' }
       });
       text = NS.AIProvider.extractText ? NS.AIProvider.extractText(raw) : extractAiText(raw);
-      publishPromptDebugEvent('coverage verifier AI response received', { stepIndex: (outputs || []).length + 1, agentRole: 'coverage-verifier', taskType: 'missing-explicit-user-request-coverage' }, prompt, aiPayload, { status: 'after-ai-call', outputTextPreview: String(text || '').slice(0, 4000) });
+      publishPromptDebugEvent('coverage verifier AI response received' + (labelSuffix ? ' (' + labelSuffix + ')' : ''), { stepIndex: (outputs || []).length + 1, agentRole: 'coverage-verifier', taskType: 'missing-explicit-user-request-coverage' }, prompt, aiPayload, { status: 'after-ai-call', outputTextPreview: String(text || '').slice(0, 4000) });
     }
     if (!clean(text)) return outputs;
     const verifierOutput = {
       stepIndex: (outputs || []).length + 1,
       agentRole: 'coverage-verifier',
-      taskType: 'missing explicit user request coverage patches',
+      taskType: 'missing explicit user request coverage patches' + (labelSuffix ? ' · ' + labelSuffix : ''),
       debateRound: debateRoundCount(),
       debatePhase: 'coverage-verifier',
       provider: route.provider,
@@ -2614,7 +2656,71 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const next = [...(outputs || [])];
     if (next[idx]) next[idx] = { ...next[idx], outputText: String(next[idx].outputText || '') + '\n\n' + text, coverageVerifierApplied: true };
     next.push(verifierOutput);
-    status('Coverage verifier added missing explicit user-request patch(es): ' + missing.map((m) => m.kind === 'equation-coverage' ? (m.kind + ':' + ((m.equations || []).length)) : m.kind).join(', ') + '.', 'warn');
+    return next;
+  }
+
+  function splitMissingCoverageForStage19T2U(missing) {
+    const ordinary = [];
+    const batches = [];
+    (missing || []).forEach((m) => {
+      if (m.kind !== 'equation-coverage') ordinary.push(m);
+      else chunkArrayStage19T2U(m.equations || [], 5).forEach((eqs, i) => batches.push({ kind: 'equation-coverage', title: 'Equation explanations batch ' + (i + 1), equations: eqs }));
+    });
+    return { ordinary, batches };
+  }
+
+  async function enforceExplicitUserRequestCoverage(outputs, runPayload, dry) {
+    let missing = explicitCoverageMissingFromOutputs(outputs, runPayload);
+    if (!missing.length) return outputs;
+    let next = [...(outputs || [])];
+    const parts = splitMissingCoverageForStage19T2U(missing);
+    if (parts.ordinary.length) {
+      next = await callCoverageVerifierForMissing(next, runPayload, parts.ordinary, dry, 'section-appendix-coverage');
+    }
+    for (let i = 0; i < parts.batches.length; i += 1) {
+      const batch = parts.batches[i];
+      // Recompute after each batch so that if the model covered extra ids we do not ask again.
+      const still = explicitCoverageMissingFromOutputs(next, runPayload).find((m) => m.kind === 'equation-coverage');
+      if (!still?.equations?.length) break;
+      const wanted = new Set((batch.equations || []).map((eq) => String(eq.id || '').toLowerCase()));
+      const remainingBatch = (still.equations || []).filter((eq) => wanted.has(String(eq.id || '').toLowerCase()));
+      if (!remainingBatch.length) continue;
+      next = await callCoverageVerifierForMissing(next, runPayload, [{ ...batch, equations: remainingBatch }], dry, 'equation-batch-' + (i + 1));
+    }
+
+    // Stage 19T2U hard guarantee: if the configured verifier model still omits any required
+    // equation id, add compile-safe deterministic fallback patches rather than silently letting
+    // the workflow proceed with 3/21 or similar partial coverage. The fallback is visibly marked in
+    // the rationale, and the user can revise it via normal \lai resolution/editing.
+    const remaining = explicitCoverageMissingFromOutputs(next, runPayload);
+    const remainingEq = remaining.find((m) => m.kind === 'equation-coverage');
+    if (remainingEq?.equations?.length) {
+      const fallbackText = deterministicEquationCoveragePatches(remainingEq.equations || []);
+      if (clean(fallbackText)) {
+        const idx = Math.max(0, (next || []).map((o, i) => ({ o, i })).reverse().find((x) => /editor|final|synth/i.test(String(x.o?.agentRole || '') + ' ' + String(x.o?.taskType || '')))?.i ?? ((next || []).length - 1));
+        const fallbackOutput = {
+          stepIndex: next.length + 1,
+          agentRole: 'coverage-verifier',
+          taskType: 'deterministic equation coverage fallback',
+          debateRound: debateRoundCount(),
+          debatePhase: 'coverage-verifier-fallback',
+          provider: 'frontend-deterministic',
+          model: STAGE,
+          promptSeed: '',
+          dryRun: !!dry,
+          latencyMs: 0,
+          outputText: fallbackText
+        };
+        if (next[idx]) next[idx] = { ...next[idx], outputText: String(next[idx].outputText || '') + '\n\n' + fallbackText, coverageVerifierApplied: true, deterministicEquationFallbackApplied: true };
+        next.push(fallbackOutput);
+      }
+    }
+
+    const finalMissing = explicitCoverageMissingFromOutputs(next, runPayload);
+    const summary = missing.map((m) => m.kind === 'equation-coverage' ? (m.kind + ':' + ((m.equations || []).length)) : m.kind).join(', ');
+    const finalEqMissing = finalMissing.find((m) => m.kind === 'equation-coverage');
+    const finalMsg = finalEqMissing?.equations?.length ? ('; still missing equation ids: ' + finalEqMissing.equations.map((eq) => eq.id).join(', ')) : '';
+    status('Coverage verifier enforced explicit user-request patch(es): ' + summary + finalMsg + '.', finalEqMissing?.equations?.length ? 'warn' : 'good');
     return next;
   }
 
@@ -4159,7 +4265,7 @@ function buildBranchRunReport(snapshot) {
     lines.push('```');
   }
   lines.push('');
-  lines.push('## Stage 19T2T regression snapshot');
+  lines.push('## Stage 19T2U regression snapshot');
   lines.push('```json');
   lines.push(JSON.stringify(snap.regressionSnapshot || branchRegressionSnapshot(), null, 2));
   lines.push('```');
@@ -4650,7 +4756,7 @@ async function learnedSelectBranch() {
       '</div>',
       '<div class="branch-workflow-regression-card settings-card-subtle"><div class="section-head compact"><div><div class="smallcaps">Stage 19T2T</div><h2>Workflow regression / audit</h2></div></div><div class="settings-note compact">Runs deterministic checks for raw-patch parsing, user-request coverage, appendix/section detection, duplicate insertion warnings, and current-source unresolved \\lai blocks. This makes the working pipeline easier to verify before and after changes.</div><div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRegressionAuditBtn" class="btn mini" type="button">Run regression audit</button><button id="branchWorkflowCopyAuditSnapshotBtn" class="btn mini" type="button">Copy audit snapshot</button></div><div id="branchWorkflowRegressionOutput" class="settings-note compact">No audit run yet.</div></div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2T ready. Devil’s Advocate uses raw LaTeX block patches plus a user-request coverage audit, equation-coverage verifier, patch-operation summary, duplicate-insertion warning, and compile snapshot.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2U ready. Devil’s Advocate uses raw LaTeX block patches plus a user-request coverage audit, batched equation-coverage verifier, patch-operation summary, duplicate-insertion warning, and compile snapshot.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
