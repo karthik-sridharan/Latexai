@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u3-knowledge-controls-global-preview-surface-20260531-1';
+  const STAGE = 'stage19u4-hybrid-literature-retrieval-ranking-20260531-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';

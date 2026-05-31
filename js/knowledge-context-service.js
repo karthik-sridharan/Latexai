@@ -1,4 +1,4 @@
-/* Latexai Stage 19U2 KnowledgeContextService
+/* Latexai Stage 19U4 KnowledgeContextService
  * Shared literature/knowledge retrieval bridge for AI review/edit workflows.
  * Adds retrieved-context preview, pin/exclude controls, retrieval modes,
  * and evidence-audit prompt text while keeping source edits on the safe protocol.
@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u3-knowledge-controls-global-preview-surface-20260531-1';
+  const STAGE = 'stage19u4-hybrid-literature-retrieval-ranking-20260531-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
@@ -57,6 +57,11 @@
       score: r.score,
       arxiv_id: clean(r.arxiv_id || r.arxivId || ''),
       snippet: clean(chunk.snippet || r.snippet || r.abstract || r.summary || ''),
+      semanticScore: r.semanticScore ?? chunk.semanticScore ?? null,
+      hybridScore: r.hybridScore ?? r.score ?? null,
+      scoreBreakdown: (r.scoreBreakdown && typeof r.scoreBreakdown === 'object') ? r.scoreBreakdown : ((chunk.scoreBreakdown && typeof chunk.scoreBreakdown === 'object') ? chunk.scoreBreakdown : null),
+      retrievalReasons: Array.isArray(r.retrievalReasons) ? r.retrievalReasons.slice(0, 8).map(String) : [],
+      searchSchema: clean(r.searchSchema || ''),
       raw: r
     };
   }
@@ -114,6 +119,16 @@
     if (mode === 'pinned_only') merged = pinned.slice();
     else if (mode === 'automatic_pinned') merged = pinned.concat(autoRaw.filter((r) => !pinned.some((p) => p.key === r.key)));
     else merged = autoRaw;
+    merged = merged.map((r) => {
+      if (!pinned.some((p) => p.key === r.key)) return r;
+      const raw = Object.assign({}, r.raw || r);
+      const existing = raw.scoreBreakdown && typeof raw.scoreBreakdown === 'object' ? raw.scoreBreakdown : {};
+      raw.scoreBreakdown = Object.assign({}, existing, { pinnedBoost: existing.pinnedBoost || 1.0 });
+      raw.hybridScore = Number(raw.hybridScore ?? raw.score ?? 0) + 1.0;
+      raw.score = raw.hybridScore;
+      raw.retrievalReasons = Array.from(new Set([...(Array.isArray(raw.retrievalReasons) ? raw.retrievalReasons : []), 'pinned by user']));
+      return normalizeResult(raw);
+    });
     merged = merged.filter((r) => !excluded.has(r.key));
     const out = Object.assign({}, data || { ok: true }, {
       results: merged.map((r) => r.raw || r),
@@ -244,7 +259,10 @@
       lines.push('Authors: ' + (resultAuthors(r) || 'unknown'));
       if (r.url) lines.push('URL: ' + r.url);
       if (r.arxiv_id) lines.push('arXiv: ' + r.arxiv_id);
-      if (r.score != null && r.score !== '') lines.push('Similarity score: ' + scoreText(r.score));
+      if (r.score != null && r.score !== '') lines.push('Hybrid retrieval score: ' + scoreText(r.score));
+      if (r.semanticScore != null && r.semanticScore !== '') lines.push('Semantic score: ' + scoreText(r.semanticScore));
+      if (r.retrievalReasons && r.retrievalReasons.length) lines.push('Why retrieved: ' + r.retrievalReasons.join('; '));
+      if (r.scoreBreakdown) lines.push('Score breakdown: ' + scoreBreakdownText(r));
       lines.push('Evidence snippet: ' + (compactText(r.snippet, 900) || '(no snippet available)'));
     });
     lines.push('\nEvidence-audit instruction: explicitly say which retrieved paper numbers [1], [2], ... were used, and say if none were useful. Never paste this context block directly into the LaTeX source.');
@@ -255,7 +273,8 @@
     if (data.ok === false) return 'Knowledge retriever failed: ' + (data.error || data.detail || 'unknown error');
     const mode = data.retrievalMode ? ` · mode=${data.retrievalMode.replace(/_/g, '+')}` : '';
     const pins = data.pinnedCount ? ` · pinned=${data.pinnedCount}` : '';
-    return `Knowledge retriever: ${data.resultCount || 0} paper(s) provided` + (data.searchSchema ? ` · ${data.searchSchema}` : '') + (data.topK ? ` · topK=${data.topK}` : '') + mode + pins;
+    const hybrid = data.hybridRanking || /hybrid/i.test(String(data.searchSchema || '')) ? ' · hybrid ranking' : '';
+    return `Knowledge retriever: ${data.resultCount || 0} paper(s) provided` + (data.searchSchema ? ` · ${data.searchSchema}` : '') + hybrid + (data.topK ? ` · topK=${data.topK}` : '') + mode + pins;
   }
   function promptBlock(data) {
     if (!data) return 'Knowledge/literature context is disabled for this run.';
@@ -264,16 +283,28 @@
     return ctx || 'No relevant ingested-library papers were retrieved.';
   }
   function previewId(feature) { return String(feature || 'knowledge') + 'KnowledgePreview'; }
+  function scoreBreakdownText(r) {
+    const b = r && r.scoreBreakdown && typeof r.scoreBreakdown === 'object' ? r.scoreBreakdown : null;
+    if (!b) return '';
+    const parts = [];
+    ['semantic', 'titleKeywordBoost', 'titlePhraseBoost', 'authorKeywordBoost', 'authorExactBoost', 'authorPartialBoost', 'snippetKeywordBoost', 'metadataKeywordBoost', 'arxivBoost', 'urlBoost', 'citationKeyBoost', 'pinnedBoost', 'final'].forEach((k) => {
+      if (b[k] != null && b[k] !== '' && Number(b[k]) !== 0) parts.push(k.replace(/Boost$/, '') + '=' + scoreText(b[k]));
+    });
+    return parts.join(' · ');
+  }
   function resultCardHtml(feature, result, idx, pinnedSet, excludedSet) {
     const r = normalizeResult(result);
     const isPinned = pinnedSet.has(r.key);
     const isExcluded = excludedSet.has(r.key);
     const authors = resultAuthors(r);
+    const reasons = Array.isArray(r.retrievalReasons) && r.retrievalReasons.length ? r.retrievalReasons.join('; ') : '';
+    const breakdown = scoreBreakdownText(r);
     return [
       '<div class="knowledge-result-card" data-knowledge-key="' + escapeHtml(r.key) + '">',
       '  <div><strong>' + escapeHtml(String(idx + 1) + '. ' + (r.title || 'Untitled paper')) + '</strong>' + (r.year ? ' <span class="muted">(' + escapeHtml(r.year) + ')</span>' : '') + '</div>',
       authors ? '  <div class="muted">Authors: ' + escapeHtml(authors) + '</div>' : '',
-      r.score != null && r.score !== '' ? '  <div class="muted">Score: ' + escapeHtml(scoreText(r.score)) + '</div>' : '',
+      r.score != null && r.score !== '' ? '  <div class="muted">Hybrid score: ' + escapeHtml(scoreText(r.score)) + (r.semanticScore != null ? ' · semantic=' + escapeHtml(scoreText(r.semanticScore)) : '') + '</div>' : '',
+      breakdown ? '  <details class="knowledge-score-breakdown"><summary>Score breakdown / why retrieved</summary><div class="muted">' + escapeHtml(breakdown) + '</div>' + (reasons ? '<div class="muted">Reasons: ' + escapeHtml(reasons) + '</div>' : '') + '</details>' : (reasons ? '  <div class="muted">Why retrieved: ' + escapeHtml(reasons) + '</div>' : ''),
       r.snippet ? '  <div class="knowledge-snippet">' + escapeHtml(compactText(r.snippet, 500)) + '</div>' : '  <div class="knowledge-snippet muted">No snippet available.</div>',
       '  <div class="knowledge-result-actions">',
       isPinned ? '    <button class="btn mini" type="button" data-knowledge-action="unpin" data-knowledge-feature="' + escapeHtml(feature) + '" data-knowledge-key="' + escapeHtml(r.key) + '">Unpin</button>' : '    <button class="btn mini" type="button" data-knowledge-action="pin" data-knowledge-feature="' + escapeHtml(feature) + '" data-knowledge-key="' + escapeHtml(r.key) + '">Pin to next review</button>',
