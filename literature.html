@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lumina Literature Survey Assistant</title>
+<style>
+:root{
+  --bg:#f6f8fb; --panel:#ffffff; --panel2:#f8fafc; --text:#142033; --muted:#65748b; --muted2:#94a3b8;
+  --border:#dbe4ef; --accent:#2563eb; --accent2:#4f46e5; --accent-soft:#dbeafe;
+  --good:#16a34a; --warn:#b45309; --bad:#dc2626; --shadow:0 18px 50px rgba(15,23,42,.10);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(135deg,#eef4ff 0%,#f8fafc 45%,#fff 100%);font-family:var(--sans);color:var(--text)}
+a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:24px;padding:14px 18px;box-shadow:var(--shadow);backdrop-filter:blur(14px);position:sticky;top:12px;z-index:10}.brand{display:flex;align-items:center;gap:12px}.mark{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:900;display:grid;place-items:center}.smallcaps{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:800}.brand h1{font-size:1.25rem;line-height:1.05;margin:.12rem 0 0}.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid var(--border);background:#fff;border-radius:14px;padding:.7rem .9rem;font-weight:800;color:var(--text);cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04)}.btn:hover{border-color:#b7c5d8}.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent}.btn.danger{color:#991b1b;background:#fff7f7;border-color:#fecaca}.btn.mini{font-size:.78rem;padding:.45rem .65rem;border-radius:11px}.grid{display:grid;grid-template-columns:minmax(280px,420px) 1fr;gap:16px;margin-top:16px}.panel{background:rgba(255,255,255,.94);border:1px solid var(--border);border-radius:22px;box-shadow:var(--shadow);padding:16px}.panel h2{font-size:1rem;margin:0 0 12px}.panel h3{font-size:.9rem;margin:16px 0 8px}.stack{display:flex;flex-direction:column;gap:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.grow{flex:1}.field label{display:block;font-size:.78rem;color:var(--muted);font-weight:800;margin:0 0 5px}.field input,.field textarea,.field select{width:100%;border:1px solid var(--border);border-radius:14px;padding:.72rem .8rem;font:inherit;background:#fff}.field textarea{min-height:92px;resize:vertical}.note{border:1px solid #bfdbfe;background:#eff6ff;color:#1e40af;border-radius:16px;padding:10px 12px;font-size:.85rem}.warn{border-color:#fde68a;background:#fffbeb;color:#92400e}.bad{border-color:#fecaca;background:#fff1f2;color:#991b1b}.good{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.muted{color:var(--muted)}.mono{font-family:var(--mono)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.tab{border:1px solid var(--border);border-radius:999px;background:#fff;padding:.55rem .8rem;font-weight:900;cursor:pointer}.tab.active{background:#0f172a;color:#fff;border-color:#0f172a}.view{display:none}.view.active{display:block}.result{border:1px solid var(--border);border-radius:18px;background:#fff;padding:12px;margin:10px 0;position:relative}.result .title{font-weight:900;font-size:1rem}.badges{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:.2rem .5rem;font-size:.72rem;font-weight:900;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0}.badge.good{background:#dcfce7;color:#166534;border-color:#bbf7d0}.badge.blue{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}.badge.gold{background:#fef3c7;color:#92400e;border-color:#fde68a}.scorebox{font-family:var(--mono);font-size:.78rem;background:#0f172a;color:#e2e8f0;border-radius:14px;padding:10px;white-space:pre-wrap;overflow:auto;max-height:180px}.snippet{font-size:.86rem;line-height:1.45;color:#334155;background:#f8fafc;border-radius:14px;padding:10px;border:1px solid #e2e8f0}.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}.hidden{display:none!important}.output{white-space:pre-wrap;font-family:var(--mono);font-size:.8rem;background:#0f172a;color:#e2e8f0;border-radius:18px;padding:14px;overflow:auto;max-height:420px}.mini-link{font-size:.78rem;color:var(--accent);font-weight:800}@media(max-width:900px){.grid{grid-template-columns:1fr}.topbar{position:static}.actions{justify-content:flex-start}.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="brand"><div class="mark">L</div><div><div class="smallcaps">Lumina Research</div><h1>Literature Survey Assistant</h1><div class="muted" style="font-size:.82rem">Standalone knowledge-base ingestion, enrichment, retrieval, pinning, and audit tool.</div></div></div>
+  <div class="actions"><a class="btn" href="index.html">Open LaTeX Editor</a><button class="btn" id="statusBtn">Check backend</button><button class="btn primary" id="saveSettingsBtn">Save settings</button></div>
+</header>
+
+<div class="grid">
+  <aside class="stack">
+    <section class="panel">
+      <h2>Connection</h2>
+      <div class="field"><label>Backend API base</label><input id="apiBase" placeholder="https://...run.app/api/lumina" /></div>
+      <div class="field" style="margin-top:10px"><label>Ingestion token</label><input id="token" type="password" placeholder="optional / required by backend" /></div>
+      <div id="statusBox" class="note" style="margin-top:10px">Set the Cloud Run API base, then check backend.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Pinning target</h2>
+      <div class="field"><label>Pin/exclude results for workflow</label><select id="pinFeature"><option value="paper-ai">Paper AI</option><option value="competitive-review">Competitive review</option><option value="reviewer-rebuttal">Reviewer / rebuttal</option><option value="devils-advocate">Devil's Advocate</option><option value="knowledge">General knowledge</option></select></div>
+      <div class="row" style="margin-top:10px"><button class="btn mini" id="clearPinsBtn">Clear pins</button><button class="btn mini" id="clearExclusionsBtn">Clear exclusions</button><button class="btn mini" id="showPinsBtn">Show pins</button></div>
+      <div id="pinStatus" class="note" style="margin-top:10px">Pinned/excluded papers are stored in the same browser localStorage keys used by the LaTeX app.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Quick actions</h2>
+      <div class="row"><button class="btn mini primary" id="loadLibraryBtn">Load library</button><button class="btn mini" id="enrichAllBtn">Enrich all</button><button class="btn mini" id="copyDebugBtn">Copy debug</button></div>
+    </section>
+  </aside>
+
+  <main class="panel">
+    <div class="tabs">
+      <button class="tab active" data-tab="ingest">Ingest</button>
+      <button class="tab" data-tab="lookup">Metadata lookup</button>
+      <button class="tab" data-tab="search">Search / retrieve</button>
+      <button class="tab" data-tab="library">Library</button>
+    </div>
+
+    <section id="view-ingest" class="view active">
+      <h2>Populate the knowledge retriever</h2>
+      <div class="field"><label>Paper URLs, arXiv links, PDF links — one per line</label><textarea id="urlList" placeholder="https://arxiv.org/abs/1706.03762\nhttps://www.mit.edu/~rakhlin/papers/online_nonparam_general.pdf"></textarea></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="ingestBtn">Start ingestion</button><button class="btn" id="resetIngestBtn">Reset</button></div>
+      <div id="ingestStatus" class="note" style="margin-top:12px">Ingestion will fetch metadata, enrich when possible, chunk, embed, and store in the research library.</div>
+    </section>
+
+    <section id="view-lookup" class="view">
+      <h2>External metadata lookup</h2>
+      <div class="cols">
+        <div class="field"><label>Title</label><input id="lookupTitle" placeholder="Online Nonparametric Regression with General Loss Functions" /></div>
+        <div class="field"><label>URL / arXiv / PDF</label><input id="lookupUrl" placeholder="https://arxiv.org/abs/..." /></div>
+        <div class="field"><label>DOI</label><input id="lookupDoi" placeholder="10...." /></div>
+        <div class="field"><label>arXiv id</label><input id="lookupArxiv" placeholder="2204.03715" /></div>
+      </div>
+      <div class="field" style="margin-top:10px"><label>Abstract / extra hint</label><textarea id="lookupAbstract" placeholder="Optional abstract or identifying text"></textarea></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="lookupBtn">Lookup metadata</button></div>
+      <div id="lookupResults"></div>
+    </section>
+
+    <section id="view-search" class="view">
+      <h2>Retrieve and audit knowledge context</h2>
+      <div class="cols">
+        <div class="field"><label>Search / focus query</label><input id="searchQuery" placeholder="Rakhlin Sridharan online nonparametric regression sequential complexity" /></div>
+        <div class="field"><label>topK</label><input id="topK" type="number" min="1" max="25" value="8" /></div>
+      </div>
+      <div class="cols" style="margin-top:10px">
+        <div class="field"><label>Paper title for context preview</label><input id="contextTitle" placeholder="Recovery of nonlinear dynamics from trajectory" /></div>
+        <div class="field"><label>Paper abstract / summary for context preview</label><input id="contextAbstract" placeholder="We study least squares recovery of nonlinear dynamics from dependent trajectory data." /></div>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="searchBtn">Hybrid search</button><button class="btn" id="contextBtn">Build paper context</button><button class="btn" id="clearResultsBtn">Clear results</button></div>
+      <div id="searchStatus" class="note" style="margin-top:12px">Search results show hybrid score, semantic score, author graph reasons, and enrichment metadata when available.</div>
+      <div id="results"></div>
+    </section>
+
+    <section id="view-library" class="view">
+      <h2>Research library</h2>
+      <div class="row"><button class="btn primary" id="libraryRefreshBtn">Refresh library</button><button class="btn" id="libraryEnrichSelectedBtn">Enrich selected shown works</button></div>
+      <div id="libraryStatus" class="note" style="margin-top:12px">Load the library to view all indexed works.</div>
+      <div id="libraryResults"></div>
+    </section>
+  </main>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Raw output / diagnostics</h2>
+  <div id="rawOut" class="output">Ready.</div>
+</section>
+</div>
+
+<script>
+(function(){
+'use strict';
+const STAGE='latex-stage19u7-standalone-literature-survey-assistant-20260531-1';
+const $=(id)=>document.getElementById(id);
+const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
+const LS_API='luminaLiteratureApiBase';
+const LS_TOKEN='luminaIngestToken';
+function scanForApi(){
+  const p=new URLSearchParams(location.search); if(p.get('api')) return normalizeApi(p.get('api'));
+  const stored=localStorage.getItem(LS_API); if(stored) return normalizeApi(stored);
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i); const v=String(localStorage.getItem(k)||'');
+    const m=v.match(/https:\/\/[^"'\s]+\.run\.app(?:\/api\/lumina(?:\/[A-Za-z0-9_\-/]+)?)?/);
+    if(m) return normalizeApi(m[0]);
+  }
+  return location.origin.includes('github.io') ? '' : normalizeApi(location.origin+'/api/lumina');
+}
+function normalizeApi(v){
+  v=String(v||'').trim().replace(/\/+$/,'');
+  if(!v) return '';
+  if(v.endsWith('/api/lumina')) return v;
+  const idx=v.indexOf('/api/lumina/');
+  if(idx>=0) return v.slice(0,idx)+'/api/lumina';
+  if(v.includes('/api/lumina')) return v.slice(0,v.indexOf('/api/lumina'))+'/api/lumina';
+  return v+'/api/lumina';
+}
+function api(){return normalizeApi($('apiBase').value)}
+function token(){return $('token').value.trim()}
+function headers(json=true){const h={}; if(json) h['Content-Type']='application/json'; const t=token(); if(t){h.Authorization='Bearer '+t; h['x-lumina-ingest-token']=t;} return h;}
+function raw(obj){$('rawOut').textContent=typeof obj==='string'?obj:JSON.stringify(obj,null,2)}
+function setBox(id,msg,cls='note'){const el=$(id); el.className=cls; el.innerHTML=msg;}
+async function fetchJson(path, opts={}){
+  const base=api(); if(!base) throw new Error('Missing API base. Paste your Cloud Run backend URL or /api/lumina URL.');
+  const res=await fetch(base+path, opts); const text=await res.text(); let data; try{data=JSON.parse(text)}catch(e){throw new Error('Non-JSON HTTP '+res.status+': '+text.slice(0,300));}
+  if(!res.ok || data.ok===false) throw new Error((data.detail||data.error||data.message||('HTTP '+res.status)));
+  return data;
+}
+function saveSettings(){localStorage.setItem(LS_API, api()); localStorage.setItem(LS_TOKEN, token()); setBox('statusBox','Saved settings for this browser.','note good');}
+async function status(){try{const data=await fetchJson('/latex/status',{headers:headers(false)}); raw(data); const storage=data.knowledgeStorage||data.storage||{}; setBox('statusBox',`<strong>Connected.</strong><br>stage=${esc(data.stage||'')}<br>searchSchema=${esc(data.searchSchema||'')} · hybrid=${esc(data.hybridRanking)} · pgvector=${esc(storage.pgvectorReady||storage.pgvector_enabled||'')}`,'note good');}catch(e){setBox('statusBox','Connection failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
+function urlsFromText(t){return Array.from(new Set((String(t||'').match(/https?:\/\/[^\s,;<>"]+/g)||[]).map(u=>u.replace(/[).,;\]}]+$/,''))));}
+async function ingest(){const urls=urlsFromText($('urlList').value); if(!urls.length){setBox('ingestStatus','Enter at least one URL.','note warn');return;} setBox('ingestStatus','Ingesting '+urls.length+' URL(s)...','note'); try{const data=await fetchJson('/ingest/batch',{method:'POST',headers:headers(),body:JSON.stringify({urls})}); raw(data); setBox('ingestStatus',`Batch complete: ${esc(data.succeeded||0)} succeeded, ${esc(data.failed||0)} failed, ${esc(data.embeddingReady||0)} embedding-ready.`,'note good'); $('results').innerHTML=renderBatch(data);}catch(e){setBox('ingestStatus','Ingestion failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
+async function lookup(){setBox('searchStatus','Looking up metadata...','note'); const body={title:$('lookupTitle').value,url:$('lookupUrl').value,doi:$('lookupDoi').value,arxivId:$('lookupArxiv').value,abstract:$('lookupAbstract').value}; try{const data=await fetchJson('/research/metadata/lookup',{method:'POST',headers:headers(),body:JSON.stringify(body)}); raw(data); $('lookupResults').innerHTML=renderWorkCard(data.work||{}, {lookup:true});}catch(e){$('lookupResults').innerHTML='<div class="note bad">Lookup failed: '+esc(e.message)+'</div>'; raw(String(e.stack||e));}}
+async function loadLibrary(){setBox('libraryStatus','Loading library...','note'); try{const data=await fetchJson('/research/works',{headers:headers(false)}); raw(data); const works=data.works||[]; setBox('libraryStatus',`Loaded ${works.length} work(s).`,'note good'); $('libraryResults').innerHTML=works.map(w=>renderWorkCard(w,{library:true})).join('')||'<div class="note">No works found.</div>'; }catch(e){setBox('libraryStatus','Library load failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
+async function enrichAll(){setBox('libraryStatus','Enriching library metadata...','note'); try{const data=await fetchJson('/research/enrich',{method:'POST',headers:headers(),body:JSON.stringify({all:true,limit:50})}); raw(data); setBox('libraryStatus',`Enrichment complete: requested=${esc(data.requested)}, changed=${esc(data.changed)}.`,'note good'); loadLibrary();}catch(e){setBox('libraryStatus','Enrich failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
+async function enrichWork(id){try{const data=await fetchJson('/research/works/'+encodeURIComponent(id)+'/enrich',{method:'POST',headers:headers()}); raw(data); loadLibrary();}catch(e){raw('Enrich work failed: '+e.message);}}
+async function search(){const query=$('searchQuery').value.trim(); if(!query){setBox('searchStatus','Enter a query.','note warn');return;} const topK=Math.max(1,Math.min(25,parseInt($('topK').value||'8',10))); setBox('searchStatus','Searching with hybrid retrieval...','note'); try{const data=await fetchJson('/research/search',{method:'POST',headers:headers(),body:JSON.stringify({query,topK,pinnedPapers:pinnedResults(feature())})}); raw(data); setBox('searchStatus',`Found ${esc(data.resultCount||0)} result(s). schema=${esc(data.schema||'')} hybrid=${esc(data.hybridRanking)} authorGraph=${esc(data.authorGraphRanking)}`,'note good'); renderResults(data.results||[]);}catch(e){setBox('searchStatus','Search failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
+async function context(){const focus=$('searchQuery').value.trim(); if(!focus){setBox('searchStatus','Enter a focus/search query.','note warn');return;} const body={title:$('contextTitle').value,abstract:$('contextAbstract').value,focus,topK:Math.max(1,Math.min(12,parseInt($('topK').value||'8',10))),pinnedPapers:pinnedResults(feature())}; setBox('searchStatus','Building paper knowledge context...','note'); try{const data=await fetchJson('/knowledge/context-for-paper',{method:'POST',headers:headers(),body:JSON.stringify(body)}); raw(data); setBox('searchStatus',`Context ready: ${esc(data.resultCount||0)} result(s). schema=${esc(data.searchSchema||'')}`,'note good'); renderResults(data.results||[]); if(data.promptContext){$('results').insertAdjacentHTML('beforeend','<h3>Prompt context preview</h3><div class="output">'+esc(data.promptContext)+'</div>');}}catch(e){setBox('searchStatus','Context retrieval failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
+function feature(){return $('pinFeature').value||'paper-ai'}
+function keyOf(r){return String(r.paper_id||r.paperId||r.id||r.workId||r.url||r.source_url||r.arxiv_id||r.doi||r.title||'').toLowerCase().slice(0,500)}
+function pinKey(f){return 'latexai:knowledge-pinned:'+f} function exKey(f){return 'latexai:knowledge-excluded:'+f}
+function getJson(k,d){try{return JSON.parse(localStorage.getItem(k)||'')||d}catch(e){return d}}
+function setJson(k,v){localStorage.setItem(k,JSON.stringify(v))}
+function normalizePin(r){const m=r.metadata||{}; const chunk=r.bestChunk||{}; return {key:keyOf(r),title:r.title||'Untitled paper',authors:Array.isArray(r.authors)?r.authors:[],year:r.year||'',url:r.url||r.source_url||'',score:r.score,hybridScore:r.hybridScore||r.score,semanticScore:r.semanticScore||null,snippet:(chunk.snippet||r.snippet||r.abstract||'').slice(0,900),scoreBreakdown:r.scoreBreakdown||{},retrievalReasons:Array.isArray(r.retrievalReasons)?r.retrievalReasons:[],metadata:m,raw:r};}
+function pinnedResults(f=feature()){return (getJson(pinKey(f),[])||[]).filter(x=>x&&x.key)}
+function excludedSet(f=feature()){return new Set(getJson(exKey(f),[])||[])}
+function pin(r, all=false){const targets=all?['paper-ai','competitive-review','reviewer-rebuttal','devils-advocate','knowledge']:[feature()]; targets.forEach(f=>{const nr=normalizePin(r); if(!nr.key)return; const list=pinnedResults(f).filter(x=>x.key!==nr.key); list.unshift(nr); setJson(pinKey(f),list.slice(0,20));}); setBox('pinStatus','Pinned to '+(all?'all workflows':feature())+'.','note good');}
+function exclude(r){const k=keyOf(r); const set=excludedSet(); set.add(k); setJson(exKey(feature()),Array.from(set)); setBox('pinStatus','Excluded from '+feature()+'.','note warn');}
+function clearPins(){setJson(pinKey(feature()),[]);setBox('pinStatus','Cleared pins for '+feature()+'.','note')} function clearEx(){setJson(exKey(feature()),[]);setBox('pinStatus','Cleared exclusions for '+feature()+'.','note')}
+function showPins(){const list=pinnedResults(); $('results').innerHTML='<h3>Pinned for '+esc(feature())+'</h3>'+(list.map((p,i)=>renderResultCard(p.raw||p,i)).join('')||'<div class="note">No pins.</div>'); setBox('pinStatus','Showing pins for '+feature()+'.','note')}
+function renderBatch(data){const rs=data.results||[]; return rs.map(r=>`<div class="result"><div class="title">${r.ok?'✓':'✗'} ${esc(r.title||r.url||r.workId||'item')}</div><div class="muted">${esc(r.url||'')}</div><div class="badges"><span class="badge ${r.ok?'good':'bad'}">${r.ok?'ingested':'failed'}</span><span class="badge blue">chunks=${esc(r.chunkCount||0)}</span><span class="badge blue">embedded=${esc(r.embeddedChunkCount||0)}</span></div>${r.error?'<div class="note bad">'+esc(r.error)+'</div>':''}</div>`).join('')||'<div class="note">No results.</div>'}
+function renderWorkCard(w,opts={}){const m=w.metadata||{}; const enr=m.metadataEnrichment||{}; const ids=m.externalIds||{}; const keys=m.canonicalAuthorKeys||[]; const title=w.title||'Untitled paper'; const authors=Array.isArray(w.authors)?w.authors.join(', '):(w.authors_json||''); const id=w.id||w.workId||''; return `<div class="result"><div class="title">${esc(title)}</div><div class="muted">${esc(authors)} ${w.year?' · '+esc(w.year):''}</div><div class="badges"><span class="badge blue">${esc(m.embeddingStatus||'embedding?')}</span>${m.embeddingModel?'<span class="badge">'+esc(m.embeddingModel)+'</span>':''}${w.arxiv_id?'<span class="badge gold">arXiv '+esc(w.arxiv_id)+'</span>':''}${w.doi?'<span class="badge gold">DOI</span>':''}${ids.SemanticScholar||m.semanticScholar?.paperId?'<span class="badge gold">Semantic Scholar</span>':''}${m.dblp?'<span class="badge gold">DBLP</span>':''}</div>${keys.length?'<div class="muted"><strong>Canonical authors:</strong> '+esc(keys.join(', '))+'</div>':''}${enr.matched?'<div class="note good">Enrichment matched: '+esc(JSON.stringify(enr.matched))+'</div>':''}<div class="snippet">${esc(compact(w.abstract||m.abstract||''))}</div><div class="row" style="margin-top:8px">${w.url?'<a class="btn mini" target="_blank" href="'+esc(w.url)+'">Open source</a>':''}${id?'<button class="btn mini" data-enrich-work="'+esc(id)+'">Enrich this work</button>':''}</div></div>`}
+function renderResults(results){$('results').innerHTML=(results||[]).map(renderResultCard).join('')||'<div class="note">No results.</div>'}
+function renderResultCard(r,i){const m=r.metadata||{}; const chunk=r.bestChunk||{}; const reasons=Array.isArray(r.retrievalReasons)?r.retrievalReasons:[]; const breakdown=r.scoreBreakdown||{}; const authors=Array.isArray(r.authors)?r.authors.join(', '):''; const score=(r.hybridScore??r.score); const sem=r.semanticScore; const id='r'+Math.random().toString(36).slice(2); window.__litResults=window.__litResults||{}; window.__litResults[id]=r; return `<div class="result"><div class="title">${i+1}. ${esc(r.title||'Untitled paper')}</div><div class="muted">${esc(authors)} ${r.year?' · '+esc(r.year):''}</div><div class="badges"><span class="badge good">hybrid=${num(score)}</span>${sem!=null?'<span class="badge blue">semantic='+num(sem)+'</span>':''}${m.semanticScholar?.paperId?'<span class="badge gold">S2</span>':''}${m.dblp?'<span class="badge gold">DBLP</span>':''}${(m.canonicalAuthorKeys||[]).length?'<span class="badge gold">author keys</span>':''}</div>${reasons.length?'<div class="note"><strong>Why retrieved:</strong> '+esc(reasons.join('; '))+'</div>':''}<div class="scorebox">${esc(Object.keys(breakdown).length?JSON.stringify(breakdown,null,2):'No score breakdown returned.')}</div><div class="snippet">${esc(compact(chunk.snippet||r.snippet||r.abstract||''))}</div><div class="row" style="margin-top:8px"><button class="btn mini primary" data-pin="${id}">Pin to selected workflow</button><button class="btn mini" data-pin-all="${id}">Pin all workflows</button><button class="btn mini danger" data-exclude="${id}">Exclude selected workflow</button>${r.url?'<a class="btn mini" target="_blank" href="'+esc(r.url)+'">Open</a>':''}</div></div>`}
+function num(v){const n=Number(v);return Number.isFinite(n)?n.toFixed(3):esc(v||'')}
+function copyDebug(){navigator.clipboard?.writeText($('rawOut').textContent||''); setBox('pinStatus','Copied diagnostics/output.','note good')}
+function bind(){
+  $('apiBase').value=scanForApi(); $('token').value=localStorage.getItem(LS_TOKEN)||'';
+  $('saveSettingsBtn').onclick=saveSettings; $('statusBtn').onclick=status; $('ingestBtn').onclick=ingest; $('resetIngestBtn').onclick=()=>{$('urlList').value=''}; $('lookupBtn').onclick=lookup; $('loadLibraryBtn').onclick=()=>{activate('library');loadLibrary()}; $('libraryRefreshBtn').onclick=loadLibrary; $('enrichAllBtn').onclick=enrichAll; $('libraryEnrichSelectedBtn').onclick=enrichAll; $('searchBtn').onclick=search; $('contextBtn').onclick=context; $('clearResultsBtn').onclick=()=>{$('results').innerHTML='';}; $('clearPinsBtn').onclick=clearPins; $('clearExclusionsBtn').onclick=clearEx; $('showPinsBtn').onclick=showPins; $('copyDebugBtn').onclick=copyDebug;
+  document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>activate(t.dataset.tab));
+  document.body.addEventListener('click',ev=>{const b=ev.target.closest('button'); if(!b)return; const id=b.dataset.pin||b.dataset.pinAll||b.dataset.exclude||''; if(id&&window.__litResults&&window.__litResults[id]){if(b.dataset.pin)pin(window.__litResults[id]); if(b.dataset.pinAll)pin(window.__litResults[id],true); if(b.dataset.exclude)exclude(window.__litResults[id]);} if(b.dataset.enrichWork) enrichWork(b.dataset.enrichWork);});
+  if($('apiBase').value) status();
+}
+function activate(name){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));}
+bind();
+})();
+</script>
+</body>
+</html>
