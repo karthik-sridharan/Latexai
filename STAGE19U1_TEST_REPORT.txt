@@ -1,0 +1,20 @@
+Stage 19U1 — reviewer knowledge service scope fix
+
+Purpose:
+- Fix Reviewer/Rebuttal simulator failure: "Can't find variable: knowledgeService".
+- Keep Stage 19U knowledge-aware plumbing unchanged for Paper AI and Competitive Review.
+- Make Reviewer/Rebuttal knowledge retrieval fail-soft if the shared service is missing.
+
+Files changed:
+- index.html
+- js/reviewer-rebuttal-simulator-service.js
+- js/knowledge-context-service.js
+
+Checks run locally:
+- node --check js/reviewer-rebuttal-simulator-service.js: PASS
+- node --check js/knowledge-context-service.js: PASS
+- Static grep: knowledgeService(), reviewerKnowledgeBlock(), retrieveReviewerKnowledge() are now defined inside reviewer-rebuttal-simulator-service.js: PASS
+
+Expected result:
+- With knowledge toggle ON, Reviewer/Rebuttal simulator no longer throws "Can't find variable: knowledgeService".
+- If KnowledgeContextService is missing or retrieval fails, the workflow continues with a visible retrieval warning instead of crashing.
