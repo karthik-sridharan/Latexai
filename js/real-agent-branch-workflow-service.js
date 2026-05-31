@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2i-backend-authoritative-apply-path-20260530-1';
+  const STAGE = 'stage19t2j-frontend-escape-decoder-guard-20260530-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -2544,10 +2544,18 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function decodeAiEscapedControlCharsForInsertion(text) {
     let s = String(text || '');
     if (!s) return s;
-    // Final editor JSON sometimes double-escapes newlines, leaving literal
-    // backslash-n text in the source. Decode these only in AI-generated edit
-    // fragments, not in the user's whole source.
-    s = s.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\t/g, '  ');
+
+    // Stage 19T2J: decode transport-style escaped control characters without
+    // eating real LaTeX commands. The old version used /\\n/g and /\\t/g over
+    // full preview drafts. That turns ordinary commands like \\newcommand and
+    // \\nabla into a real line break followed by "ewcommand"/"abla", and turns
+    // \\theta into indentation + "heta". Decode only when the escape looks
+    // like a serialized line break/tab separator, never when it is followed by
+    // a letter/name character from a TeX control word.
+    const lineBreakAhead = '(?:\\\\|\\s|%|[\\]{}$]|$)';
+    s = s.replace(new RegExp('\\\\r\\\\n(?=' + lineBreakAhead + ')', 'g'), '\n');
+    s = s.replace(new RegExp('\\\\n(?=' + lineBreakAhead + ')', 'g'), '\n');
+    s = s.replace(/\\t(?=(?:\s|$))/g, '  ');
     return s;
   }
 
@@ -3704,16 +3712,24 @@ async function learnedSelectBranch() {
     }
   }
 
-  function containsJsonBackslashDamagedLatex(text) {
+  function jsonBackslashDamageReason(text) {
     const s = String(text || '');
     // Raw JSON strings that contain LaTeX backslashes must double-escape them.
-    // If not, \\title may become a tab + "itle" and \\newtheorem may become
-    // a line break + "ewtheorem". Treat these as unsafe source-corruption signs.
-    if (new RegExp('[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]').test(s)) return true;
-    if (/\t/.test(s)) return true;
-    if (/(^|\n)\s*(?:itle\s*\{|uthor\s*\{|ate\s*\{|ewtheorem\b|ocumentclass\b|sepackage\b|egin\s*\{document\}|nd\s*\{document\})/i.test(s)) return true;
-    if (/(^|\n)\s*(?:title\s*\{|author\s*\{|date\s*\{|newtheorem\b|documentclass\b|usepackage\b|begin\s*\{document\}|end\s*\{document\})/i.test(s)) return true;
-    return false;
+    // If not, \\title may become a tab + "itle" and \\newtheorem/\\newcommand
+    // may become a line break + "ewtheorem"/"ewcommand". Treat these as unsafe
+    // source-corruption signs. Stage 19T2J also catches \\nabla -> "abla" at
+    // a fresh line, which was the exact compile failure seen after Stage 19T2I.
+    if (new RegExp('[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]').test(s)) return 'non-tab control character in LaTeX source';
+    if (/\t/.test(s)) return 'tab/control escape likely consumed a LaTeX backslash';
+    const damaged = s.match(/(^|\n)\s*(?:itle\s*\{|uthor\s*\{|ate\s*\{|ewtheorem\b|ewcommand\s*\{|ocumentclass\b|sepackage\b|egin\s*\{document\}|nd\s*\{document\}|abla\b)/i);
+    if (damaged) return 'probable JSON/backslash-damaged LaTeX command near: ' + String(damaged[0] || '').trim().slice(0, 80);
+    const structural = s.match(/(^|\n)\s*(?:title\s*\{|author\s*\{|date\s*\{|newtheorem\b|newcommand\s*\{|documentclass\b|usepackage\b|begin\s*\{document\}|end\s*\{document\})/i);
+    if (structural) return 'probable stripped-backslash structural command near: ' + String(structural[0] || '').trim().slice(0, 80);
+    return '';
+  }
+
+  function containsJsonBackslashDamagedLatex(text) {
+    return !!jsonBackslashDamageReason(text);
   }
 
   function looksLikeCompleteLatexDocument(text) {
@@ -3766,6 +3782,14 @@ async function learnedSelectBranch() {
 
     let visualText = normalizeLaiDraftForCompilation(raw, kind);
     visualText = sanitizeLatexChangedRegionForCompile(before, visualText);
+
+    // Stage 19T2J: this guard is intentionally always on, even when the backend
+    // Safe Edit Compiler accepted the insertion. The frontend normalization step
+    // itself must not introduce escape damage after backend validation.
+    const definiteFrontendDamage = jsonBackslashDamageReason(visualText);
+    if (definiteFrontendDamage) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: frontend preview normalization detected backslash-damaged LaTeX (' + definiteFrontendDamage + '). Source was not changed.');
+    }
 
     // Stage 19T2I: when the backend Safe Edit Compiler has already returned
     // safeToInsert=true, the frontend must not re-run the old broad
