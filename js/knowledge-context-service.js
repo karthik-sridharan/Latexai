@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u2-knowledge-context-preview-pinning-evidence-audit-20260531-1';
+  const STAGE = 'stage19u3-knowledge-controls-global-preview-surface-20260531-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
@@ -432,6 +432,80 @@
     ].join('');
   }
 
+
+  function cloneControlNode(feature, label, defaultTopK) {
+    const holder = D.createElement('div');
+    holder.innerHTML = controlHtml(feature, label, defaultTopK);
+    return holder.firstElementChild;
+  }
+
+  function replaceOrInsertControl(feature, label, defaultTopK, options = {}) {
+    const f = String(feature || 'knowledge');
+    let existing = D.querySelector('.knowledge-context-controls[data-knowledge-feature="' + f + '"]');
+    const oldChecked = !!el(f + 'UseKnowledge')?.checked;
+    const oldTopK = el(f + 'KnowledgeTopK')?.value || '';
+    const oldMode = el(f + 'KnowledgeMode')?.value || '';
+    const needsFullPreview = !existing || !existing.querySelector('[data-knowledge-preview-action="preview"]') || !existing.querySelector('#' + f + 'KnowledgeMode') || !existing.querySelector('#' + f + 'KnowledgePreview');
+    if (existing && needsFullPreview) {
+      const fresh = cloneControlNode(f, label, defaultTopK);
+      existing.replaceWith(fresh);
+      existing = fresh;
+    }
+    if (!existing) {
+      const fresh = cloneControlNode(f, label, defaultTopK);
+      const before = options.before ? D.querySelector(options.before) : null;
+      const after = options.after ? D.querySelector(options.after) : null;
+      const container = options.container ? D.querySelector(options.container) : null;
+      if (before && before.parentNode) before.parentNode.insertBefore(fresh, before);
+      else if (after && after.parentNode) after.parentNode.insertBefore(fresh, after.nextSibling);
+      else if (container) container.appendChild(fresh);
+      else return false;
+      existing = fresh;
+    }
+    if (oldChecked && el(f + 'UseKnowledge')) el(f + 'UseKnowledge').checked = true;
+    if (oldTopK && el(f + 'KnowledgeTopK')) el(f + 'KnowledgeTopK').value = oldTopK;
+    if (oldMode && el(f + 'KnowledgeMode')) el(f + 'KnowledgeMode').value = oldMode;
+    try { installUiPersistence(f); } catch (_err) {}
+    return true;
+  }
+
+  function ensureGlobalKnowledgeControlSurfaces() {
+    // Stage 19U3: make the full preview/pin/exclude control surface appear for all
+    // knowledge-aware workflows, including older static cards that were mounted before
+    // this service was available. This avoids the feature-specific situation where only
+    // Competitive Review showed retrieval preview controls.
+    replaceOrInsertControl('documentAi', 'Use knowledge/literature context for Paper-level AI', 5, {
+      before: '#documentAiPrompt',
+      container: '#documentAiCard'
+    });
+    replaceOrInsertControl('reviewerSim', 'Use knowledge/literature context for Reviewer/Rebuttal simulator', 5, {
+      after: '#reviewerSimInstructions',
+      container: '#reviewerRebuttalCard'
+    });
+    replaceOrInsertControl('competitive', 'Use knowledge/literature context for competitive review/improver', 5, {
+      before: '#competitiveExtraInstructions',
+      container: '#competitiveReviewCard'
+    });
+    // Devil's Advocate branch runner still has its own retrieval call path, but it also
+    // benefits from the same preview/pinning UI if the card is present.
+    replaceOrInsertControl('branchWorkflow', 'Use knowledge/literature context for Devil\'s Advocate branch runner', 5, {
+      after: '#branchWorkflowQuery',
+      container: '#realAgentBranchWorkflowCard'
+    });
+  }
+
+  function installGlobalKnowledgeControlWatchdog() {
+    let ticks = 0;
+    const run = () => {
+      ticks += 1;
+      try { ensureGlobalKnowledgeControlSurfaces(); } catch (_err) {}
+      if (ticks > 40) return;
+      setTimeout(run, ticks < 8 ? 350 : 1200);
+    };
+    if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', run, { once: true });
+    else run();
+  }
+
   NS.KnowledgeContextService = {
     STAGE,
     enabled,
@@ -449,9 +523,11 @@
     pinnedResults,
     retrievalMode,
     installUiPersistence,
+    ensureGlobalKnowledgeControlSurfaces,
     getLast: (feature) => lastByFeature[feature] || null,
     backendRoot,
     activeSource,
   };
+  installGlobalKnowledgeControlWatchdog();
   try { console.log('[Latexai]', STAGE, 'active'); } catch (_err) {}
 })();
