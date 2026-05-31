@@ -265,7 +265,7 @@
   function rawPatchContractText() {
     return [
       '',
-      'Latexai unified source-edit protocol (Stage 19T2Z):',
+      'Latexai unified source-edit protocol (Stage 19T3A):',
       '- For any concrete paper/source modification, return LATEXAI_BLOCK_PATCH blocks, not JSON edit schemas.',
       '- Never output \\lai, \\laiold, BEGIN LAI-ACTIONABLE-EDIT, or internal change-markup wrappers; the app/backend creates visible review markup after validation.',
       '- Never output a full LaTeX document or preamble edits. Do not output \\documentclass, \\usepackage, \\begin{document}, \\end{document}, \\newcommand, or \\newtheorem.',

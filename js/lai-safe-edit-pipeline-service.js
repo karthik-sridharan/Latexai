@@ -1,5 +1,5 @@
 /* Latexai Stage 19T2X LaiSafeEditPipelineService
- * Stage: stage19t2z-unified-safe-ai-edit-protocol-20260531-1
+ * Stage: stage19t3a-unified-safe-edit-protocol-hardening-20260531-1
  *
  * Shared frontend bridge for all paper-editing AI features:
  * - AI agents return human-readable text plus LATEXAI_BLOCK_PATCH markup, not JSON edit payloads.
@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
+  const STAGE = 'stage19t3a-unified-safe-edit-protocol-hardening-20260531-1';
 
   function el(id) { return D.getElementById(id); }
   function clean(value) { return String(value || '').trim(); }
@@ -113,6 +113,21 @@
     lines.push('LATEXAI_BLOCK_PATCH_END');
     return lines.join('\n');
   }
+  function extractRawPatchProtocol(text) {
+    const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const blocks = [];
+    const re = /LATEXAI_BLOCK_PATCH_BEGIN[\s\S]*?LATEXAI_BLOCK_PATCH_END/gi;
+    let m;
+    while ((m = re.exec(raw))) blocks.push(m[0]);
+    if (blocks.length) return blocks.join('\n\n');
+    // Tolerate one malformed trailing patch in reports where the model forgot
+    // LATEXAI_BLOCK_PATCH_END but clearly started a patch.  Send only the patch
+    // tail, not the surrounding Markdown report.
+    const start = raw.search(/LATEXAI_BLOCK_PATCH_BEGIN/i);
+    if (start >= 0) return raw.slice(start).trim();
+    return raw;
+  }
+
   function rawPatchProtocolInstructions(options = {}) {
     const goal = clean(options.goal || 'produce safe paper edits');
     const extra = clean(options.extra || '');
@@ -142,7 +157,8 @@
   async function compileRawPatch(options = {}) {
     const active = activeSource(options.preferRoot !== false);
     const source = String(options.latexSource ?? active.text ?? '');
-    const finalOutput = String(options.finalOutput ?? options.rawPatchText ?? options.text ?? '');
+    const rawFinalOutput = String(options.finalOutput ?? options.rawPatchText ?? options.text ?? '');
+    const finalOutput = extractRawPatchProtocol(rawFinalOutput);
     const pm = currentProviderModel();
     const body = {
       latexSource: source,
@@ -156,7 +172,7 @@
       provider: options.provider || pm.provider,
       model: options.model || pm.model,
       safeEditRepairRoute: options.safeEditRepairRoute || (pm.model ? { provider: pm.provider, model: pm.model } : undefined),
-      metadata: { frontendStage: STAGE, activePath: active.path, ...(options.metadata || {}) }
+      metadata: { frontendStage: STAGE, activePath: active.path, rawPatchExtractedByFrontend: finalOutput !== rawFinalOutput, originalOutputLength: rawFinalOutput.length, compilerOutputLength: finalOutput.length, ...(options.metadata || {}) }
     };
     const data = await postBackend('/lai/compile-or-repair-edits', body, { allowOkFalse: true });
     if (data && typeof data === 'object') {
@@ -324,6 +340,7 @@
     compileAndApply,
     compiledDraftText,
     updateSource,
-    stripUnsafeFullDocument
+    stripUnsafeFullDocument,
+    extractRawPatchProtocol
   };
 })();

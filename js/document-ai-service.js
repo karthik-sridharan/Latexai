@@ -1,7 +1,7 @@
 /* Latexai Stage 19T2X DocumentAIService
  * Stage: stage19t2o-resolver-macro-unwrapper-hard-fix-20260530-1
  *
- * Stage 19T2Z: paper-level AI uses raw LATEXAI_BLOCK_PATCH text for in-place edits.
+ * Stage 19T3A: paper-level AI uses raw LATEXAI_BLOCK_PATCH text for in-place edits.
  * The app/backend, not the AI model, validates patches and inserts \lai{...}.
  */
 (function () {
@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2z-unified-safe-ai-edit-protocol-20260531-1';
+  const STAGE = 'stage19t3a-unified-safe-edit-protocol-hardening-20260531-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
