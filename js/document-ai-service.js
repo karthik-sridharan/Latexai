@@ -1,5 +1,5 @@
-/* Latexai Stage 19N1P DocumentAIService
- * Stage: stage19n1p2-resolver-outcome-direct-memory-reward-feedback-20260529-1
+/* Latexai Stage 19T2N DocumentAIService
+ * Stage: stage19t2n-resolver-direct-editor-apply-20260530-1
  *
  * Extends Stage 11D with a safe in-place mode for paper-level AI:
  * - prompts remain developer-managed static frontend files under /prompt/
@@ -12,7 +12,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19n1p2-resolver-outcome-direct-memory-reward-feedback-20260529-1';
+  const STAGE = 'stage19t2n-resolver-direct-editor-apply-20260530-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -912,6 +912,95 @@
     return out;
   }
 
+  function safeCompiledEditStartLine(text, blockStart) {
+    const s = String(text || '');
+    const lineStart = s.lastIndexOf('\n', Math.max(0, Number(blockStart) || 0) - 1) + 1;
+    if (lineStart <= 0) return null;
+    const prevStart = s.lastIndexOf('\n', lineStart - 2) + 1;
+    const prevLine = s.slice(prevStart, lineStart).replace(/\r?\n$/, '');
+    if (/^\s*%\s*---\s*Latexai\s+safe\s+compiled\s+edit\b.*---\s*$/i.test(prevLine)) {
+      return prevStart;
+    }
+    return null;
+  }
+
+  function safeCompiledEditEndLine(text, rangeEnd) {
+    const s = String(text || '');
+    let cursor = Math.max(0, Number(rangeEnd) || 0);
+    while (cursor < s.length && /[ \t]/.test(s[cursor])) cursor += 1;
+    const lineEndAt = s.indexOf('\n', cursor);
+    const lineEnd = lineEndAt >= 0 ? lineEndAt + 1 : s.length;
+    const line = s.slice(cursor, lineEnd).replace(/\r?\n$/, '');
+    if (/^\s*%\s*---\s*end\s+Latexai\s+safe\s+compiled\s+edit\s*---\s*$/i.test(line)) {
+      return lineEnd;
+    }
+    return rangeEnd;
+  }
+
+  function expandStandaloneNewRange(text, block) {
+    const baseEnd = expandResolveEnd(text, block?.end || 0);
+    const startWithWrapper = safeCompiledEditStartLine(text, block?.start || 0);
+    const endWithWrapper = safeCompiledEditEndLine(text, baseEnd);
+    return {
+      rangeStart: startWithWrapper == null ? (block?.start || 0) : startWithWrapper,
+      rangeEnd: endWithWrapper
+    };
+  }
+
+  function normalizeResolverPath(path) {
+    return normalizePath(path || rootPath());
+  }
+
+  function activeResolverPath() {
+    try { return normalizeResolverPath(project().activePath || rootPath()); }
+    catch (_err) { return normalizeResolverPath(rootPath()); }
+  }
+
+  function forceEditorSourceForResolvedPath(path, text, cursorAt) {
+    const normalized = normalizeResolverPath(path);
+    let active = activeResolverPath();
+    try {
+      if (State()?.getFile?.(normalized) && active !== normalized) {
+        State()?.setActivePath?.(normalized);
+        active = normalized;
+      }
+    } catch (_err) {}
+
+    if (active !== normalized) return false;
+    const editor = NS.Editor?.editor || document.getElementById('sourceEditor');
+    if (!editor) return false;
+
+    const oldScrollTop = Number(editor.scrollTop || 0);
+    editor.value = String(text ?? '');
+    try {
+      const cursor = Math.max(0, Math.min(Number(cursorAt) || 0, editor.value.length));
+      editor.setSelectionRange(cursor, cursor);
+    } catch (_err) {}
+    try { editor.dispatchEvent(new Event('input', { bubbles: true })); } catch (_err) {}
+    try { editor.scrollTop = oldScrollTop; } catch (_err) {}
+    return true;
+  }
+
+  function applyResolvedSource(path, text, cursorAt) {
+    const normalized = normalizeResolverPath(path);
+    let ok = false;
+    try { ok = !!State()?.updateFile?.(normalized, text); } catch (_err) { ok = false; }
+    if (!ok) {
+      const file = State()?.getFile?.(normalized);
+      if (file && textFile(file)) {
+        file.text = String(text ?? '');
+        ok = true;
+      }
+    }
+    forceEditorSourceForResolvedPath(normalized, text, cursorAt);
+    try { NS.Editor?.render?.(); } catch (_err) {}
+    forceEditorSourceForResolvedPath(normalized, text, cursorAt);
+    try { NS.FileTree?.render?.(); } catch (_err) {}
+    try { State()?.save?.(); } catch (_err) {}
+    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+    return ok;
+  }
+
   function resolveReplacementTextForKeep(pair, keep) {
     if (!pair || !['new', 'old'].includes(keep)) return '';
     if (pair.type === 'standalone-new') return keep === 'new' ? pair.newText : '';
@@ -976,21 +1065,22 @@
 
       if (block.command === 'lai') {
         const id = stableEditId(path, 'new', block.start, index);
+        const expandedNew = expandStandaloneNewRange(s, block);
         pairs.push({
           id,
           type: 'standalone-new',
           path: normalizePath(path || rootPath()),
           markerPath: normalizePath(path || rootPath()),
-          rangeStart: block.start,
-          rangeEnd: expandResolveEnd(s, block.end),
+          rangeStart: expandedNew.rangeStart,
+          rangeEnd: expandedNew.rangeEnd,
           oldText: '',
           newText: block.inner.trim(),
           oldPreview: '(no blue \\laiold content; keep blue/old will reject/remove this insertion)',
           newPreview: block.inner.trim().slice(0, 180),
-          line: lineNumberAt(s, block.start),
+          line: lineNumberAt(s, expandedNew.rangeStart),
           command: '\\lai'
         });
-        cursor = block.end;
+        cursor = Math.max(block.end, expandedNew.rangeEnd);
         index += 1;
         continue;
       }
@@ -1059,9 +1149,9 @@
     }
     node.classList.add('active');
     const help = pair.type === 'standalone-new'
-      ? 'Standalone \lai insertion: Keep red/new accepts it as normal text; Keep blue/old rejects/removes it.'
+      ? 'Standalone \\lai insertion: Keep red/new accepts it as normal text; Keep blue/old rejects/removes it.'
       : pair.type === 'standalone-old'
-        ? 'Standalone \laiold block: Keep blue/old restores it as normal text; Keep red/new removes it.'
+        ? 'Standalone \\laiold block: Keep blue/old restores it as normal text; Keep red/new removes it.'
         : 'Replacement pair: Keep red/new accepts the proposed replacement; Keep blue/old restores the original.';
     node.textContent = [
       'Selected source-scanned AI edit',
@@ -1135,13 +1225,11 @@
       toast(resolverSafetyProblem);
       return { ok: false, reason: 'json-backslash-damage-guard', message: resolverSafetyProblem };
     }
-    State()?.updateFile?.(pair.path, next);
-
-    try { State()?.setActivePath?.(pair.path); } catch (_err) {}
-    try { NS.Editor?.render?.(); } catch (_err) {}
-    try { NS.FileTree?.render?.(); } catch (_err) {}
-    try { State()?.save?.(); } catch (_err) {}
-    try { NS.Preview?.scheduleDraftPreview?.(); } catch (_err) {}
+    const applied = applyResolvedSource(current.path || pair.path, next, current.rangeStart + String(kept || '').length);
+    if (!applied) {
+      setStatus(`Could not resolve edit: failed to update ${current.path || pair.path}.`);
+      return { ok: false, reason: 'update-failed' };
+    }
 
     const actionLabel = current.type === 'standalone-new' && keep === 'old' ? 'rejected standalone red \\lai insertion'
       : current.type === 'standalone-old' && keep === 'new' ? 'removed standalone blue \\laiold block'
