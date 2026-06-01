@@ -1,4 +1,4 @@
-/* Latexai Stage 19U9J3
+/* Latexai Stage 19U9J4
  * Moves collection synthesis out of standalone literature.html and into paper-level AI workflows.
  * Each Paper AI card can select a literature collection, generate a workflow-specific
  * synthesis, attach that synthesis to the next knowledge-aware prompt, and append/copy
@@ -10,11 +10,35 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9j3-paper-ai-knowledge-no-collection-default-20260601-1';
+  const STAGE = 'stage19u9j4-strict-no-collection-defaults-20260601-1';
   const COLLECTIONS_KEY = 'latexai:literature-collections:v1';
   const SELECTED_COLLECTION_KEY = 'latexai:literature-selected-collection:v1';
   const ATTACH_PREFIX = 'latexai:paper-ai-collection-synthesis-attached:';
   const LAST_PREFIX = 'latexai:paper-ai-collection-synthesis-last:';
+  const STRICT_NO_COLLECTION_MIGRATION_KEY = 'latexai:stage19u9j4-strict-no-collection-defaults-applied:v1';
+
+  function applyStrictNoCollectionDefaultMigration() {
+    try {
+      if (W.localStorage?.getItem?.(STRICT_NO_COLLECTION_MIGRATION_KEY) === 'true') return;
+      const keys = [];
+      for (let i = 0; i < W.localStorage.length; i += 1) {
+        const key = String(W.localStorage.key(i) || '');
+        if (key.startsWith('latexai:paper-ai-synthesis-selected-collection:') ||
+            key.startsWith('latexai:knowledge-selected-collection:')) {
+          keys.push(key);
+        }
+        if (key.startsWith('latexai:knowledge-mode:')) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => {
+        if (key.startsWith('latexai:knowledge-mode:')) W.localStorage.setItem(key, 'automatic_pinned');
+        else W.localStorage.setItem(key, '');
+      });
+      W.localStorage.setItem(STRICT_NO_COLLECTION_MIGRATION_KEY, 'true');
+    } catch (_err) {}
+  }
+  applyStrictNoCollectionDefaultMigration();
 
   const FEATURES = [
     { feature: 'documentAi', cardId: 'documentAiCard', label: 'Paper-level AI', insertBefore: '#documentAiPrompt' },
@@ -224,7 +248,7 @@
       '    <button class="btn mini" type="button" data-collection-synthesis-action="copy-lai" data-collection-synthesis-feature="' + esc(feature) + '">Copy \\lai block</button>',
       '    <button class="btn mini" type="button" data-collection-synthesis-action="append-lai" data-collection-synthesis-feature="' + esc(feature) + '">Append \\lai to paper</button>',
       '  </div>',
-      '  <div id="' + idFor(feature, 'Status') + '" class="settings-note compact">Select a collection, then generate a synthesis for this Paper AI feature.</div>',
+      '  <div id="' + idFor(feature, 'Status') + '" class="settings-note compact">No collection selected. This Paper AI feature starts without collection synthesis context.</div>',
       '  <pre id="' + idFor(feature, 'Preview') + '" class="collection-synthesis-preview" aria-live="polite"></pre>',
       '</div>'
     ].join('');
@@ -274,6 +298,9 @@
     const a = el(idFor(feature, 'Attach'));
     if (c && !c.__collectionSynthesisBound) {
       c.__collectionSynthesisBound = true;
+      if (rawStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature)) === null) {
+        setStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature), '');
+      }
       c.addEventListener('change', () => {
         const value = clean(c.value || '');
         // Persist even the empty string so "No collection" survives the watchdog refresh loop.

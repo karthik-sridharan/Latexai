@@ -9,8 +9,32 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9j3-paper-ai-knowledge-no-collection-default-20260601-1';
+  const STAGE = 'stage19u9j4-strict-no-collection-defaults-20260601-1';
   const DEFAULT_TOP_K = 5;
+  const STRICT_NO_COLLECTION_MIGRATION_KEY = 'latexai:stage19u9j4-strict-no-collection-defaults-applied:v1';
+
+  function applyStrictNoCollectionDefaultMigration() {
+    try {
+      if (W.localStorage?.getItem?.(STRICT_NO_COLLECTION_MIGRATION_KEY) === 'true') return;
+      const keys = [];
+      for (let i = 0; i < W.localStorage.length; i += 1) {
+        const key = String(W.localStorage.key(i) || '');
+        if (key.startsWith('latexai:knowledge-selected-collection:') ||
+            key.startsWith('latexai:paper-ai-synthesis-selected-collection:')) {
+          keys.push(key);
+        }
+        if (key.startsWith('latexai:knowledge-mode:')) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => {
+        if (key.startsWith('latexai:knowledge-mode:')) W.localStorage.setItem(key, 'automatic_pinned');
+        else W.localStorage.setItem(key, '');
+      });
+      W.localStorage.setItem(STRICT_NO_COLLECTION_MIGRATION_KEY, 'true');
+    } catch (_err) {}
+  }
+  applyStrictNoCollectionDefaultMigration();
 
   let lastByFeature = {};
   let previewEventsBound = false;
@@ -104,7 +128,7 @@
   function selectedCollectionId19u9(feature) {
     const f = String(feature || 'knowledge');
     const node = el(f + 'KnowledgeCollection');
-    // Stage 19U9J3: empty string is an explicit "No collection" choice.
+    // Stage 19U9J4: empty string is an explicit "No collection" choice.
     // Do not fall back to the global Literature page selected collection for Paper AI cards.
     if (node) return clean(node.value || '');
     const saved = rawStored(collectionSelectKey(f));
@@ -517,9 +541,10 @@
     }
     if (collectionSelect) {
       const list = collections19u9();
-      // Stage 19U9J3: default every Paper AI knowledge-context selector to "No collection".
+      // Stage 19U9J4: default every Paper AI knowledge-context selector to "No collection".
       // A saved empty string must remain empty instead of falling back to the global Literature selection.
       const savedCollectionRaw = rawStored(collectionSelectKey(feature));
+      if (savedCollectionRaw === null) setStored(collectionSelectKey(feature), '');
       const storedCollection = savedCollectionRaw !== null ? clean(savedCollectionRaw) : '';
       collectionSelect.innerHTML = '<option value="">No collection</option>' + list.map((c) => '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || c.id) + ' (' + collectionItems19u9(c.id).length + ')</option>').join('');
       if (storedCollection && list.some((c) => c.id === storedCollection)) collectionSelect.value = storedCollection;
@@ -527,7 +552,7 @@
       collectionSelect.addEventListener('change', () => { setStored(collectionSelectKey(feature), selectedCollectionId19u9(feature)); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); });
     }
     if (mode) {
-      const storedMode = getStored(modeKey(feature), 'automatic_collection');
+      const storedMode = getStored(modeKey(feature), 'automatic_pinned');
       mode.value = retrievalMode(feature, storedMode);
       mode.addEventListener('change', () => { storeRetrievalMode(feature); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); });
     }
@@ -543,12 +568,12 @@
       '  </div>',
       '  <div class="field-grid two">',
       '    <label class="field">Retrieval mode <select id="' + f + 'KnowledgeMode">',
-      '      <option value="automatic_collection">automatic + selected collection</option>',
-      '      <option value="collection_only">selected collection only</option>',
-      '      <option value="automatic_pinned_collection">automatic + pinned + collection</option>',
       '      <option value="automatic_pinned">automatic + legacy pins</option>',
       '      <option value="automatic">automatic only</option>',
       '      <option value="pinned_only">legacy pins only</option>',
+      '      <option value="automatic_collection">automatic + selected collection</option>',
+      '      <option value="collection_only">selected collection only</option>',
+      '      <option value="automatic_pinned_collection">automatic + pinned + collection</option>',
       '    </select></label>',
       '    <label class="field">Project collection <select id="' + f + 'KnowledgeCollection"><option value="">No collection</option></select></label>',
       '    <label class="field">Manual preview query <input id="' + f + 'KnowledgeManualQuery" type="text" placeholder="optional search/preview query" /></label>',
