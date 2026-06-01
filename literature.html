@@ -161,7 +161,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
 <script>
 (function(){
 'use strict';
-const STAGE='latex-stage19u9b-literature-collection-add-hardening-20260601-1';
+const STAGE='latex-stage19u9c-literature-result-action-binding-hard-fix-20260601-1';
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
@@ -434,7 +434,7 @@ function addToCollection(r, button){
   return true;
 }
 function removeFromCollectionKey(id,key){const list=collectionItems(id).filter(x=>x.key!==key); saveCollectionItems(id,list); syncCollectionToBackend(id); showCollection();}
-function collectionToPayload(id=selectedCollectionId()){const c=collections().find(x=>x.id===id)||{}; return {id,name:c.name||id,description:c.description||'',items:collectionItems(id),metadata:{stage:'stage19u9b-literature-collection-add-hardening',source:'literature.html-localStorage'}}}
+function collectionToPayload(id=selectedCollectionId()){const c=collections().find(x=>x.id===id)||{}; return {id,name:c.name||id,description:c.description||'',items:collectionItems(id),metadata:{stage:'stage19u9c-literature-result-action-binding-hard-fix',source:'literature.html-localStorage'}}}
 async function syncCollectionToBackend(id=selectedCollectionId()){ if(!id) return; try{ await fetchJson('/research/collections',{method:'POST',headers:headers(),body:JSON.stringify({collection:collectionToPayload(id)})},{allowApplicationError:true}); }catch(_e){} }
 function showCollection(){const id=selectedCollectionId(); const c=collections().find(x=>x.id===id); if(!id||!c){$('results').innerHTML='<div class="note">No collection selected.</div>';return;} const items=collectionItems(id); $('results').innerHTML='<h3>Collection: '+esc(c.name||id)+'</h3><div class="note">'+items.length+' paper(s). Roles: central/background/competitor/methodological/maybe/excluded.</div>'+(items.map((p,i)=>renderCollectionItemCard(id,p,i)).join('')||'<div class="note">No papers in this collection yet.</div>'); setBox('collectionStatus','Showing collection '+esc(c.name||id)+'.','note');}
 function renderCollectionItemCard(id,p,i){const authors=Array.isArray(p.authors)?p.authors.join(', '):'';return `<div class="result"><div class="title">${i+1}. ${esc(p.title||'Untitled paper')}</div><div class="muted">${esc(authors)} ${p.year?' · '+esc(p.year):''}</div><div class="badges"><span class="badge gold">${esc(p.role||'central')}</span></div><div class="snippet">${esc(compact(p.snippet||''))}</div><div class="row" style="margin-top:8px"><button class="btn mini danger" data-remove-collection="${esc(id)}" data-remove-key="${esc(p.key)}">Remove from collection</button>${p.url?'<a class="btn mini" target="_blank" href="'+esc(p.url)+'">Open</a>':''}</div></div>`}
@@ -445,6 +445,64 @@ function pinKey(f){return 'latexai:knowledge-pinned:'+f} function exKey(f){retur
 function getJson(k,d){try{return JSON.parse(localStorage.getItem(k)||'')||d}catch(e){return d}}
 function setJson(k,v){localStorage.setItem(k,JSON.stringify(v))}
 function normalizePin(r){const m=r.metadata||{}; const chunk=r.bestChunk||{}; return {key:keyOf(r),title:r.title||'Untitled paper',authors:Array.isArray(r.authors)?r.authors:[],year:r.year||'',url:r.url||r.source_url||'',score:r.score,hybridScore:r.hybridScore||r.score,semanticScore:r.semanticScore||null,snippet:(chunk.snippet||r.snippet||r.abstract||'').slice(0,900),scoreBreakdown:r.scoreBreakdown||{},retrievalReasons:Array.isArray(r.retrievalReasons)?r.retrievalReasons:[],metadata:m,raw:r};}
+function compactResultPayload(r){
+  const nr=normalizePin(r||{});
+  const m=nr.metadata||{};
+  return {
+    key:nr.key,title:nr.title,authors:nr.authors,year:nr.year,url:nr.url,
+    score:nr.score,hybridScore:nr.hybridScore,semanticScore:nr.semanticScore,
+    snippet:nr.snippet,scoreBreakdown:nr.scoreBreakdown,retrievalReasons:nr.retrievalReasons,
+    metadata:{
+      semanticScholar:m.semanticScholar||null,
+      externalIds:m.externalIds||null,
+      canonicalAuthorKeys:m.canonicalAuthorKeys||null,
+      dblp:m.dblp||null,
+      metadataEnrichment:m.metadataEnrichment||null
+    }
+  };
+}
+const RESULT_CACHE_PREFIX='latexai:literature-result-cache:';
+function cacheResultPayload(id,r){
+  window.__litResults=window.__litResults||{};
+  window.__litResults[id]=r;
+  try{sessionStorage.setItem(RESULT_CACHE_PREFIX+id,JSON.stringify(compactResultPayload(r)));}catch(_e){}
+}
+function resultPayloadAttr(r){try{return encodeURIComponent(JSON.stringify(compactResultPayload(r))).replace(/'/g,'%27')}catch(_e){return ''}}
+function resultFromActionButton(b,kind){
+  const id=(kind&&b?.dataset?.[kind])||b?.dataset?.collectionAdd||b?.dataset?.pin||b?.dataset?.pinAll||b?.dataset?.exclude||'';
+  if(id&&window.__litResults&&window.__litResults[id]) return window.__litResults[id];
+  if(id){try{const v=sessionStorage.getItem(RESULT_CACHE_PREFIX+id); if(v) return JSON.parse(v);}catch(_e){}}
+  const encoded=b?.dataset?.resultJson||'';
+  if(encoded){try{return JSON.parse(decodeURIComponent(encoded));}catch(_e){}}
+  return null;
+}
+function runResultAction(b,action,ev){
+  if(ev){ev.preventDefault?.(); ev.stopPropagation?.();}
+  const r=resultFromActionButton(b,action);
+  if(!r){collectionToast('Could not find the result payload for this button. Re-run the search and try again.','note bad');return false;}
+  if(action==='collectionAdd') return addToCollection(r,b);
+  if(action==='pin'){pin(r);return false;}
+  if(action==='pinAll'){pin(r,true);return false;}
+  if(action==='exclude'){exclude(r);return false;}
+  return false;
+}
+window.luminaLiteratureAddToCollection=function(id,button){ if(button&&id) button.dataset.collectionAdd=id; return runResultAction(button,'collectionAdd',window.event||null); };
+window.luminaLiteraturePinResult=function(id,button){ if(button&&id) button.dataset.pin=id; return runResultAction(button,'pin',window.event||null); };
+window.luminaLiteraturePinAllResult=function(id,button){ if(button&&id) button.dataset.pinAll=id; return runResultAction(button,'pinAll',window.event||null); };
+window.luminaLiteratureExcludeResult=function(id,button){ if(button&&id) button.dataset.exclude=id; return runResultAction(button,'exclude',window.event||null); };
+function bindResultActionButtons(root=document){
+  const scope=root||document;
+  scope.querySelectorAll?.('[data-collection-add],[data-pin],[data-pin-all],[data-exclude]')?.forEach(b=>{
+    if(b.__luminaBound) return;
+    b.__luminaBound=true;
+    b.addEventListener?.('click',ev=>{
+      if(b.dataset.collectionAdd){runResultAction(b,'collectionAdd',ev);return;}
+      if(b.dataset.pin){runResultAction(b,'pin',ev);return;}
+      if(b.dataset.pinAll){runResultAction(b,'pinAll',ev);return;}
+      if(b.dataset.exclude){runResultAction(b,'exclude',ev);return;}
+    },true);
+  });
+}
 function pinnedResults(f=feature()){return (getJson(pinKey(f),[])||[]).filter(x=>x&&x.key)}
 function excludedSet(f=feature()){return new Set(getJson(exKey(f),[])||[])}
 function pin(r, all=false){const targets=all?['paper-ai','competitive-review','reviewer-rebuttal','devils-advocate','knowledge']:[feature()]; targets.forEach(f=>{const nr=normalizePin(r); if(!nr.key)return; const list=pinnedResults(f).filter(x=>x.key!==nr.key); list.unshift(nr); setJson(pinKey(f),list.slice(0,20));}); setBox('pinStatus','Pinned to '+(all?'all workflows':feature())+'.','note good');}
@@ -453,8 +511,8 @@ function clearPins(){setJson(pinKey(feature()),[]);setBox('pinStatus','Cleared p
 function showPins(){const list=pinnedResults(); $('results').innerHTML='<h3>Pinned for '+esc(feature())+'</h3>'+(list.map((p,i)=>renderResultCard(p.raw||p,i)).join('')||'<div class="note">No pins.</div>'); setBox('pinStatus','Showing pins for '+feature()+'.','note')}
 function renderBatch(data){const rs=data.results||[]; return rs.map(r=>`<div class="result"><div class="title">${r.ok?'✓':'✗'} ${esc(r.title||r.url||r.workId||'item')}</div><div class="muted">${esc(r.url||'')}</div><div class="badges"><span class="badge ${r.ok?'good':'bad'}">${r.ok?'ingested':'failed'}</span><span class="badge blue">chunks=${esc(r.chunkCount||0)}</span><span class="badge blue">embedded=${esc(r.embeddedChunkCount||0)}</span></div>${r.error?'<div class="note bad">'+esc(r.error)+'</div>':''}</div>`).join('')||'<div class="note">No results.</div>'}
 function renderWorkCard(w,opts={}){const m=w.metadata||{}; const enr=m.metadataEnrichment||{}; const ids=m.externalIds||{}; const keys=m.canonicalAuthorKeys||[]; const title=w.title||'Untitled paper'; const authors=Array.isArray(w.authors)?w.authors.join(', '):(w.authors_json||''); const id=w.id||w.workId||''; return `<div class="result"><div class="title">${esc(title)}</div><div class="muted">${esc(authors)} ${w.year?' · '+esc(w.year):''}</div><div class="badges"><span class="badge blue">${esc(m.embeddingStatus||'embedding?')}</span>${m.embeddingModel?'<span class="badge">'+esc(m.embeddingModel)+'</span>':''}${w.arxiv_id?'<span class="badge gold">arXiv '+esc(w.arxiv_id)+'</span>':''}${w.doi?'<span class="badge gold">DOI</span>':''}${ids.SemanticScholar||m.semanticScholar?.paperId?'<span class="badge gold">Semantic Scholar</span>':''}${m.dblp?'<span class="badge gold">DBLP</span>':''}</div>${keys.length?'<div class="muted"><strong>Canonical authors:</strong> '+esc(keys.join(', '))+'</div>':''}${enr.matched?'<div class="note good">Enrichment matched: '+esc(JSON.stringify(enr.matched))+'</div>':''}<div class="snippet">${esc(compact(w.abstract||m.abstract||''))}</div><div class="row" style="margin-top:8px">${w.url?'<a class="btn mini" target="_blank" href="'+esc(w.url)+'">Open source</a>':''}${id?'<button class="btn mini" data-enrich-work="'+esc(id)+'">Enrich this work</button>':''}</div></div>`}
-function renderResults(results){$('results').innerHTML=(results||[]).map(renderResultCard).join('')||'<div class="note">No results.</div>'}
-function renderResultCard(r,i){const m=r.metadata||{}; const chunk=r.bestChunk||{}; const reasons=Array.isArray(r.retrievalReasons)?r.retrievalReasons:[]; const breakdown=r.scoreBreakdown||{}; const authors=Array.isArray(r.authors)?r.authors.join(', '):''; const score=(r.hybridScore??r.score); const sem=r.semanticScore; const id='r'+Math.random().toString(36).slice(2); window.__litResults=window.__litResults||{}; window.__litResults[id]=r; return `<div class="result" data-result-id="${id}"><div class="title">${i+1}. ${esc(r.title||'Untitled paper')}</div><div class="muted">${esc(authors)} ${r.year?' · '+esc(r.year):''}</div><div class="badges"><span class="badge good">hybrid=${num(score)}</span>${sem!=null?'<span class="badge blue">semantic='+num(sem)+'</span>':''}${m.semanticScholar?.paperId?'<span class="badge gold">S2</span>':''}${m.dblp?'<span class="badge gold">DBLP</span>':''}${(m.canonicalAuthorKeys||[]).length?'<span class="badge gold">author keys</span>':''}</div>${reasons.length?'<div class="note"><strong>Why retrieved:</strong> '+esc(reasons.join('; '))+'</div>':''}<div class="scorebox">${esc(Object.keys(breakdown).length?JSON.stringify(breakdown,null,2):'No score breakdown returned.')}</div><div class="snippet">${esc(compact(chunk.snippet||r.snippet||r.abstract||''))}</div><div class="row" style="margin-top:8px"><button type="button" class="btn mini primary" data-collection-add="${id}">Add to collection</button><button type="button" class="btn mini" data-pin="${id}">Pin to workflow</button><button type="button" class="btn mini" data-pin-all="${id}">Pin all</button><button type="button" class="btn mini danger" data-exclude="${id}">Exclude workflow</button>${r.url?'<a class="btn mini" target="_blank" href="'+esc(r.url)+'">Open</a>':''}</div></div>`}
+function renderResults(results){$('results').innerHTML=(results||[]).map(renderResultCard).join('')||'<div class="note">No results.</div>'; bindResultActionButtons($('results'));}
+function renderResultCard(r,i){const m=r.metadata||{}; const chunk=r.bestChunk||{}; const reasons=Array.isArray(r.retrievalReasons)?r.retrievalReasons:[]; const breakdown=r.scoreBreakdown||{}; const authors=Array.isArray(r.authors)?r.authors.join(', '):''; const score=(r.hybridScore??r.score); const sem=r.semanticScore; const id='r'+Math.random().toString(36).slice(2); cacheResultPayload(id,r); const payload=resultPayloadAttr(r); return `<div class="result" data-result-id="${id}"><div class="title">${i+1}. ${esc(r.title||'Untitled paper')}</div><div class="muted">${esc(authors)} ${r.year?' · '+esc(r.year):''}</div><div class="badges"><span class="badge good">hybrid=${num(score)}</span>${sem!=null?'<span class="badge blue">semantic='+num(sem)+'</span>':''}${m.semanticScholar?.paperId?'<span class="badge gold">S2</span>':''}${m.dblp?'<span class="badge gold">DBLP</span>':''}${(m.canonicalAuthorKeys||[]).length?'<span class="badge gold">author keys</span>':''}</div>${reasons.length?'<div class="note"><strong>Why retrieved:</strong> '+esc(reasons.join('; '))+'</div>':''}<div class="scorebox">${esc(Object.keys(breakdown).length?JSON.stringify(breakdown,null,2):'No score breakdown returned.')}</div><div class="snippet">${esc(compact(chunk.snippet||r.snippet||r.abstract||''))}</div><div class="row" style="margin-top:8px"><button type="button" class="btn mini primary" data-collection-add="${id}" data-result-json="${esc(payload)}" onclick="return window.luminaLiteratureAddToCollection('${id}', this)">Add to collection</button><button type="button" class="btn mini" data-pin="${id}" data-result-json="${esc(payload)}" onclick="return window.luminaLiteraturePinResult('${id}', this)">Pin to workflow</button><button type="button" class="btn mini" data-pin-all="${id}" data-result-json="${esc(payload)}" onclick="return window.luminaLiteraturePinAllResult('${id}', this)">Pin all</button><button type="button" class="btn mini danger" data-exclude="${id}" data-result-json="${esc(payload)}" onclick="return window.luminaLiteratureExcludeResult('${id}', this)">Exclude workflow</button>${r.url?'<a class="btn mini" target="_blank" href="'+esc(r.url)+'">Open</a>':''}</div></div>`}
 function num(v){const n=Number(v);return Number.isFinite(n)?n.toFixed(3):esc(v||'')}
 function copyDebug(){navigator.clipboard?.writeText($('rawOut').textContent||''); setBox('pinStatus','Copied diagnostics/output.','note good')}
 function bind(){
@@ -465,13 +523,10 @@ function bind(){
     const b=ev.target.closest('button'); if(!b)return;
     const id=b.dataset.collectionAdd||b.dataset.pin||b.dataset.pinAll||b.dataset.exclude||'';
     if(id){
-      const r=(window.__litResults&&window.__litResults[id])||null;
-      if(!r){ collectionToast('Could not find the result payload for this button. Re-run the search and try again.','note bad'); return; }
-      ev.preventDefault(); ev.stopPropagation();
-      if(b.dataset.collectionAdd){addToCollection(r,b); return;}
-      if(b.dataset.pin){pin(r); return;}
-      if(b.dataset.pinAll){pin(r,true); return;}
-      if(b.dataset.exclude){exclude(r); return;}
+      if(b.dataset.collectionAdd){runResultAction(b,'collectionAdd',ev); return;}
+      if(b.dataset.pin){runResultAction(b,'pin',ev); return;}
+      if(b.dataset.pinAll){runResultAction(b,'pinAll',ev); return;}
+      if(b.dataset.exclude){runResultAction(b,'exclude',ev); return;}
     }
     if(b.dataset.removeCollection&&b.dataset.removeKey){ ev.preventDefault(); removeFromCollectionKey(b.dataset.removeCollection,b.dataset.removeKey); return; }
     if(b.dataset.enrichWork){ ev.preventDefault(); enrichWork(b.dataset.enrichWork); return; }
