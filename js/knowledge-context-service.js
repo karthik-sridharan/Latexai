@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9-literature-collections-project-contexts-20260531-1';
+  const STAGE = 'stage19u9a-literature-add-to-collection-click-fix-20260601-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
