@@ -123,7 +123,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
 <script>
 (function(){
 'use strict';
-const STAGE='latex-stage19u7d-semantic-scholar-author-url-parser-fix-20260531-1';
+const STAGE='latex-stage19u7f-author-import-selection-payload-fix-20260531-1';
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
@@ -281,9 +281,10 @@ function authorSelectedPapers(allShown=false){
 function authorSelectAll(v=true){document.querySelectorAll('.author-paper-check').forEach(x=>{x.checked=!!v;});}
 async function authorImport(allShown=false){
   if(!authorPreview||!authorPreview.ok){setBox('authorStatus','Preview an author first.','note warn');return;}
-  const papers=authorSelectedPapers(allShown);
+  const papers=authorSelectedPapers(allShown).map(p=>Object.assign({},p,{selected:true}));
   if(!papers.length){setBox('authorStatus','Select at least one paper to import.','note warn');return;}
-  const body={author:authorPreview.author,papers,enrichExisting:$('authorEnrichExisting').checked,embed:true};
+  const selectedPaperIds=papers.map(p=>String(p.paperId||p.importCandidateKey||'')).filter(Boolean);
+  const body={author:authorPreview.author,papers,selectedPaperIds,enrichExisting:$('authorEnrichExisting').checked,embed:true};
   setBox('authorStatus','Importing '+papers.length+' author paper(s)...','note');
   try{
     const data=await fetchJson('/research/authors/import',{method:'POST',headers:headers(),body:JSON.stringify(body)},{allowApplicationError:true});
