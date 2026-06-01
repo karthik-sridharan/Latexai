@@ -51,6 +51,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
       <button class="tab active" data-tab="ingest">Ingest</button>
       <button class="tab" data-tab="lookup">Metadata lookup</button>
       <button class="tab" data-tab="author">Author import</button>
+      <button class="tab" data-tab="bulk">Bulk import</button>
       <button class="tab" data-tab="search">Search / retrieve</button>
       <button class="tab" data-tab="library">Library</button>
     </div>
@@ -90,6 +91,34 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
       <div id="authorResults"></div>
     </section>
 
+
+    <section id="view-bulk" class="view">
+      <h2>Multi-source bulk academic import</h2>
+      <div class="note">Search OpenAlex, Semantic Scholar, and arXiv together. Preview candidates first, select/filter, then ingest only the selected papers into the knowledge retriever.</div>
+      <div class="field" style="margin-top:10px"><label>Research query / topic</label><input id="bulkQuery" placeholder="sequential Rademacher complexity online nonparametric regression" /></div>
+      <div class="cols" style="margin-top:10px">
+        <div class="field"><label>Author / name hint, optional</label><input id="bulkAuthor" placeholder="Rakhlin Sridharan" /></div>
+        <div class="field"><label>Keyword filter, optional</label><input id="bulkKeyword" placeholder="online regression general loss functions" /></div>
+      </div>
+      <div class="cols" style="margin-top:10px">
+        <div class="field"><label>Max candidates</label><input id="bulkMax" type="number" min="1" max="100" value="30" /></div>
+        <div class="field"><label>Per-source fetch limit</label><input id="bulkPerSource" type="number" min="1" max="100" value="30" /></div>
+      </div>
+      <div class="cols" style="margin-top:10px">
+        <div class="field"><label>Year from, optional</label><input id="bulkYearFrom" type="number" placeholder="2018" /></div>
+        <div class="field"><label>Year to, optional</label><input id="bulkYearTo" type="number" placeholder="2026" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="tagline"><input type="checkbox" id="bulkSrcOpenAlex" checked /> OpenAlex</label>
+        <label class="tagline"><input type="checkbox" id="bulkSrcS2" checked /> Semantic Scholar</label>
+        <label class="tagline"><input type="checkbox" id="bulkSrcArxiv" checked /> arXiv</label>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="bulkPreviewBtn">Preview candidates</button><button class="btn" id="bulkSelectAllBtn">Select all shown</button><button class="btn" id="bulkClearSelectionBtn">Clear selection</button></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="bulkImportSelectedBtn">Import selected</button><button class="btn" id="bulkImportTopBtn">Import top shown</button><label class="tagline"><input type="checkbox" id="bulkEnrichExisting" checked /> enrich existing duplicates</label></div>
+      <div id="bulkStatus" class="note" style="margin-top:12px">Bulk preview uses OpenAlex works search, Semantic Scholar paper search, and arXiv API search. Ingestion embeds abstracts/chunks and updates hybrid retrieval metadata.</div>
+      <div id="bulkResults"></div>
+    </section>
+
     <section id="view-search" class="view">
       <h2>Retrieve and audit knowledge context</h2>
       <div class="cols">
@@ -123,7 +152,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
 <script>
 (function(){
 'use strict';
-const STAGE='latex-stage19u7f-author-import-selection-payload-fix-20260531-1';
+const STAGE='latex-stage19u8-multi-source-bulk-literature-ingest-20260531-1';
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
@@ -231,6 +260,51 @@ async function enrichWork(id){try{const data=await fetchJson('/research/works/'+
 async function search(){const query=$('searchQuery').value.trim(); if(!query){setBox('searchStatus','Enter a query.','note warn');return;} const topK=Math.max(1,Math.min(25,parseInt($('topK').value||'8',10))); setBox('searchStatus','Searching with hybrid retrieval...','note'); try{const data=await fetchJson('/research/search',{method:'POST',headers:headers(),body:JSON.stringify({query,topK,pinnedPapers:pinnedResults(feature())})}); raw(data); setBox('searchStatus',`Found ${esc(data.resultCount||0)} result(s). schema=${esc(data.schema||'')} hybrid=${esc(data.hybridRanking)} authorGraph=${esc(data.authorGraphRanking)}`,'note good'); renderResults(data.results||[]);}catch(e){setBox('searchStatus','Search failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
 async function context(){const focus=$('searchQuery').value.trim(); if(!focus){setBox('searchStatus','Enter a focus/search query.','note warn');return;} const body={title:$('contextTitle').value,abstract:$('contextAbstract').value,focus,topK:Math.max(1,Math.min(12,parseInt($('topK').value||'8',10))),pinnedPapers:pinnedResults(feature())}; setBox('searchStatus','Building paper knowledge context...','note'); try{const data=await fetchJson('/knowledge/context-for-paper',{method:'POST',headers:headers(),body:JSON.stringify(body)}); raw(data); setBox('searchStatus',`Context ready: ${esc(data.resultCount||0)} result(s). schema=${esc(data.searchSchema||'')}`,'note good'); renderResults(data.results||[]); if(data.promptContext){$('results').insertAdjacentHTML('beforeend','<h3>Prompt context preview</h3><div class="output">'+esc(data.promptContext)+'</div>');}}catch(e){setBox('searchStatus','Context retrieval failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}}
 let authorPreview=null;
+
+let lastBulkCandidates=[];
+function bulkSources(){const out=[]; if($('bulkSrcOpenAlex')&&$('bulkSrcOpenAlex').checked) out.push('openalex'); if($('bulkSrcS2')&&$('bulkSrcS2').checked) out.push('semantic_scholar'); if($('bulkSrcArxiv')&&$('bulkSrcArxiv').checked) out.push('arxiv'); return out.length?out:['openalex','semantic_scholar','arxiv'];}
+function renderBulkCandidate(c,i){
+  const id=esc(c.candidateId||('bulk-'+i));
+  const authors=Array.isArray(c.authors)?c.authors.slice(0,7).join(', '):'';
+  const sources=Array.isArray(c.sources)?c.sources.join(', '):(c.source||'');
+  const badges=[];
+  if(c.alreadyIngested) badges.push('<span class="badge gold">already ingested</span>');
+  if(c.arxivId) badges.push('<span class="badge gold">arXiv '+esc(c.arxivId)+'</span>');
+  if(c.doi) badges.push('<span class="badge gold">DOI</span>');
+  if(c.semanticScholarPaperId) badges.push('<span class="badge blue">S2</span>');
+  if(c.openalexId) badges.push('<span class="badge blue">OpenAlex</span>');
+  if(c.citationCount!=null) badges.push('<span class="badge">citations '+esc(c.citationCount)+'</span>');
+  const reasons=Array.isArray(c.retrievalReasons)?c.retrievalReasons.join('; '):'';
+  return `<div class="paper-row"><input type="checkbox" class="bulk-paper-check" data-candidate-id="${id}" ${c.alreadyIngested?'':'checked'} /><div><div class="title">${i+1}. ${esc(c.title||'Untitled paper')}</div><div class="paper-meta">${esc(authors)}${c.year?' · '+esc(c.year):''}${sources?' · sources: '+esc(sources):''}</div><div class="badges">${badges.join('')}</div><div class="snippet">${esc(compact(c.abstract||'',520))}</div>${reasons?'<div class="scorebox">why found: '+esc(reasons)+'</div>':''}<div class="paper-actions">${c.url?'<a class="btn mini" target="_blank" href="'+esc(c.url)+'">Open</a>':''}${c.existingWorkId?'<span class="badge">existing '+esc(c.existingWorkId)+'</span>':''}</div></div></div>`;
+}
+function bulkSelectedCandidates(){
+  const selected=new Set(Array.from(document.querySelectorAll('.bulk-paper-check:checked')).map(x=>x.dataset.candidateId));
+  return lastBulkCandidates.filter(c=>selected.has(String(c.candidateId||''))).map(c=>({...c,selected:true}));
+}
+function bulkSelectAll(v){document.querySelectorAll('.bulk-paper-check').forEach(x=>x.checked=!!v)}
+async function bulkPreview(){
+  const query=$('bulkQuery').value.trim();
+  if(!query){setBox('bulkStatus','Enter a research query first.','note warn');return;}
+  setBox('bulkStatus','Searching OpenAlex / Semantic Scholar / arXiv...','note');
+  try{
+    const data=await fetchJson('/research/bulk/preview',{method:'POST',headers:headers(),body:JSON.stringify({query,author:$('bulkAuthor').value,keywordFilter:$('bulkKeyword').value,maxResults:Number($('bulkMax').value||30),perSource:Number($('bulkPerSource').value||30),yearFrom:$('bulkYearFrom').value,yearTo:$('bulkYearTo').value,sources:bulkSources()})});
+    raw(data); lastBulkCandidates=Array.isArray(data.candidates)?data.candidates:[];
+    $('bulkResults').innerHTML=lastBulkCandidates.map(renderBulkCandidate).join('')||'<div class="note warn">No candidates returned.</div>';
+    setBox('bulkStatus',`Bulk preview returned ${esc(lastBulkCandidates.length)} candidate(s). Diagnostics: ${esc((data.diagnostics||[]).join(' | '))}`,'note good');
+  }catch(e){setBox('bulkStatus','Bulk preview failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}
+}
+async function bulkImport(top){
+  const candidates=top?lastBulkCandidates.slice(0,Math.max(1,Number($('bulkMax').value||30))):bulkSelectedCandidates();
+  if(!candidates.length){setBox('bulkStatus','No selected candidates to import. Preview and select papers first.','note warn');return;}
+  setBox('bulkStatus','Importing '+candidates.length+' bulk candidate(s)...','note');
+  try{
+    const data=await fetchJson('/research/bulk/import',{method:'POST',headers:headers(),body:JSON.stringify({query:$('bulkQuery').value,candidates,selectedCandidateIds:candidates.map(c=>c.candidateId),enrichExisting:$('bulkEnrichExisting').checked,embed:true})},{allowApplicationError:true});
+    raw(data);
+    const cls=Number(data.imported||0)||Number(data.updated||0)?'note good':'note warn';
+    setBox('bulkStatus',`Bulk import finished: imported=${esc(data.imported||0)}, updated=${esc(data.updated||0)}, skipped=${esc(data.skipped||0)}, embeddingReady=${esc(data.embeddingReady||0)}.`,cls);
+  }catch(e){setBox('bulkStatus','Bulk import failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}
+}
+
 async function authorLookup(){
   const query=$('authorQuery').value.trim();
   if(!query){setBox('authorStatus','Enter an author name, Semantic Scholar author URL, or author id.','note warn');return;}
@@ -314,7 +388,7 @@ function num(v){const n=Number(v);return Number.isFinite(n)?n.toFixed(3):esc(v||
 function copyDebug(){navigator.clipboard?.writeText($('rawOut').textContent||''); setBox('pinStatus','Copied diagnostics/output.','note good')}
 function bind(){
   $('apiBase').value=scanForApi(); $('token').value=localStorage.getItem(LS_TOKEN)||'';
-  $('saveSettingsBtn').onclick=saveSettings; $('statusBtn').onclick=status; $('ingestBtn').onclick=ingest; $('resetIngestBtn').onclick=()=>{$('urlList').value=''}; $('lookupBtn').onclick=lookup; $('authorLookupBtn').onclick=authorLookup; $('authorSelectAllBtn').onclick=()=>authorSelectAll(true); $('authorClearSelectionBtn').onclick=()=>authorSelectAll(false); $('authorImportSelectedBtn').onclick=()=>authorImport(false); $('authorImportTopBtn').onclick=()=>authorImport(true); $('loadLibraryBtn').onclick=()=>{activate('library');loadLibrary()}; $('libraryRefreshBtn').onclick=loadLibrary; $('enrichAllBtn').onclick=enrichAll; $('libraryEnrichSelectedBtn').onclick=enrichAll; $('searchBtn').onclick=search; $('contextBtn').onclick=context; $('clearResultsBtn').onclick=()=>{$('results').innerHTML='';}; $('clearPinsBtn').onclick=clearPins; $('clearExclusionsBtn').onclick=clearEx; $('showPinsBtn').onclick=showPins; $('copyDebugBtn').onclick=copyDebug;
+  $('saveSettingsBtn').onclick=saveSettings; $('statusBtn').onclick=status; $('ingestBtn').onclick=ingest; $('resetIngestBtn').onclick=()=>{$('urlList').value=''}; $('lookupBtn').onclick=lookup; $('authorLookupBtn').onclick=authorLookup; $('authorSelectAllBtn').onclick=()=>authorSelectAll(true); $('authorClearSelectionBtn').onclick=()=>authorSelectAll(false); $('authorImportSelectedBtn').onclick=()=>authorImport(false); $('authorImportTopBtn').onclick=()=>authorImport(true); $('bulkPreviewBtn').onclick=bulkPreview; $('bulkSelectAllBtn').onclick=()=>bulkSelectAll(true); $('bulkClearSelectionBtn').onclick=()=>bulkSelectAll(false); $('bulkImportSelectedBtn').onclick=()=>bulkImport(false); $('bulkImportTopBtn').onclick=()=>bulkImport(true); $('loadLibraryBtn').onclick=()=>{activate('library');loadLibrary()}; $('libraryRefreshBtn').onclick=loadLibrary; $('enrichAllBtn').onclick=enrichAll; $('libraryEnrichSelectedBtn').onclick=enrichAll; $('searchBtn').onclick=search; $('contextBtn').onclick=context; $('clearResultsBtn').onclick=()=>{$('results').innerHTML='';}; $('clearPinsBtn').onclick=clearPins; $('clearExclusionsBtn').onclick=clearEx; $('showPinsBtn').onclick=showPins; $('copyDebugBtn').onclick=copyDebug;
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>activate(t.dataset.tab));
   document.body.addEventListener('click',ev=>{const b=ev.target.closest('button'); if(!b)return; const id=b.dataset.pin||b.dataset.pinAll||b.dataset.exclude||''; if(id&&window.__litResults&&window.__litResults[id]){if(b.dataset.pin)pin(window.__litResults[id]); if(b.dataset.pinAll)pin(window.__litResults[id],true); if(b.dataset.exclude)exclude(window.__litResults[id]);} if(b.dataset.enrichWork) enrichWork(b.dataset.enrichWork);});
   if($('apiBase').value) status();
