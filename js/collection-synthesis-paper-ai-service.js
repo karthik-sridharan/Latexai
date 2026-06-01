@@ -10,7 +10,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9i-paper-ai-collection-synthesis-integration-20260601-1';
+  const STAGE = 'stage19u9j-paper-ai-no-collection-selection-fix-20260601-1';
   const COLLECTIONS_KEY = 'latexai:literature-collections:v1';
   const SELECTED_COLLECTION_KEY = 'latexai:literature-selected-collection:v1';
   const ATTACH_PREFIX = 'latexai:paper-ai-collection-synthesis-attached:';
@@ -45,6 +45,12 @@
   function getStored(key, fallback) {
     try { const v = W.localStorage?.getItem?.(key); return v == null || v === '' ? fallback : v; } catch (_err) { return fallback; }
   }
+  function rawStored(key) {
+    try {
+      const v = W.localStorage?.getItem?.(key);
+      return v == null ? null : String(v);
+    } catch (_err) { return null; }
+  }
   function setStored(key, value) { try { W.localStorage?.setItem?.(key, String(value)); } catch (_err) {} }
   function jsonStored(key, fallback) {
     try {
@@ -76,8 +82,15 @@
   function scopedKey(prefix, feature) { return prefix + projectContextKey() + ':' + String(feature || 'paper-ai'); }
   function selectedCollectionId(feature) {
     const node = el(idFor(feature, 'Collection'));
+    // Important: an empty select value is an explicit user choice: "No collection".
+    // Do not fall back to the KnowledgeContext/default collection after the user clears it.
+    if (node) return clean(node.value || '');
+    const saved = rawStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature));
+    if (saved !== null) return clean(saved);
     const fromKcs = clean(NS.KnowledgeContextService?.selectedCollectionId?.(feature) || '');
-    return clean(node?.value || getStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature), fromKcs || getStored(SELECTED_COLLECTION_KEY, '')));
+    if (fromKcs) return fromKcs;
+    const globalSaved = rawStored(SELECTED_COLLECTION_KEY);
+    return globalSaved !== null ? clean(globalSaved) : '';
   }
   function collectionPayload(feature) {
     const id = selectedCollectionId(feature);
@@ -264,12 +277,15 @@
     if (c && !c.__collectionSynthesisBound) {
       c.__collectionSynthesisBound = true;
       c.addEventListener('change', () => {
-        setStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature), selectedCollectionId(feature));
+        const value = clean(c.value || '');
+        // Persist even the empty string so "No collection" survives the watchdog refresh loop.
+        setStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature), value);
         const kcsSelect = el(String(feature) + 'KnowledgeCollection');
-        if (kcsSelect && c.value) {
-          kcsSelect.value = c.value;
+        if (kcsSelect) {
+          kcsSelect.value = value;
           try { kcsSelect.dispatchEvent(new Event('change', { bubbles: true })); } catch (_err) {}
         }
+        if (!value) setStatus(feature, 'No collection selected. This Paper AI feature will run without collection synthesis context.', '');
       });
     }
     if (m && !m.__collectionSynthesisBound) {
@@ -285,9 +301,11 @@
     for (const def of FEATURES) {
       const sel = el(idFor(def.feature, 'Collection'));
       if (!sel) continue;
-      const previous = selectedCollectionId(def.feature) || sel.value;
+      // Preserve the DOM value exactly. Empty string means the explicit "No collection" option.
+      const previous = clean(sel.value || '');
       sel.innerHTML = collectionOptionsHtml(previous);
       if (previous && Array.from(sel.options).some((o) => o.value === previous)) sel.value = previous;
+      else sel.value = '';
     }
   }
   function ensureSurfaces() {
