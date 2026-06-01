@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9j4-strict-no-collection-defaults-20260601-1';
+  const STAGE = 'stage19u9k-paper-ai-collection-context-wiring-20260601-1';
   const DEFAULT_TOP_K = 5;
   const STRICT_NO_COLLECTION_MIGRATION_KEY = 'latexai:stage19u9j4-strict-no-collection-defaults-applied:v1';
 
@@ -549,7 +549,17 @@
       collectionSelect.innerHTML = '<option value="">No collection</option>' + list.map((c) => '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || c.id) + ' (' + collectionItems19u9(c.id).length + ')</option>').join('');
       if (storedCollection && list.some((c) => c.id === storedCollection)) collectionSelect.value = storedCollection;
       else collectionSelect.value = '';
-      collectionSelect.addEventListener('change', () => { setStored(collectionSelectKey(feature), selectedCollectionId19u9(feature)); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); });
+      collectionSelect.addEventListener('change', () => {
+        const selected = selectedCollectionId19u9(feature);
+        setStored(collectionSelectKey(feature), selected);
+        // Stage 19U9K: keep the newer collection-synthesis selector synchronized
+        // with the older Knowledge/literature selector so either UI path controls
+        // the actual Paper AI run context.
+        const synthSelect = el(String(feature || 'knowledge').replace(/[^A-Za-z0-9_-]/g, '') + 'CollectionSynthesisCollection');
+        if (synthSelect && synthSelect.value !== selected) synthSelect.value = selected;
+        if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]);
+        refreshFeaturePreview(feature);
+      });
     }
     if (mode) {
       const storedMode = getStored(modeKey(feature), 'automatic_pinned');

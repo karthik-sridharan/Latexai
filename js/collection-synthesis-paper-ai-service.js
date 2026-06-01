@@ -1,8 +1,10 @@
-/* Latexai Stage 19U9J4
+/* Latexai Stage 19U9K
  * Moves collection synthesis out of standalone literature.html and into paper-level AI workflows.
  * Each Paper AI card can select a literature collection, generate a workflow-specific
- * synthesis, attach that synthesis to the next knowledge-aware prompt, and append/copy
- * the generated \lai block.
+ * synthesis, attach that synthesis to the next knowledge-aware prompt, append/copy
+ * the generated \lai block, and, in Stage 19U9K, automatically inject the
+ * selected collection context into the actual AIProvider.ask payload for supported
+ * paper-level AI workflows.
  */
 (function () {
   'use strict';
@@ -10,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9j4-strict-no-collection-defaults-20260601-1';
+  const STAGE = 'stage19u9k-paper-ai-collection-context-wiring-20260601-1';
   const COLLECTIONS_KEY = 'latexai:literature-collections:v1';
   const SELECTED_COLLECTION_KEY = 'latexai:literature-selected-collection:v1';
   const ATTACH_PREFIX = 'latexai:paper-ai-collection-synthesis-attached:';
@@ -108,8 +110,17 @@
     const node = el(idFor(feature, 'Collection'));
     // Important: an empty select value is an explicit user choice: "No collection".
     // Default Paper AI collection context should start as "No collection", even if
-    // the standalone literature page or KnowledgeContext has a global/default collection.
+    // the standalone literature page has a global/default collection.
     if (node) return clean(node.value || '');
+    // Stage 19U9K: Paper-level AI has two collection surfaces. If the newer
+    // collection-synthesis selector has not been mounted yet, respect the older
+    // Knowledge/literature context selector for the same feature.
+    const kcsNode = el(String(feature || 'knowledge') + 'KnowledgeCollection');
+    if (kcsNode) return clean(kcsNode.value || '');
+    try {
+      const fromKnowledge = NS.KnowledgeContextService?.selectedCollectionId?.(feature);
+      if (fromKnowledge != null) return clean(fromKnowledge);
+    } catch (_err) {}
     const saved = rawStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature));
     if (saved !== null) return clean(saved);
     return '';
@@ -412,8 +423,13 @@
     return r ? '\\lai{\n' + r.replace(/\\end\{document\}/g, '') + '\n}' : '';
   }
   function restoreLast(feature) {
+    const selected = selectedCollectionId(feature);
+    // Avoid restoring stale synthesis when this workflow starts as No collection.
+    if (!selected) return;
     const data = jsonStored(scopedKey(LAST_PREFIX, feature), null);
     if (!data) return;
+    const dataId = clean(data.collectionId || data.collection?.id || data.collection?.collectionId || '');
+    if (dataId && dataId !== selected) return;
     memory[feature] = data;
     writePreview(feature, formatPreview(data));
     const attached = getStored(scopedKey(ATTACH_PREFIX, feature), 'true') !== 'false';
@@ -443,12 +459,16 @@
     return true;
   }
   function attachedBlockForFeature(feature) {
+    const selected = selectedCollectionId(feature);
+    if (!selected) return '';
     const attachNode = el(idFor(feature, 'Attach'));
     const attach = attachNode ? !!attachNode.checked : getStored(scopedKey(ATTACH_PREFIX, feature), 'true') !== 'false';
     if (!attach) return '';
+    const data = memory[feature] || jsonStored(scopedKey(LAST_PREFIX, feature), null) || {};
+    const dataId = clean(data.collectionId || data.collection?.id || data.collection?.collectionId || '');
+    if (dataId && dataId !== selected) return '';
     const r = report(feature);
     if (!r) return '';
-    const data = memory[feature] || jsonStored(scopedKey(LAST_PREFIX, feature), null) || {};
     return [
       '=== ATTACHED COLLECTION SYNTHESIS FOR THIS PAPER-AI FEATURE ===',
       'Collection: ' + clean(data.collectionName || data.collectionId || selectedCollectionId(feature) || 'selected collection'),
@@ -459,6 +479,153 @@
       '=== END ATTACHED COLLECTION SYNTHESIS ==='
     ].join('\n');
   }
+  function itemTitle(item) {
+    const raw = item?.raw || item || {};
+    return clean(raw.title || item?.title || raw.paperTitle || raw.name || 'Untitled paper');
+  }
+  function itemAuthors(item) {
+    const raw = item?.raw || item || {};
+    const authors = Array.isArray(raw.authors) ? raw.authors : (Array.isArray(item?.authors) ? item.authors : []);
+    return authors.slice(0, 8).map((a) => typeof a === 'string' ? a : clean(a?.name || a?.authorName || a?.displayName || '')).filter(Boolean).join(', ');
+  }
+  function itemYear(item) {
+    const raw = item?.raw || item || {};
+    return clean(raw.year || raw.publicationYear || raw.published || raw.date || item?.year || '');
+  }
+  function itemUrl(item) {
+    const raw = item?.raw || item || {};
+    return clean(raw.url || raw.pdfUrl || raw.openAccessPdf?.url || raw.externalUrl || item?.url || '');
+  }
+  function itemSnippet(item) {
+    const raw = item?.raw || item || {};
+    return compactText(raw.abstract || raw.snippet || raw.summary || raw.tldr?.text || item?.abstract || item?.snippet || item?.notes || '', 900);
+  }
+  function collectionRecordBlock(feature) {
+    const id = selectedCollectionId(feature);
+    if (!id) return '';
+    const c = collections().find((x) => x.id === id) || {};
+    const items = collectionItems(id).filter((x) => x && String(x.role || '') !== 'excluded');
+    if (!items.length) return '';
+    const mode = normalizeMode(el(idFor(feature, 'Mode'))?.value || (feature === 'citationAi' ? 'citation_suggestions' : 'related_work'));
+    const focus = clean(el(idFor(feature, 'Prompt'))?.value || '');
+    const def = featureByName(feature);
+    const lines = [
+      '=== SELECTED LITERATURE COLLECTION CONTEXT FOR THIS AI RUN ===',
+      'Feature: ' + clean(def.label || feature),
+      'Collection: ' + clean(c.name || id) + ' [' + id + ']',
+      'Synthesis mode requested for this workflow: ' + modeLabel(mode),
+      focus ? 'Feature-specific focus: ' + focus : '',
+      'Papers provided from selected collection: ' + items.length + '.',
+      'Use these papers as scoped literature evidence for the current Paper AI run. Prefer concrete citation, related-work, novelty-positioning, and rebuttal suggestions tied to these records. Do not invent claims beyond the titles/abstract snippets/metadata shown here. If none are relevant, say so briefly.',
+      ''
+    ].filter(Boolean);
+    items.slice(0, 40).forEach((item, idx) => {
+      const raw = item?.raw || item || {};
+      const bits = [];
+      const yr = itemYear(item);
+      const authors = itemAuthors(item);
+      const url = itemUrl(item);
+      const doi = clean(raw.doi || raw.externalIds?.DOI || raw.externalIds?.doi || '');
+      const arxiv = clean(raw.arxiv_id || raw.arxivId || raw.externalIds?.ArXiv || raw.externalIds?.arXiv || '');
+      const s2 = clean(raw.semanticScholarId || raw.paperId || raw.externalIds?.SemanticScholar || raw.externalIds?.S2 || '');
+      bits.push('[' + (idx + 1) + '] ' + itemTitle(item) + (yr ? ' (' + yr + ')' : ''));
+      if (authors) bits.push('Authors: ' + authors);
+      if (item.role) bits.push('Collection role: ' + item.role);
+      if (url) bits.push('URL: ' + url);
+      if (arxiv) bits.push('arXiv: ' + arxiv);
+      if (doi) bits.push('DOI: ' + doi);
+      if (s2) bits.push('Semantic Scholar: ' + s2);
+      const snip = itemSnippet(item);
+      bits.push('Evidence snippet: ' + (snip || '(no abstract/snippet stored)'));
+      lines.push(bits.join('\n'));
+    });
+    if (items.length > 40) lines.push('\nAdditional collection papers omitted from prompt for length: ' + (items.length - 40) + '.');
+    lines.push('=== END SELECTED LITERATURE COLLECTION CONTEXT ===');
+    return lines.join('\n');
+  }
+  function runContextBlockForFeature(feature) {
+    if (!selectedCollectionId(feature)) return '';
+    const blocks = [];
+    const attached = attachedBlockForFeature(feature);
+    if (attached) blocks.push(attached);
+    const records = collectionRecordBlock(feature);
+    if (records) blocks.push(records);
+    return blocks.join('\n\n').slice(0, 18000);
+  }
+  function inferFeatureFromAsk(payload, meta) {
+    const ctx = meta?.context || {};
+    const haystack = [
+      meta?.task, meta?.routeKey, ctx.workflow, ctx.agentRole, ctx.promptFile,
+      payload?.workflow, payload?.task, payload?.citationWorkflow, payload?.documentWorkflow,
+      payload?.debateAgent?.role, payload?.competitiveReview?.step
+    ].map((v) => String(v || '').toLowerCase()).join(' ');
+    if (/citation-ai|citation|bibtex|cite/.test(haystack)) return 'citationAi';
+    if (/reviewer-rebuttal|reviewer|rebuttal/.test(haystack)) return 'reviewerSim';
+    if (/devils-advocate|paper-debate|debate-advocate|debate-critic|debate-synthesizer/.test(haystack)) return 'devilsDebate';
+    if (/branchworkflow|branch-workflow|realagentbranch|branch runner/.test(haystack)) return 'branchWorkflow';
+    if (/competitive|competitor/.test(haystack)) return 'competitive';
+    if (/paper-ai-polish|paper polish|polish/.test(haystack)) return 'paperAiPolish';
+    if (/document-ai|documentai|paper-level-ai/.test(haystack)) return 'documentAi';
+    return '';
+  }
+  function appendUniqueText(base, addition) {
+    const b = String(base || '');
+    const a = String(addition || '').trim();
+    if (!a) return b;
+    if (b.includes('=== SELECTED LITERATURE COLLECTION CONTEXT FOR THIS AI RUN ===') || b.includes('=== ATTACHED COLLECTION SYNTHESIS FOR THIS PAPER-AI FEATURE ===')) return b;
+    return [a, b].filter((x) => clean(x)).join('\n\n');
+  }
+  function augmentAskPayloadWithCollectionContext(payload, meta, feature, block) {
+    const nextPayload = payload && typeof payload === 'object' ? { ...payload } : {};
+    const nextMeta = meta && typeof meta === 'object' ? { ...meta, context: { ...(meta.context || {}) } } : { context: {} };
+    const id = selectedCollectionId(feature);
+    const c = collections().find((x) => x.id === id) || {};
+    const itemCount = collectionItems(id).filter((x) => x && String(x.role || '') !== 'excluded').length;
+    const audit = {
+      stage: STAGE,
+      feature,
+      collectionId: id,
+      collectionName: clean(c.name || id),
+      itemCount,
+      injectedIntoAiProviderAsk: true,
+      hasGeneratedSynthesis: !!attachedBlockForFeature(feature),
+      mode: normalizeMode(el(idFor(feature, 'Mode'))?.value || (feature === 'citationAi' ? 'citation_suggestions' : 'related_work'))
+    };
+    if (typeof nextPayload.input === 'string') nextPayload.input = appendUniqueText(nextPayload.input, block);
+    else if (typeof nextPayload.prompt === 'string') nextPayload.prompt = appendUniqueText(nextPayload.prompt, block);
+    else if (typeof nextPayload.messages === 'string') nextPayload.messages = appendUniqueText(nextPayload.messages, block);
+    else nextPayload.collectionContextBlock = block;
+    if (typeof nextPayload.instructions === 'string') {
+      nextPayload.instructions = appendUniqueText(nextPayload.instructions, 'Use the selected literature collection context for this run when it is relevant. Mention the collection papers used in any evidence audit; do not fabricate citations or claims.');
+    }
+    nextPayload.latexaiCollectionContext = audit;
+    nextMeta.context.collectionContext = audit;
+    nextMeta.context.selectedLiteratureCollectionId = id;
+    return { payload: nextPayload, meta: nextMeta };
+  }
+  function patchAiProviderAsk() {
+    const provider = NS.AIProvider;
+    if (!provider || typeof provider.ask !== 'function') return false;
+    if (provider.__stage19u9kCollectionContextPatched) return true;
+    const originalAsk = provider.ask.bind(provider);
+    provider.ask = async function askWithSelectedCollectionContext(payload, meta) {
+      try {
+        const feature = inferFeatureFromAsk(payload || {}, meta || {});
+        const block = feature ? runContextBlockForFeature(feature) : '';
+        if (block) {
+          const augmented = augmentAskPayloadWithCollectionContext(payload || {}, meta || {}, feature, block);
+          payload = augmented.payload;
+          meta = augmented.meta;
+        }
+      } catch (err) {
+        try { console.warn('[Latexai]', STAGE, 'collection context injection skipped', err); } catch (_ignored) {}
+      }
+      return originalAsk(payload, meta);
+    };
+    provider.__stage19u9kCollectionContextPatched = true;
+    return true;
+  }
+
   function inferFeatureFromData(data) {
     for (const def of FEATURES) {
       try { if (NS.KnowledgeContextService?.getLast?.(def.feature) === data) return def.feature; } catch (_err) {}
@@ -500,6 +667,7 @@
     const run = () => {
       ticks += 1;
       try { patchKnowledgePromptBlock(); } catch (_err) {}
+      try { patchAiProviderAsk(); } catch (_err) {}
       try { ensureSurfaces(); } catch (_err) {}
       if (ticks < 60) setTimeout(run, ticks < 10 ? 350 : 1200);
     };
@@ -514,7 +682,9 @@
     attachedBlockForFeature,
     report,
     laiBlock,
-    appendToPaper
+    appendToPaper,
+    runContextBlockForFeature,
+    inferFeatureFromAsk
   };
   installWatchdog();
   try { console.log('[Latexai]', STAGE, 'active'); } catch (_err) {}
