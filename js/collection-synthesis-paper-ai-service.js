@@ -1,4 +1,4 @@
-/* Latexai Stage 19U9I
+/* Latexai Stage 19U9J2
  * Moves collection synthesis out of standalone literature.html and into paper-level AI workflows.
  * Each Paper AI card can select a literature collection, generate a workflow-specific
  * synthesis, attach that synthesis to the next knowledge-aware prompt, and append/copy
@@ -10,7 +10,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9j-paper-ai-no-collection-selection-fix-20260601-1';
+  const STAGE = 'stage19u9j2-paper-ai-no-collection-default-20260601-1';
   const COLLECTIONS_KEY = 'latexai:literature-collections:v1';
   const SELECTED_COLLECTION_KEY = 'latexai:literature-selected-collection:v1';
   const ATTACH_PREFIX = 'latexai:paper-ai-collection-synthesis-attached:';
@@ -83,14 +83,12 @@
   function selectedCollectionId(feature) {
     const node = el(idFor(feature, 'Collection'));
     // Important: an empty select value is an explicit user choice: "No collection".
-    // Do not fall back to the KnowledgeContext/default collection after the user clears it.
+    // Default Paper AI collection context should start as "No collection", even if
+    // the standalone literature page or KnowledgeContext has a global/default collection.
     if (node) return clean(node.value || '');
     const saved = rawStored(scopedKey('latexai:paper-ai-synthesis-selected-collection:', feature));
     if (saved !== null) return clean(saved);
-    const fromKcs = clean(NS.KnowledgeContextService?.selectedCollectionId?.(feature) || '');
-    if (fromKcs) return fromKcs;
-    const globalSaved = rawStored(SELECTED_COLLECTION_KEY);
-    return globalSaved !== null ? clean(globalSaved) : '';
+    return '';
   }
   function collectionPayload(feature) {
     const id = selectedCollectionId(feature);
