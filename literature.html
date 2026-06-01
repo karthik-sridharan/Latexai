@@ -123,7 +123,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
 <script>
 (function(){
 'use strict';
-const STAGE='latex-stage19u7c-semantic-scholar-author-import-preview-20260531-1';
+const STAGE='latex-stage19u7d-semantic-scholar-author-url-parser-fix-20260531-1';
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
@@ -153,6 +153,37 @@ function token(){return $('token').value.trim()}
 function headers(json=true){const h={}; if(json) h['Content-Type']='application/json'; const t=token(); if(t){h.Authorization='Bearer '+t; h['x-lumina-ingest-token']=t;} return h;}
 function raw(obj){$('rawOut').textContent=typeof obj==='string'?obj:JSON.stringify(obj,null,2)}
 function setBox(id,msg,cls='note'){const el=$(id); el.className=cls; el.innerHTML=msg;}
+function parseSemanticScholarAuthorInput(value){
+  const raw=String(value||'').trim().replace(/^[\"'`<>]+|[\"'`<>]+$/g,'');
+  const out={raw,authorId:'',nameQuery:'',detected:false};
+  if(!raw) return out;
+  let decoded=raw;
+  try{decoded=decodeURIComponent(raw)}catch(e){}
+  const idMatch=decoded.match(/(?:authorId|author_id|S2AUTHOR)[:=]\s*([0-9A-Za-z_-]{2,80})/i);
+  if(idMatch){out.authorId=idMatch[1];out.detected=true;}
+  let probe=decoded;
+  if(probe.includes('semanticscholar.org')&&!/^[a-z]+:\/\//i.test(probe)) probe='https://'+probe.replace(/^\/+/, '');
+  try{
+    const u=new URL(probe);
+    if(u.hostname.toLowerCase().includes('semanticscholar.org')){
+      const parts=u.pathname.split('/').filter(Boolean);
+      const ix=parts.findIndex(p=>p.toLowerCase()==='author');
+      if(ix>=0){
+        const tail=parts.slice(ix+1);
+        for(let i=tail.length-1;i>=0;i--){if(/^[0-9]{2,40}$/.test(tail[i])){out.authorId=tail[i];out.detected=true;break;}}
+        const slug=tail.find(p=>!/^[0-9]{2,40}$/.test(p));
+        if(slug){out.nameQuery=slug.replace(/[-_]+/g,' ').replace(/[.]+/g,' ').replace(/\s+/g,' ').trim();}
+      }
+    }
+  }catch(e){/* not a URL */}
+  if(!out.authorId){
+    const m=decoded.match(/(?:^|\/)author\/[^\s]*\/([0-9]{2,40})(?:$|[/?#])/i)||decoded.match(/\/([0-9]{2,40})(?:$|[/?#])/);
+    if(m&&decoded.toLowerCase().includes('semanticscholar')){out.authorId=m[1];out.detected=true;}
+  }
+  if(!out.authorId && /^[0-9A-Za-z_-]{3,80}$/.test(decoded) && !/\s/.test(decoded)){out.authorId=decoded;out.detected=true;}
+  if(!out.nameQuery && !decoded.toLowerCase().includes('semanticscholar.org') && !decoded.startsWith('http')) out.nameQuery=decoded;
+  return out;
+}
 async function fetchJson(path, opts={}, cfg={}){
   const base=api(); if(!base) throw new Error('Missing API base. Paste your Cloud Run backend URL or /api/lumina URL.');
   const res=await fetch(base+path, opts);
@@ -203,14 +234,19 @@ let authorPreview=null;
 async function authorLookup(){
   const query=$('authorQuery').value.trim();
   if(!query){setBox('authorStatus','Enter an author name, Semantic Scholar author URL, or author id.','note warn');return;}
-  const body={authorUrl:query,authorName:query,maxPapers:Math.max(1,Math.min(100,parseInt($('authorMaxPapers').value||'25',10))),sortBy:$('authorSortBy').value,keywordFilter:$('authorKeywordFilter').value};
-  setBox('authorStatus','Looking up Semantic Scholar author papers...','note');
+  const parsed=parseSemanticScholarAuthorInput(query);
+  const body={authorUrl:query,authorId:parsed.authorId||'',authorName:parsed.nameQuery||query,maxPapers:Math.max(1,Math.min(100,parseInt($('authorMaxPapers').value||'25',10))),sortBy:$('authorSortBy').value,keywordFilter:$('authorKeywordFilter').value};
+  const detected=[];
+  if(parsed.authorId) detected.push('Semantic Scholar author id '+parsed.authorId);
+  if(parsed.nameQuery && parsed.nameQuery!==query) detected.push('name fallback "'+parsed.nameQuery+'"');
+  setBox('authorStatus','Looking up Semantic Scholar author papers...'+(detected.length?' Detected: '+esc(detected.join(' · '))+'.':''),'note');
   try{
     const data=await fetchJson('/research/authors/lookup',{method:'POST',headers:headers(),body:JSON.stringify(body)},{allowApplicationError:true});
     raw(data); authorPreview=data;
-    if(!data.ok){setBox('authorStatus','Author lookup did not find a match: '+esc(data.error||''),'note bad'); $('authorResults').innerHTML=renderAuthorCandidates(data.authorCandidates||[]); return;}
+    if(!data.ok){setBox('authorStatus','Author lookup did not find a match: '+esc(data.error||'')+(data.parsedAuthorId?' Parsed id='+esc(data.parsedAuthorId)+'.':'')+(data.parsedAuthorQuery?' Name fallback='+esc(data.parsedAuthorQuery)+'.':''),'note bad'); $('authorResults').innerHTML=renderAuthorCandidates(data.authorCandidates||[]); return;}
     const a=data.author||{};
-    setBox('authorStatus',`Found ${esc(data.paperCount||0)} candidate paper(s) for ${esc(a.name||a.authorId||query)}. Select the papers to import.`, 'note good');
+    const parsedLine=(data.parsedAuthorId||data.parsedAuthorQuery)?` Parsed id=${esc(data.parsedAuthorId||'')} ${data.parsedAuthorQuery?'· name fallback='+esc(data.parsedAuthorQuery):''}.`:'';
+    setBox('authorStatus',`Found ${esc(data.paperCount||0)} candidate paper(s) for ${esc(a.name||a.authorId||query)}.${parsedLine} Select the papers to import.`, 'note good');
     $('authorResults').innerHTML=renderAuthorPreview(data);
   }catch(e){setBox('authorStatus','Author lookup failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}
 }
