@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9a-literature-add-to-collection-click-fix-20260601-1';
+  const STAGE = 'stage19u9j3-paper-ai-knowledge-no-collection-default-20260601-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
@@ -19,6 +19,12 @@
   function clean(value) { return String(value || '').trim(); }
   function getStored(key, fallback = '') {
     try { const v = W.localStorage?.getItem?.(key); return v == null || v === '' ? fallback : v; } catch (_err) { return fallback; }
+  }
+  function rawStored(key) {
+    try {
+      const v = W.localStorage?.getItem?.(key);
+      return v == null ? null : String(v);
+    } catch (_err) { return null; }
   }
   function setStored(key, value) { try { W.localStorage?.setItem?.(key, String(value)); } catch (_err) {} }
   function jsonStored(key, fallback) {
@@ -98,7 +104,12 @@
   function selectedCollectionId19u9(feature) {
     const f = String(feature || 'knowledge');
     const node = el(f + 'KnowledgeCollection');
-    return clean(node?.value || getStored(collectionSelectKey(f), getStored(SELECTED_COLLECTION_KEY_19U9, '')));
+    // Stage 19U9J3: empty string is an explicit "No collection" choice.
+    // Do not fall back to the global Literature page selected collection for Paper AI cards.
+    if (node) return clean(node.value || '');
+    const saved = rawStored(collectionSelectKey(f));
+    if (saved !== null) return clean(saved);
+    return '';
   }
   function selectedCollectionName19u9(feature) {
     const id = selectedCollectionId19u9(feature);
@@ -506,9 +517,13 @@
     }
     if (collectionSelect) {
       const list = collections19u9();
-      const storedCollection = getStored(collectionSelectKey(feature), getStored(SELECTED_COLLECTION_KEY_19U9, ''));
+      // Stage 19U9J3: default every Paper AI knowledge-context selector to "No collection".
+      // A saved empty string must remain empty instead of falling back to the global Literature selection.
+      const savedCollectionRaw = rawStored(collectionSelectKey(feature));
+      const storedCollection = savedCollectionRaw !== null ? clean(savedCollectionRaw) : '';
       collectionSelect.innerHTML = '<option value="">No collection</option>' + list.map((c) => '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || c.id) + ' (' + collectionItems19u9(c.id).length + ')</option>').join('');
       if (storedCollection && list.some((c) => c.id === storedCollection)) collectionSelect.value = storedCollection;
+      else collectionSelect.value = '';
       collectionSelect.addEventListener('change', () => { setStored(collectionSelectKey(feature), selectedCollectionId19u9(feature)); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); });
     }
     if (mode) {
