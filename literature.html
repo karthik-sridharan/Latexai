@@ -121,6 +121,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
         <label class="tagline"><input type="checkbox" id="bulkSrcOpenAlex" checked /> OpenAlex</label>
         <label class="tagline"><input type="checkbox" id="bulkSrcS2" checked /> Semantic Scholar</label>
         <label class="tagline"><input type="checkbox" id="bulkSrcArxiv" checked /> arXiv</label>
+        <label class="tagline"><input type="checkbox" id="bulkIncludeExisting" /> include already ingested</label>
       </div>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="bulkPreviewBtn">Preview candidates</button><button class="btn" id="bulkSelectAllBtn">Select all shown</button><button class="btn" id="bulkClearSelectionBtn">Clear selection</button></div>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="bulkImportSelectedBtn">Import selected</button><button class="btn" id="bulkImportTopBtn">Import top shown</button><label class="tagline"><input type="checkbox" id="bulkEnrichExisting" checked /> enrich existing duplicates</label></div>
@@ -161,7 +162,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
 <script>
 (function(){
 'use strict';
-const STAGE='latex-stage19u9c-literature-result-action-binding-hard-fix-20260601-1';
+const STAGE='latex-stage19u9f-bulk-import-hide-existing-toggle-20260601-1';
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
@@ -296,10 +297,16 @@ async function bulkPreview(){
   if(!query){setBox('bulkStatus','Enter a research query first.','note warn');return;}
   setBox('bulkStatus','Searching OpenAlex / Semantic Scholar / arXiv...','note');
   try{
-    const data=await fetchJson('/research/bulk/preview',{method:'POST',headers:headers(),body:JSON.stringify({query,author:$('bulkAuthor').value,keywordFilter:$('bulkKeyword').value,maxResults:Number($('bulkMax').value||30),perSource:Number($('bulkPerSource').value||30),yearFrom:$('bulkYearFrom').value,yearTo:$('bulkYearTo').value,sources:bulkSources()})});
-    raw(data); lastBulkCandidates=Array.isArray(data.candidates)?data.candidates:[];
+    const includeAlreadyIngested=!!($('bulkIncludeExisting')&&$('bulkIncludeExisting').checked);
+    const data=await fetchJson('/research/bulk/preview',{method:'POST',headers:headers(),body:JSON.stringify({query,author:$('bulkAuthor').value,keywordFilter:$('bulkKeyword').value,maxResults:Number($('bulkMax').value||30),perSource:Number($('bulkPerSource').value||30),yearFrom:$('bulkYearFrom').value,yearTo:$('bulkYearTo').value,sources:bulkSources(),includeAlreadyIngested})});
+    raw(data);
+    const backendCandidates=Array.isArray(data.candidates)?data.candidates:[];
+    const locallyHidden=includeAlreadyIngested?0:backendCandidates.filter(c=>c&&c.alreadyIngested).length;
+    lastBulkCandidates=includeAlreadyIngested?backendCandidates:backendCandidates.filter(c=>!(c&&c.alreadyIngested));
     $('bulkResults').innerHTML=lastBulkCandidates.map(renderBulkCandidate).join('')||'<div class="note warn">No candidates returned.</div>';
-    setBox('bulkStatus',`Bulk preview returned ${esc(lastBulkCandidates.length)} candidate(s). Diagnostics: ${esc((data.diagnostics||[]).join(' | '))}`,'note good');
+    const hidden=Number(data.filteredAlreadyIngestedCount||0)+locallyHidden;
+    const hiddenMsg=includeAlreadyIngested?' Including already-ingested papers.':(hidden?` Hidden already-ingested papers: ${esc(hidden)}.`:' Already-ingested papers are hidden.');
+    setBox('bulkStatus',`Bulk preview returned ${esc(lastBulkCandidates.length)} shown candidate(s).${hiddenMsg} Diagnostics: ${esc((data.diagnostics||[]).join(' | '))}`,'note good');
   }catch(e){setBox('bulkStatus','Bulk preview failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}
 }
 async function bulkImport(top){
@@ -434,7 +441,7 @@ function addToCollection(r, button){
   return true;
 }
 function removeFromCollectionKey(id,key){const list=collectionItems(id).filter(x=>x.key!==key); saveCollectionItems(id,list); syncCollectionToBackend(id); showCollection();}
-function collectionToPayload(id=selectedCollectionId()){const c=collections().find(x=>x.id===id)||{}; return {id,name:c.name||id,description:c.description||'',items:collectionItems(id),metadata:{stage:'stage19u9c-literature-result-action-binding-hard-fix',source:'literature.html-localStorage'}}}
+function collectionToPayload(id=selectedCollectionId()){const c=collections().find(x=>x.id===id)||{}; return {id,name:c.name||id,description:c.description||'',items:collectionItems(id),metadata:{stage:'stage19u9f-bulk-import-hide-existing-toggle',source:'literature.html-localStorage'}}}
 async function syncCollectionToBackend(id=selectedCollectionId()){ if(!id) return; try{ await fetchJson('/research/collections',{method:'POST',headers:headers(),body:JSON.stringify({collection:collectionToPayload(id)})},{allowApplicationError:true}); }catch(_e){} }
 function showCollection(){const id=selectedCollectionId(); const c=collections().find(x=>x.id===id); if(!id||!c){$('results').innerHTML='<div class="note">No collection selected.</div>';return;} const items=collectionItems(id); $('results').innerHTML='<h3>Collection: '+esc(c.name||id)+'</h3><div class="note">'+items.length+' paper(s). Roles: central/background/competitor/methodological/maybe/excluded.</div>'+(items.map((p,i)=>renderCollectionItemCard(id,p,i)).join('')||'<div class="note">No papers in this collection yet.</div>'); setBox('collectionStatus','Showing collection '+esc(c.name||id)+'.','note');}
 function renderCollectionItemCard(id,p,i){const authors=Array.isArray(p.authors)?p.authors.join(', '):'';return `<div class="result"><div class="title">${i+1}. ${esc(p.title||'Untitled paper')}</div><div class="muted">${esc(authors)} ${p.year?' · '+esc(p.year):''}</div><div class="badges"><span class="badge gold">${esc(p.role||'central')}</span></div><div class="snippet">${esc(compact(p.snippet||''))}</div><div class="row" style="margin-top:8px"><button class="btn mini danger" data-remove-collection="${esc(id)}" data-remove-key="${esc(p.key)}">Remove from collection</button>${p.url?'<a class="btn mini" target="_blank" href="'+esc(p.url)+'">Open</a>':''}</div></div>`}
