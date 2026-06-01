@@ -1,4 +1,4 @@
-/* Latexai Stage 19U6 KnowledgeContextService
+/* Latexai Stage 19U9 KnowledgeContextService
  * Shared literature/knowledge retrieval bridge for AI review/edit workflows.
  * Adds retrieved-context preview, pin/exclude controls, retrieval modes,
  * and evidence-audit prompt text while keeping source edits on the safe protocol.
@@ -9,7 +9,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u6-external-literature-metadata-enrichment-20260531-1';
+  const STAGE = 'stage19u9-literature-collections-project-contexts-20260531-1';
   const DEFAULT_TOP_K = 5;
 
   let lastByFeature = {};
@@ -74,6 +74,48 @@
   function pinnedKey(feature) { return 'latexai:knowledge-pinned:' + String(feature || 'knowledge'); }
   function excludedKey(feature) { return 'latexai:knowledge-excluded:' + String(feature || 'knowledge'); }
   function modeKey(feature) { return 'latexai:knowledge-mode:' + String(feature || 'knowledge'); }
+  const COLLECTIONS_KEY_19U9 = 'latexai:literature-collections:v1';
+  const SELECTED_COLLECTION_KEY_19U9 = 'latexai:literature-selected-collection:v1';
+  function collectionItemsKey19u9(id) { return 'latexai:literature-collection-items:' + String(id || ''); }
+  function collectionSelectKey(feature) { return 'latexai:knowledge-selected-collection:' + projectContextKey19u9() + ':' + String(feature || 'knowledge'); }
+  function collections19u9() {
+    const arr = jsonStored(COLLECTIONS_KEY_19U9, []);
+    return Array.isArray(arr) ? arr.filter((c) => c && c.id) : [];
+  }
+  function collectionItems19u9(id) {
+    if (!id) return [];
+    const arr = jsonStored(collectionItemsKey19u9(id), []);
+    return Array.isArray(arr) ? arr.filter((r) => r && r.key) : [];
+  }
+  function projectContextKey19u9() {
+    try {
+      const p = project();
+      const name = clean(p.name || p.projectName || p.projectId || 'local-project');
+      const root = rootPath();
+      return (name + '/' + root).replace(/[^0-9A-Za-z._/-]+/g, '-').slice(0, 180);
+    } catch (_err) { return 'local-project/main.tex'; }
+  }
+  function selectedCollectionId19u9(feature) {
+    const f = String(feature || 'knowledge');
+    const node = el(f + 'KnowledgeCollection');
+    return clean(node?.value || getStored(collectionSelectKey(f), getStored(SELECTED_COLLECTION_KEY_19U9, '')));
+  }
+  function selectedCollectionName19u9(feature) {
+    const id = selectedCollectionId19u9(feature);
+    const c = collections19u9().find((x) => x.id === id);
+    return clean(c?.name || id);
+  }
+  function selectedCollectionResults19u9(feature) {
+    const id = selectedCollectionId19u9(feature);
+    return collectionItems19u9(id).filter((r) => r && r.key && String(r.role || '') !== 'excluded').map((r) => {
+      const raw = Object.assign({}, r.raw || r, { collectionRole: r.role || 'central' });
+      raw.retrievalReasons = Array.from(new Set([...(Array.isArray(raw.retrievalReasons) ? raw.retrievalReasons : []), 'selected literature collection: ' + selectedCollectionName19u9(feature), 'collection role: ' + (r.role || 'central')]));
+      raw.scoreBreakdown = Object.assign({}, raw.scoreBreakdown || {}, { collectionContextBoost: 1.25 });
+      raw.hybridScore = Number(raw.hybridScore ?? raw.score ?? 0) + 1.25;
+      raw.score = raw.hybridScore;
+      return normalizeResult(raw);
+    });
+  }
   function pinnedResults(feature) {
     const arr = jsonStored(pinnedKey(feature), []);
     return Array.isArray(arr) ? arr.filter((r) => r && r.key) : [];
@@ -85,7 +127,7 @@
   function retrievalMode(feature, fallback = 'automatic_pinned') {
     const node = el(String(feature || 'knowledge') + 'KnowledgeMode');
     const raw = clean(node?.value || getStored(modeKey(feature), fallback));
-    return ['automatic', 'pinned_only', 'automatic_pinned'].includes(raw) ? raw : fallback;
+    return ['automatic', 'pinned_only', 'automatic_pinned', 'collection_only', 'automatic_collection', 'automatic_pinned_collection'].includes(raw) ? raw : fallback;
   }
   function storeRetrievalMode(feature) {
     const node = el(String(feature || 'knowledge') + 'KnowledgeMode');
@@ -119,11 +161,13 @@
   function buildFilteredData(feature, data) {
     const mode = retrievalMode(feature);
     const pinned = pinnedResults(feature);
+    const collection = selectedCollectionResults19u9(feature);
+    const forced = (mode === 'collection_only' || mode === 'automatic_collection') ? collection : (mode === 'automatic_pinned_collection' ? pinned.concat(collection.filter((r) => !pinned.some((p) => p.key === r.key))) : pinned);
     const excluded = excludedKeys(feature);
     const autoRaw = Array.isArray(data?.results) ? data.results.map(normalizeResult).filter((r) => r.key) : [];
     let merged = [];
-    if (mode === 'pinned_only') merged = pinned.slice();
-    else if (mode === 'automatic_pinned') merged = pinned.concat(autoRaw.filter((r) => !pinned.some((p) => p.key === r.key)));
+    if (mode === 'pinned_only' || mode === 'collection_only') merged = forced.slice();
+    else if (mode === 'automatic_pinned' || mode === 'automatic_collection' || mode === 'automatic_pinned_collection') merged = forced.concat(autoRaw.filter((r) => !forced.some((p) => p.key === r.key)));
     else merged = autoRaw;
     merged = merged.map((r) => {
       if (!pinned.some((p) => p.key === r.key)) return r;
@@ -142,6 +186,9 @@
       resultCount: merged.length,
       retrievalMode: mode,
       pinnedCount: pinned.length,
+      collectionCount: collection.length,
+      selectedCollectionId: selectedCollectionId19u9(feature),
+      selectedCollectionName: selectedCollectionName19u9(feature),
       excludedCount: excluded.size,
       authorGraphRanking: !!data?.authorGraphRanking,
       searchSchema: data?.searchSchema || '',
@@ -236,6 +283,7 @@
     const cb = el(checkboxId(feature));
     const tk = el(topKId(feature));
     const mode = el(String(feature || 'knowledge') + 'KnowledgeMode');
+    const collectionSelect = el(String(feature || 'knowledge') + 'KnowledgeCollection');
     if (cb) setStored('latexai:knowledge-enabled:' + feature, cb.checked ? 'true' : 'false');
     if (tk) setStored('latexai:knowledge-topk:' + feature, topK(feature));
   }
@@ -258,7 +306,7 @@
     if (!results.length) return data?.ok === false ? ('Knowledge/literature retrieval failed: ' + (data.error || data.detail || 'unknown error')) : 'No relevant ingested-library papers were retrieved.';
     const lines = [
       '=== RETRIEVED LITERATURE / KNOWLEDGE CONTEXT ===',
-      `Retrieval mode: ${data?.retrievalMode || 'automatic'}; papers provided: ${results.length}.`,
+      `Retrieval mode: ${data?.retrievalMode || 'automatic'}; papers provided: ${results.length}; selected collection: ${data?.selectedCollectionName || 'none'}.`,
       'Use these retrieved works as evidence for novelty, related-work, assumptions, and positioning. Do not invent claims beyond the snippets.',
       'When writing a review/report, include a short "Literature context used" audit naming which retrieved papers influenced the analysis. When writing source edits, use the evidence but still return only LATEXAI_BLOCK_PATCH source edits.'
     ];
@@ -273,6 +321,7 @@
       if (r.canonicalAuthorKeys && r.canonicalAuthorKeys.length) lines.push('Canonical author keys: ' + r.canonicalAuthorKeys.join(', '));
       if (r.score != null && r.score !== '') lines.push('Hybrid retrieval score: ' + scoreText(r.score));
       if (r.semanticScore != null && r.semanticScore !== '') lines.push('Semantic score: ' + scoreText(r.semanticScore));
+      if (r.raw?.collectionRole || r.metadata?.collectionRole) lines.push('Collection role: ' + (r.raw?.collectionRole || r.metadata?.collectionRole));
       if (r.retrievalReasons && r.retrievalReasons.length) lines.push('Why retrieved: ' + r.retrievalReasons.join('; '));
       if (r.scoreBreakdown) lines.push('Score breakdown: ' + scoreBreakdownText(r));
       lines.push('Evidence snippet: ' + (compactText(r.snippet, 900) || '(no snippet available)'));
@@ -285,8 +334,9 @@
     if (data.ok === false) return 'Knowledge retriever failed: ' + (data.error || data.detail || 'unknown error');
     const mode = data.retrievalMode ? ` · mode=${data.retrievalMode.replace(/_/g, '+')}` : '';
     const pins = data.pinnedCount ? ` · pinned=${data.pinnedCount}` : '';
+    const coll = data.collectionCount ? ` · collection=${data.collectionCount}` : (data.selectedCollectionName ? ` · collection=${data.selectedCollectionName}` : '');
     const hybrid = data.hybridRanking || /hybrid/i.test(String(data.searchSchema || '')) ? ' · hybrid ranking' : '';
-    return `Knowledge retriever: ${data.resultCount || 0} paper(s) provided` + (data.searchSchema ? ` · ${data.searchSchema}` : '') + hybrid + (data.topK ? ` · topK=${data.topK}` : '') + mode + pins;
+    return `Knowledge retriever: ${data.resultCount || 0} paper(s) provided` + (data.searchSchema ? ` · ${data.searchSchema}` : '') + hybrid + (data.topK ? ` · topK=${data.topK}` : '') + mode + pins + coll;
   }
   function promptBlock(data) {
     if (!data) return 'Knowledge/literature context is disabled for this run.';
@@ -337,13 +387,15 @@
     const norm = (data?.normalizedResults || (Array.isArray(data?.results) ? data.results.map(normalizeResult) : [])).filter((r) => r && r.key);
     const mode = retrievalMode(feature);
     if (!data && !pinned.length) {
-      node.innerHTML = '<div class="settings-note compact">Retrieved context preview will appear here. Pin papers to force them into later reviews.</div>';
+      node.innerHTML = '<div class="settings-note compact">Retrieved context preview will appear here. Choose a collection or pin papers to force them into later reviews.</div>';
       return;
     }
     const graphFlag = data?.authorGraphRanking ? ' · author graph on' : '';
     const enrichedFlag = /enriched|metadata/i.test(String(data?.searchSchema || data?.storage?.metadataEnrichment || '')) ? ' · metadata enriched' : '';
     const schemaText = data?.searchSchema ? ' · ' + escapeHtml(String(data.searchSchema).replace(/^lumina-research-/, '').replace(/-search-v1$/, '')) : '';
-    const header = `<div class="knowledge-preview-head"><strong>Retrieved literature context</strong><br><span class="muted">${norm.length} paper(s) provided · mode=${escapeHtml(mode.replace(/_/g, '+'))} · pinned=${pinned.length}${graphFlag}${enrichedFlag}${schemaText}</span></div>`;
+    const collectionName = data?.selectedCollectionName || selectedCollectionName19u9(feature) || 'none';
+    const collectionCount = data?.collectionCount || selectedCollectionResults19u9(feature).length || 0;
+    const header = `<div class="knowledge-preview-head"><strong>Retrieved literature context</strong><br><span class="muted">${norm.length} paper(s) provided · mode=${escapeHtml(mode.replace(/_/g, '+'))} · pinned=${pinned.length} · collection=${escapeHtml(collectionName)} (${collectionCount})${graphFlag}${enrichedFlag}${schemaText}</span></div>`;
     const cards = norm.length ? norm.map((r, i) => resultCardHtml(feature, r, i, pinnedSet, excluded)).join('') : '<div class="settings-note compact">No papers selected for this run. Try automatic mode, raise topK, or pin a known relevant paper.</div>';
     node.innerHTML = header + cards;
   }
@@ -410,9 +462,10 @@
       paperSummary: clean(options.paperSummary || ''),
       abstract: clean(options.abstract || ''),
       reviewText: clean(options.reviewText || ''),
-      pinnedPapers: pinnedResults(feature).slice(0, 20).map((r) => ({
-        key: r.key, title: r.title, authors: r.authors, year: r.year, url: r.url, arxiv_id: r.arxiv_id
-      })),
+      pinnedPapers: (() => { const all = pinnedResults(feature).concat(selectedCollectionResults19u9(feature).filter((r) => !pinnedResults(feature).some((p) => p.key === r.key))); return all.slice(0, 40).map((r) => ({ key: r.key, title: r.title, authors: r.authors, year: r.year, url: r.url, arxiv_id: r.arxiv_id, role: r.raw?.collectionRole || r.role || '' })); })(),
+      selectedCollectionId: selectedCollectionId19u9(feature),
+      selectedCollectionName: selectedCollectionName19u9(feature),
+      projectContextKey: projectContextKey19u9(),
       retrievalMode: retrievalMode(feature),
       latexSource: sourceForRetrieval(options),
       workflow: clean(options.workflow || feature),
@@ -440,6 +493,7 @@
     const cb = el(checkboxId(feature));
     const tk = el(topKId(feature));
     const mode = el(String(feature || 'knowledge') + 'KnowledgeMode');
+    const collectionSelect = el(String(feature || 'knowledge') + 'KnowledgeCollection');
     if (cb) {
       const stored = getStored('latexai:knowledge-enabled:' + feature, '');
       if (stored) cb.checked = stored === 'true';
@@ -450,8 +504,15 @@
       if (stored) tk.value = stored;
       tk.addEventListener('change', () => rememberUi(feature));
     }
+    if (collectionSelect) {
+      const list = collections19u9();
+      const storedCollection = getStored(collectionSelectKey(feature), getStored(SELECTED_COLLECTION_KEY_19U9, ''));
+      collectionSelect.innerHTML = '<option value="">No collection</option>' + list.map((c) => '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || c.id) + ' (' + collectionItems19u9(c.id).length + ')</option>').join('');
+      if (storedCollection && list.some((c) => c.id === storedCollection)) collectionSelect.value = storedCollection;
+      collectionSelect.addEventListener('change', () => { setStored(collectionSelectKey(feature), selectedCollectionId19u9(feature)); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); });
+    }
     if (mode) {
-      const storedMode = getStored(modeKey(feature), 'automatic_pinned');
+      const storedMode = getStored(modeKey(feature), 'automatic_collection');
       mode.value = retrievalMode(feature, storedMode);
       mode.addEventListener('change', () => { storeRetrievalMode(feature); if (lastByFeature[feature]) lastByFeature[feature] = buildFilteredData(feature, lastByFeature[feature].rawData || lastByFeature[feature]); refreshFeaturePreview(feature); });
     }
@@ -467,10 +528,14 @@
       '  </div>',
       '  <div class="field-grid two">',
       '    <label class="field">Retrieval mode <select id="' + f + 'KnowledgeMode">',
-      '      <option value="automatic_pinned">automatic + pinned</option>',
+      '      <option value="automatic_collection">automatic + selected collection</option>',
+      '      <option value="collection_only">selected collection only</option>',
+      '      <option value="automatic_pinned_collection">automatic + pinned + collection</option>',
+      '      <option value="automatic_pinned">automatic + legacy pins</option>',
       '      <option value="automatic">automatic only</option>',
-      '      <option value="pinned_only">pinned only</option>',
+      '      <option value="pinned_only">legacy pins only</option>',
       '    </select></label>',
+      '    <label class="field">Project collection <select id="' + f + 'KnowledgeCollection"><option value="">No collection</option></select></label>',
       '    <label class="field">Manual preview query <input id="' + f + 'KnowledgeManualQuery" type="text" placeholder="optional search/preview query" /></label>',
       '  </div>',
       '  <div class="document-ai-actions knowledge-preview-actions">',
@@ -479,7 +544,7 @@
       '    <button class="btn mini" type="button" data-knowledge-preview-action="clear-excluded" data-knowledge-feature="' + f + '">Clear exclusions</button>',
       '  </div>',
       '  <div id="' + f + 'KnowledgeStatus" class="settings-note compact">Knowledge/literature context is off. Enable it to retrieve relevant ingested-library papers before the AI run.</div>',
-      '  <div id="' + f + 'KnowledgePreview" class="knowledge-context-preview"><div class="settings-note compact">Retrieved context preview will appear here. Pin papers to force them into later reviews.</div></div>',
+      '  <div id="' + f + 'KnowledgePreview" class="knowledge-context-preview"><div class="settings-note compact">Retrieved context preview will appear here. Choose a collection or pin papers to force them into later reviews.</div></div>',
       '</div>'
     ].join('');
   }
@@ -574,6 +639,10 @@
     includeResult,
     pinnedResults,
     retrievalMode,
+    collections: collections19u9,
+    collectionItems: collectionItems19u9,
+    selectedCollectionId: selectedCollectionId19u9,
+    projectContextKey: projectContextKey19u9,
     installUiPersistence,
     ensureGlobalKnowledgeControlSurfaces,
     getLast: (feature) => lastByFeature[feature] || null,
