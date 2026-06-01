@@ -40,6 +40,12 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
       <div class="field" style="margin-top:10px"><label>Role for papers added from result cards</label><select id="collectionRole"><option value="central">central</option><option value="background">background</option><option value="competitor">competitor</option><option value="methodological">methodological</option><option value="maybe">maybe relevant</option><option value="excluded">excluded</option></select></div>
       <div class="row" style="margin-top:10px"><button class="btn mini primary" id="createCollectionBtn">Create / save</button><button class="btn mini" id="showCollectionBtn">Show collection</button><button class="btn mini" id="deleteCollectionBtn">Delete</button></div>
       <div id="collectionStatus" class="note" style="margin-top:10px">Collections are thematic reading lists for the standalone literature assistant. LaTeX projects can use a selected collection as project context.</div>
+      <h3>Collection synthesis</h3>
+      <div class="field"><label>Synthesis mode</label><select id="collectionSynthesisMode"><option value="annotated_bibliography">annotated bibliography</option><option value="ranking">rank papers by relevance</option><option value="gap_analysis">gap / open-problem analysis</option><option value="related_work">related work draft</option><option value="citation_suggestions">citation suggestions</option><option value="compare">compare selected papers</option></select></div>
+      <div class="field" style="margin-top:10px"><label>Focus / instructions, optional</label><textarea id="collectionSynthesisPrompt" placeholder="Explain how these papers relate to Bellman completeness and offline RL. Emphasize assumptions, limitations, and where my paper should cite them."></textarea></div>
+      <div class="row" style="margin-top:10px"><label class="tagline"><input type="checkbox" id="collectionSynthesisUseAi" checked /> use backend AI if configured</label><label class="tagline"><input type="checkbox" id="collectionSynthesisIncludeExcluded" /> include excluded papers</label></div>
+      <div class="row" style="margin-top:10px"><button class="btn mini primary" id="collectionSynthesizeBtn">Generate synthesis</button><button class="btn mini" id="collectionRelatedWorkBtn">Related work draft</button><button class="btn mini" id="collectionGapBtn">Gap analysis</button><button class="btn mini" id="collectionRankingBtn">Rank</button></div>
+      <div id="collectionSynthesisStatus" class="note" style="margin-top:10px">Use the active collection as the context for annotated bibliographies, related work, gap analysis, and citation suggestions.</div>
     </section>
 
     <section class="panel">
@@ -162,7 +168,7 @@ a{color:var(--accent);text-decoration:none}.app{min-height:100vh;padding:18px}.t
 <script>
 (function(){
 'use strict';
-const STAGE='latex-stage19u9f-bulk-import-hide-existing-toggle-20260601-1';
+const STAGE='latex-stage19u9h-collection-aware-literature-synthesis-20260601-1';
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const compact=(s,n=650)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
@@ -441,10 +447,79 @@ function addToCollection(r, button){
   return true;
 }
 function removeFromCollectionKey(id,key){const list=collectionItems(id).filter(x=>x.key!==key); saveCollectionItems(id,list); syncCollectionToBackend(id); showCollection();}
-function collectionToPayload(id=selectedCollectionId()){const c=collections().find(x=>x.id===id)||{}; return {id,name:c.name||id,description:c.description||'',items:collectionItems(id),metadata:{stage:'stage19u9f-bulk-import-hide-existing-toggle',source:'literature.html-localStorage'}}}
+function collectionToPayload(id=selectedCollectionId()){const c=collections().find(x=>x.id===id)||{}; return {id,name:c.name||id,description:c.description||'',items:collectionItems(id),metadata:{stage:'stage19u9h-collection-aware-literature-synthesis',source:'literature.html-localStorage'}}}
 async function syncCollectionToBackend(id=selectedCollectionId()){ if(!id) return; try{ await fetchJson('/research/collections',{method:'POST',headers:headers(),body:JSON.stringify({collection:collectionToPayload(id)})},{allowApplicationError:true}); }catch(_e){} }
 function showCollection(){const id=selectedCollectionId(); const c=collections().find(x=>x.id===id); if(!id||!c){$('results').innerHTML='<div class="note">No collection selected.</div>';return;} const items=collectionItems(id); $('results').innerHTML='<h3>Collection: '+esc(c.name||id)+'</h3><div class="note">'+items.length+' paper(s). Roles: central/background/competitor/methodological/maybe/excluded.</div>'+(items.map((p,i)=>renderCollectionItemCard(id,p,i)).join('')||'<div class="note">No papers in this collection yet.</div>'); setBox('collectionStatus','Showing collection '+esc(c.name||id)+'.','note');}
 function renderCollectionItemCard(id,p,i){const authors=Array.isArray(p.authors)?p.authors.join(', '):'';return `<div class="result"><div class="title">${i+1}. ${esc(p.title||'Untitled paper')}</div><div class="muted">${esc(authors)} ${p.year?' · '+esc(p.year):''}</div><div class="badges"><span class="badge gold">${esc(p.role||'central')}</span></div><div class="snippet">${esc(compact(p.snippet||''))}</div><div class="row" style="margin-top:8px"><button class="btn mini danger" data-remove-collection="${esc(id)}" data-remove-key="${esc(p.key)}">Remove from collection</button>${p.url?'<a class="btn mini" target="_blank" href="'+esc(p.url)+'">Open</a>':''}</div></div>`}
+
+
+
+let lastCollectionSynthesis=null;
+function collectionSynthesisPayload(modeOverride){
+  const id=selectedCollectionId();
+  return {
+    mode: modeOverride || ($('collectionSynthesisMode')?.value || 'annotated_bibliography'),
+    prompt: $('collectionSynthesisPrompt')?.value || '',
+    useAi: !!($('collectionSynthesisUseAi') && $('collectionSynthesisUseAi').checked),
+    includeExcluded: !!($('collectionSynthesisIncludeExcluded') && $('collectionSynthesisIncludeExcluded').checked),
+    maxItems: 60,
+    collection: collectionToPayload(id)
+  };
+}
+function renderCollectionSynthesis(data){
+  const report=data.report||data.markdown||data.text||'';
+  const refs=Array.isArray(data.references)?data.references:[];
+  const refHtml=refs.length?'<h3>Cited collection papers</h3>'+refs.map(r=>`<div class="result"><div class="title">[${esc(r.index)}] ${esc(r.title||'Untitled')}</div><div class="muted">${esc(Array.isArray(r.authors)?r.authors.join(', '):'')} ${r.year?' · '+esc(r.year):''} ${r.role?' · role: '+esc(r.role):''}</div>${r.url?'<a class="btn mini" target="_blank" href="'+esc(r.url)+'">Open</a>':''}</div>`).join(''):'';
+  const aiBadge=data.usedAi?'<span class="badge good">AI synthesis</span>':'<span class="badge gold">metadata fallback</span>';
+  const modeBadge='<span class="badge blue">'+esc(data.modeLabel||data.mode||'synthesis')+'</span>';
+  return `<h3>Collection synthesis: ${esc(data.collectionName||data.collectionId||'collection')}</h3><div class="note good">${aiBadge} ${modeBadge} ${esc(data.itemCount||0)} paper(s). Use the buttons below to copy or hand off a \\lai block.</div><div class="row" style="margin:10px 0"><button class="btn mini primary" data-copy-synthesis-report="1">Copy report</button><button class="btn mini" data-copy-synthesis-lai="1">Copy \\lai block</button><button class="btn mini" data-save-synthesis-lai="1">Save \\lai handoff</button><button class="btn mini" data-append-synthesis-lai="1">Append to open editor</button></div><div class="output">${esc(report)}</div>${refHtml}`;
+}
+async function runCollectionSynthesis(modeOverride){
+  const id=selectedCollectionId();
+  const c=collections().find(x=>x.id===id);
+  if(!id||!c){setBox('collectionSynthesisStatus','Select or create a collection first.','note warn');return;}
+  const count=collectionItems(id).length;
+  if(!count){setBox('collectionSynthesisStatus','The selected collection has no papers yet. Add papers from search/bulk results first.','note warn');return;}
+  await syncCollectionToBackend(id);
+  const body=collectionSynthesisPayload(modeOverride);
+  const label=body.mode.replace(/_/g,' ');
+  setBox('collectionSynthesisStatus','Generating '+esc(label)+' for '+esc(count)+' paper(s)...','note');
+  try{
+    const data=await fetchJson('/research/collections/'+encodeURIComponent(id)+'/synthesize',{method:'POST',headers:headers(),body:JSON.stringify(body)},{allowApplicationError:true});
+    raw(data); lastCollectionSynthesis=data;
+    $('results').innerHTML=renderCollectionSynthesis(data);
+    const cls=data.usedAi?'note good':'note warn';
+    const extra=data.fallbackUsed?' Metadata-only fallback was used.':' Backend AI synthesis completed.';
+    setBox('collectionSynthesisStatus','Synthesis ready: '+esc(data.modeLabel||label)+'.'+extra,cls);
+  }catch(e){setBox('collectionSynthesisStatus','Collection synthesis failed: '+esc(e.message),'note bad'); raw(String(e.stack||e));}
+}
+function currentSynthesisReport(){return (lastCollectionSynthesis&&(lastCollectionSynthesis.report||lastCollectionSynthesis.markdown||lastCollectionSynthesis.text))||'';}
+function currentSynthesisLai(){return (lastCollectionSynthesis&&lastCollectionSynthesis.laiBlock)||('\\lai{\n'+currentSynthesisReport()+'\n}');}
+async function copyCollectionSynthesis(kind){
+  const text=kind==='lai'?currentSynthesisLai():currentSynthesisReport();
+  if(!text){setBox('collectionSynthesisStatus','No synthesis report to copy yet.','note warn');return;}
+  try{await navigator.clipboard?.writeText(text); setBox('collectionSynthesisStatus','Copied '+(kind==='lai'?'\\lai block':'report')+'.','note good');}
+  catch(e){raw(text); setBox('collectionSynthesisStatus','Clipboard unavailable; report is shown in Raw output.','note warn');}
+}
+function saveCollectionSynthesisLai(){
+  const block=currentSynthesisLai();
+  if(!block.trim()){setBox('collectionSynthesisStatus','No synthesis report to save yet.','note warn');return;}
+  localStorage.setItem('latexai:literature-synthesis-pending-lai:v1', JSON.stringify({stage:STAGE,createdAtMs:Date.now(),collectionId:selectedCollectionId(),laiBlock:block,report:currentSynthesisReport()}));
+  setBox('collectionSynthesisStatus','Saved a pending \\lai handoff in this browser. Open the LaTeX editor and paste/apply the copied block when ready.','note good');
+}
+function appendCollectionSynthesisToOpenEditor(){
+  const block='\n\n'+currentSynthesisLai()+'\n';
+  if(!block.trim()){setBox('collectionSynthesisStatus','No synthesis report to append yet.','note warn');return;}
+  try{
+    const w=window.opener||window.parent;
+    const doc=w&&w.document;
+    const editor=doc&&doc.getElementById&&doc.getElementById('sourceEditor');
+    if(editor){editor.value=(editor.value||'')+block; editor.dispatchEvent(new Event('input',{bubbles:true})); editor.dispatchEvent(new Event('change',{bubbles:true})); setBox('collectionSynthesisStatus','Appended the \\lai block to the open LaTeX editor.','note good'); return;}
+  }catch(e){/* cross-origin or no opener */}
+  saveCollectionSynthesisLai();
+  navigator.clipboard?.writeText(block).catch(()=>{});
+  setBox('collectionSynthesisStatus','Could not directly access an open editor, so the \\lai block was saved and copied for manual paste.','note warn');
+}
 
 function feature(){return $('pinFeature').value||'paper-ai'}
 function keyOf(r){return String(r.paper_id||r.paperId||r.id||r.workId||r.url||r.source_url||r.arxiv_id||r.doi||r.title||'').toLowerCase().slice(0,500)}
@@ -524,7 +599,7 @@ function num(v){const n=Number(v);return Number.isFinite(n)?n.toFixed(3):esc(v||
 function copyDebug(){navigator.clipboard?.writeText($('rawOut').textContent||''); setBox('pinStatus','Copied diagnostics/output.','note good')}
 function bind(){
   $('apiBase').value=scanForApi(); $('token').value=localStorage.getItem(LS_TOKEN)||'';
-  $('saveSettingsBtn').onclick=saveSettings; $('statusBtn').onclick=status; $('createCollectionBtn').onclick=createCollection; $('deleteCollectionBtn').onclick=deleteCollection; $('showCollectionBtn').onclick=showCollection; if($('collectionSelect')){$('collectionSelect').onchange=()=>{localStorage.setItem(LS_SELECTED_COLLECTION,selectedCollectionId()); showCollection();};} refreshCollectionSelects(); $('ingestBtn').onclick=ingest; $('resetIngestBtn').onclick=()=>{$('urlList').value=''}; $('lookupBtn').onclick=lookup; $('authorLookupBtn').onclick=authorLookup; $('authorSelectAllBtn').onclick=()=>authorSelectAll(true); $('authorClearSelectionBtn').onclick=()=>authorSelectAll(false); $('authorImportSelectedBtn').onclick=()=>authorImport(false); $('authorImportTopBtn').onclick=()=>authorImport(true); $('bulkPreviewBtn').onclick=bulkPreview; $('bulkSelectAllBtn').onclick=()=>bulkSelectAll(true); $('bulkClearSelectionBtn').onclick=()=>bulkSelectAll(false); $('bulkImportSelectedBtn').onclick=()=>bulkImport(false); $('bulkImportTopBtn').onclick=()=>bulkImport(true); $('loadLibraryBtn').onclick=()=>{activate('library');loadLibrary()}; $('libraryRefreshBtn').onclick=loadLibrary; $('enrichAllBtn').onclick=enrichAll; $('libraryEnrichSelectedBtn').onclick=enrichAll; $('searchBtn').onclick=search; $('contextBtn').onclick=context; $('clearResultsBtn').onclick=()=>{$('results').innerHTML='';}; $('clearPinsBtn').onclick=clearPins; $('clearExclusionsBtn').onclick=clearEx; $('showPinsBtn').onclick=showPins; $('copyDebugBtn').onclick=copyDebug;
+  $('saveSettingsBtn').onclick=saveSettings; $('statusBtn').onclick=status; $('createCollectionBtn').onclick=createCollection; $('deleteCollectionBtn').onclick=deleteCollection; $('showCollectionBtn').onclick=showCollection; if($('collectionSynthesizeBtn'))$('collectionSynthesizeBtn').onclick=()=>runCollectionSynthesis(); if($('collectionRelatedWorkBtn'))$('collectionRelatedWorkBtn').onclick=()=>runCollectionSynthesis('related_work'); if($('collectionGapBtn'))$('collectionGapBtn').onclick=()=>runCollectionSynthesis('gap_analysis'); if($('collectionRankingBtn'))$('collectionRankingBtn').onclick=()=>runCollectionSynthesis('ranking'); if($('collectionSelect')){$('collectionSelect').onchange=()=>{localStorage.setItem(LS_SELECTED_COLLECTION,selectedCollectionId()); showCollection();};} refreshCollectionSelects(); $('ingestBtn').onclick=ingest; $('resetIngestBtn').onclick=()=>{$('urlList').value=''}; $('lookupBtn').onclick=lookup; $('authorLookupBtn').onclick=authorLookup; $('authorSelectAllBtn').onclick=()=>authorSelectAll(true); $('authorClearSelectionBtn').onclick=()=>authorSelectAll(false); $('authorImportSelectedBtn').onclick=()=>authorImport(false); $('authorImportTopBtn').onclick=()=>authorImport(true); $('bulkPreviewBtn').onclick=bulkPreview; $('bulkSelectAllBtn').onclick=()=>bulkSelectAll(true); $('bulkClearSelectionBtn').onclick=()=>bulkSelectAll(false); $('bulkImportSelectedBtn').onclick=()=>bulkImport(false); $('bulkImportTopBtn').onclick=()=>bulkImport(true); $('loadLibraryBtn').onclick=()=>{activate('library');loadLibrary()}; $('libraryRefreshBtn').onclick=loadLibrary; $('enrichAllBtn').onclick=enrichAll; $('libraryEnrichSelectedBtn').onclick=enrichAll; $('searchBtn').onclick=search; $('contextBtn').onclick=context; $('clearResultsBtn').onclick=()=>{$('results').innerHTML='';}; $('clearPinsBtn').onclick=clearPins; $('clearExclusionsBtn').onclick=clearEx; $('showPinsBtn').onclick=showPins; $('copyDebugBtn').onclick=copyDebug;
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>activate(t.dataset.tab));
   document.body.addEventListener('click',ev=>{
     const b=ev.target.closest('button'); if(!b)return;
@@ -536,6 +611,10 @@ function bind(){
       if(b.dataset.exclude){runResultAction(b,'exclude',ev); return;}
     }
     if(b.dataset.removeCollection&&b.dataset.removeKey){ ev.preventDefault(); removeFromCollectionKey(b.dataset.removeCollection,b.dataset.removeKey); return; }
+    if(b.dataset.copySynthesisReport){ ev.preventDefault(); copyCollectionSynthesis('report'); return; }
+    if(b.dataset.copySynthesisLai){ ev.preventDefault(); copyCollectionSynthesis('lai'); return; }
+    if(b.dataset.saveSynthesisLai){ ev.preventDefault(); saveCollectionSynthesisLai(); return; }
+    if(b.dataset.appendSynthesisLai){ ev.preventDefault(); appendCollectionSynthesisToOpenEditor(); return; }
     if(b.dataset.enrichWork){ ev.preventDefault(); enrichWork(b.dataset.enrichWork); return; }
   }, true);
   if($('apiBase').value) status();
