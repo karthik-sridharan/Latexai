@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u5-author-paper-graph-retrieval-boost-20260531-1';
+  const STAGE = 'latex-stage19u9l2-review-corpus-context-for-reviewer-rebuttal-20260601-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -87,6 +87,120 @@
     const svc = knowledgeService();
     if (!svc?.promptBlock) return 'Knowledge/literature context was requested, but KnowledgeContextService is not loaded.';
     return svc.promptBlock(payload?.knowledgeRetrieval);
+  }
+
+  function reviewApiBaseUrl() {
+    const mem = memoryBaseUrl();
+    return String(mem || '').replace(/\/api\/lumina\/memory\/?$/i, '/api/lumina').replace(/\/+$/g, '');
+  }
+
+  function reviewCorpusEnabled() {
+    return Boolean(el('reviewerSimUseReviewCorpus')?.checked);
+  }
+
+  function reviewCorpusTopK() {
+    const raw = Number(el('reviewerSimReviewCorpusTopK')?.value || 5);
+    return Math.max(1, Math.min(12, Number.isFinite(raw) ? raw : 5));
+  }
+
+  function reviewCorpusStatusText(payload) {
+    if (!payload?.useReviewCorpusContext) return 'Review/rebuttal corpus context is off.';
+    const data = payload?.reviewCorpusRetrieval;
+    if (!data) return 'Review/rebuttal corpus context requested; not retrieved yet.';
+    if (data.ok === false) return `Review/rebuttal corpus retrieval failed: ${data.error || 'unknown error'}`;
+    return `Review/rebuttal corpus context: ${data.resultCount || 0} retrieved example(s).`;
+  }
+
+  function setReviewCorpusStatus(message, kind = '') {
+    const node = el('reviewerSimReviewCorpusStatus');
+    if (node) node.textContent = message || '';
+    if (node) node.className = `settings-note compact${kind ? ' ' + kind : ''}`;
+  }
+
+  function reviewCorpusSearchQuery(payload, phase = 'reviews') {
+    const parts = [
+      `Target venue: ${payload.targetVenue || ''}`,
+      `Paper goal: ${payload.paperGoal || ''}`,
+      `Phase: ${phase}`,
+      payload.globalInstructions || '',
+      payload.rebuttalGuidance || '',
+      (payload.reviewers || []).map((r) => `${r.name}: ${r.style}`).join('\n'),
+      phase !== 'reviews' ? reviewsMarkdown() : '',
+      phase === 'final_synthesis' ? (lastRebuttal || '') : '',
+      stripLatexForIdentity(payload.draftExcerpt || '').slice(0, 4200)
+    ].filter(Boolean);
+    return parts.join('\n\n').replace(/\s+/g, ' ').trim().slice(0, 8000);
+  }
+
+  function compactReviewCorpusHit(hit, index) {
+    const score = Number(hit?.score || 0);
+    const title = clean(hit?.title || '(untitled OpenReview paper)');
+    const type = clean(hit?.itemType || hit?.kind || 'record');
+    const itemTitle = clean(hit?.itemTitle || '');
+    const authors = Array.isArray(hit?.authors) ? hit.authors.slice(0, 6).join(', ') : '';
+    const outcome = clean(hit?.metadata?.record?.outcome || hit?.metadata?.outcome || '');
+    const snippet = clean(hit?.snippet || '').slice(0, 1400);
+    return [
+      `[R${index + 1}] ${title}`,
+      `Type: ${type}${itemTitle ? ` / ${itemTitle}` : ''}`,
+      `Similarity: ${Number.isFinite(score) ? score.toFixed(3) : 'n/a'}`,
+      authors ? `Authors: ${authors}` : '',
+      outcome ? `Outcome/meta: ${outcome.slice(0, 220)}` : '',
+      snippet ? `Excerpt: ${snippet}` : ''
+    ].filter(Boolean).join('\n');
+  }
+
+  function reviewerReviewCorpusBlock(payload) {
+    if (!payload?.useReviewCorpusContext) return '';
+    const data = payload?.reviewCorpusRetrieval;
+    if (!data) return 'Review/rebuttal corpus context was requested, but it has not been retrieved yet.';
+    if (data.ok === false) return `Review/rebuttal corpus retrieval failed: ${data.error || 'unknown error'}`;
+    const hits = Array.isArray(data.results) ? data.results : [];
+    if (!hits.length) return 'Review/rebuttal corpus retrieval returned no examples.';
+    return [
+      'Review/rebuttal corpus context from OpenReview-like trajectories:',
+      'Use these as examples of realistic reviewer concerns, author-response strategies, meta-review/decision signals, and paper-revision patterns. Do not copy text verbatim. Do not reveal reviewer identities. Cite examples as [R1], [R2], etc. when useful.',
+      '',
+      ...hits.map(compactReviewCorpusHit)
+    ].join('\n\n');
+  }
+
+  async function retrieveReviewCorpusContext(payload, phase = 'reviews') {
+    if (!payload?.useReviewCorpusContext) return null;
+    const query = reviewCorpusSearchQuery(payload, phase);
+    if (!query) {
+      const data = { ok: false, error: 'empty review-corpus query', resultCount: 0, results: [] };
+      payload.reviewCorpusRetrieval = data;
+      setReviewCorpusStatus(reviewCorpusStatusText(payload), 'bad');
+      return data;
+    }
+    try {
+      setReviewCorpusStatus(`Retrieving review/rebuttal corpus examples for ${phase}...`);
+      const response = await fetch(`${reviewApiBaseUrl()}/reviews/search`, {
+        method: 'POST',
+        headers: { ...memoryHeaders({ method: 'POST', body: '{}' }), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          topK: payload.reviewCorpusTopK || reviewCorpusTopK(),
+          itemTypes: payload.reviewCorpusItemTypes || []
+        })
+      });
+      const text = await response.text().catch(() => '');
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
+      if (!response.ok || data.ok === false) throw new Error(data?.detail || data?.error?.message || text || `HTTP ${response.status}`);
+      payload.reviewCorpusRetrieval = data;
+      payload.reviewCorpusPhase = phase;
+      setReviewCorpusStatus(reviewCorpusStatusText(payload), 'good');
+      return data;
+    } catch (err) {
+      const data = { ok: false, error: err?.message || String(err), resultCount: 0, results: [] };
+      payload.reviewCorpusRetrieval = data;
+      payload.reviewCorpusPhase = phase;
+      setReviewCorpusStatus(reviewCorpusStatusText(payload), 'bad');
+      try { console.warn('[Latexai review corpus] retrieval failed', err); } catch (_ignored) {}
+      return data;
+    }
   }
 
   async function retrieveReviewerKnowledge(payload, phase = 'reviews') {
@@ -946,6 +1060,9 @@
       reviewers: selectedReviewers(),
       useKnowledgeContext: knowledgeService()?.enabled?.('reviewerSim') || false,
       knowledgeTopK: knowledgeService()?.topK?.('reviewerSim') || 5,
+      useReviewCorpusContext: reviewCorpusEnabled(),
+      reviewCorpusTopK: reviewCorpusTopK(),
+      reviewCorpusItemTypes: [],
       draftExcerpt: draftExcerpt(active.text)
     };
   }
@@ -979,6 +1096,7 @@
       `Target venue: ${payload.targetVenue || '(not specified)'}`,
       `Paper goal: ${payload.paperGoal || '(not specified)'}`,
       `Knowledge context: ${payload.knowledgeRetrieval ? (payload.knowledgeRetrieval.resultCount || 0) + ' retrieved paper(s)' : (payload.useKnowledgeContext ? 'requested' : 'off')}`,
+      `Review/rebuttal corpus context: ${payload.reviewCorpusRetrieval ? (payload.reviewCorpusRetrieval.resultCount || 0) + ' retrieved example(s)' : (payload.useReviewCorpusContext ? 'requested' : 'off')}`,
       '',
       '## Reviewers',
       '',
@@ -1016,6 +1134,10 @@
       await retrieveReviewerKnowledge(payload, 'reviews');
       lastPayload = payload;
     }
+    if (payload.useReviewCorpusContext) {
+      await retrieveReviewCorpusContext(payload, 'reviews');
+      lastPayload = payload;
+    }
     setOutput(fullReport());
 
     try {
@@ -1023,6 +1145,7 @@
         if (cancelled) throw new Error('Review simulation cancelled.');
         setStatus(`${reviewer.name} is reviewing the paper...`);
         const knowledgeBlock = reviewerKnowledgeBlock(payload);
+        const reviewCorpusBlock = reviewerReviewCorpusBlock(payload);
         const instructions = [
           'You are an AI reviewer in a simulated academic review panel for a LaTeX research paper.',
           'You must review all key dimensions: correctness, clarity, novelty, significance, related work, assumptions, experiments/evidence, presentation, and venue fit.',
@@ -1031,6 +1154,7 @@
           'Use a realistic academic-review structure: summary, strengths, weaknesses, questions for authors, required changes, minor issues, score/confidence.',
           'Do not produce a rebuttal. Do not rewrite the paper yet.',
           knowledgeBlock ? 'Use the retrieved literature context to assess novelty, missing comparisons, related work, assumptions, and positioning. Cite retrieved paper numbers like [1], [2] in review prose when useful.' : '',
+          reviewCorpusBlock ? 'Use the retrieved review/rebuttal corpus examples to make this simulated review more realistic: borrow issue types, review structure, likely objections, confidence/score style, and decision-relevant concerns. Cite examples as [R1], [R2] when useful; do not copy text verbatim.' : '',
           payload.globalInstructions ? `Extra global instructions: ${payload.globalInstructions}` : ''
         ].filter(Boolean).join('\n');
         const input = [
@@ -1040,6 +1164,9 @@
           knowledgeBlock ? '--- Retrieved literature / knowledge context ---' : '',
           knowledgeBlock,
           knowledgeBlock ? '' : '',
+          reviewCorpusBlock ? '--- Retrieved OpenReview review/rebuttal corpus examples ---' : '',
+          reviewCorpusBlock,
+          reviewCorpusBlock ? '' : '',
           '--- Draft excerpt ---',
           payload.draftExcerpt
         ].join('\n');
@@ -1079,13 +1206,19 @@ ${input}` : input,
     if (!lastReviews.length) return { ok: false, error: 'No reviews available.' };
     payload.rebuttalGuidance = clean(el('reviewerSimRebuttalGuidance')?.value);
     lastPayload = payload;
+    if (payload.useReviewCorpusContext) {
+      await retrieveReviewCorpusContext(payload, 'rebuttal');
+      lastPayload = payload;
+    }
     setStatus('Generating AI rebuttal to simulated reviews...');
     const knowledgeBlock = reviewerKnowledgeBlock(payload);
+    const reviewCorpusBlock = reviewerReviewCorpusBlock(payload);
     const instructions = [
       'You are generating an author rebuttal to a set of simulated paper reviews.',
       'Be respectful, precise, and strategic. Defend the paper where appropriate, concede real weaknesses, and propose concrete revisions.',
       'Use the user rebuttal guidance when present, but do not make unsupported claims.',
       knowledgeBlock ? 'Use retrieved literature context only for defensible positioning, missing-citation commitments, and evidence-grounded rebuttal points.' : '',
+      reviewCorpusBlock ? 'Use retrieved OpenReview review/rebuttal examples to choose realistic rebuttal strategies: clarify misunderstandings, concede real weaknesses, promise concrete edits, distinguish related work, and avoid defensive overclaiming. Cite examples as [R1], [R2] only when useful.' : '',
       'Structure the rebuttal by major concern and by reviewer when useful.',
       'Include explicit commitments for paper revisions.'
     ].join('\n');
@@ -1094,6 +1227,7 @@ ${input}` : input,
       '--- User rebuttal guidance ---', payload.rebuttalGuidance || '(none)', '',
       '--- Reviews ---', reviewsMarkdown(), '',
       knowledgeBlock ? '--- Retrieved literature / knowledge context ---' : '', knowledgeBlock, knowledgeBlock ? '' : '',
+      reviewCorpusBlock ? '--- Retrieved OpenReview review/rebuttal corpus examples ---' : '', reviewCorpusBlock, reviewCorpusBlock ? '' : '',
       '--- Draft excerpt ---', payload.draftExcerpt
     ].join('\n');
     try {
@@ -1207,7 +1341,7 @@ ${input}` : input,
           rewardLabel: lastSynthesis ? 'positive' : 'negative',
           summary: lastSynthesis ? 'Final synthesis completed.' : `Final synthesis failed or returned empty output.${extra.error ? ` ${extra.error}` : ''}`
         }],
-        metadata: { stage: STAGE, reviewerCount: (payload?.reviewers || []).length || (lastReviews || []).length, hasRebuttal: Boolean(lastRebuttal), hasSynthesis: Boolean(lastSynthesis), ...(extra.metadata || {}) }
+        metadata: { stage: STAGE, reviewerCount: (payload?.reviewers || []).length || (lastReviews || []).length, hasRebuttal: Boolean(lastRebuttal), hasSynthesis: Boolean(lastSynthesis), reviewCorpusResultCount: payload?.reviewCorpusRetrieval?.resultCount || 0, reviewCorpusPhase: payload?.reviewCorpusPhase || '', ...(extra.metadata || {}) }
       });
     } catch (err) {
       try { console.warn('[Latexai debate trajectory logging] reviewer/rebuttal trajectory failed', err); } catch (_ignored) {}
@@ -1227,12 +1361,18 @@ ${input}` : input,
       await retrieveReviewerKnowledge(payload, 'final_synthesis');
       lastPayload = payload;
     }
+    if (payload.useReviewCorpusContext) {
+      await retrieveReviewCorpusContext(payload, 'final_synthesis');
+      lastPayload = payload;
+    }
     const knowledgeBlock = reviewerKnowledgeBlock(payload);
+    const reviewCorpusBlock = reviewerReviewCorpusBlock(payload);
     setStatus('Synthesizing final revision plan and paper rewrite proposal...');
     const instructions = [
       'You are the final synthesis agent for a paper revision workflow.',
       'Use the simulated reviews, user guidance, AI rebuttal, and retrieved literature context to propose the strongest final revision.',
       knowledgeBlock ? 'Use retrieved literature to strengthen novelty positioning, related-work edits, missing assumptions, and citation-aware improvement suggestions. Do not invent beyond retrieved snippets.' : '',
+      reviewCorpusBlock ? 'Use retrieved OpenReview review/rebuttal trajectories to choose realistic final revisions: identify which reviewer concerns usually require paper edits, which can be defended, and what concrete camera-ready changes are credible. Cite examples as [R1], [R2] when useful.' : '',
       'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy. Make the final strategy paper-editable rather than generic advice.',
       rawPatchProtocolInstructions('reviewer/rebuttal final revision source edits'),
       'For every concrete source edit, include a LATEXAI_BLOCK_PATCH block. Use append_before_end_document for a final revision plan if exact localization is unsafe.',
@@ -1246,6 +1386,7 @@ ${input}` : input,
       '--- User rebuttal guidance ---', clean(el('reviewerSimRebuttalGuidance')?.value) || '(none)', '',
       '--- AI rebuttal ---', lastRebuttal || '(none)', '',
       knowledgeBlock ? '--- Retrieved literature / knowledge context ---' : '', knowledgeBlock, knowledgeBlock ? '' : '',
+      reviewCorpusBlock ? '--- Retrieved OpenReview review/rebuttal corpus examples ---' : '', reviewCorpusBlock, reviewCorpusBlock ? '' : '',
       '--- Draft excerpt ---', payload.draftExcerpt
     ].join('\n');
     try {
@@ -1370,6 +1511,17 @@ ${input}` : input,
     bindReviewerDelegatedEvents();
     syncReviewerRows();
     try { NS.KnowledgeContextService?.installUiPersistence?.('reviewerSim'); } catch (_err) {}
+    try {
+      const storedUse = W.localStorage?.getItem?.('latexai:reviewerSim:useReviewCorpus');
+      const useNode = el('reviewerSimUseReviewCorpus');
+      if (useNode && storedUse !== null) useNode.checked = storedUse === 'true';
+      const storedTopK = W.localStorage?.getItem?.('latexai:reviewerSim:reviewCorpusTopK');
+      const topNode = el('reviewerSimReviewCorpusTopK');
+      if (topNode && storedTopK) topNode.value = storedTopK;
+      useNode?.addEventListener('change', () => { try { W.localStorage?.setItem?.('latexai:reviewerSim:useReviewCorpus', String(Boolean(useNode.checked))); } catch (_e) {} setReviewCorpusStatus(reviewCorpusEnabled() ? 'Review/rebuttal corpus context will be retrieved before each phase.' : 'Review/rebuttal corpus context is off.'); }, true);
+      topNode?.addEventListener('change', () => { try { W.localStorage?.setItem?.('latexai:reviewerSim:reviewCorpusTopK', String(reviewCorpusTopK())); } catch (_e) {} }, true);
+      setReviewCorpusStatus(reviewCorpusEnabled() ? 'Review/rebuttal corpus context will be retrieved before each phase.' : 'Review/rebuttal corpus context is off.');
+    } catch (_err) {}
     el('reviewerSimCount')?.addEventListener('change', syncReviewerRows, true);
     // Stage 19I3: buttons are handled by the delegated document listener above.
     // Avoid direct per-card listeners because this card is frequently remounted
@@ -1397,6 +1549,13 @@ ${input}` : input,
       '<label class="field">Paper goal / intended contribution <input id="reviewerSimGoal" type="text" placeholder="Optional: what the paper is trying to establish" /></label>',
       '<label class="field">Global review instructions <textarea id="reviewerSimInstructions" rows="2" placeholder="Optional: ask reviewers to be very critical, focus on theory, compare to a venue, etc."></textarea></label>',
       (NS.KnowledgeContextService?.controlHtml?.('reviewerSim', 'Use knowledge/literature context for Reviewer/Rebuttal simulator', 5) || ''),
+      '<div class="settings-card-subtle review-corpus-context-controls">',
+      '  <div class="field-grid two compact">',
+      '    <label class="field checkbox-field"><input id="reviewerSimUseReviewCorpus" type="checkbox" /> Use OpenReview review/rebuttal corpus context</label>',
+      '    <label class="field">Review corpus topK <input id="reviewerSimReviewCorpusTopK" type="number" min="1" max="12" step="1" value="5" /></label>',
+      '  </div>',
+      '  <div id="reviewerSimReviewCorpusStatus" class="settings-note compact">Review/rebuttal corpus context is off.</div>',
+      '</div>',
       '<div id="reviewerSimRows" class="devils-agent-grid"></div>',
       '<label class="field">Your rebuttal guidance after reading reviews <textarea id="reviewerSimRebuttalGuidance" rows="3" placeholder="Optional: tell the rebuttal agent what to concede, defend, emphasize, or promise to revise."></textarea></label>',
       '<div class="devils-actions">',
@@ -1440,6 +1599,8 @@ ${input}` : input,
     applyReviewerFinalInsertion,
     cancelLoop,
     buildPayload,
+    retrieveReviewCorpusContext,
+    reviewerReviewCorpusBlock,
     getLastReviews: () => lastReviews,
     getLastRebuttal: () => lastRebuttal,
     getLastSynthesis: () => lastSynthesis,
