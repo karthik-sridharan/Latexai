@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t-knowledge-aware-review-agents-20260530-1';
+  const STAGE = 'latex-stage19v-ai-workflow-ui-consolidation-20260602-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -488,15 +488,47 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return s;
   }
 
-  function stripLatexaiVisibleEditBlocks(text) {
-    let s = removeLatexaiSuggestionCommentRegions(text);
-    // Remove visible AI edit blocks from prompt context. Keep macro definitions
-    // because parseLatexMacroBlocks only catches actual \lai{...} calls.
+  function stripLatexaiInternalChangeMarkupForAgentContext(text) {
+    let s = removeLatexaiSuggestionCommentRegions(String(text || ''));
+    // Stage 19T2G: keep Latexai's internal change-markup macros entirely out of
+    // model-visible source. They are implementation details owned by the editor,
+    // not syntax the agents should imitate. Existing marked suggestions are
+    // replaced by neutral placeholders; macro definitions are removed.
+    s = s.replace(/\n?% --- Latexai old-content highlighting macro ---[\s\S]*?% --- end Latexai old-content highlighting macro ---\n?/gi, '\n');
+    s = s.replace(/\n?% --- Latexai AI-change highlighting macro ---[\s\S]*?% --- end Latexai AI-change highlighting macro ---\n?/gi, '\n');
     const blocks = parseLatexMacroBlocks(s, 'lai').concat(parseLatexMacroBlocks(s, 'laiold')).sort((a, b) => b.start - a.start);
     blocks.forEach((b) => {
-      s = s.slice(0, b.start) + '\n% [Latexai previous visible AI edit omitted from debate context]\n' + s.slice(b.end);
+      s = s.slice(0, b.start) + '\n% [Latexai previous internal edit marker omitted from agent context]\n' + s.slice(b.end);
     });
-    return s;
+    const lines = s.split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i] || '';
+      const trimmed = line.trim();
+      if (/Latexai.*(?:visible|change|old-content|AI-change).*markup/i.test(trimmed)) continue;
+      if (/^\\newif\\iflaishowchanges\b|^\\laishowchanges(?:true|false)\b/.test(trimmed)) continue;
+      if (/^\\usepackage\{xcolor\}%\s*added by Latexai/i.test(trimmed)) continue;
+      if (/^\\(?:long\\def|def)\\lai(?:old)?#?\d*/.test(trimmed) || /^\\(?:newcommand|providecommand|renewcommand)\s*\{\\lai(?:old)?\}/.test(trimmed)) {
+        // Skip a small balanced macro-definition body if it spans multiple lines.
+        let depth = 0;
+        let sawBrace = false;
+        for (let j = i; j < Math.min(lines.length, i + 30); j += 1) {
+          for (const ch of String(lines[j] || '')) {
+            if (ch === '{') { depth += 1; sawBrace = true; }
+            else if (ch === '}') depth -= 1;
+          }
+          i = j;
+          if (sawBrace && depth <= 0) break;
+        }
+        continue;
+      }
+      out.push(line);
+    }
+    return out.join('\n').replace(/\n{4,}/g, '\n\n\n');
+  }
+
+  function stripLatexaiVisibleEditBlocks(text) {
+    return stripLatexaiInternalChangeMarkupForAgentContext(text);
   }
 
   function removeLooseTargetSectionSuggestionText(text) {
@@ -589,7 +621,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   }
 
   function normalizeLaiDraftForCompilation(text, mode) {
-    let s = ensureLatexaiColorMacros(String(text || ''));
+    let s = ensureLatexaiColorMacros(decodeAiEscapedControlCharsForInsertion(text));
     // Append-only drafts from Stage 19M2 may include \lai blocks after \end{document}.
     // LaTeX ignores anything after \end{document}, so move those suggestions just before it.
     if (mode === 'append' || containsLaiMarkup(s.slice((findLastEndDocument(s)?.end || s.length)))) {
@@ -752,14 +784,18 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return h;
   }
 
-  async function backendPost(path, body) {
+  async function backendPost(path, body, options = {}) {
     const root = backendRoot();
     if (!root) throw new Error('Missing memory/backend URL. Set Memory backend URL in Settings.');
     const res = await fetch(root + path, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body || {}) });
     const text = await res.text();
     let data = null;
     try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
-    if (!res.ok || data?.ok === false) throw new Error(data?.error?.message || data?.detail || data?.message || ('HTTP ' + res.status + ': ' + text));
+    if (!res.ok || (data?.ok === false && !options.allowOkFalse)) {
+      const msg = data?.error?.message || data?.detail || data?.message || ('HTTP ' + res.status + ': ' + text);
+      throw new Error(msg);
+    }
+    if (data && typeof data === 'object') data.httpStatus = res.status;
     return data;
   }
 
@@ -981,11 +1017,133 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return /\b(?:math|mathematical|equation|equations|derivation|derive|proof\s+step|explain\s+all\s+math|every\s+equation|below\s+it)\b/i.test(signal);
   }
 
+  function userRequestSignalText() {
+    return [
+      inputValue('branchWorkflowQuery', ''),
+      inputValue('branchWorkflowReviewText', ''),
+      inputValue('branchWorkflowPaperSummary', '')
+    ].map((x) => clean(x)).filter(Boolean).join('\n');
+  }
+
+  function appendixRequestActive() {
+    const signal = userRequestSignalText();
+    return /\b(?:appendix|appendices|append\s+(?:an?\s+)?appendix|add\s+(?:an?\s+)?appendix)\b/i.test(signal);
+  }
+
+
+  function buildAppendixRequestContext() {
+    if (!appendixRequestActive()) return '';
+    const signal = userRequestSignalText();
+    return [
+      'USER REQUEST APPENDIX COVERAGE MODE ACTIVE.',
+      'The Focus/query contains an explicit appendix request. This is a binding requirement, not optional review advice.',
+      'Original user request signal:',
+      signal || '(empty)',
+      '',
+      'Final editor requirement:',
+      '- Include at least one RAW LATEX BLOCK PATCH with OPERATION: append_before_end_document.',
+      '- The patch should add visible body-level appendix content immediately before \\end{document}.',
+      '- Do not satisfy the appendix request by only inserting local equation explanations.',
+      '- Infer the requested appendix topic, theorem/definition/example requirements, and explanation/proof-intuition requirements from the Original user request signal above.',
+      '- Preserve the user-requested appendix topic generically; do not special-case or hard-code any example topic in the frontend prompt.',
+      '- If the user asked for a theorem statement, include a theorem-style paragraph in ordinary compile-safe body LaTeX.',
+      '- If the user asked for an explanation, proof idea, examples, or derivation, include those requested pieces in the same appendix patch.',
+      '- Use compile-safe article body LaTeX such as \\appendix, \\section{...}, and \\paragraph{...}; avoid relying on theorem environments unless already declared in the source.',
+      '- Do not use preamble-only commands, new theorem declarations, bibliography commands, \\input, or \\include.',
+      '',
+      'Appendix patch format skeleton only; replace the placeholder title/body with the specific appendix content requested by the user:',
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: requested-appendix-1',
+      'OPERATION: append_before_end_document',
+      'TARGET_BLOCK_ID:',
+      'TARGET_SECTION: Appendix',
+      "RATIONALE: satisfy the user's explicit appendix request",
+      'BEGIN_NEW_LATEX',
+      '\\appendix',
+      '\\section{<user-requested appendix title>}',
+      '\\paragraph{<requested theorem/definition/explanation label>.} <write the user-requested appendix content here in compile-safe LaTeX>.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END'
+    ].join('\n');
+  }
+
+
+  function requestedBodySectionTitle() {
+    const signal = userRequestSignalText();
+    if (!signal) return '';
+    const patterns = [
+      /\b(?:add|write|create|draft|include)\s+(?:an?\s+)?(?:new\s+)?([A-Za-z][A-Za-z0-9'’\- ]{2,80}?)\s+section\b/i,
+      /\b(?:add|write|create|draft|include)\s+(?:an?\s+)?section\s+(?:called|titled|named)\s+["“']?([^"”'.,;\n]{2,80})/i
+    ];
+    for (const re of patterns) {
+      const m = signal.match(re);
+      if (!m) continue;
+      let title = clean(m[1] || '');
+      title = title.replace(/\b(?:explaining|that|which|with|about|for|on)\b[\s\S]*$/i, '').trim();
+      title = title.replace(/^the\s+/i, '').trim();
+      if (!title) continue;
+      if (/appendix|appendices/i.test(title)) continue;
+      // Normalize common natural-language capitalization without hard-coding content.
+      title = title.replace(/\s+/g, ' ');
+      return title.charAt(0).toUpperCase() + title.slice(1);
+    }
+    return '';
+  }
+
+  function sourceHasSectionTitle(title) {
+    const key = titleKeyForMatch(title);
+    if (!key) return false;
+    return topLevelSections(sourceForAgentVisiblePrompt()).some((u) => titleKeyForMatch(u.title || '') === key);
+  }
+
+  function sectionCreationRequestActive() {
+    const title = requestedBodySectionTitle();
+    return !!title && !sourceHasSectionTitle(title);
+  }
+
+  function firstExistingSectionTitle() {
+    const units = topLevelSections(sourceForAgentVisiblePrompt());
+    return clean(units[0]?.title || '') || 'Document body';
+  }
+
+  function buildSectionCreationRequestContext() {
+    const title = requestedBodySectionTitle();
+    if (!title || sourceHasSectionTitle(title)) return '';
+    const first = firstExistingSectionTitle();
+    return [
+      'USER REQUEST NAMED SECTION CREATION MODE ACTIVE.',
+      'The Focus/query explicitly asks for a named paper section that is not currently present in the document. This is a binding requirement, not optional review advice.',
+      'Requested new section title: ' + title,
+      'Original user request signal:',
+      userRequestSignalText() || '(empty)',
+      '',
+      'Final editor requirement:',
+      '- Include at least one RAW LATEX BLOCK PATCH that creates this requested section as visible body LaTeX.',
+      '- Use OPERATION: insert_before_section and TARGET_SECTION: ' + first + ' when the new section should appear before the first existing section.',
+      '- The BEGIN_NEW_LATEX payload may start with \\section{' + title + '} because the user explicitly requested a new section.',
+      '- Do not satisfy a section-creation request with only an unlabeled paragraph inside another section.',
+      '- Keep the new section compact and focused on the content requested by the user.',
+      '',
+      'Section-creation patch format skeleton only; replace the placeholder body with the user-requested section content:',
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: requested-section-1',
+      'OPERATION: insert_before_section',
+      'TARGET_BLOCK_ID:',
+      'TARGET_SECTION: ' + first,
+      'RATIONALE: satisfy the user\'s explicit request for a new ' + title + ' section',
+      'BEGIN_NEW_LATEX',
+      '\\section{' + title + '}',
+      '<write the requested section content here in compile-safe body LaTeX>',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END'
+    ].join('\n');
+  }
+
   function payloadLatexSourceForAI() {
     const mode = payloadSourceMode();
     const src = stripLatexaiVisibleEditBlocks(getActiveSource());
     if (mode === 'omit_full_source') return '';
-    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '... [payload latexSource truncated by Latexai Stage 19N1H] ...');
+    if (mode === 'include_truncated_source') return truncateMiddle(src, 45000, '');
     return src;
   }
 
@@ -998,6 +1156,50 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const front = Math.floor(keep * 0.55);
     const back = keep - front;
     return s.slice(0, front) + marker + s.slice(-back);
+  }
+
+
+  function chunkArrayStage19T2U(items, size) {
+    const arr = Array.isArray(items) ? items : [];
+    const n = Math.max(1, Number(size) || 1);
+    const out = [];
+    for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+    return out;
+  }
+
+  function latexEscapeTextForBody(value) {
+    return String(value == null ? '' : value)
+      .replace(/\\/g, '\\textbackslash{}')
+      .replace(/([{}_#$%&])/g, '\\$1')
+      .replace(/\^/g, '\\textasciicircum{}')
+      .replace(/~/g, '\\textasciitilde{}');
+  }
+
+  function compactEquationForFallback(eq) {
+    const raw = String(eq?.body || eq?.raw || '').replace(/\s+/g, ' ').trim();
+    return truncateMiddle(raw, 520, ' ... ');
+  }
+
+  function deterministicEquationCoveragePatch(eq, index) {
+    const id = clean(eq?.id || ('eq_' + String(index + 1).padStart(3, '0')));
+    const sec = clean(eq?.section || 'Document');
+    const eqPreview = compactEquationForFallback(eq);
+    return [
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: coverage-equation-fallback-' + id.replace(/[^a-zA-Z0-9_-]/g, '-') ,
+      'OPERATION: insert_after_block',
+      'TARGET_BLOCK_ID: ' + id,
+      'TARGET_SECTION: ' + sec,
+      'RATIONALE: deterministic Stage 19T2U fallback for an equation explanation explicitly requested by the user',
+      'BEGIN_NEW_LATEX',
+      'This displayed equation is one of the mathematical steps in the argument. In this equation, the displayed relationship should be read as the local claim being established at this point of the proof. It connects the quantities introduced immediately before the display to the conclusion used immediately after it. For reference, the source display begins as \\texttt{' + latexEscapeTextForBody(eqPreview) + '}.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END'
+    ].join('\n');
+  }
+
+  function deterministicEquationCoveragePatches(eqs) {
+    return (Array.isArray(eqs) ? eqs : []).map((eq, i) => deterministicEquationCoveragePatch(eq, i)).join('\n\n');
   }
 
   function latexStructureLabel(unit) {
@@ -1086,10 +1288,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       const key = Math.floor(pos / 400);
       if (seen.has(key)) continue;
       seen.add(key);
-      chunks.push('\n% ... [important excerpt from this section] ...\n' + body.slice(pos, Math.min(body.length, pos + 900)));
+      chunks.push('\n' + body.slice(pos, Math.min(body.length, pos + 900)));
     }
-    chunks.push('\n% ... [section ending excerpt] ...\n' + body.slice(-last));
-    return truncateMiddle(chunks.join('\n'), budget + 700, '% ... [section excerpt truncated by Latexai] ...');
+    chunks.push('\n' + body.slice(-last));
+    return truncateMiddle(chunks.join('\n'), budget + 700, '');
   }
 
 
@@ -1155,14 +1357,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return filtered.length ? filtered : all;
   }
 
-  function buildEquationCoverageContext(runPayload) {
-    if (!equationCoverageActive()) return '';
-    const eqs = selectedEquationTargets(runPayload);
-    if (!eqs.length) {
-      return 'MATH EQUATION COVERAGE MODE ACTIVE. No display equations were detected in the selected visible source. If the user asked for equation explanations, say that no display equations were found and do not substitute citation/related-work edits.';
-    }
-    const maxVisible = Math.min(eqs.length, 80);
-    const items = eqs.slice(0, maxVisible).map((eq) => {
+  function formatEquationTargetsForPrompt(eqs, opts = {}) {
+    const list = Array.isArray(eqs) ? eqs : [];
+    if (!list.length) return '(no equation targets supplied)';
+    const maxVisible = Math.min(list.length, Math.max(1, Number(opts.maxVisible) || 80));
+    const items = list.slice(0, maxVisible).map((eq) => {
       return [
         'Equation id: ' + eq.id,
         'Containing section/unit: ' + eq.section,
@@ -1172,21 +1371,149 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         'Following context: ' + (eq.after || '(none)')
       ].join('\n');
     }).join('\n\n---\n\n');
-    const omitted = eqs.length > maxVisible ? '\n\nNote: ' + (eqs.length - maxVisible) + ' additional equation(s) were omitted from the visible prompt by the safety budget.' : '';
+    const omitted = list.length > maxVisible ? '\n\nNote: ' + (list.length - maxVisible) + ' additional equation target(s) were omitted from the prompt by the safety budget.' : '';
+    return items + omitted;
+  }
+
+  function buildEquationCoverageContext(runPayload) {
+    if (!equationCoverageActive()) return '';
+    const eqs = selectedEquationTargets(runPayload);
+    if (!eqs.length) {
+      return 'MATH EQUATION COVERAGE MODE ACTIVE. No display equations were detected in the selected visible source. If the user asked for equation explanations, say that no display equations were found and do not substitute citation/related-work edits.';
+    }
     return [
       'MATH EQUATION COVERAGE MODE ACTIVE.',
-      'The user specifically asked for mathematical equation / derivation explanations.',
-      'The final editor must provide an explanatory edit below EACH listed equation id, not citation-only or introduction-only edits.',
-      'Use this exact block form for each equation explanation:',
-      '\\lai{%',
-      '% Target equation id: <equation id>',
-      '% Target section: <containing section/unit>',
-      '<short LaTeX-ready explanatory text that should appear immediately below the equation>',
-      '}',
-      'Do not output "No edits recommended" for a listed equation unless the user explicitly asked to skip obvious equations. For this task, every listed equation should get an explanation.',
+      'The user specifically asked for mathematical equation / derivation explanations. This is a binding coverage requirement, not optional review advice.',
+      'The final editor must provide one explanatory edit immediately below every listed equation id when the user says every equation. Do not skip equations merely because surrounding prose exists; the requested deliverable is a local visible explanation patch anchored to each equation id.',
+      'If the request says every equation, all listed ids are required. Do not satisfy the task by only editing the introduction, appendix, related work, or a generic paragraph.',
+      'Use the Stage 19T2G raw block patch protocol. Do not output Latexai internal change-markup macros. Example:',
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: eq-explain-1',
+      'OPERATION: insert_after_block',
+      'TARGET_BLOCK_ID: <equation id such as eq_003>',
+      'TARGET_SECTION: <containing section/unit>',
+      'RATIONALE: explain why this equation needs clarification',
+      'BEGIN_NEW_LATEX',
+      '<visible LaTeX-ready explanatory text that should appear immediately below the equation>',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END',
+      'Do not prefix the explanation with %. Comment-only edits are invisible and will be rejected by the Safe Edit Compiler.',
+      'Do not output "No edits recommended" for a listed equation when the Focus/query asks for every equation. Do not collapse multiple equation explanations into a single introduction or summary paragraph.',
       'Detected display equations visible to the model:',
-      items + omitted
+      formatEquationTargetsForPrompt(eqs, { maxVisible: 80 })
     ].join('\n');
+  }
+
+  function safeEditBodyBounds(source) {
+    const s = String(source || '');
+    const b = s.indexOf('\\begin{document}');
+    const e = s.lastIndexOf('\\end{document}');
+    const start = b >= 0 ? b + '\\begin{document}'.length : 0;
+    const end = e > start ? e : s.length;
+    return { start, end };
+  }
+
+  function safeEditTargetableParagraph(text) {
+    const t = String(text || '').trim();
+    if (!t || t.length < 30) return false;
+    if (/^%/.test(t)) return false;
+    if (t.split(/\n/).filter(Boolean).every((ln) => /^\s*%/.test(ln))) return false;
+    if (/^\s*\\(?:documentclass|usepackage|RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|DeclareRobustCommand|def|let|newtheorem|theoremstyle|title|author|date|bibliography|bibliographystyle|bibpunct|input|include)\b/im.test(t)) return false;
+    const lines = t.split(/\n/).filter((ln) => ln.trim());
+    const commandLines = lines.filter((ln) => /^\s*\\[A-Za-z@]+/.test(ln));
+    if (lines.length && commandLines.length / Math.max(1, lines.length) >= 0.55) return false;
+    const commandCount = (t.match(/\\[A-Za-z@]+/g) || []).length;
+    if (commandCount > Math.max(8, Math.floor(t.length / 90))) return false;
+    return true;
+  }
+
+  function buildSafeEditBlockMapForPrompt(source, targets) {
+    const s = String(source || '');
+    const units = topLevelSections(s);
+    const chosen = [];
+    (targets || []).forEach((t) => {
+      const hit = unitByTitle(units, t);
+      if (hit && !chosen.includes(hit)) chosen.push(hit);
+    });
+    const bodyBounds = safeEditBodyBounds(s);
+    const bodyUnits = units.filter((u) => {
+      const st = Number(u.start || 0);
+      return st >= bodyBounds.start && st < bodyBounds.end;
+    });
+    const use = chosen.length ? chosen : bodyUnits.slice(0, 8);
+    const lines = [];
+    let secIdx = 0;
+    let skippedUnsafe = 0;
+    use.forEach((sec) => {
+      secIdx += 1;
+      const body = String(sec.body || '').slice(Math.max(0, (sec.headerEnd || sec.start || 0) - (sec.start || 0)));
+      let pIdx = 0;
+      String(body || '').split(/\n\s*\n+/).forEach((para) => {
+        const text = String(para || '').trim();
+        if (!safeEditTargetableParagraph(text)) { if (text) skippedUnsafe += 1; return; }
+        pIdx += 1;
+        if (pIdx > 8) return;
+        const blockId = 'sec-' + secIdx + '-p-' + pIdx;
+        lines.push(blockId + ' | type=body_paragraph | ops=replace_block,insert_after_block,insert_before_block | section=' + sec.title + ' | text=' + truncateMiddle(text.replace(/\s+/g, ' '), 900, ''));
+      });
+    });
+
+    const targetKeys = (targets || []).map((t) => titleKeyForMatch(t)).filter(Boolean);
+    const eqsAll = extractDisplayEquationTargets(s, { maxCount: 120 });
+    const eqs = targetKeys.length ? eqsAll.filter((eq) => {
+      const secKey = titleKeyForMatch(eq.section || '');
+      return targetKeys.some((t) => secKey === t || secKey.includes(t) || t.includes(secKey));
+    }) : eqsAll;
+    eqs.slice(0, 36).forEach((eq) => {
+      lines.push([
+        eq.id + ' | type=display_equation_anchor | ops=insert_after_block,insert_before_block only',
+        'section=' + (eq.section || 'Document'),
+        'before=' + truncateMiddle(String(eq.before || '').replace(/\s+/g, ' '), 260, ''),
+        'equation=' + truncateMiddle(String(eq.body || '').replace(/\s+/g, ' '), 700, ''),
+        'after=' + truncateMiddle(String(eq.after || '').replace(/\s+/g, ' '), 260, '')
+      ].join(' | '));
+    });
+
+    if (!lines.length) return 'SAFE EDIT TARGET BLOCK MAP: no safe body paragraph or display-equation anchor blocks detected. Return no_edit rather than editing preamble/macros.';
+    return [
+      'SAFE EDIT TARGET BLOCK MAP FOR FINAL EDITOR (BODY PARAGRAPHS + EQUATION ANCHORS):',
+      'Use only these block_id values. Preamble, macro definitions, theorem declarations, bibliography setup, command-heavy blocks, and environment boundaries are intentionally hidden and cannot be edited.',
+      'Body paragraph blocks may be replaced or used as insertion anchors. Display-equation blocks like eq_003 are anchor-only: use insert_after_block or insert_before_block, never replace_block.',
+      'Return the Stage 19T2G RAW LATEX BLOCK PATCH protocol, not JSON and not Latexai internal change-markup macros. Use TARGET_BLOCK_ID from this map and place replacement/inserted visible LaTeX between BEGIN_NEW_LATEX and END_NEW_LATEX so backslashes are preserved.',
+      'For explanatory text below equations, do NOT prefix each line with %. Comment-only edits are rejected because they are invisible in the PDF.',
+      skippedUnsafe ? ('Unsafe non-prose blocks hidden from the final editor: ' + skippedUnsafe + '.') : '',
+      lines.join('\n')
+    ].filter(Boolean).join('\n');
+  }
+
+  function buildSafeEditorVisibleContext(runPayload) {
+    const source = sourceForAgentVisiblePrompt();
+    const units = topLevelSections(source);
+    const targets = desiredTargetSections(runPayload);
+    const outline = units.length ? units.map((u, i) => String(i + 1) + '. ' + latexStructureLabel(u)).join('\n') : '(no LaTeX structural headings detected)';
+    const chosen = [];
+    (targets || []).forEach((t) => {
+      const hit = unitByTitle(units, t);
+      if (hit && !chosen.includes(hit)) chosen.push(hit);
+    });
+    const use = chosen.length ? chosen : units.slice(0, 6);
+    const excerpts = [];
+    use.forEach((sec) => {
+      const paras = [];
+      String(sec.body || '').split(/\n\s*\n+/).forEach((para) => {
+        const text = String(para || '').trim();
+        if (safeEditTargetableParagraph(text) && paras.length < 4) paras.push(text.replace(/\s+/g, ' '));
+      });
+      if (paras.length) {
+        excerpts.push('===== SAFE BODY PROSE EXCERPT: ' + latexStructureLabel(sec) + ' =====\n' + paras.map((p, i) => 'P' + (i + 1) + ': ' + truncateMiddle(p, 1200, '')).join('\n\n'));
+      }
+    });
+    return [
+      'Document outline only; raw preamble/macros are intentionally not shown to the final editor.',
+      outline,
+      buildSafeEditBlockMapForPrompt(source, targets),
+      excerpts.length ? excerpts.join('\n\n') : 'No safe body prose excerpts available; return no_edit.'
+    ].join('\n\n');
   }
 
   function buildSectionAwareExcerpt(runPayload) {
@@ -1199,14 +1526,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
     contextParts.push('Document section/chapter/subsection outline:\n' + outline);
     contextParts.push('Visible context mode: ' + mode + '.');
+    contextParts.push(buildSafeEditBlockMapForPrompt(source, targets));
 
     if (mode === 'whole_truncated_selected_focus') {
-      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, '% ... [whole paper middle truncated by Latexai Stage 19N1H] ...'));
+      contextParts.push('===== WHOLE PAPER CONTEXT (TRUNCATED, VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 38000, ''));
     } else if (mode === 'full_source_if_safe') {
       if (source.length <= 65000) {
         contextParts.push('===== FULL PAPER CONTEXT (VISIBLE TO MODEL) =====\n' + source);
       } else {
-        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, '% ... [full paper truncated by Latexai Stage 19N1H for prompt length] ...'));
+        contextParts.push('===== WHOLE PAPER CONTEXT (TOO LARGE; TRUNCATED BUT VISIBLE TO MODEL) =====\n' + truncateMiddle(source, 65000, ''));
       }
     } else if (mode === 'selected_excerpts_only') {
       // No full outline beyond the compact outline above; selected excerpts follow below.
@@ -1256,10 +1584,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
           data.realAgentRunPayload.executionPlan.steps = steps.map((st) => ({ ...st, targetSections: targets }));
         }
       }
-      if (equationCoverageActive()) {
+      if (equationCoverageActive() || appendixRequestActive() || sectionCreationRequestActive()) {
         const eqTargets = selectedEquationTargets(data?.realAgentRunPayload || data || {});
-        const mathTitle = 'Explain mathematical equations and derivation steps';
-        const mathHint = 'For every detected display equation in the requested scope, produce a short LaTeX-ready \\lai explanation immediately below that equation.';
+        const mathTitle = [equationCoverageActive() ? 'explain mathematical equations' : '', sectionCreationRequestActive() ? ('add ' + requestedBodySectionTitle() + ' section') : '', appendixRequestActive() ? 'add requested appendix' : ''].filter(Boolean).join(' and ') || 'Apply requested paper edits';
+        const mathHint = [
+          equationCoverageActive() ? 'For every detected display equation in the requested scope, produce a short LaTeX-ready raw patch explanation immediately below that equation.' : '',
+          sectionCreationRequestActive() ? ('Create the explicitly requested ' + requestedBodySectionTitle() + ' section as a raw patch, normally before the first existing section.') : '',
+          appendixRequestActive() ? 'Also satisfy the explicit appendix request with an append_before_end_document raw LaTeX block patch.' : ''
+        ].filter(Boolean).join(' ');
         data.selectedBranch = { ...(data.selectedBranch || {}), title: mathTitle, branchType: 'math_equation_exposition', latexEditHint: mathHint, targetSections: targets };
         data.executionPlan = { ...(data.executionPlan || {}), title: mathTitle, selectedBranchType: 'math_equation_exposition', targetSections: targets, latexEditTargets: eqTargets.map((eq) => ({ equationId: eq.id, section: eq.section, mode: 'insert-below-equation' })) };
         if (data.realAgentRunPayload) {
@@ -1278,9 +1610,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const sectionScope = targetSelectorMode();
     const queryBase = inputValue('branchWorkflowQuery', 'novelty theorem assumptions citation coverage clarity limitations');
     const coverageNote = sectionScope === 'branch' ? '' : ('\n\nSection coverage request: evaluate and propose edits across these sections, not only the Introduction: ' + sectionTargets.join(', '));
-    const equationNote = equationCoverageActive() ? '\n\nEquation coverage request: explain every detected display equation in the requested scope and produce a visible \lai edit immediately below each equation. Do not substitute citation/related-work edits for this task.' : '';
-    const query = queryBase + (sectionScope === 'branch' ? '' : ' multi-section section-aware whole-paper revision') + (equationCoverageActive() ? ' equation explanation derivation below each equation' : '');
-    const reviewText = inputValue('branchWorkflowReviewText', queryBase) + coverageNote + equationNote;
+    const equationNote = equationCoverageActive() ? '\n\nEquation coverage request: explain every detected display equation in the requested scope and produce a visible raw patch insertion immediately below each equation. Do not substitute citation/related-work edits for this task.' : '';
+    const appendixNote = appendixRequestActive() ? ('\n\nAppendix coverage request: the user explicitly asked for an appendix. The final editor must include an append_before_end_document RAW LATEX BLOCK PATCH. The appendix must contain the specific content requested in the Focus/query; preserve the requested topic and any requested theorem statement, explanation, proof idea, derivation, or examples without frontend hard-coding of any particular topic. Original user request signal: ' + userRequestSignalText()) : '';
+    const sectionNote = sectionCreationRequestActive() ? ('\n\nNamed section creation request: the user explicitly asked for a new ' + requestedBodySectionTitle() + ' section. The final editor must include an insert_before_section RAW LATEX BLOCK PATCH that creates \section{' + requestedBodySectionTitle() + '} unless an equivalent section already exists. Original user request signal: ' + userRequestSignalText()) : '';
+    const query = queryBase + (sectionScope === 'branch' ? '' : ' multi-section section-aware whole-paper revision') + (equationCoverageActive() ? ' equation explanation derivation below each equation' : '') + (sectionCreationRequestActive() ? ' named section creation insert_before_section requested section coverage' : '') + (appendixRequestActive() ? ' appendix append_before_end_document requested appendix coverage' : '');
+    const reviewText = inputValue('branchWorkflowReviewText', queryBase) + coverageNote + equationNote + sectionNote + appendixNote;
     const paperSummary = inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.');
     return {
       workflow: 'latex-paper-debate',
@@ -1532,9 +1866,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       sectionCoverageInstruction: await sectionCoverageInstruction(runPayload),
       equationCoverageContext: buildEquationCoverageContext(runPayload),
       equationCoverageActive: equationCoverageActive() ? 'true' : 'false',
+      appendixRequestContext: buildAppendixRequestContext(),
+      appendixRequestActive: appendixRequestActive() ? 'true' : 'false',
+      sectionCreationRequestContext: buildSectionCreationRequestContext(),
+      sectionCreationRequestActive: sectionCreationRequestActive() ? 'true' : 'false',
+      requestedBodySectionTitle: requestedBodySectionTitle(),
       paperSummary: inputValue('branchWorkflowPaperSummary', 'Current Latexai editor source.'),
       reviewText: inputValue('branchWorkflowReviewText', inputValue('branchWorkflowQuery', '')),
-      visibleContext: buildSectionAwareExcerpt(runPayload),
+      visibleContext: /editor|final|visible-lai|implementation-plan/i.test(String(step?.agentRole || '') + ' ' + String(step?.taskType || '') + ' ' + String(step?.expectedOutput || '')) ? buildSafeEditorVisibleContext(runPayload) : buildSectionAwareExcerpt(runPayload),
       stage: STAGE
     });
   }
@@ -1654,7 +1993,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const synthT = findTemplateStep(planSteps, /synthesizer/i, 'synthesizer');
     const editorT = findTemplateStep(planSteps, /editor|final/i, 'editor');
     out.push({ ...synthT, agentRole: 'synthesizer', stepIndex: out.length + 1, debatePhase: 'synthesize', debateRound: rounds, taskType: 'synthesize ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'analysis' });
-    out.push({ ...editorT, agentRole: 'editor', stepIndex: out.length + 1, debatePhase: 'editor', debateRound: rounds, taskType: 'produce visible \\lai edits after ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'visible-lai-edits-and-implementation-plan' });
+    out.push({ ...editorT, agentRole: 'editor', stepIndex: out.length + 1, debatePhase: 'editor', debateRound: rounds, taskType: 'produce raw LaTeX block patch edits after ' + rounds + ' debate round(s) for ' + branchType, targetSections, expectedOutput: 'raw-latex-block-patch-and-implementation-plan' });
     return out;
   }
 
@@ -1702,7 +2041,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         promptSeed: prompt,
         dryRun: true,
         latencyMs: 0,
-        outputText: isFinal ? '[DRY RUN] Final structured edit draft after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\nLATEXAI_STRUCTURED_EDIT_JSON_BEGIN\n' + JSON.stringify({ ok: true, editMode: equationCoverageActive() ? 'equation_coverage' : 'section_coverage', edits: [{ targetType: equationCoverageActive() ? 'equation' : 'section', targetId: equationCoverageActive() ? 'eq_001' : '', targetSection: (desiredTargetSections(runPayload)[0] || 'Introduction'), action: 'insert_after', latex: equationCoverageActive() ? 'This equation states the key mathematical condition and should be read together with the surrounding definitions.' : 'This paragraph records the selected branch improvement after reviewing the debate transcript.' }], warnings: ['dry-run structured schema example'] }, null, 2) + '\nLATEXAI_STRUCTURED_EDIT_JSON_END\n\n\\lai{%\n% Target section: ' + (desiredTargetSections(runPayload)[0] || 'Introduction') + '\nThis paragraph records the selected branch improvement after reviewing real agent outputs.\n}' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
+        outputText: isFinal ? '[DRY RUN] Final raw LaTeX block patch after ' + debateRoundCount() + ' debate round(s) for ' + (runPayload?.selectedBranch?.title || 'selected branch') + '.\n\nLATEXAI_BLOCK_PATCH_BEGIN\nPATCH_ID: dry-run-edit-1\nOPERATION: insert_after_block\nTARGET_BLOCK_ID: sec-1-p-1\nTARGET_SECTION: ' + (desiredTargetSections(runPayload)[0] || 'Introduction') + '\nRATIONALE: dry-run raw LaTeX block patch example\nBEGIN_NEW_LATEX\n' + (equationCoverageActive() ? 'This equation states the key mathematical condition and should be read together with the surrounding definitions.\n\\[\nL(\\theta)=\\sum_{i=1}^n \\ell(\\theta;X_i).\n\\]' : 'This paragraph records the selected branch improvement after reviewing the debate transcript.') + '\nEND_NEW_LATEX\nLATEXAI_BLOCK_PATCH_END' : '[DRY RUN] ' + role + (step.debateRound ? ' round ' + step.debateRound : '') + ' would analyze this branch using the prior transcript and pass concise findings to the next agent.'
       };
       publishPromptDebugEvent('dry-run output generated', step, prompt, aiPayload, { status: 'dry-run-output-generated', outputText: dryOutput.outputText });
       return dryOutput;
@@ -1783,17 +2122,263 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     }).join('') + '</div>';
   }
 
+
+  function extractRawPatchBlocksForAudit(text) {
+    const s = String(text || '');
+    const blocks = [];
+    const re = /LATEXAI_BLOCK_(?:PATCH|EDIT)_BEGIN\s*([\s\S]*?)\s*LATEXAI_BLOCK_(?:PATCH|EDIT)_END/ig;
+    let m = null;
+    while ((m = re.exec(s))) {
+      const raw = m[0];
+      const inner = String(m[1] || '');
+      const bodyMatch = inner.match(/BEGIN_NEW_LATEX\s*:?\s*([\s\S]*?)\s*END_NEW_LATEX\s*:?/i);
+      const meta = bodyMatch ? inner.slice(0, bodyMatch.index) : inner;
+      const field = (name) => {
+        const fm = meta.match(new RegExp('^\\s*' + name + '\\s*:\\s*([^\\n\\r]*)', 'im'));
+        return clean(fm && fm[1] ? fm[1] : '');
+      };
+      blocks.push({
+        raw,
+        patchId: field('PATCH_ID') || field('EDIT_ID') || field('ID'),
+        operation: field('OPERATION').toLowerCase(),
+        targetBlockId: field('TARGET_BLOCK_ID'),
+        targetSection: field('TARGET_SECTION'),
+        rationale: field('RATIONALE'),
+        latex: clean(bodyMatch ? bodyMatch[1] : '')
+      });
+    }
+    return blocks;
+  }
+
+  function patchOperationLabelForAudit(block) {
+    const pieces = [block?.operation || 'unknown'];
+    if (block?.targetBlockId) pieces.push(block.targetBlockId);
+    if (block?.targetSection) pieces.push(block.targetSection);
+    return pieces.filter(Boolean).join(' → ');
+  }
+
+  function renderPatchOperationSummaryHtml(data, finalTextOverride) {
+    const text = String(finalTextOverride || finalEditorOutputText() || data?.repairRawOutputPreview || '');
+    const blocks = extractRawPatchBlocksForAudit(text);
+    const backendCount = Number(data?.blockCount || 0);
+    if (!blocks.length && !backendCount) {
+      return '<div class="settings-note warn"><strong>Planned edit operations:</strong> no raw patch operations were detected yet.</div>';
+    }
+    const rows = blocks.length ? blocks.map((b, i) => {
+      const bodyPreview = clean(String(b.latex || '').replace(/\s+/g, ' ')).slice(0, 160);
+      return '<tr><td>' + esc(i + 1) + '</td><td><code>' + esc(b.operation || 'unknown') + '</code></td><td>' + esc(b.targetBlockId || '—') + '</td><td>' + esc(b.targetSection || '—') + '</td><td>' + esc(bodyPreview || b.rationale || '') + '</td></tr>';
+    }).join('') : '<tr><td colspan="5">Backend reports blockCount=' + esc(backendCount) + ', but frontend raw-patch text is unavailable.</td></tr>';
+    return '<details open><summary>Patch-operation summary before apply</summary>' +
+      '<div class="settings-note compact">Use this checklist before inserting. It should visibly include every independent request: introduction, equation explanations, appendix, theorem/proof, etc.</div>' +
+      '<table class="branch-regression-table"><thead><tr><th>#</th><th>Operation</th><th>Block</th><th>Section</th><th>Preview</th></tr></thead><tbody>' + rows + '</tbody></table></details>';
+  }
+
+  function normalizedParagraphFingerprintForAudit(text) {
+    return String(text || '')
+      .replace(/%.*$/gm, '')
+      .replace(/\\(?:laiold|lai)\s*\{/g, '')
+      .replace(/[{}\\]/g, ' ')
+      .replace(/\$+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function repeatedParagraphWarningsForAudit(text) {
+    const s = String(text || '');
+    const paras = s.split(/\n\s*\n+/).map((p) => clean(p)).filter(Boolean);
+    const seen = new Map();
+    const warnings = [];
+    paras.forEach((p, idx) => {
+      if (p.length < 160) return;
+      if (/^\\(?:begin|end)\b/.test(p) || /^\s*\[?\$/.test(p)) return;
+      const fp = normalizedParagraphFingerprintForAudit(p).slice(0, 360);
+      if (fp.length < 120) return;
+      if (seen.has(fp)) warnings.push({ first: seen.get(fp) + 1, second: idx + 1, preview: p.replace(/\s+/g, ' ').slice(0, 220) });
+      else seen.set(fp, idx);
+    });
+    return warnings.slice(0, 12);
+  }
+
+  function requestedBodySectionTitleFromSignalForAudit(signal) {
+    const sig = String(signal || '');
+    const patterns = [
+      /\b(?:add|write|create|draft|include)\s+(?:an?\s+)?(?:new\s+)?([A-Za-z][A-Za-z0-9'’\- ]{2,80}?)\s+section\b/i,
+      /\b(?:add|write|create|draft|include)\s+(?:an?\s+)?section\s+(?:called|titled|named)\s+["“']?([^"”'.,;\n]{2,80})/i
+    ];
+    for (const re of patterns) {
+      const m = sig.match(re);
+      if (!m) continue;
+      let title = clean(m[1] || '');
+      title = title.replace(/\b(?:explaining|that|which|with|about|for|on|and)\b[\s\S]*$/i, '').trim();
+      title = title.replace(/^the\s+/i, '').trim().replace(/\s+/g, ' ');
+      if (!title || /appendix|appendices/i.test(title)) continue;
+      return title.charAt(0).toUpperCase() + title.slice(1);
+    }
+    return '';
+  }
+
+  function userRequestedTheoremStatement(signal) { return /\btheorem\s+statement\b|\bstatement\s+of\s+(?:the\s+)?(?:theorem|lemma|proposition|inequality)\b/i.test(signal || ''); }
+  function userRequestedProof(signal) { return /\bproof\b|\bprove\b|\bderivation\b/i.test(signal || ''); }
+  function userRequestedPlainWords(signal) { return /\bplain\s+words\b|\bexplain(?:ing|ed|s)?\b|\bintuitive\b|\bintuition\b/i.test(signal || ''); }
+
+  function buildCoverageAuditItems(text, options = {}) {
+    const signal = clean(options.signal || userRequestSignalText());
+    const sourceText = String(text || '');
+    const blocks = extractRawPatchBlocksForAudit(sourceText);
+    const all = (sourceText + '\n' + blocks.map((b) => [b.operation, b.targetBlockId, b.targetSection, b.rationale, b.latex].join('\n')).join('\n')).toLowerCase();
+    const items = [];
+    items.push({ label: 'Focus/query captured', ok: !!signal, detail: signal ? truncateMiddle(signal, 260, ' ... ') : 'No Focus/query text was found.' });
+
+    const sectionTitle = clean(options.sectionTitle || requestedBodySectionTitleFromSignalForAudit(signal) || requestedBodySectionTitle());
+    if (sectionTitle) {
+      const key = titleKeyForMatch(sectionTitle);
+      const hasSectionPatch = blocks.some((b) => /insert_before_section|insert_after_section|append_before_end_document/i.test(b.operation || '') && titleKeyForMatch(b.latex || '').includes(key));
+      const hasSectionLatex = new RegExp('\\\\section\\s*\\{\\s*' + sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\}', 'i').test(sourceText);
+      items.push({ label: 'Requested section: ' + sectionTitle, ok: !!(hasSectionPatch || hasSectionLatex), detail: hasSectionPatch || hasSectionLatex ? 'Patch/text creates \\section{' + sectionTitle + '}.' : 'No matching section-creation patch found.' });
+    }
+
+    if (appendixRequestActive() || /\bappendix|appendices\b/i.test(signal)) {
+      const hasAppendixPatch = blocks.some((b) => /append_before_end_document/i.test(b.operation || '')) || /\\appendix\b/i.test(sourceText) || /\\section\s*\{[^}]*appendix[^}]*\}/i.test(sourceText);
+      items.push({ label: 'Requested appendix', ok: !!hasAppendixPatch, detail: hasAppendixPatch ? 'append_before_end_document or \\appendix was found.' : 'No appendix patch was found.' });
+    }
+
+    if (userRequestedTheoremStatement(signal)) {
+      const ok = /\btheorem\b|\binequality\b|\\paragraph\s*\{\s*(?:theorem|statement)/i.test(sourceText);
+      items.push({ label: 'Theorem statement requested', ok, detail: ok ? 'The final text contains theorem/statement language.' : 'No theorem-statement language detected.' });
+    }
+    if (userRequestedProof(signal)) {
+      const ok = /\bproof\b|\\paragraph\s*\{\s*proof|\\begin\s*\{proof\}/i.test(sourceText);
+      items.push({ label: 'Proof requested', ok, detail: ok ? 'Proof text was detected.' : 'No proof text detected.' });
+    }
+    if (userRequestedPlainWords(signal)) {
+      const ok = /\bplain\s+words\b|\bin\s+words\b|\bintuitively\b|\bintuition\b|\bmeans\b|\bexplanation\b|\bexplain/i.test(sourceText);
+      items.push({ label: 'Plain-word explanation requested', ok, detail: ok ? 'Explanatory/plain-language wording was detected.' : 'No plain-word explanation cue was detected.' });
+    }
+
+    if (equationCoverageActive() || /\bevery\s+equation\b|\bequations?\b/i.test(signal)) {
+      const eqPatches = blocks.filter((b) => /insert_after_block|insert_before_block/i.test(b.operation || '') && /eq_\d+/i.test(b.targetBlockId || b.raw || ''));
+      const expected = selectedEquationTargets(selectedRealPayload() || lastRealRunData || lastSelectionData || {}).length;
+      const uniqueIds = new Set(eqPatches.map((b) => clean(b.targetBlockId || '').toLowerCase()).filter(Boolean));
+      const ok = expected ? uniqueIds.size >= expected : eqPatches.length > 0;
+      items.push({ label: 'Equation explanation patches', ok, detail: (expected ? (uniqueIds.size + '/' + expected) : String(eqPatches.length)) + ' equation-anchor patch(es)' + (expected ? ' for detected display equation(s).' : '.') });
+    }
+
+    if (lastInsertionData) {
+      items.push({ label: 'Safe compiler accepted insertion', ok: lastInsertionData.safeToInsert === true, detail: 'safeToInsert=' + String(lastInsertionData.safeToInsert) + ', blockCount=' + String(lastInsertionData.blockCount || 0) });
+      const draft = String(lastInsertionData.targetedInsertionDraft || lastInsertionData.insertableLatexDraft || lastInsertionData.appendOnlyDraft || '');
+      if (draft) items.push({ label: 'Targeted/append draft contains visible LAI edits', ok: countVisibleLaiBlocks(draft) > 0, detail: countVisibleLaiBlocks(draft) + ' visible \\lai/\\laiold block(s).' });
+    }
+    const unresolved = countVisibleLaiBlocks(getActiveSource());
+    if (unresolved) items.push({ label: 'Unresolved visible edits in current source', ok: false, soft: true, detail: unresolved + ' unresolved \\lai/\\laiold block(s). Use Resolve AI edits to accept/reject.' });
+    return items;
+  }
+
+  function renderCoverageAuditHtml(text, options = {}) {
+    const items = buildCoverageAuditItems(text, options);
+    const rows = items.map((it) => {
+      const mark = it.ok ? '✓' : (it.soft ? '!' : '✗');
+      const cls = it.ok ? 'good' : (it.soft ? 'warn' : 'bad');
+      return '<li class="settings-note compact ' + cls + '"><strong>' + esc(mark + ' ' + it.label) + '</strong><br>' + esc(it.detail || '') + '</li>';
+    }).join('');
+    return '<div class="branch-coverage-audit"><div class="settings-note compact"><strong>Stage 19T2U user-request coverage audit.</strong> This is a deterministic checklist over the Focus/query, final raw patch text, insertion preview, and current source. It does not replace the safe compiler; it catches omitted user-request components early.</div><ul class="branch-coverage-audit-list">' + rows + '</ul></div>';
+  }
+
+  function branchRegressionSnapshot() {
+    const source = getActiveSource();
+    const finalText = finalEditorOutputText();
+    const insertion = lastInsertionData || {};
+    return {
+      frontendStage: STAGE,
+      backendStage: insertion.stage || insertion.compilerVersion || insertion.safeCompiler?.version || '',
+      activePath: activePath(),
+      sourceLength: source.length,
+      sourceHash: compactHashText(source),
+      focusQuery: inputValue('branchWorkflowQuery', ''),
+      targetMode: targetSelectorMode(),
+      visiblePromptContextMode: visibleContextMode(),
+      payloadSourceMode: payloadSourceMode(),
+      rawPatchCount: extractRawPatchBlocksForAudit(finalText).length,
+      plannedOperations: extractRawPatchBlocksForAudit(finalText).map(patchOperationLabelForAudit),
+      insertionSafeToInsert: insertion.safeToInsert ?? null,
+      insertionBlockCount: insertion.blockCount ?? null,
+      unresolvedLaiBlockCount: countVisibleLaiBlocks(source),
+      duplicateParagraphWarnings: repeatedParagraphWarningsForAudit(source).length,
+      compileStatusText: $('compileStatusText')?.textContent || '',
+      compileJobIdText: $('compileJobIdText')?.textContent || '',
+      savedAt: new Date().toISOString()
+    };
+  }
+
+  function renderRegressionSnapshotHtml(snapshot) {
+    const snap = snapshot || branchRegressionSnapshot();
+    return '<details open><summary>Stage 19T2U regression snapshot</summary><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(snap, null, 2)) + '</pre></details>';
+  }
+
+  function runWorkflowRegressionAudit() {
+    const syntheticSignal = 'Add an introduction section explaining the writeup. Write an appendix section that has the theorem statement and proof and explains the statement in plain words.';
+    const syntheticOutput = [
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: test-intro',
+      'OPERATION: insert_before_section',
+      'TARGET_SECTION: Least Squares',
+      'BEGIN_NEW_LATEX',
+      '\\section{Introduction}',
+      'This introduction explains the writeup.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END',
+      'LATEXAI_BLOCK_PATCH_BEGIN',
+      'PATCH_ID: test-appendix',
+      'OPERATION: append_before_end_document',
+      'TARGET_SECTION: Appendix',
+      'BEGIN_NEW_LATEX',
+      '\\appendix',
+      '\\section{Appendix: A Theorem}',
+      '\\paragraph{Theorem statement.} This is the theorem statement.',
+      '\\paragraph{Proof.} This is the proof.',
+      '\\paragraph{Plain words.} In plain words, the theorem means the requested idea.',
+      'END_NEW_LATEX',
+      'LATEXAI_BLOCK_PATCH_END'
+    ].join('\n');
+    const duplicateFixture = 'This paragraph is intentionally repeated and long enough to trigger duplicate detection in the regression audit because duplicate generated introductions were a real failure mode.\n\nThis paragraph is intentionally repeated and long enough to trigger duplicate detection in the regression audit because duplicate generated introductions were a real failure mode.';
+    const tests = [];
+    const patches = extractRawPatchBlocksForAudit(syntheticOutput);
+    tests.push({ name: 'parse insert_before_section raw patch', ok: patches.some((p) => p.operation === 'insert_before_section') });
+    tests.push({ name: 'parse append_before_end_document raw patch', ok: patches.some((p) => p.operation === 'append_before_end_document') });
+    const auditItems = buildCoverageAuditItems(syntheticOutput, { signal: syntheticSignal });
+    tests.push({ name: 'coverage audit catches requested appendix', ok: auditItems.some((x) => /appendix/i.test(x.label) && x.ok) });
+    tests.push({ name: 'coverage audit catches theorem statement', ok: auditItems.some((x) => /theorem statement/i.test(x.label) && x.ok) });
+    tests.push({ name: 'coverage audit catches proof', ok: auditItems.some((x) => /proof requested/i.test(x.label) && x.ok) });
+    tests.push({ name: 'coverage audit catches plain-word explanation', ok: auditItems.some((x) => /plain-word/i.test(x.label) && x.ok) });
+    tests.push({ name: 'duplicate paragraph detector catches repeated generated text', ok: repeatedParagraphWarningsForAudit(duplicateFixture).length > 0 });
+    tests.push({ name: 'current source scan completed', ok: typeof getActiveSource() === 'string' });
+    const passed = tests.filter((t) => t.ok).length;
+    const body = '<div class="settings-note ' + (passed === tests.length ? 'good' : 'warn') + '"><strong>Stage 19T2T regression audit:</strong> ' + esc(passed + '/' + tests.length) + ' deterministic checks passed.</div>' +
+      '<ul>' + tests.map((t) => '<li class="settings-note compact ' + (t.ok ? 'good' : 'bad') + '">' + esc((t.ok ? 'PASS: ' : 'FAIL: ') + t.name) + '</li>').join('') + '</ul>' +
+      renderPatchOperationSummaryHtml(null, finalEditorOutputText()) +
+      renderCoverageAuditHtml(finalEditorOutputText() || syntheticOutput) +
+      renderRegressionSnapshotHtml(branchRegressionSnapshot());
+    const out = $('branchWorkflowRegressionOutput');
+    if (out) out.innerHTML = body;
+    renderInlinePreview('Stage 19T2T regression audit', body);
+    status('Stage 19T2U regression audit complete: ' + passed + '/' + tests.length + ' checks passed.', passed === tests.length ? 'good' : 'warn');
+    return { passed, total: tests.length, tests };
+  }
+
   function renderRunDashboard(snapshot, extraHtml = '') {
     const snap = snapshot || currentBranchRunSnapshot('dashboard');
     const outputs = Array.isArray(snap.realRunData?.agentOutputs) ? snap.realRunData.agentOutputs : [];
     const structured = snap.structuredEditorData || lastStructuredEditorData || refreshStructuredEditorData();
     const finalText = snap.realRunData?.finalOutput || outputs[outputs.length - 1]?.outputText || '';
     return '<div class="branch-dashboard-tabs">' +
+      '<section class="branch-dashboard-section"><h3>User-request coverage audit</h3>' + renderCoverageAuditHtml(finalText || '') + '</section>' +
+      '<section class="branch-dashboard-section"><h3>Planned patch operations</h3>' + renderPatchOperationSummaryHtml(snap.insertionData || lastInsertionData || {}, finalText || '') + '</section>' +
       '<section class="branch-dashboard-section"><h3>Transcript</h3><div class="settings-note compact">Critic, supporter, and final synthesis/editor outputs from the completed run.</div>' + renderAgentTranscriptCards(outputs) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Branch candidates</h3>' + renderBranchCandidatesCards(snap) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Retrieved literature context</h3>' + renderKnowledgeContextCards(snap.knowledgeRetrieval || snap.realRunData?.knowledgeRetrieval || snap.selectionData?.knowledgeRetrieval || lastKnowledgeContextData) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Structured LaTeX edits</h3>' + renderStructuredEditorPreviewHtml(structured) + '</section>' +
       (extraHtml ? '<section class="branch-dashboard-section"><h3>Insertion preview</h3>' + extraHtml + '</section>' : '') +
+      '<section class="branch-dashboard-section"><h3>Regression snapshot</h3>' + renderRegressionSnapshotHtml(snap.regressionSnapshot || branchRegressionSnapshot()) + '</section>' +
       '<section class="branch-dashboard-section"><h3>Saved run / model trace</h3><div class="settings-note compact">Run id: ' + esc(snap.runId || '') + ' · saved: ' + esc(snap.savedAt || '') + '</div><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(snap.routeSummary || {}, null, 2)) + '</pre></section>' +
       '<section class="branch-dashboard-section"><h3>Final synthesis text</h3><pre class="branch-workflow-latex-source-preview">' + esc(finalText || 'No final synthesis text recorded yet.') + '</pre></section>' +
     '</div>';
@@ -1833,8 +2418,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function compileAfterInsertionCheck() {
     const btn = $('compileBtn') || $('compilePdfBtn');
-    if (!btn) { status('Compile button not found. Click Compile PDF manually to verify inserted \lai markup.', 'warn'); return; }
-    status('Starting Compile PDF after Devil’s Advocate insertion. Watch Logs/Preview for LaTeX errors.', 'warn');
+    const snap = branchRegressionSnapshot();
+    try { W.localStorage?.setItem?.('latexai:stage19t2u:last-compile-regression-snapshot', JSON.stringify(snap)); } catch (_err) {}
+    const body = renderCoverageAuditHtml(finalEditorOutputText() || '') + renderRegressionSnapshotHtml(snap);
+    renderInlinePreview('Compile-after-edit audit snapshot', body);
+    if (!btn) { status('Compile button not found. Click Compile PDF manually to verify inserted \\lai markup. Stage 19T2T audit snapshot was still saved locally.', 'warn'); return; }
+    status('Starting Compile PDF after Devil’s Advocate insertion. Stage 19T2T saved an audit snapshot; watch Logs/Preview for LaTeX errors.', 'warn');
     btn.click();
   }
 
@@ -1867,6 +2456,274 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     );
   }
 
+
+  function hasAppendBeforeEndDocumentPatch(text) {
+    const s = String(text || '');
+    return /OPERATION\s*:\s*append_before_end_document\b/i.test(s) || /\\appendix\b/i.test(s);
+  }
+
+  function hasRequestedSectionPatch(text, title) {
+    const s = String(text || '');
+    const t = clean(title || '');
+    if (!t) return true;
+    const escTitle = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    return new RegExp('\\\\section\\*?\\s*\\{\\s*' + escTitle + '\\s*\\}', 'i').test(s)
+      || (/OPERATION\s*:\s*insert_before_section\b/i.test(s) && new RegExp('TARGET_SECTION\\s*:', 'i').test(s));
+  }
+
+  function equationPatchTargetIdsFromText(text) {
+    const ids = new Set();
+    extractRawPatchBlocksForAudit(text).forEach((b) => {
+      const op = String(b.operation || '');
+      const id = clean(b.targetBlockId || '').toLowerCase();
+      if (/insert_after_block|insert_before_block/i.test(op) && /^eq_\d+$/i.test(id)) ids.add(id);
+    });
+    return ids;
+  }
+
+  function missingEquationTargetsFromOutputs(outputs, runPayload) {
+    if (!equationCoverageActive()) return [];
+    const eqs = selectedEquationTargets(runPayload);
+    if (!eqs.length) return [];
+    const allText = (Array.isArray(outputs) ? outputs : []).map((o) => String(o?.outputText || '')).join('\n\n');
+    const got = equationPatchTargetIdsFromText(allText);
+    return eqs.filter((eq) => !got.has(String(eq.id || '').toLowerCase()));
+  }
+
+  function explicitCoverageMissingFromOutputs(outputs, runPayload) {
+    const allText = (Array.isArray(outputs) ? outputs : []).map((o) => String(o?.outputText || '')).join('\n\n');
+    const missing = [];
+    if (sectionCreationRequestActive() && !hasRequestedSectionPatch(allText, requestedBodySectionTitle())) {
+      missing.push({ kind: 'named-section', title: requestedBodySectionTitle() });
+    }
+    if (appendixRequestActive() && !hasAppendBeforeEndDocumentPatch(allText)) {
+      missing.push({ kind: 'appendix', title: 'Appendix' });
+    }
+    const missingEqTargets = missingEquationTargetsFromOutputs(outputs, runPayload);
+    if (missingEqTargets.length) {
+      missing.push({ kind: 'equation-coverage', title: 'Equation explanations', equations: missingEqTargets });
+    }
+    return missing;
+  }
+
+  function missingCoverageDryPatch(missing) {
+    const parts = [];
+    (missing || []).forEach((m, i) => {
+      if (m.kind === 'named-section') {
+        const title = clean(m.title || requestedBodySectionTitle() || 'Introduction');
+        parts.push([
+          'LATEXAI_BLOCK_PATCH_BEGIN',
+          'PATCH_ID: coverage-section-' + (i + 1),
+          'OPERATION: insert_before_section',
+          'TARGET_BLOCK_ID:',
+          'TARGET_SECTION: ' + firstExistingSectionTitle(),
+          'RATIONALE: dry-run coverage verifier added missing user-requested section',
+          'BEGIN_NEW_LATEX',
+          '\\section{' + title + '}',
+          'This section introduces the purpose of the writeup and explains how the following mathematical development should be read.',
+          'END_NEW_LATEX',
+          'LATEXAI_BLOCK_PATCH_END'
+        ].join('\n'));
+      }
+      if (m.kind === 'appendix') {
+        parts.push([
+          'LATEXAI_BLOCK_PATCH_BEGIN',
+          'PATCH_ID: coverage-appendix-' + (i + 1),
+          'OPERATION: append_before_end_document',
+          'TARGET_BLOCK_ID:',
+          'TARGET_SECTION: Appendix',
+          'RATIONALE: dry-run coverage verifier added missing user-requested appendix',
+          'BEGIN_NEW_LATEX',
+          '\\appendix',
+          '\\section{Requested Appendix}',
+          '\\paragraph{Statement.} State the theorem, definition, or supporting result requested by the user.',
+          '\\paragraph{Explanation.} Explain the requested statement in plain words and include the requested proof or proof idea.',
+          'END_NEW_LATEX',
+          'LATEXAI_BLOCK_PATCH_END'
+        ].join('\n'));
+      }
+
+      if (m.kind === 'equation-coverage') {
+        (m.equations || []).forEach((eq, j) => {
+          parts.push([
+            'LATEXAI_BLOCK_PATCH_BEGIN',
+            'PATCH_ID: coverage-equation-' + (j + 1),
+            'OPERATION: insert_after_block',
+            'TARGET_BLOCK_ID: ' + (eq.id || ('eq_' + String(j + 1).padStart(3, '0'))),
+            'TARGET_SECTION: ' + (eq.section || 'Document'),
+            'RATIONALE: dry-run coverage verifier added missing equation explanation requested by the user',
+            'BEGIN_NEW_LATEX',
+            'This equation introduces a mathematical relationship used in the argument. The surrounding text should explain the role of each term and how the displayed identity or inequality advances the proof.',
+            'END_NEW_LATEX',
+            'LATEXAI_BLOCK_PATCH_END'
+          ].join('\n'));
+        });
+      }
+    });
+    return parts.join('\n\n');
+  }
+
+  async function buildMissingCoveragePrompt(runPayload, outputs, missing) {
+    const source = sourceForAgentVisiblePrompt();
+    const prior = transcriptText(outputs || []);
+    const tpl = [
+      'You are the Latexai USER REQUEST COVERAGE VERIFIER for the final editor output.',
+      'The previous editor output omitted one or more explicit user requests. Produce ONLY the missing Stage 19T2G RAW LATEX BLOCK PATCH block(s).',
+      'Do not repeat patches that already exist. Do not output JSON, markdown fences, or a full LaTeX document.',
+      '',
+      'Original Focus/query and related request signal:',
+      userRequestSignalText() || '(empty)',
+      '',
+      'Missing required coverage item(s):',
+      (missing || []).map((m, i) => {
+        if (m.kind === 'appendix') return (i + 1) + '. appendix request requiring OPERATION: append_before_end_document';
+        if (m.kind === 'equation-coverage') return (i + 1) + '. equation coverage request requiring one OPERATION: insert_after_block patch for each missing equation id: ' + (m.equations || []).map((eq) => eq.id).join(', ');
+        return (i + 1) + '. named section request requiring \section{' + (m.title || requestedBodySectionTitle()) + '}';
+      }).join('\n'),
+      '',
+      'Equation coverage repair instruction, if equation ids are listed above:',
+      'Emit exactly one raw patch per missing equation id. Each such patch must use OPERATION: insert_after_block and TARGET_BLOCK_ID equal to the listed equation id. Do not replace equations. Do not collapse many equation explanations into one generic paragraph.',
+      formatEquationTargetsForPrompt((missing || []).flatMap((m) => m.kind === 'equation-coverage' ? (m.equations || []) : []), { maxVisible: 80 }),
+      '',
+      'Current document outline / safe target map:',
+      buildSafeEditBlockMapForPrompt(source, desiredTargetSections(runPayload)),
+      '',
+      buildSectionCreationRequestContext(),
+      '',
+      buildAppendixRequestContext(),
+      '',
+      buildEquationCoverageContext(runPayload),
+      '',
+      'Visible whole-paper context for inferring the requested content:',
+      truncateMiddle(source, 30000, '% ... [middle omitted for coverage verifier] ...'),
+      '',
+      'Prior editor/debate transcript, for avoiding duplicates:',
+      truncateMiddle(prior, 12000, '... [transcript omitted] ...'),
+      '',
+      'Return only missing LATEXAI_BLOCK_PATCH_BEGIN / LATEXAI_BLOCK_PATCH_END block(s).'
+    ].filter(Boolean).join('\n');
+    return tpl;
+  }
+
+  async function callCoverageVerifierForMissing(outputs, runPayload, missing, dry, labelSuffix) {
+    const idx = Math.max(0, (outputs || []).map((o, i) => ({ o, i })).reverse().find((x) => /editor|final|synth/i.test(String(x.o?.agentRole || '') + ' ' + String(x.o?.taskType || '')))?.i ?? ((outputs || []).length - 1));
+    const prompt = dry ? '' : await buildMissingCoveragePrompt(runPayload, outputs, missing);
+    const route = dry ? { routeKey: 'coverage-verifier-dry', provider: 'dry-run', model: 'dry-run' } : configuredDebateRoute('debate-synthesizer');
+    let text = '';
+    if (dry) {
+      text = missingCoverageDryPatch(missing);
+    } else {
+      const aiPayload = {
+        prompt,
+        provider: route.provider,
+        model: route.model,
+        modelRouteKey: route.routeKey,
+        modelRouteTitle: 'Devil’s advocate · user request coverage verifier' + (labelSuffix ? ' · ' + labelSuffix : ''),
+        branch: runPayload?.selectedBranch,
+        executionPlan: runPayload?.executionPlan,
+        priorOutputs: outputs,
+        latexSource: payloadLatexSourceForAI(),
+        latexSourceMode: payloadSourceMode(),
+        fullLatexSourceVisibleInPrompt: /whole_truncated|full_source/.test(visibleContextMode()),
+        reviewText: inputValue('branchWorkflowReviewText', ''),
+        paperSummary: inputValue('branchWorkflowPaperSummary', '')
+      };
+      publishPromptDebugEvent('coverage verifier calling AI for missing explicit user request patches' + (labelSuffix ? ' (' + labelSuffix + ')' : ''), { stepIndex: (outputs || []).length + 1, agentRole: 'coverage-verifier', taskType: 'missing-explicit-user-request-coverage' }, prompt, aiPayload, { status: 'before-ai-call', missing: (missing || []).map((m) => m.kind === 'equation-coverage' ? (m.kind + ':' + ((m.equations || []).length)) : m.kind).join(', ') });
+      const raw = await NS.AIProvider.ask(aiPayload, {
+        task: 'latex-paper-debate-user-request-coverage-verifier',
+        routeKey: route.routeKey,
+        provider: route.provider,
+        model: route.model,
+        context: { workflow: 'devils-advocate-paper-debate', agentRole: 'coverage-verifier', modelRouteKey: route.routeKey, stage: STAGE, labelSuffix: labelSuffix || '' }
+      });
+      text = NS.AIProvider.extractText ? NS.AIProvider.extractText(raw) : extractAiText(raw);
+      publishPromptDebugEvent('coverage verifier AI response received' + (labelSuffix ? ' (' + labelSuffix + ')' : ''), { stepIndex: (outputs || []).length + 1, agentRole: 'coverage-verifier', taskType: 'missing-explicit-user-request-coverage' }, prompt, aiPayload, { status: 'after-ai-call', outputTextPreview: String(text || '').slice(0, 4000) });
+    }
+    if (!clean(text)) return outputs;
+    const verifierOutput = {
+      stepIndex: (outputs || []).length + 1,
+      agentRole: 'coverage-verifier',
+      taskType: 'missing explicit user request coverage patches' + (labelSuffix ? ' · ' + labelSuffix : ''),
+      debateRound: debateRoundCount(),
+      debatePhase: 'coverage-verifier',
+      provider: route.provider,
+      model: route.model,
+      promptSeed: prompt,
+      dryRun: !!dry,
+      latencyMs: 0,
+      outputText: text
+    };
+    const next = [...(outputs || [])];
+    if (next[idx]) next[idx] = { ...next[idx], outputText: String(next[idx].outputText || '') + '\n\n' + text, coverageVerifierApplied: true };
+    next.push(verifierOutput);
+    return next;
+  }
+
+  function splitMissingCoverageForStage19T2U(missing) {
+    const ordinary = [];
+    const batches = [];
+    (missing || []).forEach((m) => {
+      if (m.kind !== 'equation-coverage') ordinary.push(m);
+      else chunkArrayStage19T2U(m.equations || [], 5).forEach((eqs, i) => batches.push({ kind: 'equation-coverage', title: 'Equation explanations batch ' + (i + 1), equations: eqs }));
+    });
+    return { ordinary, batches };
+  }
+
+  async function enforceExplicitUserRequestCoverage(outputs, runPayload, dry) {
+    let missing = explicitCoverageMissingFromOutputs(outputs, runPayload);
+    if (!missing.length) return outputs;
+    let next = [...(outputs || [])];
+    const parts = splitMissingCoverageForStage19T2U(missing);
+    if (parts.ordinary.length) {
+      next = await callCoverageVerifierForMissing(next, runPayload, parts.ordinary, dry, 'section-appendix-coverage');
+    }
+    for (let i = 0; i < parts.batches.length; i += 1) {
+      const batch = parts.batches[i];
+      // Recompute after each batch so that if the model covered extra ids we do not ask again.
+      const still = explicitCoverageMissingFromOutputs(next, runPayload).find((m) => m.kind === 'equation-coverage');
+      if (!still?.equations?.length) break;
+      const wanted = new Set((batch.equations || []).map((eq) => String(eq.id || '').toLowerCase()));
+      const remainingBatch = (still.equations || []).filter((eq) => wanted.has(String(eq.id || '').toLowerCase()));
+      if (!remainingBatch.length) continue;
+      next = await callCoverageVerifierForMissing(next, runPayload, [{ ...batch, equations: remainingBatch }], dry, 'equation-batch-' + (i + 1));
+    }
+
+    // Stage 19T2U hard guarantee: if the configured verifier model still omits any required
+    // equation id, add compile-safe deterministic fallback patches rather than silently letting
+    // the workflow proceed with 3/21 or similar partial coverage. The fallback is visibly marked in
+    // the rationale, and the user can revise it via normal \lai resolution/editing.
+    const remaining = explicitCoverageMissingFromOutputs(next, runPayload);
+    const remainingEq = remaining.find((m) => m.kind === 'equation-coverage');
+    if (remainingEq?.equations?.length) {
+      const fallbackText = deterministicEquationCoveragePatches(remainingEq.equations || []);
+      if (clean(fallbackText)) {
+        const idx = Math.max(0, (next || []).map((o, i) => ({ o, i })).reverse().find((x) => /editor|final|synth/i.test(String(x.o?.agentRole || '') + ' ' + String(x.o?.taskType || '')))?.i ?? ((next || []).length - 1));
+        const fallbackOutput = {
+          stepIndex: next.length + 1,
+          agentRole: 'coverage-verifier',
+          taskType: 'deterministic equation coverage fallback',
+          debateRound: debateRoundCount(),
+          debatePhase: 'coverage-verifier-fallback',
+          provider: 'frontend-deterministic',
+          model: STAGE,
+          promptSeed: '',
+          dryRun: !!dry,
+          latencyMs: 0,
+          outputText: fallbackText
+        };
+        if (next[idx]) next[idx] = { ...next[idx], outputText: String(next[idx].outputText || '') + '\n\n' + fallbackText, coverageVerifierApplied: true, deterministicEquationFallbackApplied: true };
+        next.push(fallbackOutput);
+      }
+    }
+
+    const finalMissing = explicitCoverageMissingFromOutputs(next, runPayload);
+    const summary = missing.map((m) => m.kind === 'equation-coverage' ? (m.kind + ':' + ((m.equations || []).length)) : m.kind).join(', ');
+    const finalEqMissing = finalMissing.find((m) => m.kind === 'equation-coverage');
+    const finalMsg = finalEqMissing?.equations?.length ? ('; still missing equation ids: ' + finalEqMissing.equations.map((eq) => eq.id).join(', ')) : '';
+    status('Coverage verifier enforced explicit user-request patch(es): ' + summary + finalMsg + '.', finalEqMissing?.equations?.length ? 'warn' : 'good');
+    return next;
+  }
+
   async function runSelectedBranch() {
     maybeWarnRepeatedHeadings('Pre-run warning');
     let runPayload = selectedRealPayload();
@@ -1895,11 +2752,13 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const mode = inputValue('branchWorkflowRunMode', 'dry_run_no_model_calls');
     const dry = mode !== 'call_ai_proxy_expensive';
     if (!dry && !W.confirm('This will call the configured AI proxy for ' + steps.length + ' agent steps (' + debateRoundCount() + ' debate round(s) plus synthesis/editor). Continue?')) return null;
-    const outputs = [];
+    let outputs = [];
     for (const step of steps) {
       status((dry ? 'Dry-running' : 'Calling AI for') + ' step ' + (step.stepIndex || outputs.length + 1) + '/' + steps.length + ': ' + (step.agentRole || 'agent'), 'warn');
       outputs.push(await callAiForStep(step, outputs, runPayload));
     }
+    outputs = await enforceExplicitUserRequestCoverage(outputs, runPayload, dry);
+    const combinedFinalOutput = outputs.map((o) => String(o?.outputText || '')).filter(Boolean).join('\n\n');
     const body = {
       workflow: 'latex-paper-debate-real-agent-run',
       runMode: dry ? 'dry_run' : 'frontend_ai_proxy_outputs',
@@ -1916,6 +2775,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       reviewText: inputValue('branchWorkflowReviewText', ''),
       paperSummary: inputValue('branchWorkflowPaperSummary', ''),
       query: inputValue('branchWorkflowQuery', ''),
+      finalOutput: combinedFinalOutput,
+      explicitCoverageVerifier: { appendixRequestActive: appendixRequestActive(), sectionCreationRequestActive: sectionCreationRequestActive(), requestedBodySectionTitle: requestedBodySectionTitle(), stage: STAGE },
       agentOutputs: outputs,
       knowledgeRetrieval: runPayload.knowledgeRetrieval || lastKnowledgeContextData || null,
       metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(runPayload), modelRoutingSource: 'settings-devils-advocate-routes', devilAdvocateRoutes: debateRouteSummaryObject(), knowledgeRetrieverEnabled: knowledgeRetrieverEnabled(), knowledgeTopK: knowledgeRetrieverTopK(), knowledgeResultCount: (runPayload.knowledgeRetrieval || lastKnowledgeContextData || {}).resultCount || 0 }
@@ -2134,14 +2995,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       if (c && typeof c === 'object') return [c];
     }
     // Some models return a single edit object as the root.
-    if (parsed.targetType || parsed.targetId || parsed.targetSection || parsed.latex || parsed.action) return [parsed];
+    if (parsed.targetType || parsed.targetId || parsed.target_block_id || parsed.targetBlockId || parsed.targetSection || parsed.target_section || parsed.latex || parsed.new_text || parsed.newText || parsed.action || parsed.kind) return [parsed];
     return [];
   }
 
 
   function looksLikeStructuredEditObject(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-    return !!(obj.targetType || obj.type || obj.targetId || obj.target_id || obj.equationId || obj.equation_id || obj.targetSection || obj.section || obj.target || obj.action || obj.latex || obj.text || obj.content || obj.explanation);
+    return !!(obj.targetType || obj.type || obj.targetId || obj.target_id || obj.target_block_id || obj.targetBlockId || obj.block_id || obj.equationId || obj.equation_id || obj.targetSection || obj.target_section || obj.section || obj.target || obj.action || obj.kind || obj.latex || obj.new_text || obj.newText || obj.text || obj.content || obj.explanation);
   }
 
   function markerSegmentForStructuredOutput(text) {
@@ -2187,18 +3048,71 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function normalizeStructuredEditsFromArray(edits) {
     return (Array.isArray(edits) ? edits : []).map((e, idx) => {
       const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
-      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
-      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
-      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
-      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
-      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
+      const action = normalizeStructuredAction(e?.kind || e?.action || e?.editAction || e?.mode || e?.operation || (e?.old_text_exact || e?.oldTextExact || e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
+      const targetBlockId = clean(e?.target_block_id || e?.targetBlockId || e?.block_id || e?.blockId || '');
+      const targetId = clean(targetBlockId || e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
+      const targetSection = clean(e?.target_section || e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
+      const latex = String(e?.new_text || e?.newText || e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
+      const oldLatex = String(e?.old_text_exact || e?.oldTextExact || e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
       const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
-      return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
-    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+      return { index: idx + 1, targetType, targetId, targetBlockId, target_block_id: targetBlockId, targetSection, action, kind: e?.kind || action, latex, new_text: latex, oldLatex, old_text_exact: oldLatex, note, raw: e };
+    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit' || e.kind === 'no_edit');
+  }
+
+  function parseRawLatexBlockPatchOutputText(text) {
+    const raw = String(text || '');
+    const result = { ok: false, source: 'none', editMode: 'raw_latex_block_patch_v1', edits: [], warnings: [] };
+    const blocks = [];
+    const re = /LATEXAI_BLOCK_PATCH_BEGIN\s*([\s\S]*?)\s*LATEXAI_BLOCK_PATCH_END/ig;
+    let m;
+    while ((m = re.exec(raw))) blocks.push(m[1] || '');
+    const xmlRe = /<latexai-edit\b([^>]*)>([\s\S]*?)<\/latexai-edit>/ig;
+    while ((m = xmlRe.exec(raw))) blocks.push((m[0] || ''));
+    blocks.forEach((block, idx) => {
+      const b = String(block || '');
+      const meta = {};
+      b.split(/\n/).forEach((ln) => {
+        const mm = String(ln || '').match(/^\s*([A-Z_][A-Z0-9_]*)\s*:\s*(.*?)\s*$/i);
+        if (mm) meta[mm[1].toLowerCase()] = mm[2];
+      });
+      let latex = '';
+      const lm = b.match(/BEGIN_NEW_LATEX\s*\n([\s\S]*?)\n\s*END_NEW_LATEX/i);
+      if (lm) latex = lm[1] || '';
+      const xmlLatex = b.match(/<new_latex>([\s\S]*?)<\/new_latex>/i);
+      if (!latex && xmlLatex) latex = xmlLatex[1] || '';
+      const action = normalizeStructuredAction(meta.operation || meta.op || meta.action || 'insert_after_block');
+      const targetBlockId = clean(meta.target_block_id || meta.target || meta.block_id || '');
+      const targetSection = clean(meta.target_section || meta.section || '');
+      result.edits.push({
+        index: idx + 1,
+        targetType: 'section',
+        targetId: targetBlockId,
+        targetBlockId,
+        target_block_id: targetBlockId,
+        targetSection,
+        action,
+        kind: meta.operation || action,
+        latex: latex.trim(),
+        new_text: latex.trim(),
+        oldLatex: '',
+        old_text_exact: '',
+        note: clean(meta.rationale || meta.reason || ''),
+        rawPatchProtocol: 'stage19t2e-raw-latex-block-patch'
+      });
+    });
+    result.edits = result.edits.filter((e) => e.latex || /no_edit/i.test(e.action + ' ' + e.kind));
+    if (result.edits.length) {
+      result.ok = true;
+      result.source = 'raw-latex-block-patch-protocol';
+      result.warnings.push('Parsed Stage 19T2E raw LaTeX block patch protocol. LaTeX payload was not JSON-decoded, preserving backslashes.');
+    }
+    return result;
   }
 
   function parseStructuredEditorOutputText(text) {
     const rawText = String(text || '');
+    const rawPatch = parseRawLatexBlockPatchOutputText(rawText);
+    if (rawPatch.ok) return rawPatch;
     const jsonText = extractStructuredEditorJsonText(rawText);
     const result = { ok: false, source: 'none', editMode: '', edits: [], warnings: [] };
     if (!rawText.trim()) {
@@ -2213,16 +3127,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         result.editMode = equationCoverageActive() ? 'equation_coverage' : 'structured_edits';
         result.raw = { edits: salvaged };
         result.warnings.push('Stage 19N1L: recovered complete edit object(s) from a partial/truncated structured JSON response. The model likely omitted the closing JSON object or END marker.');
-        result.edits = salvaged.map((e, idx) => {
-          const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
-          const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
-          const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
-          const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
-          const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
-          const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
-          const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
-          return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
-        }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+        result.edits = normalizeStructuredEditsFromArray(salvaged);
         if (result.edits.length) return result;
       }
       result.warnings.push('No complete structured JSON edit schema was found in the final editor output. This usually means the final editor ignored the JSON contract or returned a truncated schema with no complete edit objects. Re-run with prompt debug enabled to inspect the editor prompt/output.');
@@ -2264,16 +3169,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     result.editMode = clean(parsed?.editMode || parsed?.mode || (equationCoverageActive() ? 'equation_coverage' : 'structured_edits'));
     result.raw = parsed;
     result.warnings = Array.isArray(parsed?.warnings) ? parsed.warnings.map((x) => String(x || '')).filter(Boolean) : [];
-    result.edits = edits.map((e, idx) => {
-      const targetType = normalizeStructuredTargetType(e?.targetType || e?.type || e?.target_kind || e?.targetKind || (e?.equationId || e?.equation_id ? 'equation' : 'section'));
-      const action = normalizeStructuredAction(e?.action || e?.editAction || e?.mode || e?.operation || (e?.oldLatex || e?.oldText ? 'replace' : 'insert_after'));
-      const targetId = clean(e?.targetId || e?.target_id || e?.equationId || e?.equation_id || e?.id || '');
-      const targetSection = clean(e?.targetSection || e?.section || e?.target || e?.targetTitle || e?.sectionTitle || e?.unit || '');
-      const latex = String(e?.latex || e?.latexPatch || e?.patch || e?.newLatex || e?.replacementLatex || e?.paperText || e?.explanationLatex || e?.explanation || e?.text || e?.content || '').trim();
-      const oldLatex = String(e?.oldLatex || e?.oldText || e?.old || e?.originalLatex || '').trim();
-      const note = clean(e?.note || e?.rationale || e?.reason || e?.why || '');
-      return { index: idx + 1, targetType, targetId, targetSection, action, latex, oldLatex, note, raw: e };
-    }).filter((e) => e.latex || e.oldLatex || e.action === 'no_edit');
+    result.edits = normalizeStructuredEditsFromArray(edits);
     if (!result.edits.length) {
       const salvaged = salvageStructuredEditObjectsFromPartialJson(rawText);
       const normalized = normalizeStructuredEditsFromArray(salvaged);
@@ -2349,6 +3245,51 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return out;
   }
 
+
+
+  function decodeAiEscapedControlCharsForInsertion(text) {
+    let s = String(text || '');
+    if (!s) return s;
+
+    // Stage 19T2J: decode transport-style escaped control characters without
+    // eating real LaTeX commands. The old version used /\\n/g and /\\t/g over
+    // full preview drafts. That turns ordinary commands like \\newcommand and
+    // \\nabla into a real line break followed by "ewcommand"/"abla", and turns
+    // \\theta into indentation + "heta". Decode only when the escape looks
+    // like a serialized line break/tab separator, never when it is followed by
+    // a letter/name character from a TeX control word.
+    const lineBreakAhead = '(?:\\\\|\\s|%|[\\]{}$]|$)';
+    s = s.replace(new RegExp('\\\\r\\\\n(?=' + lineBreakAhead + ')', 'g'), '\n');
+    s = s.replace(new RegExp('\\\\n(?=' + lineBreakAhead + ')', 'g'), '\n');
+    s = s.replace(/\\t(?=(?:\s|$))/g, '  ');
+    return s;
+  }
+
+  function containsLatexaiContextScaffold(text) {
+    const s = String(text || '');
+    return /\[\s*(?:important\s+excerpt\s+from\s+this\s+section|section\s+ending\s+excerpt|section\s+excerpt\s+truncated\s+by\s+Latexai)\s*\]/i.test(s)
+      || /LATEXAI_CONTEXT_|LEGACY_ACTIONABLE_EDIT_MARKER|BEGIN\s+LEGACY_ACTIONABLE|END\s+LEGACY_ACTIONABLE/i.test(s)
+      || /%\s*\.\.\.\s*\[(?:important|section)\b/i.test(s);
+  }
+
+  function sanitizeAiPatchTextForInsertion(text) {
+    let s = decodeAiEscapedControlCharsForInsertion(text).trim();
+    if (!s) return '';
+    // These strings are source-context scaffolds used to keep prompts short.
+    // If they appear in a proposed edit, the model copied context rather than
+    // writing paper-ready text. Drop the edit instead of inserting malformed
+    // LaTeX such as literal \n's or "[important excerpt...]" placeholders.
+    if (containsLatexaiContextScaffold(s)) return '';
+    s = s
+      .replace(/^```(?:latex|tex|json)?\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .replace(/^\s*%\s*(?:BEGIN|END)\s+LAI[^\n]*\n?/gim, '')
+      .replace(/^\s*%\s*LATEXAI_CONTEXT[^\n]*\n?/gim, '')
+      .trim();
+    if (containsLatexaiContextScaffold(s)) return '';
+    return s;
+  }
+
   function stripLeadingMatchingSectionCommand(text, targetSection) {
     let value = String(text || '').trim();
     const target = normalizeSectionTitle(targetSection || '').toLowerCase();
@@ -2369,11 +3310,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
   function structuredEditLatexBlock(edit) {
     const e = edit || {};
     const targetType = normalizeStructuredTargetType(e.targetType);
-    const action = normalizeStructuredAction(e.action);
+    let action = normalizeStructuredAction(e.action);
     const targetSection = clean(e.targetSection || '');
     const targetId = clean(e.targetId || '');
-    let latex = sanitizeStructuredLatexTextForCompile(String(e.latex || '').trim());
-    let oldLatex = sanitizeStructuredLatexTextForCompile(String(e.oldLatex || '').trim());
+    let latex = sanitizeAiPatchTextForInsertion(e.latex || '');
+    let oldLatex = sanitizeAiPatchTextForInsertion(e.oldLatex || '');
+    if (action !== 'no_edit' && !latex) return '';
+    if (action === 'replace' && !oldLatex) action = 'insert_after';
+    latex = sanitizeStructuredLatexTextForCompile(latex.trim());
+    oldLatex = sanitizeStructuredLatexTextForCompile(oldLatex.trim());
     if (targetSection) {
       latex = stripLeadingMatchingSectionCommand(latex, targetSection);
       oldLatex = stripLeadingMatchingSectionCommand(oldLatex, targetSection);
@@ -2381,6 +3326,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const hasLai = /\\lai(?:old)?\s*\{/.test(latex);
     if (hasLai && (!oldLatex || /\\laiold\s*\{/.test(latex))) return latex;
     const targetLines = [];
+    if (action === 'append') targetLines.push('% Target action: append_before_end_document');
     if (targetType === 'equation' && targetId) targetLines.push('% Target equation id: ' + targetId);
     if (targetSection) targetLines.push('% Target section: ' + targetSection);
     if (action === 'no_edit') {
@@ -2440,6 +3386,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
 
   function isNoEditLaiBlock(block) {
     return /\bno\s+edits?\s+recommended\b/i.test(blockBodyForDuplicate(block));
+  }
+
+  function isAppendBeforeEndDocumentLaiBlock(block) {
+    const s = String(block || '');
+    const body = blockBodyForDuplicate(block);
+    return /Target\s+action\s*:\s*append_before_end_document/i.test(s)
+      || /OPERATION\s*:\s*append_before_end_document/i.test(s)
+      || /^\s*\\appendix\b/i.test(body);
   }
 
   function canonicalizeLaiBlock(block) {
@@ -2519,8 +3473,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     const kept = [];
     const skipped = [];
     (blocks || []).forEach((block) => {
-      const b = String(block || '').trim();
+      const b = decodeAiEscapedControlCharsForInsertion(String(block || '')).trim();
       if (!b) return;
+      if (containsLatexaiContextScaffold(b)) {
+        skipped.push('dropped copied context/excerpt scaffold block: ' + canonicalizeLaiBlock(b).slice(0, 90));
+        return;
+      }
       if (isPatchStyleLaiBlock(b)) kept.push(b);
       else skipped.push('dropped advisory/non-patch block: ' + canonicalizeLaiBlock(b).slice(0, 90));
     });
@@ -2538,8 +3496,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       if (!block || !/\\lai\s*\{/.test(block)) return;
       const fallback = targets && targets.length ? targets[Math.min(idx, targets.length - 1)] : '';
       const eqId = inferEquationTargetIdFromLaiBlock(block);
-      const target = eqId ? ('Equation ' + eqId) : (inferTargetFromLaiBlock(block, fallback, targets) || fallback || 'untargeted');
-      const targetKey = eqId ? ('equation::' + eqId) : (normalizeSectionTitle(target).toLowerCase() || 'untargeted');
+      const appendBlock = isAppendBeforeEndDocumentLaiBlock(block);
+      const target = appendBlock ? 'Append before \\end{document}' : (eqId ? ('Equation ' + eqId) : (inferTargetFromLaiBlock(block, fallback, targets) || fallback || 'untargeted'));
+      const targetKey = appendBlock ? 'append_before_end_document' : (eqId ? ('equation::' + eqId) : (normalizeSectionTitle(target).toLowerCase() || 'untargeted'));
       const bodyKey = canonicalizeLaiBlock(block);
       if (!bodyKey) return;
       const key = targetKey + '::' + bodyKey.slice(0, 900);
@@ -2840,8 +3799,13 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     if (!safeBlocks.length) return s;
     const sectionGroups = new Map();
     const insertions = [];
+    const appendEndBlocks = [];
 
     safeBlocks.forEach((block, idx) => {
+      if (isAppendBeforeEndDocumentLaiBlock(block)) {
+        appendEndBlocks.push(block);
+        return;
+      }
       const eqId = inferEquationTargetIdFromLaiBlock(block);
       if (eqId) {
         const eq = equationTargetById(equations, eqId);
@@ -2886,6 +3850,17 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       sectionGroups.get(key).push(stripSectionCommandsFromAdditiveBlock(block, key));
     });
 
+    if (appendEndBlocks.length) {
+      const blockText = [
+        '',
+        '% --- Latexai targeted Devil\'s Advocate append-before-end-document suggestion ---',
+        ...appendEndBlocks,
+        '% --- end Latexai append-before-end-document suggestion ---',
+        ''
+      ].join('\n');
+      insertions.push({ index: findLastEndDocument(s)?.index ?? s.length, text: blockText, target: 'append_before_end_document' });
+    }
+
     sectionGroups.forEach((bs, target) => {
       const sec = sections.find((x) => sectionMatches(x, target));
       const blockText = [
@@ -2920,11 +3895,61 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     return warnings;
   }
 
-  function enhanceInsertionDataWithMultiSectionDrafts(data) {
+  function frontendBuiltDraftBundleFromFinalEditor() {
     const source = getActiveSource();
     const targets = desiredTargetSections(selectedRealPayload() || lastRealRunData || lastSelectionData || {});
     const blocks = laiBlocksForInsertion();
-    if (!blocks.length) {
+    if (!blocks.length) return null;
+    const targeted = normalizeLaiDraftForCompilation(buildTargetedDraftFromBlocks(source, blocks, targets), 'targeted');
+    const append = normalizeLaiDraftForCompilation(buildAppendDraftFromBlocks(source, blocks, targets), 'append');
+    const blockTargets = blocks.map((b, i) => inferEquationTargetIdFromLaiBlock(b) || inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '', targets)).filter(Boolean);
+    return { source, targets, blocks, targeted, append, blockTargets };
+  }
+
+  function enhanceInsertionDataWithMultiSectionDrafts(data) {
+    const frontendBundle = frontendBuiltDraftBundleFromFinalEditor();
+
+    if (data && data.safeCompiler && data.safeCompiler.enabled) {
+      // Stage 19T2M: the backend Safe Edit Compiler remains the gatekeeper, but
+      // the browser should not apply a backend JSON-transport draft when the
+      // final synthesizer already returned the RAW LATEX BLOCK PATCH protocol.
+      // In the failing iPad path, the final synthesis text was correct, but the
+      // backend draft that came back through JSON could contain control escapes
+      // such as tab+r for \tr or newline+abla for \nabla. Rebuild the actual
+      // insertion draft in the frontend from the raw patch protocol and current
+      // editor source, while still requiring backend safeToInsert=true.
+      if (data.safeToInsert === true && frontendBundle) {
+        return {
+          ...data,
+          targetedInsertionDraft: frontendBundle.targeted,
+          appendOnlyDraft: frontendBundle.append,
+          insertableLatexDraft: frontendBundle.targeted,
+          targetSections: frontendBundle.targets,
+          blockSectionTargets: frontendBundle.blockTargets,
+          blockCount: frontendBundle.blocks.length,
+          safeToInsert: true,
+          safeToAutoApply: false,
+          multiSectionFrontendInsertion: true,
+          frontendRawPatchApplyPath: true,
+          warnings: [
+            ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
+            'Stage 19T2M frontend apply path: backend Safe Edit Compiler accepted the edit intent, and the browser rebuilt the applied draft directly from the RAW LATEX BLOCK PATCH final synthesis text to avoid JSON/backslash transport damage. Stage 19T2M also preserves generic append_before_end_document appendix patches from the user request instead of routing them into a regular section.',
+            'Stage 19N1L inserted only final-editor \\lai blocks by default, removed duplicate repeated blocks, and dropped contradictory no-edit markers when edits exist for the same target.',
+            ...(lastInsertionDedupeNotes.length ? ['Deduplication skipped: ' + lastInsertionDedupeNotes.slice(0, 8).join('; ') + (lastInsertionDedupeNotes.length > 8 ? '; ...' : '')] : [])
+          ]
+        };
+      }
+      return {
+        ...data,
+        multiSectionFrontendInsertion: false,
+        warnings: [
+          ...((data && Array.isArray(data.warnings)) ? data.warnings : []),
+          'Stage 19T2 Safe Edit Compiler is authoritative: raw AI LaTeX was not inserted directly.'
+        ]
+      };
+    }
+
+    if (!frontendBundle) {
       const extraWarnings = structuredInsertionFailureWarnings();
       if (!extraWarnings.length) return data;
       return {
@@ -2938,18 +3963,15 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
         ]
       };
     }
-    const targeted = normalizeLaiDraftForCompilation(buildTargetedDraftFromBlocks(source, blocks, targets), 'targeted');
-    const append = normalizeLaiDraftForCompilation(buildAppendDraftFromBlocks(source, blocks, targets), 'append');
-    const blockTargets = blocks.map((b, i) => inferEquationTargetIdFromLaiBlock(b) || inferTargetFromLaiBlock(b, targets[Math.min(i, Math.max(0, targets.length - 1))] || '', targets)).filter(Boolean);
     return {
       ...(data || {}),
-      targetedInsertionDraft: targeted,
-      appendOnlyDraft: append,
-      insertableLatexDraft: targeted,
-      targetSections: targets,
-      blockSectionTargets: blockTargets,
-      blockCount: blocks.length,
-      safeToInsert: blocks.length > 0,
+      targetedInsertionDraft: frontendBundle.targeted,
+      appendOnlyDraft: frontendBundle.append,
+      insertableLatexDraft: frontendBundle.targeted,
+      targetSections: frontendBundle.targets,
+      blockSectionTargets: frontendBundle.blockTargets,
+      blockCount: frontendBundle.blocks.length,
+      safeToInsert: frontendBundle.blocks.length > 0,
       safeToAutoApply: false,
       multiSectionFrontendInsertion: true,
       warnings: [
@@ -2960,9 +3982,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     };
   }
 
+
   function insertionPayload() {
     const selected = lastSelectionData?.selectedBranch || lastRealRunData?.selectedBranch || selectedRealPayload()?.selectedBranch || {};
     const executionPlan = lastSelectionData?.executionPlan || lastRealRunData?.executionPlan || selectedRealPayload()?.executionPlan || {};
+    const repairRoute = configuredDebateRoute('debate-synthesizer');
     return {
       latexSource: getActiveSource(),
       targetSectionOverride: splitTargetSections(inputValue('branchWorkflowTargetSection', '')).join(', '),
@@ -2971,30 +3995,92 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
       executionPlan,
       realAgentRunResult: lastRealRunData || null,
       cleanerResult: lastCleanerData || null,
+      structuredEditorData: lastStructuredEditorData || refreshStructuredEditorData(),
       cleanedLaiBlocks: lastCleanerData?.insertableLaiBlocks || lastCleanerData?.validVisibleLaiBlocks || lastRealRunData?.insertableLaiBlocks || lastRealRunData?.visibleLaiBlocks || [],
-      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}) }
+      allowAiRepair: true,
+      safeEditRepairRequested: true,
+      safeEditRepairRoute: { provider: repairRoute.provider, model: repairRoute.model, routeKey: repairRoute.routeKey },
+      metadata: { frontendStage: STAGE, activePath: activePath(), debateRoundCount: debateRoundCount(), debateMode: 'critic-advocate-rounds', visibleContextMode: visibleContextMode(), payloadSourceMode: payloadSourceMode(), targetSections: desiredTargetSections(selectedRealPayload() || lastSelectionData || lastRealRunData || {}), safeEditCompilerRequested: true, safeEditRepairRequested: true, safeEditCompilerClient: 'devils_advocate' }
     };
+  }
+
+  function safeCompilerBlocked(data) {
+    return !!(data && data.safeCompiler && data.safeCompiler.enabled && data.safeToInsert !== true);
+  }
+
+  function compactUnsafeEditReason(data) {
+    const parts = [];
+    if (data?.repairAttempted) parts.push('Repair loop: ' + (data.repairStatus || 'attempted'));
+    if (data?.repairError) parts.push('Repair error: ' + data.repairError);
+    if (Array.isArray(data?.validationErrors)) parts.push(...data.validationErrors);
+    if (Array.isArray(data?.warnings)) parts.push(...data.warnings);
+    if (Array.isArray(data?.rejectedEdits)) {
+      data.rejectedEdits.slice(0, 4).forEach((e) => {
+        const why = e?.reason || e?.message || e?.kind || '';
+        if (why) parts.push('Rejected edit: ' + why);
+      });
+    }
+    return parts.filter(Boolean).slice(0, 8);
+  }
+
+  function updateSafeApplyButtonState(data) {
+    const blocked = safeCompilerBlocked(data);
+    ['branchWorkflowApplyTargetedBtn', 'branchWorkflowApplyAppendBtn', 'branchWorkflowCopyTargetedBtn'].forEach((id) => {
+      const node = $(id);
+      if (node) {
+        node.disabled = blocked;
+        node.title = blocked ? 'Safe Edit Compiler blocked this AI edit proposal. Nothing can be applied until preview validates.' : '';
+      }
+    });
+  }
+
+  function renderBlockedSafeCompilerHtml(data) {
+    const reasons = compactUnsafeEditReason(data);
+    const rejected = Array.isArray(data?.rejectedEdits) ? data.rejectedEdits : [];
+    return '' +
+      '<div class="settings-note bad"><strong>Safe Edit Compiler blocked insertion.</strong> No AI-generated raw LaTeX was inserted into <code>main.tex</code>.</div>' +
+      '<div class="settings-note compact">This is the intended fail-closed behavior: the agent proposed an unsafe or non-actionable edit, so the editor refused to apply it rather than corrupting the source.</div>' +
+      (reasons.length ? '<div class="settings-note warn"><strong>Why blocked:</strong><ul>' + reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul></div>' : '') +
+      (rejected.length ? '<details><summary>Rejected edit diagnostics</summary><pre class="branch-workflow-latex-source-preview">' + esc(JSON.stringify(rejected.slice(0, 10), null, 2)) + '</pre></details>' : '') +
+      '<details><summary>Structured edit schema preview</summary>' + renderStructuredEditorPreviewHtml(lastStructuredEditorData || refreshStructuredEditorData()) + '</details>' +
+      '<div class="settings-note compact"><strong>Next action:</strong> rerun the branch or use append-only report. Localized apply buttons are disabled until a proposal validates.</div>';
   }
 
   function renderInsertion(data) {
     const diff = data?.diffSummary || {};
+    const blocked = safeCompilerBlocked(data);
+    if (blocked) {
+      const body = renderBlockedSafeCompilerHtml(data);
+      renderSummary('Safe Edit Compiler blocked unsafe insertion', renderRunDashboard(currentBranchRunSnapshot('insertion_blocked'), body));
+      renderInlinePreview('Insertion blocked by Safe Edit Compiler', body);
+      updateSafeApplyButtonState(data);
+      revealWorkflowPreview();
+      return;
+    }
     const targetedDraft = data?.targetedInsertionDraft || data?.insertableLatexDraft || '';
     const rawAppendDraft = data?.appendOnlyDraft || '';
     const appendDraft = rawAppendDraft ? normalizeLaiDraftForCompilation(rawAppendDraft, 'append') : '';
     const chosenDraft = inputValue('branchWorkflowInsertMode', 'targeted') === 'append' ? appendDraft : normalizeLaiDraftForCompilation(targetedDraft, 'targeted');
     const body =
       '<div class="settings-note"><strong>safeToInsert:</strong> ' + esc(data?.safeToInsert) + ' · safeToAutoApply=' + esc(data?.safeToAutoApply) + ' · blocks=' + esc(data?.blockCount || 0) + '</div>' +
+      (data?.safeCompiler?.enabled ? '<div class="settings-note good"><strong>Safe Edit Compiler active:</strong> AI output was treated as untrusted edit intent and deterministically compiled. Version: ' + esc(data.safeCompiler.version || '') + '</div>' : '') +
+      (data?.repairAttempted ? '<div class="settings-note ' + (data.safeToInsert ? 'good' : 'warn') + '"><strong>Structured edit repair:</strong> ' + esc(data.repairStatus || 'attempted') + (data.repairModelRoutingAudit ? ' via ' + esc((data.repairModelRoutingAudit.provider || '') + ' / ' + (data.repairModelRoutingAudit.model || '')) : '') + '</div>' : '') +
+      (Array.isArray(data?.validationErrors) && data.validationErrors.length ? '<div class="settings-note bad"><strong>Validation errors:</strong> ' + esc(data.validationErrors.join('; ')) + '</div>' : '') +
+      (Array.isArray(data?.rejectedEdits) && data.rejectedEdits.length ? '<details open><summary>Rejected unsafe edits</summary><pre>' + esc(JSON.stringify(data.rejectedEdits, null, 2)) + '</pre></details>' : '') +
       '<div class="settings-note">Target: ' + esc(diff.targetSection || data?.targetSection || (Array.isArray(data?.targetSections) ? data.targetSections.join(', ') : 'append/end')) + ' · mode: ' + esc(data?.insertionMode || '') + '</div>' +
       (data?.multiSectionFrontendInsertion ? '<div class="settings-note good">Multi-section frontend insertion is active. Block targets: ' + esc((data.blockSectionTargets || []).join(', ') || 'none inferred') + '</div>' : '') +
+      renderPatchOperationSummaryHtml(data, finalEditorOutputText()) +
       '<details open><summary>Structured edit schema preview</summary>' + renderStructuredEditorPreviewHtml(lastStructuredEditorData || refreshStructuredEditorData()) + '</details>' +
-      '<div class="settings-note warn">The source editor shows raw <code>\\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
+      (repeatedParagraphWarningsForAudit(chosenDraft || targetedDraft || appendDraft).length ? '<div class="settings-note warn"><strong>Duplicate-insertion warning:</strong> possible repeated generated paragraph(s): ' + esc(repeatedParagraphWarningsForAudit(chosenDraft || targetedDraft || appendDraft).map((w) => 'paragraph ' + w.first + ' repeats at ' + w.second).join('; ')) + '</div>' : '') +
+      '<div class="settings-note warn">The source editor shows raw <code>\lai</code> markup. The visual preview below shows intended colors; the PDF shows colors after Compile PDF. <code>\laiold</code> appears only for old/new replacement edits, not for pure inserted additions.</div>' +
       (Array.isArray(data?.warnings) && data.warnings.length ? '<div class="settings-note warn">Warnings: ' + esc(data.warnings.join('; ')) + '</div>' : '') +
       '<details open><summary>Visual colored LAI preview</summary>' + renderLaiColorPreviewHtml(chosenDraft || targetedDraft || appendDraft) + '</details>' +
       '<details><summary>Targeted insertion draft source</summary><pre class="branch-workflow-latex-source-preview">' + esc(targetedDraft) + '</pre></details>' +
       '<details><summary>Append-only draft source</summary><pre class="branch-workflow-latex-source-preview">' + esc(appendDraft) + '</pre></details>' +
-      (rawAppendDraft && rawAppendDraft !== appendDraft ? '<div class="settings-note good">Append preview was normalized: any \\lai blocks after <code>\\end{document}</code> were moved before <code>\\end{document}</code> so they compile.</div>' : '');
+      (rawAppendDraft && rawAppendDraft !== appendDraft ? '<div class="settings-note good">Append preview was normalized: any \lai blocks after <code>\end{document}</code> were moved before <code>\end{document}</code> so they compile.</div>' : '');
     renderSummary('Preview cleaned LAI insertion', renderRunDashboard(currentBranchRunSnapshot('insertion_preview'), body));
     renderInlinePreview('Insertion preview ready', body);
+    updateSafeApplyButtonState(data);
     revealWorkflowPreview();
   }
 
@@ -3002,12 +4088,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c19;color:#eef2ff;
     if (!lastCleanerData && lastRealRunData) await cleanLastRealRun();
     if (!lastCleanerData && !lastRealRunData) throw new Error('Run agents and clean result before previewing insertion.');
     status('Preparing targeted/append insertion preview...', 'warn');
-    let data = await backendPost('/debate/prepare-lai-insertion', insertionPayload());
+    let data = await backendPost('/debate/prepare-lai-insertion', insertionPayload(), { allowOkFalse: true });
     data = enhanceInsertionDataWithMultiSectionDrafts(data);
     lastInsertionData = data;
     renderInsertion(data);
     try { await saveCurrentBranchRun('insertion_preview_prepared', { quiet: true }); } catch (_err) {}
-    status('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=' + data.safeToInsert + '. Preview is shown in the dock above and in the output box below.', 'good');
+    status(data.safeToInsert ? ('Prepared insertion preview: blocks=' + (data.blockCount || 0) + ', safe=true. Preview is shown in the dock above and in the output box below.') : 'Safe Edit Compiler blocked unsafe insertion. No source changes were made.', data.safeToInsert ? 'good' : 'bad');
     revealWorkflowPreview();
     return data;
   }
@@ -3072,7 +4158,9 @@ function currentBranchRunSnapshot(reason) {
     insertionData: lastInsertionData || null,
     structuredEditorData: structured || null,
     outcomeData: lastOutcomeData || null,
-    knowledgeRetrieval: lastKnowledgeContextData || lastRealRunData?.knowledgeRetrieval || lastSelectionData?.knowledgeRetrieval || null
+    knowledgeRetrieval: lastKnowledgeContextData || lastRealRunData?.knowledgeRetrieval || lastSelectionData?.knowledgeRetrieval || null,
+    requestCoverageAudit: buildCoverageAuditItems(finalEditorOutputText() || ''),
+    regressionSnapshot: branchRegressionSnapshot()
   };
   snapshot.reportMarkdown = buildBranchRunReport(snapshot);
   return snapshot;
@@ -3146,6 +4234,15 @@ function buildBranchRunReport(snapshot) {
     lines.push(String(o.outputText || '').trim() || '_Empty output._');
   });
   lines.push('');
+  lines.push('## User-request coverage audit');
+  const auditItems = snap.requestCoverageAudit || buildCoverageAuditItems(run.finalOutput || (outputs[outputs.length - 1]?.outputText || ''));
+  auditItems.forEach((item) => lines.push('- ' + (item.ok ? '[x] ' : '[ ] ') + item.label + ': ' + (item.detail || '')));
+  lines.push('');
+  lines.push('## Planned patch operations');
+  const patchOps = extractRawPatchBlocksForAudit(run.finalOutput || (outputs[outputs.length - 1]?.outputText || ''));
+  if (patchOps.length) patchOps.forEach((p, i) => lines.push((i + 1) + '. `' + patchOperationLabelForAudit(p) + '`'));
+  else lines.push('_No raw patch operations detected in the final synthesis text._');
+  lines.push('');
   lines.push('## Final structured LaTeX edits');
   lines.push(summarizeStructuredEditsForReport(structured));
   lines.push('');
@@ -3167,6 +4264,11 @@ function buildBranchRunReport(snapshot) {
     lines.push(String(insertion.appendOnlyDraft || '').slice(0, 20000));
     lines.push('```');
   }
+  lines.push('');
+  lines.push('## Stage 19T2U regression snapshot');
+  lines.push('```json');
+  lines.push(JSON.stringify(snap.regressionSnapshot || branchRegressionSnapshot(), null, 2));
+  lines.push('```');
   lines.push('');
   lines.push('## Outcome / learning signal');
   lines.push('```json');
@@ -3398,6 +4500,34 @@ async function learnedSelectBranch() {
     }
   }
 
+  function jsonBackslashDamageReason(text) {
+    const s = String(text || '');
+    // Raw JSON strings that contain LaTeX backslashes must double-escape them.
+    // If not, \title may become a tab + "itle" and \newtheorem/\newcommand
+    // may become a line break + "ewtheorem"/"ewcommand". Treat these as unsafe
+    // source-corruption signs. Stage 19T2J also catches \nabla -> "abla" at
+    // a fresh line, which was the exact compile failure seen after Stage 19T2I.
+    if (new RegExp('[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]').test(s)) return 'non-tab control character in LaTeX source';
+    // Stage 19T2K/19T2L/19T2M: do not reject ordinary tab indentation. The Stage 19T2J
+    // guard treated any real tab as proof that JSON had eaten a LaTeX backslash,
+    // so a harmless tab in a complete draft could block a valid insertion. Only
+    // flag tabs when they are immediately followed by a known TeX-command remnant
+    // produced by JSON consuming \t (for example \theta -> tab + heta or
+    // \tr -> tab + r inside a command definition).
+    const tabDamaged = s.match(/\t(?:itle\s*\{|heta\b|ext\s*\{|frac\b|r\b|op\b|ilde\b|imes\b|au\b|begin\b|end\b|section\b|cite\b|ref\b)/i);
+    if (tabDamaged) return 'probable JSON/backslash-damaged LaTeX tab escape near: ' + String(tabDamaged[0] || '').replace(/\t/g, '[tab]').slice(0, 80);
+    const damaged = s.match(/(^|\n)\s*(?:itle\s*\{|uthor\s*\{|ate\s*\{|ewtheorem\b|ewcommand\s*\{|ocumentclass\b|sepackage\b|egin\s*\{document\}|nd\s*\{document\}|abla\b)/i);
+    if (damaged) return 'probable JSON/backslash-damaged LaTeX command near: ' + String(damaged[0] || '').trim().slice(0, 80);
+    const structural = s.match(/(^|\n)\s*(?:title\s*\{|author\s*\{|date\s*\{|newtheorem\b|newcommand\s*\{|documentclass\b|usepackage\b|begin\s*\{document\}|end\s*\{document\})/i);
+    if (structural) return 'probable stripped-backslash structural command near: ' + String(structural[0] || '').trim().slice(0, 80);
+    return '';
+  }
+
+
+  function containsJsonBackslashDamagedLatex(text) {
+    return !!jsonBackslashDamageReason(text);
+  }
+
   function looksLikeCompleteLatexDocument(text) {
     const s = String(text || '');
     return /\\documentclass(?:\s*\[[^\]]*\])?\s*\{[^}]+\}/.test(s) && /\\begin\s*\{document\}/.test(s) && /\\end\s*\{document\}/.test(s);
@@ -3411,7 +4541,7 @@ async function learnedSelectBranch() {
   }
 
   function laiBlocksFromDraftFragment(text) {
-    const fragment = stripAccidentalPreambleFromFragment(text);
+    const fragment = stripAccidentalPreambleFromFragment(decodeAiEscapedControlCharsForInsertion(text));
     const laiBlocks = parseLatexMacroBlocks(fragment, 'lai');
     const oldBlocks = parseLatexMacroBlocks(fragment, 'laiold');
     if (!laiBlocks.length) {
@@ -3427,7 +4557,7 @@ async function learnedSelectBranch() {
     }).filter(Boolean);
   }
 
-  function normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource) {
+  function normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource, options = {}) {
     const before = String(beforeSource || '');
     let raw = String(text || '');
     if (!raw.trim()) return '';
@@ -3449,11 +4579,34 @@ async function learnedSelectBranch() {
     let visualText = normalizeLaiDraftForCompilation(raw, kind);
     visualText = sanitizeLatexChangedRegionForCompile(before, visualText);
 
+    // Stage 19T2J: this guard is intentionally always on, even when the backend
+    // Safe Edit Compiler accepted the insertion. The frontend normalization step
+    // itself must not introduce escape damage after backend validation.
+    const definiteFrontendDamage = jsonBackslashDamageReason(visualText);
+    if (definiteFrontendDamage) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: frontend preview normalization detected backslash-damaged LaTeX (' + definiteFrontendDamage + '). Source was not changed.');
+    }
+
+    // Stage 19T2I: when the backend Safe Edit Compiler has already returned
+    // safeToInsert=true, the frontend must not re-run the old broad
+    // JSON/backslash-damage detector over the whole generated document. That
+    // stale detector confuses ordinary raw LaTeX math/macros in the existing
+    // source (for example \newcommand, \inner, \sigma) with earlier JSON
+    // transport-corruption patterns. The backend compiler is authoritative;
+    // frontend keeps only document-shape and no-scaffolding guards here.
+    if (!options.backendSafeCompilerAccepted && containsJsonBackslashDamagedLatex(visualText)) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: detected JSON/backslash-damaged LaTeX command remnants such as tab+itle or newline+ewtheorem. Source was not changed.');
+    }
+
     if (looksLikeCompleteLatexDocument(before) && !looksLikeCompleteLatexDocument(visualText)) {
       throw new Error('Blocked unsafe Devil’s Advocate apply: the generated draft is not a complete LaTeX document. Use Preview insertion/Copy report and do not replace main.tex.');
     }
     if (/\\usepackage(?:\[[^\]]*\])?\{[^}]+\}/.test(visualText.slice(0, Math.max(0, visualText.search(/\\documentclass/) >= 0 ? visualText.search(/\\documentclass/) : 0)))) {
       throw new Error('Blocked unsafe Devil’s Advocate apply: a package command would be placed before \\documentclass.');
+    }
+
+    if (containsLatexaiContextScaffold(visualText)) {
+      throw new Error('Blocked unsafe Devil’s Advocate apply: the generated insertion still contains prompt excerpt placeholders such as [important excerpt from this section]. Re-run the branch after the Stage 19T1 prompt/sanitizer fix.');
     }
 
     // Stage 19N1R7: never silently accept a no-op insertion. If the cleaned
@@ -3480,10 +4633,13 @@ async function learnedSelectBranch() {
 
   async function applyDraft(kind) {
     if (!lastInsertionData) await prepareInsertion();
+    if (lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert !== true) {
+      throw new Error('Safe Edit Compiler blocked apply: ' + ((lastInsertionData.validationErrors || []).join('; ') || (lastInsertionData.warnings || []).join('; ') || 'unsafe or empty edit proposal'));
+    }
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
-    const visualText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
+    const visualText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource, { backendSafeCompilerAccepted: !!(lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert === true) });
     if (!W.confirm('Apply the ' + kind + ' LAI draft to the active editor source? A complete-document safety guard will block fragment-only or no-op overwrites.')) return;
     setActiveSource(visualText, 'Applied ' + kind + ' LAI draft with visible red/blue LAI macros. Stage 19N1R7 guarded against fragment-only and no-op source replacement.', { kind });
     await recordOutcome(kind === 'append' ? 'inserted_append' : 'inserted_targeted');
@@ -3494,7 +4650,7 @@ async function learnedSelectBranch() {
     const text = kind === 'append' ? lastInsertionData?.appendOnlyDraft : (lastInsertionData?.targetedInsertionDraft || lastInsertionData?.insertableLatexDraft);
     if (!text) throw new Error('No ' + kind + ' draft available.');
     const beforeSource = getActiveSource();
-    const copiedText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource);
+    const copiedText = normalizePreviewDraftAgainstCurrentSource(text, kind, beforeSource, { backendSafeCompilerAccepted: !!(lastInsertionData && lastInsertionData.safeCompiler && lastInsertionData.safeToInsert === true) });
     await navigator.clipboard.writeText(copiedText);
     await recordOutcome('copied');
     status('Copied ' + kind + ' draft and recorded copied outcome. Stage 19N1R7 guarded against fragment-only and no-op source replacement.', 'good');
@@ -3554,6 +4710,14 @@ async function learnedSelectBranch() {
       '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → structured actionable LaTeX edits → saved/reloadable run artifacts → insertion preview → outcome reward → learned branch selection. Add ?laiPromptDebug=1 to index.html to open a live prompt-debug tab showing each agent prompt.</p>',
       '<div class="settings-note compact branch-workflow-action-map"><strong>Action labels:</strong> <em>Insert localized edits</em> inserts targeted <code>\\laiold</code>/<code>\\lai</code> edits near relevant sections. <em>Append final improvement plan</em> appends the final plan before <code>\\end{document}</code>. Use <em>Preview insertion</em> first to inspect what will be inserted.</div>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
+      '<div class="field-grid two">',
+      '<label class="field">Target audience <input id="branchWorkflowTargetAudience" type="text" placeholder="e.g. theory reviewers, broad ML audience" /></label>',
+      '<label class="field">Target venue <input id="branchWorkflowTargetVenue" type="text" placeholder="e.g. COLT, NeurIPS, JMLR" /></label>',
+      '</div>',
+      '<div class="field-grid two">',
+      '<label class="field">Improvement goal <input id="branchWorkflowImprovementGoal" type="text" placeholder="e.g. strengthen novelty and citation positioning" /></label>',
+      '<label class="field">Critique level <select id="branchWorkflowHarshness"><option value="balanced" selected>balanced</option><option value="harsh">harsh</option><option value="very_harsh">very harsh</option><option value="constructive">constructive</option></select></label>',
+      '</div>',
       '<label class="field">Math/equation coverage <select id="branchWorkflowEquationCoverageMode"><option value="auto" selected>auto-detect from focus/query</option><option value="on">force equation-by-equation edits</option><option value="off">off</option></select></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
       '<div class="settings-card-subtle"><div class="field-grid two"><label class="field checkbox-field"><input id="branchWorkflowUseKnowledge" type="checkbox" checked /> Use knowledge retriever context</label><label class="field">Knowledge topK <input id="branchWorkflowKnowledgeTopK" type="number" min="1" max="12" step="1" value="5" /></label></div><div id="branchWorkflowKnowledgeStatus" class="settings-note compact"><strong>Knowledge retriever:</strong> will retrieve relevant ingested papers before planning/running.</div></div>',
@@ -3561,10 +4725,11 @@ async function learnedSelectBranch() {
       '<div class="field-grid two">',
       '<label class="field">Run mode <select id="branchWorkflowRunMode"><option value="dry_run_no_model_calls" selected>dry_run_no_model_calls</option><option value="call_ai_proxy_expensive">call_ai_proxy_expensive</option></select></label>',
       '<label class="field">Insertion mode <select id="branchWorkflowInsertMode"><option value="targeted" selected>targeted section insertion</option><option value="append">append at end</option></select></label>',
+      '<label class="field">Output mode <select id="branchWorkflowOutputMode"><option value="report_and_edits" selected>report + edits</option><option value="report_only">report only</option><option value="edits_only">edits only</option></select></label>',
       '</div>',
       '<div class="field-grid two">',
       '<label class="field">Target mode <select id="branchWorkflowSectionScope"><option value="branch">selected branch target only</option><option value="selected">user-selected sections/subsections</option><option value="salient" selected>salient sections</option><option value="first6">first 6 detected units</option><option value="whole">whole paper: every detected unit</option></select></label>',
-      '<div id="branchWorkflowTargetModeNote" class="settings-note compact">Choose target sections/chapters/subsections. Whole paper requires the editor to return an edit or <code>\lai{no edits recommended}</code> marker for every detected unit.</div>',
+      '<div id="branchWorkflowTargetModeNote" class="settings-note compact">Choose target sections/chapters/subsections. Whole paper requires the editor to return an edit or an explicit no-edit marker for every detected unit.</div>',
       '</div>',
       '<label class="field">Detected target sections / chapters / subsections <select id="branchWorkflowTargetPicker" multiple size="7" class="branch-target-picker"></select></label>',
       '<div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRefreshTargetsBtn" class="btn mini" type="button">Refresh detected targets</button><button id="branchWorkflowCleanPreviousAiBtn" class="btn mini warn" type="button">Clean previous AI suggestions</button><span id="branchWorkflowTargetSummary" class="settings-note compact">Target list not loaded yet.</span></div>',
@@ -3598,8 +4763,9 @@ async function learnedSelectBranch() {
       '<button id="branchWorkflowCopyTargetedBtn" class="btn mini" type="button">Copy localized edits</button>',
       '<button id="branchWorkflowRejectBtn" class="btn mini" type="button">Reject result</button>',
       '</div>',
+      '<div class="branch-workflow-regression-card settings-card-subtle"><div class="section-head compact"><div><div class="smallcaps">Stage 19T2T</div><h2>Workflow regression / audit</h2></div></div><div class="settings-note compact">Runs deterministic checks for raw-patch parsing, user-request coverage, appendix/section detection, duplicate insertion warnings, and current-source unresolved \\lai blocks. This makes the working pipeline easier to verify before and after changes.</div><div class="micro-actions stretch devils-actions compact"><button id="branchWorkflowRegressionAuditBtn" class="btn mini" type="button">Run regression audit</button><button id="branchWorkflowCopyAuditSnapshotBtn" class="btn mini" type="button">Copy audit snapshot</button></div><div id="branchWorkflowRegressionOutput" class="settings-note compact">No audit run yet.</div></div>',
       '<div id="branchWorkflowPreviewDock" class="branch-workflow-preview-dock" aria-live="polite"></div>',
-      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T ready. Knowledge retriever context is available for Devil’s Advocate runs; preview insertion before applying edits.</div>',
+      '<div id="branchWorkflowStatus" class="settings-note branch-workflow-status">Stage 19T2U ready. Devil’s Advocate uses raw LaTeX block patches plus a user-request coverage audit, batched equation-coverage verifier, patch-operation summary, duplicate-insertion warning, and compile snapshot.</div>',
       '<div id="branchWorkflowOutput" class="devils-output active branch-workflow-output" aria-live="polite"><div class="branch-workflow-summary-title">Latest branch workflow output</div><div class="settings-note compact">After you run or load a branch, the report, agent transcript, structured edit schema, and LaTeX insertion draft will appear here.</div></div>'
     ].join('\n');
     const before = $('copilotOutput');
@@ -3628,6 +4794,12 @@ async function learnedSelectBranch() {
     bindButton('branchWorkflowExportReportBtn', exportCurrentBranchRunReport);
     bindButton('branchWorkflowSaveReviewsBtn', saveCurrentReportToReviews);
     bindButton('branchWorkflowCompileCheckBtn', compileAfterInsertionCheck);
+    bindButton('branchWorkflowRegressionAuditBtn', runWorkflowRegressionAudit);
+    bindButton('branchWorkflowCopyAuditSnapshotBtn', async () => {
+      const snap = branchRegressionSnapshot();
+      await navigator.clipboard.writeText(JSON.stringify(snap, null, 2));
+      status('Copied Stage 19T2T audit snapshot.', 'good');
+    });
     bindButton('branchWorkflowRefreshTargetsBtn', async () => { refreshTargetPicker(); renderTargetModeNote(); status('Detected target list refreshed.', 'good'); maybeWarnRepeatedHeadings('Target refresh warning'); });
     bindButton('branchWorkflowCleanPreviousAiBtn', cleanPreviousAiSuggestions);
     const knowledgeToggle = $('branchWorkflowUseKnowledge');

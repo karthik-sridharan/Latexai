@@ -1,5 +1,5 @@
-/* Latexai Stage 19C2 BackendUrlSettingsService
- * Stage: stage19c2-github-backend-url-settings-field-20260525-1
+/* Latexai Stage 19N1Q8 BackendUrlSettingsService
+ * Stage: stage19n1q8-normalized-ai-proxy-url-20260529-1
  *
  * Keeps backend endpoint configuration in the Settings tab:
  * - AI backend proxy URL remains the existing AI proxy route.
@@ -13,7 +13,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19c2-github-backend-url-settings-field-20260525-1';
+  const STAGE = 'stage19n1q8-normalized-ai-proxy-url-20260529-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
@@ -22,7 +22,7 @@
   const LS_GITHUB_BACKEND_URL = 'lumina-latex.github.backendUrl';
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
 
-  const DEFAULT_AI_PROXY_URL = '/api/lumina/ai';
+  const DEFAULT_AI_PROXY_URL = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/ai';
   const DEFAULT_MEMORY_BACKEND_URL = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app';
   const DEFAULT_GITHUB_BACKEND_URL = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
 
@@ -35,6 +35,34 @@
 
   function safeSet(key, value) {
     try { W.localStorage?.setItem?.(key, clean(value)); } catch (_err) {}
+  }
+
+
+  function normalizeAiProxyUrl(raw) {
+    const value = clean(raw) || DEFAULT_AI_PROXY_URL;
+    try {
+      const url = new URL(value, W.location?.href || DEFAULT_AI_PROXY_URL);
+      url.search = '';
+      url.hash = '';
+      url.pathname = url.pathname
+        .replace(/\/api\/lumina\/ai\/(?:status|workflows)\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/?$/i, '/api/lumina/ai');
+      if (!/\/api\/lumina\/ai\/?$/i.test(url.pathname)) {
+        url.pathname = url.pathname.replace(/\/+$/, '') + '/api/lumina/ai';
+      }
+      return url.href.replace(/\/$/, '');
+    } catch (_err) {
+      return value
+        .replace(/\/api\/lumina\/ai\/(?:status|workflows)\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/models\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/memory(?:\/.+)?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/latex\/compile(?:\/jobs)?\/?$/i, '/api/lumina/ai')
+        .replace(/\/api\/lumina\/?$/i, '/api/lumina/ai')
+        .replace(/\/+$/, '') + (/\/api\/lumina\/ai$/i.test(value) ? '' : '/api/lumina/ai');
+    }
   }
 
   function normalizeMemoryApiBase(raw) {
@@ -104,7 +132,7 @@
   }
 
   function getAiProxyUrl() {
-    return clean(el('aiProxyUrl')?.value) || safeGet(LS_AI_PROXY_URL, DEFAULT_AI_PROXY_URL);
+    return normalizeAiProxyUrl(clean(el('aiProxyUrl')?.value) || safeGet(LS_AI_PROXY_URL, DEFAULT_AI_PROXY_URL));
   }
 
   function getAiProxyToken() {
@@ -217,6 +245,14 @@
 
   function init() {
     syncInput('aiProxyUrl', LS_AI_PROXY_URL, DEFAULT_AI_PROXY_URL);
+    const aiProxyInput = el('aiProxyUrl');
+    if (aiProxyInput && !aiProxyInput.dataset.boundStage19n1q8) {
+      aiProxyInput.dataset.boundStage19n1q8 = 'true';
+      const persistAiProxy = () => { aiProxyInput.value = normalizeAiProxyUrl(aiProxyInput.value || DEFAULT_AI_PROXY_URL); safeSet(LS_AI_PROXY_URL, aiProxyInput.value); };
+      persistAiProxy();
+      aiProxyInput.addEventListener('change', persistAiProxy);
+      aiProxyInput.addEventListener('blur', persistAiProxy);
+    }
     syncInput('aiProxyToken', LS_AI_PROXY_TOKEN, '');
     syncInput('memoryBackendUrl', LS_MEMORY_BACKEND_URL, DEFAULT_MEMORY_BACKEND_URL);
     syncInput('memoryProxyToken', LS_MEMORY_PROXY_TOKEN, '');
@@ -241,6 +277,7 @@
   NS.BackendUrlSettingsService = {
     STAGE,
     init,
+    normalizeAiProxyUrl,
     normalizeMemoryApiBase,
     normalizeGithubApiBase,
     getGithubBackendUrl,

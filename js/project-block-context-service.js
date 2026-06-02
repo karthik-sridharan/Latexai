@@ -1,10 +1,10 @@
-// Stage 19W1-W7: block-level paper state, context matching, and MCTS-lite UI.
+// Stage 19W1-W9: block-level paper state, context matching, and MCTS-lite UI.
 (function(){
   'use strict';
   const W = window;
   const D = document;
   const NS = W.LuminaLatex = W.LuminaLatex || {};
-  const STAGE = 'latex-stage19w1-w7-block-context-mcts-bundle-20260602-1';
+  const STAGE = 'latex-stage19w9-context-policy-logging-dashboard-20260602-1';
   const state = { analysis:null, matches:null, citations:null, related:null, mcts:null, lastPromptContext:'' };
   function el(id){ return D.getElementById(id); }
   function clean(s){ return String(s || '').trim(); }
@@ -123,7 +123,7 @@
     card.id = 'projectBlockContextCard';
     card.className = 'settings-card-subtle project-block-context-card';
     card.innerHTML = `
-      <div class="section-head compact"><div><div class="smallcaps">Stage 19W1-W7</div><h3>Project block context + MCTS-lite</h3></div></div>
+      <div class="section-head compact"><div><div class="smallcaps">Stage 19W1-W9</div><h3>Project block context + MCTS-lite</h3></div></div>
       <div class="settings-note compact">Parse this LaTeX file into blocks, embed them, match each block to literature/OpenReview trajectories, and run a first block-local MCTS/self-play prototype.</div>
       <div class="field-grid two compact">
         <label class="field checkbox-field"><input id="projectBlockEmbedCheck" type="checkbox" checked /> Embed blocks</label>
