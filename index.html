@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19w9-context-policy-logging-dashboard-20260602-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19w10-right-panel-workflow-tabs-debug-cleanup-20260602-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -73,11 +73,12 @@
 <link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
+<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w10-right-panel-workflow-tabs-debug-cleanup-20260602-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
 <script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="stage19w9-context-policy-logging-dashboard-20260602-1">
+<div class="app-shell" data-stage="stage19w10-right-panel-workflow-tabs-debug-cleanup-20260602-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -160,10 +161,13 @@
     </section>
 
     <aside class="right-panel panel">
-      <div class="right-tabs" role="tablist" aria-label="Right panel tabs">
+      <div class="right-tabs stage19w10-primary-tabs" role="tablist" aria-label="Right panel tabs">
         <button class="right-tab active" data-right-tab="preview" type="button">Preview</button>
         <button class="right-tab" data-right-tab="logs" type="button">Logs</button>
         <button class="right-tab" data-right-tab="copilot" type="button">Copilot</button>
+        <button class="right-tab" data-right-tab="paperAi" type="button">Paper AI</button>
+        <button class="right-tab" data-right-tab="literature" type="button">Literature</button>
+        <button class="right-tab" data-right-tab="project" type="button">Project</button>
         <button class="right-tab" data-right-tab="settings" type="button">Settings</button>
       </div>
 
@@ -204,10 +208,11 @@
       <section id="copilotTab" class="right-tab-panel copilot-panel">
         <div class="section-head compact">
           <div>
-            <div class="smallcaps">AI</div>
-            <h2>LaTeX Copilot</h2>
+            <div class="smallcaps">AI Copilot</div>
+            <h2>Local editing assistant</h2>
           </div>
         </div>
+        <div class="settings-note compact">Use Copilot for selected text, local rewrites, explanations, grammar, math cleanup, and small insertions. Use Paper AI for whole-paper review, rebuttal, competitive comparison, debate, or total remake.</div>
         <div class="field-grid two">
           <label class="field">Provider
             <select id="aiProvider" data-lumina-ai-provider>
@@ -298,6 +303,52 @@
         </div>
 
         <pre id="copilotOutput" class="copilot-output">Copilot responses will appear here.</pre>
+      </section>
+
+      <section id="paperAiTab" class="right-tab-panel stage19w10-paper-ai-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Paper AI</div>
+            <h2>Named whole-paper workflows</h2>
+          </div>
+        </div>
+        <div class="settings-note compact">Choose one workflow at a time. Local selected-text work stays in Copilot; diagnostics are under Settings → Developer / diagnostics when <code>?debug=1</code>.</div>
+        <div class="stage19w10-workflow-tabs" role="tablist" aria-label="Paper AI workflow tabs">
+          <button class="stage19w10-workflow-tab active" type="button" data-workflow-tab="remake">Total Remake</button>
+          <button class="stage19w10-workflow-tab" type="button" data-workflow-tab="review">Review / Rebuttal</button>
+          <button class="stage19w10-workflow-tab" type="button" data-workflow-tab="devils">Devil’s Advocate</button>
+          <button class="stage19w10-workflow-tab" type="button" data-workflow-tab="competitive">Competitive</button>
+        </div>
+        <div id="paperWorkflowRemakePane" class="stage19w10-workflow-pane active" data-workflow-pane="remake"><div class="settings-note compact">Total Paper Remake controls will appear here.</div></div>
+        <div id="paperWorkflowReviewPane" class="stage19w10-workflow-pane" data-workflow-pane="review"><div class="settings-note compact">Reviewer / Rebuttal Simulator will appear here.</div></div>
+        <div id="paperWorkflowDevilsPane" class="stage19w10-workflow-pane" data-workflow-pane="devils"><div class="settings-note compact">Devil’s Advocate branch runner will appear here.</div></div>
+        <div id="paperWorkflowCompetitivePane" class="stage19w10-workflow-pane" data-workflow-pane="competitive"><div class="settings-note compact">Competitive Review will appear here.</div></div>
+      </section>
+
+      <section id="literatureTab" class="right-tab-panel stage19w10-literature-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Literature / Citations</div>
+            <h2>Specialized literature tools</h2>
+          </div>
+        </div>
+        <div class="settings-note compact">Citation AI and local citation verifier live here. Collection ingestion/search remains in the standalone Literature Assistant.</div>
+        <div class="micro-actions stretch">
+          <a class="btn mini primary" href="literature.html" target="_blank" rel="noopener">Open Literature Assistant</a>
+          <a class="btn mini" href="review.html" target="_blank" rel="noopener">Open Review Corpus</a>
+        </div>
+        <div id="literatureCitationPane" class="stage19w10-workflow-pane active"><div class="settings-note compact">Citation AI cards will appear here.</div></div>
+      </section>
+
+      <section id="projectTab" class="right-tab-panel stage19w10-project-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Project Context</div>
+            <h2>Block context and MCTS-lite</h2>
+          </div>
+        </div>
+        <div class="settings-note compact">Project block parsing, block-local literature/OpenReview matches, citation suggestions, related-work plans, and MCTS-lite live here.</div>
+        <div id="projectContextPane" class="stage19w10-workflow-pane active"><div class="settings-note compact">Project block context card will appear here.</div></div>
       </section>
 
       <section id="settingsTab" class="right-tab-panel">
@@ -430,7 +481,12 @@
           Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
         </div>
         <button id="openOverleafBtn" class="btn ghost" type="button">Open root in Overleaf</button>
-        <button id="runAppDiagnosticsBtn" class="btn ghost" type="button">Run app diagnostics</button>
+        <button id="runAppDiagnosticsBtn" class="btn ghost stage19w10-debug-only" type="button">Run app diagnostics</button>
+        <div id="developerDiagnosticsSection" class="stage19w10-developer-diagnostics stage19w10-debug-only">
+          <div class="section-head compact"><div><div class="smallcaps">Developer</div><h2>Developer / diagnostics</h2></div></div>
+          <div class="settings-note compact">Hidden in normal mode. Add <code>?debug=1</code> to the URL to show AI dashboard, regression checks, context-policy logs, route probes, and other diagnostic cards.</div>
+          <div id="developerDiagnosticsCards" class="stage19w10-debug-card-host"></div>
+        </div>
       </section>
     </aside>
   </main>
@@ -603,5 +659,6 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script src="js/project-block-context-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1" defer></script>
 <script src="js/context-policy-dashboard-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1" defer></script>
+<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w10-right-panel-workflow-tabs-debug-cleanup-20260602-1" defer></script>
 </body>
 </html>
