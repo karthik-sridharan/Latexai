@@ -35,7 +35,7 @@
 
   const ROUTES = [
     { key: 'default', title: 'Default / Copilot', hint: 'General Copilot, rewriting, advice', preferredTier: 'fast' },
-    { key: 'paper', title: 'Paper-level AI', hint: 'Review, remake, ranking, acceptance improvement', preferredTier: 'fast' },
+    { key: 'paper', title: 'Total Paper Remake', hint: 'Review, remake, ranking, acceptance improvement', preferredTier: 'fast' },
     { key: 'citation', title: 'Citation AI', hint: 'Citation filler, missing BibTeX, citation audit', preferredTier: 'fast' },
     { key: 'presentation', title: 'Presentation export', hint: 'Paper → presentation JSON/HTML/Beamer', preferredTier: 'fast' },
     { key: 'figure', title: 'Figure/TikZ generation', hint: 'Image/TikZ and presentation figure assets', preferredTier: 'fast' },

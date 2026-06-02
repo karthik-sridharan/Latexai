@@ -3062,7 +3062,7 @@ ${input}` : input,
       '  <button id="insertCompetitiveInlineLaiBtn" class="btn mini" type="button">AI remake + insert \\lai edits</button>',
       '  <button id="insertCompetitiveRoadmapBtn" class="btn mini" type="button">AI remake + append \\lai plan</button>',
       '</div>',
-      '<div class="settings-note">Stage 18Y uses source-cited AI web research plus scoped persistent research memory extraction; it adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the Paper-level review queue.</div>',
+      '<div class="settings-note">Stage 18Y uses source-cited AI web research plus scoped persistent research memory extraction; it adds an edit impact map: each actionable <code>\\lai</code> edit should identify the competitor gap, source IDs, and expected ranking effect. Reports stay in <code>/reviews</code>; actionable edits still use the AI edit review queue.</div>',
       '<div id="competitiveReviewStatus" class="settings-note">Competitive review ready.</div>',
       '<pre id="competitiveReviewOutput" class="competitive-review-output"></pre>'
     ].join('');

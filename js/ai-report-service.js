@@ -14,9 +14,9 @@
   }
   let lastSavedPath = '', lastReportText = '';
   const WORKFLOWS = [
-    { key:'paper-ai-polish', title:'Paper-level edit review', cardId:'paperAiPolishCard', outputId:'paperAiPolishOutput', service:'PaperAiPolishService', getter:'getLastReport' },
+    { key:'paper-ai-polish', title:'AI edit review', cardId:'paperAiPolishCard', outputId:'paperAiPolishOutput', service:'PaperAiPolishService', getter:'getLastReport' },
     { key:'competitive-review', title:'Competitive paper review', cardId:'competitiveReviewCard', outputId:'competitiveReviewOutput', service:'CompetitivePaperReviewService', getter:'getLastReport' },
-    { key:'devils-advocate-debate', title:'Devil’s advocate debate', cardId:'devilsDebateCard', outputId:'devilsDebateOutput', service:'DevilsAdvocateDebateService', getter:'formatFullReport' },
+    { key:'devils-advocate-branch-runner', title:'Devil’s Advocate branch runner', cardId:'realAgentBranchCard', outputId:'branchWorkflowOutput', service:'RealAgentBranchWorkflowService', getter:'formatFullReport' },
     { key:'ai-suggestion-comments', title:'AI suggestion comments', cardId:'aiCommentsCard', outputId:'aiCommentsOutput', service:'AiSuggestionCommentsService', getter:'commentReport' },
     { key:'ai-revision-history', title:'AI revision history', cardId:'aiRevisionCard', outputId:'aiRevisionOutput', service:'AiRevisionHistoryService', getter:'snapshotReport' },
     { key:'citation-ai', title:'Citation filler', cardId:'citationAiCard', outputId:'citationAiOutput', service:'CitationAiService' },
@@ -24,7 +24,7 @@
     { key:'backend-diagnostics', title:'Backend diagnostics', cardId:'backendDiagnosticsCard', outputId:'backendDiagnosticsOutput', service:'BackendDiagnosticsService' },
     { key:'regression-checklist', title:'Regression checklist', cardId:'regressionChecklistCard', outputId:'regressionChecklistOutput', service:'RegressionChecklistService', getter:'formatReport' },
     { key:'release-verifier', title:'Release/deploy verifier', cardId:'releaseVerifyCard', outputId:'releaseVerifyOutput', service:'ReleaseVerifyService', getter:'formatReport' },
-    { key:'paper-ai-dashboard', title:'Paper AI dashboard', cardId:'paperAiDashboardCard', outputId:'paperAiDashboardOutput', service:'PaperAiDashboardService', getter:'formatDashboardReport' }
+    { key:'paper-ai-dashboard', title:'AI workflow dashboard', cardId:'paperAiDashboardCard', outputId:'paperAiDashboardOutput', service:'PaperAiDashboardService', getter:'formatDashboardReport' }
   ];
   function State(){ return NS.State; }
   function el(id){ return D.getElementById(id); }

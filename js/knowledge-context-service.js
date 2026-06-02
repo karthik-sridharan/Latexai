@@ -641,7 +641,7 @@
     // knowledge-aware workflows, including older static cards that were mounted before
     // this service was available. This avoids the feature-specific situation where only
     // Competitive Review showed retrieval preview controls.
-    replaceOrInsertControl('documentAi', 'Use knowledge/literature context for Paper-level AI', 5, {
+    replaceOrInsertControl('documentAi', 'Use knowledge/literature context for Total Paper Remake', 5, {
       before: '#documentAiPrompt',
       container: '#documentAiCard'
     });

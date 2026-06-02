@@ -34,7 +34,7 @@
 
   const ROUTES = [
     { key: 'default', title: 'Default / Copilot', hint: 'General Copilot, rewriting, advice' },
-    { key: 'paper', title: 'Paper-level AI', hint: 'Review, remake, ranking, acceptance improvement' },
+    { key: 'paper', title: 'Total Paper Remake', hint: 'Review, remake, ranking, acceptance improvement' },
     { key: 'citation', title: 'Citation AI', hint: 'Citation filler, missing BibTeX, citation audit' },
     { key: 'presentation', title: 'Presentation export', hint: 'Paper → presentation JSON/HTML/Beamer' },
     { key: 'figure', title: 'Figure/TikZ generation', hint: 'Image/TikZ and presentation figure assets' },

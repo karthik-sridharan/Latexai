@@ -1,7 +1,7 @@
-/* Latexai Stage 19T3C DocumentAIService
+/* Latexai Stage 19V DocumentAIService
  * Stage: stage19t2o-resolver-macro-unwrapper-hard-fix-20260530-1
  *
- * Stage 19T3A: paper-level AI uses raw LATEXAI_BLOCK_PATCH text for in-place edits.
+ * Stage 19T3A: Total Paper Remake uses raw LATEXAI_BLOCK_PATCH text for in-place edits.
  * The app/backend, not the AI model, validates patches and inserts \lai{...}.
  */
 (function () {
@@ -9,26 +9,20 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u5-author-paper-graph-retrieval-boost-20260531-1';
+  const STAGE = 'latex-stage19v-ai-workflow-ui-consolidation-20260602-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
   const COMMON_PROMPT_PATH = 'prompt/ai-document-common.txt';
   const INPLACE_PROMPT_PATH = 'prompt/ai-inplace-rewrite-format.txt';
   const WORKFLOW_PROMPTS = {
-    review: 'prompt/ai-review-and-suggestions.txt',
-    remake: 'prompt/ai-total-remake-plan.txt',
-    ranking: 'prompt/ai-ranking-acceptance-improver.txt',
-    competitive: 'prompt/ai-competitive-agent-improver.txt'
+    remake: 'prompt/ai-total-remake-plan.txt'
   };
 
   const FALLBACK_PROMPTS = {
-    [COMMON_PROMPT_PATH]: 'You are Latexai document-level AI. Return useful paper-level output. User instructions: {{USER_INSTRUCTIONS}}. Mode: {{MODE}}. Workflow: {{WORKFLOW}}.',
+    [COMMON_PROMPT_PATH]: 'You are Latexai document-level AI. Return useful Total Paper Remake output. User instructions: {{USER_INSTRUCTIONS}}. Mode: {{MODE}}. Workflow: {{WORKFLOW}}.',
     [INPLACE_PROMPT_PATH]: 'Return the LATEXAI_BLOCK_PATCH protocol only for paper source edits. Do not return JSON and do not emit \\lai or \\laiold. Use replace_block, insert_after_block, insert_before_block, insert_before_section, or append_before_end_document as appropriate.',
-    [WORKFLOW_PROMPTS.review]: 'Workflow: Review and suggested improvements. Critically review the paper and return prioritized actionable suggestions.',
-    [WORKFLOW_PROMPTS.remake]: 'Workflow: Total remake plan. Propose a large-scale paper remake plan.',
-    [WORKFLOW_PROMPTS.ranking]: 'Workflow: Ranking / acceptance improver. Return ranked recommendations that would improve acceptance odds.',
-    [WORKFLOW_PROMPTS.competitive]: 'Workflow: Competitive agent improver. Simulate critic, improver, mathematical clarity checker, and strategist agents.'
+    [WORKFLOW_PROMPTS.remake]: 'Workflow: Total Paper Remake. Given the current LaTeX source plus selected context, produce a focused remake plan and/or safe LaTeX edits using the requested output and insertion modes.'
   };
 
   let lastRaw = '';
@@ -304,7 +298,7 @@
   }
 
   async function loadWorkflowPrompts(workflow, mode) {
-    const workflowPath = WORKFLOW_PROMPTS[workflow] || WORKFLOW_PROMPTS.review;
+    const workflowPath = WORKFLOW_PROMPTS[normalizeWorkflowKey(workflow)] || WORKFLOW_PROMPTS.remake;
     const paths = [COMMON_PROMPT_PATH, workflowPath];
     if (mode === 'inplace') paths.push(INPLACE_PROMPT_PATH);
     const loaded = await Promise.all(paths.map((path) => loadFrontendPrompt(path)));
@@ -455,16 +449,45 @@
     return pipe.applyCompiledDraft(compiled, { kind: mode === 'append' ? 'append' : 'targeted', preferRoot: true });
   }
 
-  function workflowLabel(workflow) {
+
+  function normalizeWorkflowKey(workflow) {
+    const key = String(workflow || '').trim().toLowerCase();
+    if (['review', 'review_suggest', 'ranking', 'ranking_acceptance', 'competitive', 'competitive_agent_improver'].includes(key)) return 'remake';
+    return 'remake';
+  }
+
+  function documentAiOutputMode() {
+    return String(el('documentAiOutputMode')?.value || 'plan_and_edits');
+  }
+
+  function documentAiAggressiveness() {
+    return String(el('documentAiAggressiveness')?.value || 'moderate');
+  }
+
+  function documentAiInsertionModeValue() {
+    return String(el('documentAiMode')?.value || 'append');
+  }
+
+  function documentAiContextOptions() {
     return {
-      review: 'Review and suggested improvements',
-      remake: 'Total remake plan',
-      ranking: 'Ranking / acceptance improver',
-      competitive: 'Competitive agent improver'
-    }[workflow] || workflow || 'review';
+      useProjectMemory: Boolean(el('documentAiUseProjectMemory')?.checked),
+      useSelectedCollections: Boolean(el('documentAiUseSelectedCollections')?.checked),
+      useReferences: Boolean(el('documentAiUseReferences')?.checked),
+      targetAudience: cleanString(el('documentAiTargetAudience')?.value || ''),
+      targetVenue: cleanString(el('documentAiTargetVenue')?.value || ''),
+      stylePreferences: cleanString(el('documentAiStylePreferences')?.value || '')
+    };
+  }
+
+  function workflowLabel(workflow) {
+    return 'Total Paper Remake';
   }
 
   async function buildPromptPayload(workflow, userInstructions, mode) {
+    workflow = normalizeWorkflowKey(workflow);
+    const outputMode = documentAiOutputMode();
+    const aggressiveness = documentAiAggressiveness();
+    const contextOptions = documentAiContextOptions();
     const context = collectProjectContext();
     const { common, workflowPrompt, inplacePrompt, workflowPath } = await loadWorkflowPrompts(workflow, mode);
     const knowledgeData = await retrieveDocumentKnowledge(workflow, userInstructions, context);
@@ -476,7 +499,11 @@
       WORKFLOW: workflowLabel(workflow),
       WORKFLOW_KEY: workflow || 'review',
       ROOT_FILE: rootPath(),
-      PROMPT_FILE: workflowPath
+      PROMPT_FILE: workflowPath,
+      OUTPUT_MODE: outputMode,
+      AGGRESSIVENESS: aggressiveness,
+      TARGET_AUDIENCE: contextOptions.targetAudience || '(not specified)',
+      TARGET_VENUE: contextOptions.targetVenue || '(not specified)'
     };
 
     const pieces = [
@@ -485,6 +512,28 @@
       '--- Workflow-specific frontend prompt file ---',
       templateFill(workflowPrompt, values)
     ];
+
+    pieces.push('', '--- Total Paper Remake controls ---', [
+      `Workflow: Total Paper Remake`,
+      `Aggressiveness: ${aggressiveness}`,
+      `Output mode: ${outputMode}`,
+      `Insertion mode: ${mode || 'append'}`,
+      `Target audience: ${contextOptions.targetAudience || '(not specified)'}`,
+      `Target venue: ${contextOptions.targetVenue || '(not specified)'}`,
+      `Use project memory: ${contextOptions.useProjectMemory}`,
+      `Use selected collections: ${contextOptions.useSelectedCollections}`,
+      `Use references: ${contextOptions.useReferences}`,
+      contextOptions.stylePreferences ? `Style preferences: ${contextOptions.stylePreferences}` : ''
+    ].filter(Boolean).join('\n'));
+
+    if (outputMode === 'plan_only') {
+      pieces.push('', 'Output requirement: produce a prioritized remake plan only. Do not generate source patches unless explicitly requested inside the user instructions.');
+    } else if (outputMode === 'edits_only') {
+      pieces.push('', 'Output requirement: produce actionable edits only. Keep prose explanation minimal.');
+    } else {
+      pieces.push('', 'Output requirement: produce both a concise remake plan and actionable edits.');
+    }
+
 
     if (mode === 'inplace') {
       pieces.push('', '--- In-place raw patch protocol prompt file ---', templateFill(inplacePrompt, values), '', rawPatchProtocolInstructions('in-place document-level paper rewrite/edit'));
@@ -499,7 +548,7 @@
     return {
       instructions: mode === 'inplace'
         ? 'Return LATEXAI_BLOCK_PATCH markup for source edits. No JSON. No \\lai or \\laiold; the app will add change markup after safe validation.'
-        : 'Return LaTeX/prose only. No markdown fences. No JSON. The app will wrap append output safely.',
+        : 'Return Total Paper Remake output only. No markdown fences. No JSON. The app will wrap append output safely.',
       input: pieces.join('\n'),
       promptSource: {
         kind: 'frontend-static-files',
@@ -579,7 +628,7 @@
     const macro = [
       '',
       '% --- Latexai old-content highlighting macro ---',
-      '% Old paper content preserved by paper-level AI in-place edits.',
+      '% Old paper content preserved by Total Paper Remake in-place edits.',
       '\\long\\def\\laiold#1{{\\color{blue}#1}}',
       '% --- end Latexai old-content highlighting macro ---',
       ''
@@ -654,8 +703,9 @@
   }
 
   async function runDocumentAi() {
-    const workflow = el('documentAiWorkflow')?.value || 'review';
-    const mode = el('documentAiMode')?.value || 'append';
+    const workflow = normalizeWorkflowKey(el('documentAiWorkflow')?.value || 'remake');
+    let mode = documentAiInsertionModeValue();
+    if (documentAiOutputMode() === 'plan_only') mode = 'append';
     const instructions = String(el('documentAiPrompt')?.value || '').trim();
 
     if (!NS.AIProvider?.ask) {
@@ -663,7 +713,7 @@
       return null;
     }
 
-    setStatus(`Running document-level AI (${mode}) using frontend /prompt/ file for: ${workflowLabel(workflow)}.`);
+    setStatus(`Running Total Paper Remake (${documentAiOutputMode()}, ${mode}) using safe workflow prompts.`);
     const payload = await buildPromptPayload(workflow, instructions, mode);
 
     try {
@@ -685,7 +735,7 @@
         lastSection = '';
         lastPatch = await compileDocumentAiOutput(lastRaw, workflow, mode);
         setOutput([
-          'Document AI raw-patch output',
+          'Total Paper Remake raw-patch output',
           '============================',
           '',
           `Workflow: ${workflowLabel(workflow)}`,
@@ -727,13 +777,13 @@
       setStatus('Document AI generated a review section from frontend /prompt/ files. Click Append to paper to insert it in \\lai{...}.');
       return lastSection;
     } catch (err) {
-      setStatus(`Document AI failed: ${err?.message || err}`);
+      setStatus(`Total Paper Remake failed: ${err?.message || err}`);
       return null;
     }
   }
 
   async function appendLastToPaper() {
-    const mode = el('documentAiMode')?.value || 'append';
+    const mode = documentAiInsertionModeValue();
     if (mode === 'inplace') return applyInplacePatch(lastPatch);
 
     const root = rootFile();
@@ -747,7 +797,7 @@
       return { ok: false };
     }
 
-    const workflow = el('documentAiWorkflow')?.value || 'review';
+    const workflow = normalizeWorkflowKey(el('documentAiWorkflow')?.value || 'remake');
     const body = cleanAiLatex(lastSection);
     const rawPatch = rawPatchBlock({
       operation: 'append_before_end_document',
@@ -787,18 +837,18 @@
     }
     try {
       await navigator.clipboard.writeText(text);
-      setStatus('Document AI output copied.');
+      setStatus('Total Paper Remake output copied.');
     } catch (_err) {
       setStatus('Could not copy automatically. Select the output text manually.');
     }
   }
 
   function updateActionLabels() {
-    const mode = el('documentAiMode')?.value || 'append';
+    const mode = documentAiInsertionModeValue();
     const apply = el('appendDocumentAiBtn');
     const runApply = el('runAppendDocumentAiBtn');
-    if (apply) apply.textContent = mode === 'inplace' ? 'Apply to paper' : 'Append to paper';
-    if (runApply) runApply.textContent = mode === 'inplace' ? 'Run + apply' : 'Run + append';
+    if (apply) apply.textContent = mode === 'inplace' ? 'Apply localized edits' : 'Append remake block';
+    if (runApply) runApply.textContent = outMode === 'plan_only' ? 'Run + append plan' : (mode === 'inplace' ? 'Run + apply edits' : 'Run + append');
   }
 
 
@@ -1329,7 +1379,7 @@
       guard += 1;
     }
 
-    setStatus(`Resolved ${applied} paper-level AI edit(s), keeping ${keep === 'new' ? 'new red content' : 'old blue content'} as normal black LaTeX.`);
+    setStatus(`Resolved ${applied} Total Paper Remake edit(s), keeping ${keep === 'new' ? 'new red content' : 'old blue content'} as normal black LaTeX.`);
     refreshResolveSelect();
     return { ok: applied > 0, applied, kept: keep };
   }
@@ -1350,36 +1400,59 @@
     card.className = 'document-ai-card';
     card.id = 'documentAiCard';
     card.innerHTML = [
-      '<h3>Paper-level AI</h3>',
+      '<h3>Total Paper Remake</h3>',
       '<div class="document-ai-grid">',
-      '  <div class="document-ai-help">Stage 19T2X uses developer-managed static frontend prompt files in <code>/prompt/</code>. In-place mode now asks for raw <code>LATEXAI_BLOCK_PATCH</code> text, and append mode is compiled through the Safe Edit Compiler; the app/backend, not the AI, creates <code>\\lai{...}</code> markup.</div>',
+      '  <div class="document-ai-help">Whole-paper remake workflow. The old generic paper-level options have been consolidated: review/improvement belongs in Reviewer/Rebuttal, competitive comparison belongs in Competitive Review, and acceptance-oriented goals are now prompts/goals here or in those named workflows. Total Paper Remake uses the safe edit protocol with <code>\\laiold</code>/<code>\\lai</code>.</div>',
+      '  <input id="documentAiWorkflow" type="hidden" value="remake" />',
       '  <div class="document-ai-two">',
-      '    <label>Workflow',
-      '      <select id="documentAiWorkflow">',
-      '        <option value="review">Review and suggested improvements</option>',
-      '        <option value="remake">Total remake plan</option>',
-      '        <option value="ranking">Ranking / acceptance improver</option>',
-      '        <option value="competitive">Competitive agent improver</option>',
+      '    <label>Output mode',
+      '      <select id="documentAiOutputMode">',
+      '        <option value="plan_only">Plan only</option>',
+      '        <option value="edits_only">Edits only</option>',
+      '        <option value="plan_and_edits" selected>Plan + edits</option>',
       '      </select>',
       '    </label>',
-      '    <label>Mode',
-      '      <select id="documentAiMode">',
-      '        <option value="append">Append as final AI section</option>',
-      '        <option value="inplace">In-place with LAI comments</option>',
+      '    <label>Aggressiveness',
+      '      <select id="documentAiAggressiveness">',
+      '        <option value="conservative">Conservative</option>',
+      '        <option value="moderate" selected>Moderate</option>',
+      '        <option value="aggressive">Aggressive</option>',
       '      </select>',
       '    </label>',
       '  </div>',
-      (NS.KnowledgeContextService?.controlHtml?.('documentAi', 'Use knowledge/literature context for Paper-level AI', 5) || ''),
-      '  <label>Extra one-off instructions',
-      '    <textarea id="documentAiPrompt" placeholder="Example: focus on theorem statement clarity, missing citations, and how to improve the narrative. Frontend /prompt/ files provide the base prompt."></textarea>',
+      '  <div class="document-ai-two">',
+      '    <label>Insertion mode',
+      '      <select id="documentAiMode">',
+      '        <option value="inplace">Localized edits</option>',
+      '        <option value="append" selected>Append remake block</option>',
+      '      </select>',
+      '    </label>',
+      '    <label>Target venue',
+      '      <input id="documentAiTargetVenue" type="text" placeholder="e.g. COLT, NeurIPS, JMLR" />',
+      '    </label>',
+      '  </div>',
+      '  <label>Target audience',
+      '    <input id="documentAiTargetAudience" type="text" placeholder="e.g. theory reviewers, broad ML audience, interdisciplinary readers" />',
+      '  </label>',
+      '  <label>Style preferences',
+      '    <textarea id="documentAiStylePreferences" rows="2" placeholder="Optional: concise theory style, preserve theorem statements, avoid overclaiming, etc."></textarea>',
+      '  </label>',
+      '  <div class="field-grid three compact">',
+      '    <label class="field checkbox-field"><input id="documentAiUseProjectMemory" type="checkbox" checked /> Use project memory</label>',
+      '    <label class="field checkbox-field"><input id="documentAiUseSelectedCollections" type="checkbox" checked /> Use selected collections</label>',
+      '    <label class="field checkbox-field"><input id="documentAiUseReferences" type="checkbox" checked /> Use references</label>',
+      '  </div>',
+      (NS.KnowledgeContextService?.controlHtml?.('documentAi', 'Use knowledge/literature context for Total Paper Remake', 5) || ''),
+      '  <label>Remake instructions',
+      '    <textarea id="documentAiPrompt" placeholder="Example: remake the introduction and related work to emphasize the theorem contribution, add missing comparisons, preserve theorem statements, and produce localized safe edits."></textarea>',
       '  </label>',
       '  <div class="document-ai-actions">',
-      '    <button id="runDocumentAiBtn" class="btn mini primary" type="button">Run paper AI</button>',
+      '    <button id="runDocumentAiBtn" class="btn mini primary" type="button">Run Total Remake</button>',
       '    <button id="appendDocumentAiBtn" class="btn mini" type="button">Append to paper</button>',
-      '    <button id="runAppendDocumentAiBtn" class="btn mini primary" type="button">Run + append</button>',
+      '    <button id="runAppendDocumentAiBtn" class="btn mini primary" type="button">Run + append/apply</button>',
       '    <button id="copyDocumentAiBtn" class="btn mini" type="button">Copy output</button>',
       '  </div>',
-      '  <div id="documentAiStatus" class="document-ai-status">Paper-level AI ready. Source edits use raw block-patch protocol plus Safe Edit Compiler.</div>',
+      '  <div id="documentAiStatus" class="document-ai-status">Total Paper Remake ready. Use this for whole-paper remake/reorganization; use Reviewer/Rebuttal for review-style improvement and Competitive Review for competitor-aware work.</div>',
       '  <pre id="documentAiOutput" class="document-ai-output"></pre>',
       '  <div class="document-ai-resolver">',
       '    <h4>Resolve AI edits</h4>',
@@ -1410,6 +1483,7 @@
 
   function bindControls() {
     el('documentAiMode')?.addEventListener('change', updateActionLabels, true);
+    el('documentAiOutputMode')?.addEventListener('change', updateActionLabels, true);
     el('runDocumentAiBtn')?.addEventListener('click', runDocumentAi, true);
     el('appendDocumentAiBtn')?.addEventListener('click', appendLastToPaper, true);
     el('runAppendDocumentAiBtn')?.addEventListener('click', runAndAppendDocumentAi, true);

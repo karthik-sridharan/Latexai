@@ -34,10 +34,10 @@
 
   const WORKFLOWS = [
     { key: 'default', title: 'Default Copilot', routeKey: 'default', task: 'latex-copilot', webSearch: false },
-    { key: 'paper-ai-polish', title: 'Paper-level edit review', routeKey: 'paper', task: 'latex-paper-ai', webSearch: false },
+    { key: 'paper-ai-polish', title: 'AI edit review', routeKey: 'paper', task: 'latex-paper-ai', webSearch: false },
     { key: 'competitive-review-ranking', title: 'Competitive review · ranking', routeKey: 'competitive-ranking', task: 'latex-competitive-paper-review-ranking', webSearch: true },
     { key: 'competitive-review-improvement', title: 'Competitive review · improvement', routeKey: 'competitive-improvement', task: 'latex-competitive-paper-review', webSearch: true },
-    { key: 'devils-advocate-debate', title: 'Devil’s advocate debate', routeKey: 'paper', task: 'latex-paper-debate', webSearch: false, explicitAgents: true },
+    { key: 'devils-advocate-branch-runner', title: 'Devil’s Advocate branch runner', routeKey: 'paper', task: 'latex-paper-debate', webSearch: false, explicitAgents: true },
     { key: 'citation-ai', title: 'Citation filler', routeKey: 'citation', task: 'latex-citation-ai', webSearch: false },
     { key: 'citation-verifier', title: 'Citation verifier', routeKey: 'citation', task: 'latex-citation-verifier', webSearch: false },
     { key: 'presentation-export', title: 'Presentation export', routeKey: 'presentation', task: 'paper-to-presentation-export', webSearch: false },

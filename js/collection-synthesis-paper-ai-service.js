@@ -1,10 +1,10 @@
 /* Latexai Stage 19U9K
- * Moves collection synthesis out of standalone literature.html and into paper-level AI workflows.
+ * Moves collection synthesis out of standalone literature.html and into Total Paper Remake workflows.
  * Each Paper AI card can select a literature collection, generate a workflow-specific
  * synthesis, attach that synthesis to the next knowledge-aware prompt, append/copy
  * the generated \lai block, and, in Stage 19U9K, automatically inject the
  * selected collection context into the actual AIProvider.ask payload for supported
- * paper-level AI workflows.
+ * Total Paper Remake workflows.
  */
 (function () {
   'use strict';
@@ -43,12 +43,11 @@
   applyStrictNoCollectionDefaultMigration();
 
   const FEATURES = [
-    { feature: 'documentAi', cardId: 'documentAiCard', label: 'Paper-level AI', insertBefore: '#documentAiPrompt' },
+    { feature: 'documentAi', cardId: 'documentAiCard', label: 'Total Paper Remake', insertBefore: '#documentAiPrompt' },
     { feature: 'paperAiPolish', cardId: 'paperAiPolishCard', label: 'Paper AI polish / review' },
     { feature: 'competitive', cardId: 'competitiveReviewCard', label: 'Competitive review / improvement', insertBefore: '#competitiveExtraInstructions' },
     { feature: 'reviewerSim', cardId: 'reviewerRebuttalCard', label: 'Reviewer / rebuttal simulator', insertAfter: '#reviewerSimInstructions' },
-    { feature: 'devilsDebate', cardId: 'devilsDebateCard', label: "Devil's advocate debate" },
-    { feature: 'branchWorkflow', cardId: 'realAgentBranchWorkflowCard', label: "Devil's advocate branch runner", insertAfter: '#branchWorkflowQuery' },
+    { feature: 'branchWorkflow', cardId: 'realAgentBranchCard', label: "Devil’s Advocate branch runner", insertAfter: '#branchWorkflowQuery' },
     { feature: 'citationAi', cardId: 'citationAiCard', label: 'Citation AI' }
   ];
 
@@ -112,7 +111,7 @@
     // Default Paper AI collection context should start as "No collection", even if
     // the standalone literature page has a global/default collection.
     if (node) return clean(node.value || '');
-    // Stage 19U9K: Paper-level AI has two collection surfaces. If the newer
+    // Stage 19U9K: Total Paper Remake has two collection surfaces. If the newer
     // collection-synthesis selector has not been mounted yet, respect the older
     // Knowledge/literature context selector for the same feature.
     const kcsNode = el(String(feature || 'knowledge') + 'KnowledgeCollection');
@@ -136,7 +135,7 @@
       items: collectionItems(id),
       metadata: {
         stage: STAGE,
-        source: 'latexai-paper-level-ai-feature',
+        source: 'latexai-total-paper-remake-feature',
         feature,
         projectContextKey: projectContextKey()
       }
@@ -363,7 +362,7 @@
     const source = activeLatexSource(22000);
     const existing = activeBodyForFeature(feature);
     return [
-      'This collection synthesis is being generated inside the LatexAI paper-level feature: ' + (def.label || feature) + '.',
+      'This collection synthesis is being generated inside the LatexAI Total Paper Remake feature: ' + (def.label || feature) + '.',
       'Mode: ' + modeLabel(mode) + '.',
       focus ? 'User focus: ' + focus : '',
       existing ? 'Existing output from this feature, for continuity:\n' + existing : '',
@@ -473,7 +472,7 @@
       '=== ATTACHED COLLECTION SYNTHESIS FOR THIS PAPER-AI FEATURE ===',
       'Collection: ' + clean(data.collectionName || data.collectionId || selectedCollectionId(feature) || 'selected collection'),
       'Mode: ' + clean(data.modeLabel || data.mode || 'collection synthesis'),
-      'This synthesis was generated inside LatexAI for the current paper-level workflow. Use it as high-level literature context, but do not paste it verbatim into source edits unless explicitly asked.',
+      'This synthesis was generated inside LatexAI for the current Total Paper Remake workflow. Use it as high-level literature context, but do not paste it verbatim into source edits unless explicitly asked.',
       '',
       r,
       '=== END ATTACHED COLLECTION SYNTHESIS ==='
@@ -565,7 +564,7 @@
     if (/branchworkflow|branch-workflow|realagentbranch|branch runner/.test(haystack)) return 'branchWorkflow';
     if (/competitive|competitor/.test(haystack)) return 'competitive';
     if (/paper-ai-polish|paper polish|polish/.test(haystack)) return 'paperAiPolish';
-    if (/document-ai|documentai|paper-level-ai/.test(haystack)) return 'documentAi';
+    if (/document-ai|documentai|total-paper-remake/.test(haystack)) return 'documentAi';
     return '';
   }
   function appendUniqueText(base, addition) {

@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19t2u-equation-coverage-batched-verifier-20260531-1';
+  const STAGE = 'latex-stage19v-ai-workflow-ui-consolidation-20260602-1';
 
   let lastSelectionData = null;
   let lastRealRunData = null;
@@ -4710,6 +4710,14 @@ async function learnedSelectBranch() {
       '<p class="devils-help">Run branch planning → configurable critic/advocate debate rounds → structured actionable LaTeX edits → saved/reloadable run artifacts → insertion preview → outcome reward → learned branch selection. Add ?laiPromptDebug=1 to index.html to open a live prompt-debug tab showing each agent prompt.</p>',
       '<div class="settings-note compact branch-workflow-action-map"><strong>Action labels:</strong> <em>Insert localized edits</em> inserts targeted <code>\\laiold</code>/<code>\\lai</code> edits near relevant sections. <em>Append final improvement plan</em> appends the final plan before <code>\\end{document}</code>. Use <em>Preview insertion</em> first to inspect what will be inserted.</div>',
       '<label class="field">Focus / query <input id="branchWorkflowQuery" type="text" value="novelty theorem assumptions citation coverage clarity limitations" /></label>',
+      '<div class="field-grid two">',
+      '<label class="field">Target audience <input id="branchWorkflowTargetAudience" type="text" placeholder="e.g. theory reviewers, broad ML audience" /></label>',
+      '<label class="field">Target venue <input id="branchWorkflowTargetVenue" type="text" placeholder="e.g. COLT, NeurIPS, JMLR" /></label>',
+      '</div>',
+      '<div class="field-grid two">',
+      '<label class="field">Improvement goal <input id="branchWorkflowImprovementGoal" type="text" placeholder="e.g. strengthen novelty and citation positioning" /></label>',
+      '<label class="field">Critique level <select id="branchWorkflowHarshness"><option value="balanced" selected>balanced</option><option value="harsh">harsh</option><option value="very_harsh">very harsh</option><option value="constructive">constructive</option></select></label>',
+      '</div>',
       '<label class="field">Math/equation coverage <select id="branchWorkflowEquationCoverageMode"><option value="auto" selected>auto-detect from focus/query</option><option value="on">force equation-by-equation edits</option><option value="off">off</option></select></label>',
       '<label class="field">Review signal <textarea id="branchWorkflowReviewText" rows="2" placeholder="Reviewer complaint, concern, or improvement goal"></textarea></label>',
       '<div class="settings-card-subtle"><div class="field-grid two"><label class="field checkbox-field"><input id="branchWorkflowUseKnowledge" type="checkbox" checked /> Use knowledge retriever context</label><label class="field">Knowledge topK <input id="branchWorkflowKnowledgeTopK" type="number" min="1" max="12" step="1" value="5" /></label></div><div id="branchWorkflowKnowledgeStatus" class="settings-note compact"><strong>Knowledge retriever:</strong> will retrieve relevant ingested papers before planning/running.</div></div>',
@@ -4717,6 +4725,7 @@ async function learnedSelectBranch() {
       '<div class="field-grid two">',
       '<label class="field">Run mode <select id="branchWorkflowRunMode"><option value="dry_run_no_model_calls" selected>dry_run_no_model_calls</option><option value="call_ai_proxy_expensive">call_ai_proxy_expensive</option></select></label>',
       '<label class="field">Insertion mode <select id="branchWorkflowInsertMode"><option value="targeted" selected>targeted section insertion</option><option value="append">append at end</option></select></label>',
+      '<label class="field">Output mode <select id="branchWorkflowOutputMode"><option value="report_and_edits" selected>report + edits</option><option value="report_only">report only</option><option value="edits_only">edits only</option></select></label>',
       '</div>',
       '<div class="field-grid two">',
       '<label class="field">Target mode <select id="branchWorkflowSectionScope"><option value="branch">selected branch target only</option><option value="selected">user-selected sections/subsections</option><option value="salient" selected>salient sections</option><option value="first6">first 6 detected units</option><option value="whole">whole paper: every detected unit</option></select></label>',

@@ -1,7 +1,7 @@
 /* Latexai Stage 17O PaperAiPolishService
  * Stage: stage17s-lai-insertion-safety-1
  *
- * Paper-level AI workflow polish:
+ * Total Paper Remake workflow polish:
  * - scans \lai{...} and \laiold{...} markup;
  * - previews structured edit reports before applying;
  * - applies only selected edits;
@@ -525,7 +525,7 @@
   function formatReport(report = lastReport) {
     if (!report) return 'No paper AI edit report yet.';
     const lines = [
-      'Paper-level AI edit report',
+      'Total Paper Remake edit report',
       '==========================',
       '',
       `Generated: ${report.generatedAt}`,
@@ -744,7 +744,7 @@
     const choices = selectedChoices();
     const chosen = current.edits.filter((edit) => choices[edit.id]);
     const lines = [
-      'Selected paper-level AI edits preview',
+      'Selected Total Paper Remake edits preview',
       '====================================',
       '',
       `Selected edits: ${chosen.length}`,
@@ -854,10 +854,10 @@
       '<div class="section-head compact">',
       '  <div>',
       '    <div class="smallcaps">Paper AI</div>',
-      '    <h2>Paper-level edit review</h2>',
+      '    <h2>AI edit review</h2>',
       '  </div>',
       '</div>',
-      '<p class="paper-ai-help">Review and resolve \\lai / \\laiold paper-level AI edits before compiling or committing.</p>',
+      '<p class="paper-ai-help">Review and resolve \\lai / \\laiold Total Paper Remake edits before compiling or committing.</p>',
       '<div id="paperAiPolishSummary" class="paper-ai-summary">No scan run yet.</div>',
       '<div class="paper-ai-actions">',
       '  <button id="paperAiScanBtn" class="btn mini primary" type="button">Scan active file</button>',

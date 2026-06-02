@@ -416,10 +416,10 @@
       ['CompetitivePaperReviewService', 'appendLaiImprovementPlan', 'Before appending competitive \\lai plan', 'competitive-lai-plan-append'],
       ['CompetitivePaperReviewService', 'insertActionableEditsAtMatches', 'Before inserting competitive inline \\lai edits', 'competitive-lai-inline-insert'],
       ['CompetitivePaperReviewService', 'addReportToProject', 'Before adding competitive review report', 'competitive-review-report-add'],
-      ['DevilsAdvocateDebateService', 'insertImprovementPlan', 'Before appending devil’s advocate \\lai plan', 'devils-lai-plan-append'],
-      ['DevilsAdvocateDebateService', 'appendLaiImprovementPlan', 'Before appending devil’s advocate \\lai plan', 'devils-lai-plan-append'],
-      ['DevilsAdvocateDebateService', 'insertActionableEditsAtMatches', 'Before inserting devil’s advocate inline \\lai edits', 'devils-lai-inline-insert'],
-      ['DevilsAdvocateDebateService', 'addReportToProject', 'Before adding devil’s advocate debate report', 'devils-report-add']
+      ['RealAgentBranchWorkflowService', 'insertImprovementPlan', 'Before appending devil’s advocate \\lai plan', 'devils-lai-plan-append'],
+      ['RealAgentBranchWorkflowService', 'appendLaiImprovementPlan', 'Before appending devil’s advocate \\lai plan', 'devils-lai-plan-append'],
+      ['RealAgentBranchWorkflowService', 'insertActionableEditsAtMatches', 'Before inserting devil’s advocate inline \\lai edits', 'devils-lai-inline-insert'],
+      ['RealAgentBranchWorkflowService', 'addReportToProject', 'Before adding Devil’s Advocate branch-runner report', 'devils-report-add']
     ];
 
     let any = false;

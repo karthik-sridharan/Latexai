@@ -1,7 +1,7 @@
 /* Latexai Stage 17C PaperAiDashboardService
  * Stage: stage17c-paper-ai-dashboard-1
  *
- * Paper AI dashboard / workflow launcher.
+ * AI workflow dashboard / workflow launcher.
  *
  * One top-level Copilot card that shows:
  * - which paper-AI workflows are enabled/loaded/visible;
@@ -35,7 +35,7 @@
   const WORKFLOWS = [
     {
       key: 'paper-ai-polish',
-      title: 'Paper-level edit review',
+      title: 'AI edit review',
       tab: 'copilot',
       cardId: 'paperAiPolishCard',
       service: 'PaperAiPolishService',
@@ -54,14 +54,14 @@
       outputId: 'competitiveReviewOutput'
     },
     {
-      key: 'devils-advocate-debate',
-      title: 'Devil’s advocate debate',
+      key: 'devils-advocate-branch-runner',
+      title: 'Devil’s Advocate branch runner',
       tab: 'copilot',
-      cardId: 'devilsDebateCard',
-      service: 'DevilsAdvocateDebateService',
-      primaryButtonId: 'runDevilsDebateBtn',
-      runLabel: 'Run debate',
-      outputId: 'devilsDebateOutput'
+      cardId: 'realAgentBranchCard',
+      service: 'RealAgentBranchWorkflowService',
+      primaryButtonId: 'branchWorkflowRunBtn',
+      runLabel: 'Run branch',
+      outputId: 'branchWorkflowOutput'
     },
     {
       key: 'ai-suggestion-comments',
@@ -235,7 +235,7 @@
 
   function formatDashboardReport(report = dashboardReport()) {
     const lines = [
-      'Latexai Paper AI dashboard report',
+      'Latexai AI workflow dashboard report',
       '==================================',
       '',
       `Generated: ${report.generatedAt}`,
@@ -450,7 +450,7 @@
       '<div class="section-head compact">',
       '  <div>',
       '    <div class="smallcaps">Dashboard</div>',
-      '    <h2>Paper AI dashboard</h2>',
+      '    <h2>AI workflow dashboard</h2>',
       '  </div>',
       '</div>',
       '<p class="paper-ai-dashboard-help">Quick-launch and status dashboard for paper AI workflows. Use this instead of hunting through the long Copilot/Settings panels.</p>',
@@ -460,7 +460,7 @@
       '  <button id="copyPaperAiDashboardBtn" class="btn mini" type="button">Copy workflow status</button>',
       '  <button id="openFeatureFlagsFromDashboardBtn" class="btn mini" type="button">Open feature flags</button>',
       '</div>',
-      '<div id="paperAiDashboardStatus" class="settings-note">Paper AI dashboard ready.</div>',
+      '<div id="paperAiDashboardStatus" class="settings-note">AI workflow dashboard ready.</div>',
       '<div id="paperAiDashboardList" class="paper-ai-dashboard-list"></div>',
       '<pre id="paperAiDashboardOutput" class="paper-ai-dashboard-output"></pre>'
     ].join('');

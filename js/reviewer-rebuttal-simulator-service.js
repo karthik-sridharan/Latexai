@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19u9l2-review-corpus-context-for-reviewer-rebuttal-20260601-1';
+  const STAGE = 'latex-stage19v-ai-workflow-ui-consolidation-20260602-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -115,6 +115,35 @@
     const node = el('reviewerSimReviewCorpusStatus');
     if (node) node.textContent = message || '';
     if (node) node.className = `settings-note compact${kind ? ' ' + kind : ''}`;
+  }
+
+
+
+  function reviewerWorkflowMode() {
+    return String(el('reviewerSimWorkflowMode')?.value || 'review_rebuttal_revise');
+  }
+
+  function reviewerWorkflowSettings(mode = reviewerWorkflowMode()) {
+    const m = String(mode || 'review_rebuttal_revise');
+    if (m === 'quick_improvement') return { mode: m, reviewerCount: 1, includeRebuttal: false, includeEditor: true, label: 'Quick review + improvements' };
+    if (m === 'review_only') return { mode: m, reviewerCount: null, includeRebuttal: false, includeEditor: false, label: 'Review only' };
+    if (m === 'review_rebuttal') return { mode: m, reviewerCount: null, includeRebuttal: true, includeEditor: false, label: 'Review + rebuttal' };
+    return { mode: 'review_rebuttal_revise', reviewerCount: null, includeRebuttal: true, includeEditor: true, label: 'Review + rebuttal + revise' };
+  }
+
+  function applyReviewerWorkflowMode() {
+    const settings = reviewerWorkflowSettings();
+    const count = el('reviewerSimCount');
+    if (settings.reviewerCount && count) count.value = String(settings.reviewerCount);
+    syncReviewerRows();
+    const rebuttalBtn = el('generateReviewerRebuttalBtn');
+    const editorBtn = el('synthesizeReviewerFinalBtn');
+    const runBtn = el('runReviewerFullLoopBtn');
+    if (rebuttalBtn) rebuttalBtn.disabled = !settings.includeRebuttal;
+    if (editorBtn) editorBtn.disabled = !settings.includeEditor;
+    if (runBtn) runBtn.textContent = 'Run selected mode';
+    const note = el('reviewerSimWorkflowModeNote');
+    if (note) note.textContent = `${settings.label}: reviewers=${settings.reviewerCount || clean(el('reviewerSimCount')?.value) || 'selected'}, rebuttal=${settings.includeRebuttal ? 'yes' : 'no'}, final editor=${settings.includeEditor ? 'yes' : 'no'}.`;
   }
 
   function reviewCorpusSearchQuery(payload, phase = 'reviews') {
@@ -1014,7 +1043,7 @@
   }
 
   function syncReviewerRows() {
-    const count = Math.max(2, Math.min(4, Number(el('reviewerSimCount')?.value || 3)));
+    const count = Math.max(1, Math.min(4, Number(el('reviewerSimCount')?.value || 3)));
     const holder = el('reviewerSimRows');
     if (!holder) return;
     const defaults = reviewerDefaults();
@@ -1036,7 +1065,7 @@
   }
 
   function selectedReviewers() {
-    const count = Math.max(2, Math.min(4, Number(el('reviewerSimCount')?.value || 3)));
+    const count = Math.max(1, Math.min(4, Number(el('reviewerSimCount')?.value || 3)));
     const defaults = reviewerDefaults();
     return Array.from({ length: count }, (_, i) => ({
       index: i + 1,
@@ -1053,6 +1082,9 @@
       generatedAt: new Date().toISOString(),
       activePath: active.path,
       rootPath: rootPath(),
+      workflowMode: reviewerWorkflowMode(),
+      workflowSettings: reviewerWorkflowSettings(),
+      editorOutputMode: clean(el('reviewerSimEditorOutputMode')?.value) || 'report_and_edits',
       targetVenue: clean(el('reviewerSimVenue')?.value),
       paperGoal: clean(el('reviewerSimGoal')?.value),
       globalInstructions: clean(el('reviewerSimInstructions')?.value),
@@ -1070,7 +1102,7 @@
   function validatePayload(payload) {
     const errors = [];
     if (!payload.draftExcerpt.trim()) errors.push('Active source file is empty.');
-    if (payload.reviewers.length < 2 || payload.reviewers.length > 4) errors.push('Choose between 2 and 4 reviewers.');
+    if (payload.reviewers.length < 1 || payload.reviewers.length > 4) errors.push('Choose between 1 and 4 reviewers.');
     return errors;
   }
 
@@ -1351,8 +1383,10 @@ ${input}` : input,
 
   async function synthesizeFinalRevision() {
     const payload = lastPayload || buildPayload();
+    const settings = reviewerWorkflowSettings(payload.workflowMode);
     if (!lastReviews.length) await runReviews();
-    if (!lastRebuttal) await generateRebuttal();
+    if (settings.includeRebuttal && !lastRebuttal) await generateRebuttal();
+    if (!settings.includeRebuttal) lastRebuttal = '';
     if (!(await checkpointBeforeFinalSynthesis())) {
       setStatus('Final synthesis cancelled because GitHub checkpoint did not complete.');
       return { ok: false, error: 'GitHub checkpoint failed or cancelled' };
@@ -1381,7 +1415,7 @@ ${input}` : input,
       'Avoid preamble edits, Markdown fences inside BEGIN_NEW_LATEX, full-document rewrites, and invented exact oldText strings.'
     ].join('\n');
     const input = [
-      '--- Paper metadata ---', JSON.stringify({ targetVenue: payload.targetVenue, paperGoal: payload.paperGoal, activePath: payload.activePath }, null, 2), '',
+      '--- Paper metadata ---', JSON.stringify({ targetVenue: payload.targetVenue, paperGoal: payload.paperGoal, activePath: payload.activePath, workflowMode: payload.workflowMode, editorOutputMode: payload.editorOutputMode }, null, 2), '',
       '--- Reviews ---', reviewsMarkdown(), '',
       '--- User rebuttal guidance ---', clean(el('reviewerSimRebuttalGuidance')?.value) || '(none)', '',
       '--- AI rebuttal ---', lastRebuttal || '(none)', '',
@@ -1425,16 +1459,27 @@ ${input}` : input,
   }
 
   async function runFullLoop() {
-    setStatus('Full loop: starting reviewer simulation...');
+    const settings = reviewerWorkflowSettings();
+    applyReviewerWorkflowMode();
+    setStatus(`${settings.label}: starting reviewer simulation...`);
     const reviewResult = await runReviews();
     if (cancelled) return { ok: false, cancelled: true };
     if (!reviewResult?.ok) return reviewResult;
-    setStatus('Full loop: reviews complete; generating rebuttal...');
-    const rebuttalResult = await generateRebuttal();
-    if (cancelled) return { ok: false, cancelled: true };
-    if (!rebuttalResult?.ok) return rebuttalResult;
-    setStatus('Full loop: rebuttal complete; synthesizing final revision...');
-    return await synthesizeFinalRevision();
+    if (settings.includeRebuttal) {
+      setStatus(`${settings.label}: reviews complete; generating rebuttal...`);
+      const rebuttalResult = await generateRebuttal();
+      if (cancelled) return { ok: false, cancelled: true };
+      if (!rebuttalResult?.ok) return rebuttalResult;
+    } else {
+      lastRebuttal = '';
+    }
+    if (settings.includeEditor) {
+      setStatus(`${settings.label}: running final editor/synthesis agent...`);
+      return await synthesizeFinalRevision();
+    }
+    setOutput(fullReport());
+    setStatus(`${settings.label} complete.`);
+    return { ok: true, reviews: lastReviews, rebuttal: lastRebuttal, synthesis: lastSynthesis };
   }
 
   function cancelLoop() { cancelled = true; setStatus('Cancel requested. Current AI call may finish before stopping; no new reviewer/rebuttal steps will start.'); }
@@ -1522,7 +1567,9 @@ ${input}` : input,
       topNode?.addEventListener('change', () => { try { W.localStorage?.setItem?.('latexai:reviewerSim:reviewCorpusTopK', String(reviewCorpusTopK())); } catch (_e) {} }, true);
       setReviewCorpusStatus(reviewCorpusEnabled() ? 'Review/rebuttal corpus context will be retrieved before each phase.' : 'Review/rebuttal corpus context is off.');
     } catch (_err) {}
-    el('reviewerSimCount')?.addEventListener('change', syncReviewerRows, true);
+    el('reviewerSimWorkflowMode')?.addEventListener('change', applyReviewerWorkflowMode, true);
+    el('reviewerSimCount')?.addEventListener('change', () => { syncReviewerRows(); applyReviewerWorkflowMode(); }, true);
+    applyReviewerWorkflowMode();
     // Stage 19I3: buttons are handled by the delegated document listener above.
     // Avoid direct per-card listeners because this card is frequently remounted
     // by the right-panel organizer; duplicate direct listeners caused long/stale
@@ -1540,11 +1587,16 @@ ${input}` : input,
     card.id = 'reviewerRebuttalCard';
     card.className = 'devils-debate-card reviewer-rebuttal-card';
     card.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Reviewer / rebuttal simulator</h2></div></div>',
-      '<p class="devils-help">Simulate 2–4 configurable reviewers, write a rebuttal with your guidance, then synthesize a final revision plan.</p>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Reviewer / Rebuttal Simulator</h2></div></div>',
+      '<p class="devils-help">Owns review-style critique and absorbs the old generic review-and-improve workflow. Choose a quick one-reviewer improvement pass, review-only report, review + rebuttal, or review + rebuttal + final editor revision.</p>',
       '<div class="field-grid two">',
-      '  <label class="field">Reviewer count <select id="reviewerSimCount"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>',
+      '  <label class="field">Workflow mode <select id="reviewerSimWorkflowMode"><option value="quick_improvement">Quick review + improvements</option><option value="review_only">Review only</option><option value="review_rebuttal">Review + rebuttal</option><option value="review_rebuttal_revise" selected>Review + rebuttal + revise</option></select></label>',
+      '  <label class="field">Reviewer count <select id="reviewerSimCount"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>',
+      '</div>',
+      '<div id="reviewerSimWorkflowModeNote" class="settings-note compact">Review + rebuttal + revise: reviewers=3, rebuttal=yes, final editor=yes.</div>',
+      '<div class="field-grid two">',
       '  <label class="field">Target venue <input id="reviewerSimVenue" type="text" placeholder="e.g. NeurIPS, COLT, JMLR" /></label>',
+      '  <label class="field">Editor output <select id="reviewerSimEditorOutputMode"><option value="report_and_edits" selected>report + safe edits</option><option value="report_only">report only</option><option value="edits_only">edits only</option></select></label>',
       '</div>',
       '<label class="field">Paper goal / intended contribution <input id="reviewerSimGoal" type="text" placeholder="Optional: what the paper is trying to establish" /></label>',
       '<label class="field">Global review instructions <textarea id="reviewerSimInstructions" rows="2" placeholder="Optional: ask reviewers to be very critical, focus on theory, compare to a venue, etc."></textarea></label>',
@@ -1561,10 +1613,10 @@ ${input}` : input,
       '<div class="devils-actions">',
       '  <button id="runReviewerSimBtn" class="btn mini primary" type="button">Run reviews</button>',
       '  <button id="generateReviewerRebuttalBtn" class="btn mini" type="button">Generate rebuttal</button>',
-      '  <button id="synthesizeReviewerFinalBtn" class="btn mini" type="button">Synthesize final revision</button>',
+      '  <button id="synthesizeReviewerFinalBtn" class="btn mini" type="button">Run editor revision</button>',
       '  <button id="prepareReviewerFinalInsertBtn" class="btn mini" type="button">Preview final edits</button>',
       '  <button id="applyReviewerFinalInsertBtn" class="btn mini" type="button">Apply final edits</button>',
-      '  <button id="runReviewerFullLoopBtn" class="btn mini" type="button">Run full loop</button>',
+      '  <button id="runReviewerFullLoopBtn" class="btn mini" type="button">Run selected mode</button>',
       '  <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>',
       '  <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',

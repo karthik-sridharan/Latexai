@@ -37,7 +37,7 @@
     paperAiDashboardCard: ['copilot'],
     paperAiPolishCard: ['copilot'],
     competitiveReviewCard: ['copilot'],
-    devilsDebateCard: ['copilot'],
+    realAgentBranchCard: ['copilot'],
     reviewerRebuttalCard: ['copilot'],
     citationAiCard: ['copilot'],
     citationVerifierCard: ['copilot'],
@@ -160,7 +160,7 @@
         'paperAiDashboardCard',
         'paperAiPolishCard',
         'competitiveReviewCard',
-        'devilsDebateCard',
+        'realAgentBranchCard',
         'reviewerRebuttalCard'
       ]
     },
@@ -488,7 +488,7 @@
     const titleNeedles = {
       'core-copilot': ['latex copilot'],
       'compile-settings': ['compile settings', 'backend status', 'browser engine status', 'texlyre busytex status'],
-      'paper-ai': ['paper ai dashboard', 'paper-level edit review', 'competitive paper review', 'devil’s advocate', "devil's advocate", 'reviewer / rebuttal simulator', 'reviewer/rebuttal simulator'],
+      'paper-ai': ['paper ai dashboard', 'AI edit review', 'competitive paper review', 'devil’s advocate', "devil's advocate", 'reviewer / rebuttal simulator', 'reviewer/rebuttal simulator'],
       citations: ['citation filler', 'citation verifier', 'local citation verifier', 'ai citation'],
       'history-comments': ['ai suggestion comments', 'ai revision history', 'unified ai reports'],
       presentation: ['presentation', 'beamer', 'talk package'],

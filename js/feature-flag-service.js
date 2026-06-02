@@ -26,14 +26,14 @@
 
   const REGISTRY = [
     { key: 'presentation-export', title: 'Presentation/talk export', tier: 'stable', defaultEnabled: true, description: 'Paper → presentation JSON/HTML/Beamer and talk package export.' },
-    { key: 'paper-ai-polish', title: 'Paper AI edit review', tier: 'stable', defaultEnabled: true, description: 'Review and resolve \\lai / \\laiold paper-level AI edits before compile or commit.' },
+    { key: 'paper-ai-polish', title: 'Paper AI edit review', tier: 'stable', defaultEnabled: true, description: 'Review and resolve \\lai / \\laiold Total Paper Remake edits before compile or commit.' },
     { key: 'model-registry', title: 'Backend model registry', tier: 'stable', defaultEnabled: true, description: 'Central provider/model registry with backend validation and safe fallback repair.' },
     { key: 'competitive-review', title: 'Competitive paper review', tier: 'experimental', defaultEnabled: true, description: 'Requires a web-search-capable AI backend; compares the current draft against competitor URLs and produces an improvement roadmap.' },
-    { key: 'devils-advocate-debate', title: 'Devil’s advocate debate', tier: 'experimental', defaultEnabled: true, description: 'Runs advocate, critic, and synthesizer AI agents to produce a balanced paper improvement plan.' },
+    { key: 'legacy-debate-disabled', title: 'Legacy debate disabled', tier: 'experimental', defaultEnabled: false, description: 'Legacy debate removed in Stage 19V; use the Devil’s Advocate branch runner instead.' },
     { key: 'reviewer-rebuttal-simulator', title: 'Reviewer / rebuttal simulator', tier: 'experimental', defaultEnabled: true, description: 'Simulate 2–4 configurable reviewers, generate an author rebuttal, and synthesize a final revision plan.' },
     { key: 'ai-revision-history', title: 'AI revision history', tier: 'stable', defaultEnabled: true, description: 'Create snapshots, compare AI changes, and restore/revert if needed.' },
     { key: 'ai-suggestion-comments', title: 'AI suggestion comments', tier: 'stable', defaultEnabled: true, description: 'Annotate AI suggestions, resolve/reopen comments, and exchange comments with coauthors as JSON.' },
-    { key: 'paper-ai-dashboard', title: 'Paper AI dashboard', tier: 'stable', defaultEnabled: true, description: 'Quick-launch and status dashboard for paper AI workflows.' },
+    { key: 'paper-ai-dashboard', title: 'AI workflow dashboard', tier: 'stable', defaultEnabled: true, description: 'Quick-launch and status dashboard for paper AI workflows.' },
     { key: 'ai-reports-browser', title: 'Unified AI reports / reviews browser', tier: 'stable', defaultEnabled: true, description: 'Save AI workflow reports under /reviews and browse/copy/open/delete review files.' },
     { key: 'ai-routing-inspector', title: 'AI model routing inspector', tier: 'stable', defaultEnabled: true, description: 'Inspect visible, routed, and final AI models; check backend allowed models and web-search support.' },
     { key: 'right-panel-organizer', title: 'Right panel collapsible sections', tier: 'stable', defaultEnabled: true, description: 'Organize Copilot and Settings cards into collapsible workflow sections.' },
