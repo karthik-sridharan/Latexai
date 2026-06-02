@@ -407,3 +407,33 @@
 .branch-knowledge-score{font-size:11px;padding:2px 7px;border-radius:999px;background:rgba(78,142,255,.14);color:#77a4ff;white-space:nowrap;}
 .checkbox-field{display:flex;align-items:center;gap:8px;min-height:42px;}
 .checkbox-field input[type="checkbox"]{width:18px;height:18px;}
+
+/* Stage 19T2S: Devil's Advocate regression/audit panel */
+.branch-coverage-audit-list {
+  margin: .45rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.branch-coverage-audit-list li {
+  margin: .35rem 0;
+}
+.branch-regression-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: .5rem;
+  font-size: 12px;
+}
+.branch-regression-table th,
+.branch-regression-table td {
+  border: 1px solid rgba(148, 163, 184, .28);
+  padding: .35rem .45rem;
+  vertical-align: top;
+}
+.branch-regression-table th {
+  text-align: left;
+  color: #dbeafe;
+  background: rgba(30, 41, 59, .72);
+}
+.branch-workflow-regression-card {
+  margin: .75rem 0;
+}

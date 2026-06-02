@@ -413,7 +413,7 @@
   background: rgba(239,246,255,.92);
 }
 
-/* Stage 18M-18O: ranking impact map, stability guards, and AI remake workflow */
+/* Stage 18M: ranking-to-lai edit impact map */
 .competitive-edit-impact-map {
   margin: .55rem 0 .65rem;
   max-width: 100%;
@@ -496,16 +496,4 @@
 
 .competitive-impact-meta b {
   color: #0f172a;
-}
-
-
-/* Stage 18N/18O: competitive review busy guards */
-#competitiveReviewCard[data-competitive-busy="true"] .competitive-review-actions .btn.busy,
-.competitive-review-actions .btn.busy {
-  opacity: .62;
-  cursor: progress;
-}
-
-#competitiveReviewCard[data-competitive-busy="true"] {
-  position: relative;
 }
