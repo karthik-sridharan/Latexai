@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w10-right-panel-workflow-tabs-debug-cleanup-20260602-1';
+  const STAGE = 'latex-stage19w10b-paper-ai-subtabs-visibility-fix-20260602-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_WORKFLOW = 'latexai:stage19w10:paper-ai-workflow-tab';
 
