@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19v3-openreview-trajectory-context-retrieval-20260602-1';
+  const STAGE = 'latex-stage19v4-review-corpus-chunked-embeddings-20260602-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -252,6 +252,7 @@ ${trajectory}` : ''
           topK: payload.reviewCorpusTopK || reviewCorpusTopK(),
           itemTypes: payload.reviewCorpusItemTypes || reviewCorpusItemTypesForPhase(phase),
           includeTrajectory: true,
+          includeChunks: true,
           trajectoryItemTypes: reviewCorpusTrajectoryItemTypesForPhase(phase),
           trajectoryMaxItems: 10,
           trajectoryMaxCharsPerItem: 1200,
