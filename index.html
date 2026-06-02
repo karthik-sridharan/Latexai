@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19u9k-paper-ai-collection-context-wiring-20260601-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19u9l2-review-corpus-context-for-reviewer-rebuttal-20260601-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -275,6 +275,13 @@
             </div>
             <div id="reviewerSimKnowledgeStatus" class="settings-note compact">Knowledge/literature context is off. Enable it to retrieve relevant ingested-library papers before reviewers run.</div>
           </div>
+          <div class="settings-card-subtle review-corpus-context-controls">
+            <div class="field-grid two compact">
+              <label class="field checkbox-field"><input id="reviewerSimUseReviewCorpus" type="checkbox" /> Use OpenReview review/rebuttal corpus context</label>
+              <label class="field">Review corpus topK <input id="reviewerSimReviewCorpusTopK" type="number" min="1" max="12" step="1" value="5" /></label>
+            </div>
+            <div id="reviewerSimReviewCorpusStatus" class="settings-note compact">Review/rebuttal corpus context is off.</div>
+          </div>
           <div id="reviewerSimRows" class="devils-agent-grid"></div>
           <label class="field">Your rebuttal guidance after reading reviews <textarea id="reviewerSimRebuttalGuidance" rows="3" placeholder="Optional: tell the rebuttal agent what to concede, defend, emphasize, or promise to revise."></textarea></label>
           <div class="devils-actions">
@@ -285,7 +292,7 @@
             <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>
             <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>
           </div>
-          <div class="settings-note">Stage 18Y keeps reviewer/rebuttal workflows memory-scoped, uses a separate Settings-tab memory backend URL, and silently extracts notation/citation/reviewer-concern memories. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
+          <div class="settings-note">Stage 19U9L2 keeps reviewer/rebuttal workflows memory-scoped and can optionally use OpenReview review/rebuttal corpus examples for realistic reviewer concerns and author-response strategies. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
           <div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator loading...</div>
           <pre id="reviewerRebuttalOutput" class="devils-output"></pre>
         </div>
@@ -471,7 +478,7 @@
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
 <script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1"></script>
 <script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19u9l2-review-corpus-context-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
@@ -518,7 +525,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19u9l2-review-corpus-context-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -575,7 +582,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19u9l2-review-corpus-context-1' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
