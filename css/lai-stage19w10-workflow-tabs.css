@@ -199,3 +199,43 @@ body.stage19w10-debug-mode #developerDiagnosticsSection {
 #paperAiTab .competitive-review-card {
   margin-top: .25rem !important;
 }
+
+/* Stage 19W11: actionable block suggestion cards. */
+.stage19w11-output {
+  white-space: normal !important;
+  max-height: 42rem;
+  overflow: auto;
+}
+.stage19w11-result-section {
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 14px;
+  padding: .75rem;
+  margin: .75rem 0;
+}
+.stage19w11-result-section h4 {
+  margin: 0 0 .5rem 0;
+  font-size: .95rem;
+}
+.stage19w11-suggestion-card {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: .7rem;
+  margin: .55rem 0;
+}
+.stage19w11-suggestion-card pre,
+.stage19w11-result-section pre {
+  background: #111827;
+  color: #e5e7eb;
+  border-radius: 10px;
+  padding: .65rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+.stage19w11-result-section .muted {
+  color: #667085;
+  font-size: .8rem;
+}
