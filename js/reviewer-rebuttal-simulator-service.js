@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19v4-review-corpus-chunked-embeddings-20260602-1';
+  const STAGE = 'latex-stage19v5-v8-review-corpus-trajectory-filters-editor-logging-20260602-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -36,6 +36,7 @@
   let reviewerStatusTimer = null;
   let trajectoryAgentRuns = [];
   let lastCompiledSynthesis = null;
+  let lastReviewCorpusEvents = [];
   const AI_CALL_TIMEOUT_MS = 180000;
 
   function State() { return NS.State; }
@@ -115,6 +116,47 @@
     const node = el('reviewerSimReviewCorpusStatus');
     if (node) node.textContent = message || '';
     if (node) node.className = `settings-note compact${kind ? ' ' + kind : ''}`;
+  }
+
+
+
+  function reviewCorpusRecordIds(data) {
+    const hits = Array.isArray(data?.results) ? data.results : [];
+    return Array.from(new Set(hits.map((h) => clean(h.recordId || h?.trajectory?.recordId || '')).filter(Boolean)));
+  }
+
+  async function logReviewCorpusPolicyEvent(payload, data, phase, outcome = 'retrieved', extra = {}) {
+    if (!payload?.useReviewCorpusContext || !data || data.ok === false) return null;
+    try {
+      const query = reviewCorpusSearchQuery(payload, phase);
+      const body = {
+        workflow: 'reviewer-rebuttal-simulator',
+        phase,
+        query,
+        resultCount: data.resultCount || (Array.isArray(data.results) ? data.results.length : 0),
+        topK: payload.reviewCorpusTopK || reviewCorpusTopK(),
+        includeTrajectory: true,
+        includeChunks: true,
+        recordIds: reviewCorpusRecordIds(data),
+        itemTypes: payload.reviewCorpusItemTypes || reviewCorpusItemTypesForPhase(phase),
+        outcome,
+        rewardValue: extra.rewardValue,
+        metadata: { stage: STAGE, activePath: payload.activePath, targetVenue: payload.targetVenue || '', paperGoal: payload.paperGoal || '', ...(extra.metadata || {}) }
+      };
+      const response = await fetch(`${reviewApiBaseUrl()}/reviews/context-policy/log`, {
+        method: 'POST',
+        headers: { ...memoryHeaders({ method: 'POST', body: '{}' }), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const text = await response.text().catch(() => '');
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch (_e) { json = { raw: text }; }
+      if (json?.event) lastReviewCorpusEvents.push(json.event);
+      return json;
+    } catch (err) {
+      try { console.warn('[Latexai review corpus] context-policy log failed', err); } catch (_ignored) {}
+      return null;
+    }
   }
 
 
@@ -254,8 +296,9 @@ ${trajectory}` : ''
           includeTrajectory: true,
           includeChunks: true,
           trajectoryItemTypes: reviewCorpusTrajectoryItemTypesForPhase(phase),
-          trajectoryMaxItems: 10,
-          trajectoryMaxCharsPerItem: 1200,
+          trajectoryMaxItems: 14,
+          trajectoryMaxCharsPerItem: 1600,
+          filters: { venueId: payload.targetVenue || '', hasRebuttal: phase !== 'reviews' ? true : undefined },
           phase
         })
       });
@@ -265,6 +308,7 @@ ${trajectory}` : ''
       if (!response.ok || data.ok === false) throw new Error(data?.detail || data?.error?.message || text || `HTTP ${response.status}`);
       payload.reviewCorpusRetrieval = data;
       payload.reviewCorpusPhase = phase;
+      await logReviewCorpusPolicyEvent(payload, data, phase, 'retrieved');
       setReviewCorpusStatus(reviewCorpusStatusText(payload), 'good');
       return data;
     } catch (err) {
@@ -1295,7 +1339,7 @@ ${input}` : input,
       'Be respectful, precise, and strategic. Defend the paper where appropriate, concede real weaknesses, and propose concrete revisions.',
       'Use the user rebuttal guidance when present, but do not make unsupported claims.',
       knowledgeBlock ? 'Use retrieved literature context only for defensible positioning, missing-citation commitments, and evidence-grounded rebuttal points.' : '',
-      reviewCorpusBlock ? 'Use retrieved OpenReview review/rebuttal examples to choose realistic rebuttal strategies: clarify misunderstandings, concede real weaknesses, promise concrete edits, distinguish related work, and avoid defensive overclaiming. Cite examples as [R1], [R2] only when useful.' : '',
+      reviewCorpusBlock ? 'Use retrieved OpenReview full trajectories to choose realistic rebuttal strategies: match each simulated concern to sibling OpenReview concern-response-outcome patterns, then adapt the strategy without copying wording. Use retrieved OpenReview review/rebuttal examples to choose realistic rebuttal strategies: clarify misunderstandings, concede real weaknesses, promise concrete edits, distinguish related work, and avoid defensive overclaiming. Cite examples as [R1], [R2] only when useful.' : '',
       'Structure the rebuttal by major concern and by reviewer when useful.',
       'Include explicit commitments for paper revisions.'
     ].join('\n');
@@ -1326,6 +1370,7 @@ ${input}` : input,
       await markMemoryUse(stepName, lastRebuttal ? 'success' : 'used', lastRebuttal ? 'Rebuttal completed with memory context.' : 'Rebuttal returned empty text.');
       await saveReviewerMemory('rebuttal', lastRebuttal, payload);
       await logReviewerRewardEvent('reviewer_rebuttal_completed', lastRebuttal ? 0.3 : -0.2, { stepName, memoryContext, note: lastRebuttal ? 'AI rebuttal completed.' : 'AI rebuttal returned empty text.' });
+      if (payload.useReviewCorpusContext) await logReviewCorpusPolicyEvent(payload, payload.reviewCorpusRetrieval, 'rebuttal', lastRebuttal ? 'ai_step_success' : 'ai_step_empty', { rewardValue: lastRebuttal ? 0.3 : -0.2 });
       setOutput(fullReport());
       setStatus('AI rebuttal complete.');
       return { ok: true, rebuttal: lastRebuttal };
@@ -1418,7 +1463,7 @@ ${input}` : input,
           rewardLabel: lastSynthesis ? 'positive' : 'negative',
           summary: lastSynthesis ? 'Final synthesis completed.' : `Final synthesis failed or returned empty output.${extra.error ? ` ${extra.error}` : ''}`
         }],
-        metadata: { stage: STAGE, reviewerCount: (payload?.reviewers || []).length || (lastReviews || []).length, hasRebuttal: Boolean(lastRebuttal), hasSynthesis: Boolean(lastSynthesis), reviewCorpusResultCount: payload?.reviewCorpusRetrieval?.resultCount || 0, reviewCorpusPhase: payload?.reviewCorpusPhase || '', ...(extra.metadata || {}) }
+        metadata: { stage: STAGE, reviewerCount: (payload?.reviewers || []).length || (lastReviews || []).length, hasRebuttal: Boolean(lastRebuttal), hasSynthesis: Boolean(lastSynthesis), reviewCorpusResultCount: payload?.reviewCorpusRetrieval?.resultCount || 0, reviewCorpusPhase: payload?.reviewCorpusPhase || '', reviewCorpusEventIds: (lastReviewCorpusEvents || []).map((e) => e.id).filter(Boolean).slice(-20), comparableTrajectorySchema: 'stage19v7-review-rebuttal-editor-openreview-context', ...(extra.metadata || {}) }
       });
     } catch (err) {
       try { console.warn('[Latexai debate trajectory logging] reviewer/rebuttal trajectory failed', err); } catch (_ignored) {}
@@ -1451,7 +1496,7 @@ ${input}` : input,
       'You are the final synthesis agent for a paper revision workflow.',
       'Use the simulated reviews, user guidance, AI rebuttal, and retrieved literature context to propose the strongest final revision.',
       knowledgeBlock ? 'Use retrieved literature to strengthen novelty positioning, related-work edits, missing assumptions, and citation-aware improvement suggestions. Do not invent beyond retrieved snippets.' : '',
-      reviewCorpusBlock ? 'Use retrieved OpenReview review/rebuttal trajectories to choose realistic final revisions: identify which reviewer concerns usually require paper edits, which can be defended, and what concrete camera-ready changes are credible. Cite examples as [R1], [R2] when useful.' : '',
+      reviewCorpusBlock ? 'Use retrieved OpenReview review/rebuttal trajectories explicitly: identify the matched reviewer concern, the sibling author rebuttal/response strategy, the meta-review or decision signal, and then convert the pattern into concrete paper edits. Prefer full trajectories over isolated snippets. Cite examples as [R1], [R2] when useful.' : '',
       'Return Markdown with: executive summary, accepted reviewer points, rejected/defended points, prioritized revision plan, and final revised-paper strategy. Make the final strategy paper-editable rather than generic advice.',
       rawPatchProtocolInstructions('reviewer/rebuttal final revision source edits'),
       'For every concrete source edit, include a LATEXAI_BLOCK_PATCH block. Use append_before_end_document for a final revision plan if exact localization is unsafe.',
@@ -1489,6 +1534,7 @@ ${input}` : input,
       await saveReviewerMemory('final_synthesis', lastSynthesis, payload);
       const synthesisResult = { ok: Boolean(lastSynthesis), accepted: Boolean(lastSynthesis), mode: 'reviewer-final-synthesis', rewardValue: lastSynthesis ? 0.75 : -0.35, rewardLabel: lastSynthesis ? 'positive' : 'negative', note: lastSynthesis ? 'Reviewer/rebuttal final synthesis completed.' : 'Reviewer/rebuttal final synthesis returned empty text.' };
       await logReviewerEditOutcome('reviewer_rebuttal_final_synthesis', synthesisResult, { stepName, memoryContext, metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastSynthesis || ''), synthesisChars: String(lastSynthesis || '').length } });
+      if (payload.useReviewCorpusContext) await logReviewCorpusPolicyEvent(payload, payload.reviewCorpusRetrieval, 'final_synthesis', lastSynthesis ? 'ai_step_success' : 'ai_step_empty', { rewardValue: lastSynthesis ? 0.75 : -0.35, metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastSynthesis || ''), synthesisChars: String(lastSynthesis || '').length } });
       await logReviewerTrajectory(lastSynthesis ? 'success' : 'empty', payload, { metadata: { hasActionableEdits: /latexai_actionable_edits/i.test(lastSynthesis || ''), synthesisChars: String(lastSynthesis || '').length } });
       setOutput(fullReport());
       setStatus('Final synthesis complete.');
