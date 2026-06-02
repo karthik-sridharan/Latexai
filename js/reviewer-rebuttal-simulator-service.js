@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19v5-v8-review-corpus-trajectory-filters-editor-logging-20260602-1';
+  const STAGE = 'latex-stage19w1-w7-block-context-mcts-bundle-20260602-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -198,6 +198,7 @@
       (payload.reviewers || []).map((r) => `${r.name}: ${r.style}`).join('\n'),
       phase !== 'reviews' ? reviewsMarkdown() : '',
       phase === 'final_synthesis' ? (lastRebuttal || '') : '',
+      clean(W.LuminaLatex?.ProjectBlockContextService?.getLastPromptContext?.() || ''),
       stripLatexForIdentity(payload.draftExcerpt || '').slice(0, 4200)
     ].filter(Boolean);
     return parts.join('\n\n').replace(/\s+/g, ' ').trim().slice(0, 8000);
