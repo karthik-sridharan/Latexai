@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19u9l2-review-corpus-context-for-reviewer-rebuttal-20260601-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19v-ai-workflow-ui-consolidation-20260602-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -163,7 +163,7 @@
       <div class="right-tabs" role="tablist" aria-label="Right panel tabs">
         <button class="right-tab active" data-right-tab="preview" type="button">Preview</button>
         <button class="right-tab" data-right-tab="logs" type="button">Logs</button>
-        <button class="right-tab" data-right-tab="copilot" type="button">Copilot</button>
+        <button class="right-tab" data-right-tab="copilot" type="button">AI workflows</button>
         <button class="right-tab" data-right-tab="settings" type="button">Settings</button>
       </div>
 
@@ -205,7 +205,7 @@
         <div class="section-head compact">
           <div>
             <div class="smallcaps">AI</div>
-            <h2>LaTeX Copilot</h2>
+            <h2>AI Copilot — local editing assistant</h2>
           </div>
         </div>
         <div class="field-grid two">
@@ -234,9 +234,10 @@
             <option value="raw-advice">General LaTeX advice</option>
           </select>
         </label>
+        <div class="settings-note compact">Use Copilot for selected text, local rewrites, explanations, grammar, math cleanup, and small insertions. Use the named cards below for whole-paper workflows.</div>
         <div id="copilotContextChips" class="context-chips" aria-live="polite"></div>
         <label class="field">Prompt
-          <textarea id="copilotPrompt" rows="5" placeholder="Ask for a theorem rewrite, table, proof sketch, Beamer frame, bibliography fix, etc."></textarea>
+          <textarea id="copilotPrompt" rows="5" placeholder="Ask for a selected-text rewrite, local explanation, grammar fix, LaTeX cleanup, or small insertion. Use named workflows below for whole-paper review, rebuttal, debate, competitive comparison, or total remake."></textarea>
         </label>
         <div class="micro-actions stretch">
           <button id="askCopilotBtn" class="btn primary" type="button">Ask Copilot</button>
@@ -259,12 +260,23 @@
           <pre id="patchDiff" class="patch-diff"></pre>
         </div>
 
-        <div id="reviewerRebuttalCard" class="devils-debate-card reviewer-rebuttal-card" data-stage18q6-static="true">
-          <div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Reviewer / rebuttal simulator</h2></div></div>
-          <p class="devils-help">Simulate 2–4 configurable reviewers, write a rebuttal with your guidance, then synthesize a final revision plan.</p>
+        <div id="reviewerRebuttalCard" class="devils-debate-card reviewer-rebuttal-card" data-stage19v-static="true">
+          <div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Reviewer / Rebuttal Simulator</h2></div></div>
+          <p class="devils-help">Owns review-style critique and replaces the old generic “review and suggest improvements” option. Choose a quick one-reviewer improvement pass, review-only report, review + rebuttal, or review + rebuttal + final editor revision.</p>
           <div class="field-grid two">
-            <label class="field">Reviewer count <select id="reviewerSimCount"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
+            <label class="field">Workflow mode
+              <select id="reviewerSimWorkflowMode">
+                <option value="quick_improvement">Quick review + improvements</option>
+                <option value="review_only">Review only</option>
+                <option value="review_rebuttal">Review + rebuttal</option>
+                <option value="review_rebuttal_revise" selected>Review + rebuttal + revise</option>
+              </select>
+            </label>
+            <label class="field">Reviewer count <select id="reviewerSimCount"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
+          </div>
+          <div class="field-grid two">
             <label class="field">Target venue <input id="reviewerSimVenue" type="text" placeholder="e.g. NeurIPS, COLT, JMLR" /></label>
+            <label class="field">Editor output <select id="reviewerSimEditorOutputMode"><option value="report_and_edits" selected>report + safe edits</option><option value="report_only">report only</option><option value="edits_only">edits only</option></select></label>
           </div>
           <label class="field">Paper goal / intended contribution <input id="reviewerSimGoal" type="text" placeholder="Optional: what the paper is trying to establish" /></label>
           <label class="field">Global review instructions <textarea id="reviewerSimInstructions" rows="2" placeholder="Optional: ask reviewers to be very critical, focus on theory, compare to a venue, etc."></textarea></label>
@@ -287,12 +299,14 @@
           <div class="devils-actions">
             <button id="runReviewerSimBtn" class="btn mini primary" type="button">Run reviews</button>
             <button id="generateReviewerRebuttalBtn" class="btn mini" type="button">Generate rebuttal</button>
-            <button id="synthesizeReviewerFinalBtn" class="btn mini" type="button">Synthesize final revision</button>
-            <button id="runReviewerFullLoopBtn" class="btn mini" type="button">Run full loop</button>
+            <button id="synthesizeReviewerFinalBtn" class="btn mini" type="button">Run editor revision</button>
+            <button id="prepareReviewerFinalInsertBtn" class="btn mini" type="button">Preview final edits</button>
+            <button id="applyReviewerFinalInsertBtn" class="btn mini" type="button">Apply final edits</button>
+            <button id="runReviewerFullLoopBtn" class="btn mini" type="button">Run selected mode</button>
             <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>
             <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>
           </div>
-          <div class="settings-note">Stage 19U9L2 keeps reviewer/rebuttal workflows memory-scoped and can optionally use OpenReview review/rebuttal corpus examples for realistic reviewer concerns and author-response strategies. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
+          <div class="settings-note">Stage 19V consolidates review-style critique here. The optional final editor agent writes actionable <code>\laiold</code>/<code>\lai</code> edits through the safe edit pipeline; quick improvement mode uses one reviewer and no rebuttal.</div>
           <div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator loading...</div>
           <pre id="reviewerRebuttalOutput" class="devils-output"></pre>
         </div>
@@ -477,8 +491,7 @@
 <script src="js/document-ai-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
 <script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1"></script>
-<script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19u9l2-review-corpus-context-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19v-ai-workflow-ui-consolidation-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
@@ -525,7 +538,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19u9l2-review-corpus-context-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19v-ai-workflow-ui-consolidation-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -582,7 +595,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19u9l2-review-corpus-context-1' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19v-ai-workflow-ui-consolidation-1' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
