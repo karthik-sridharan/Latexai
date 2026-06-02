@@ -137,3 +137,65 @@ body.stage19w10-debug-mode #developerDiagnosticsSection {
   .stage19w10-primary-tabs .right-tab { font-size: .72rem; padding-left: .1rem; padding-right: .1rem; }
   .right-tabs.stage19w10-primary-tabs { grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); }
 }
+
+
+/* Stage 19W10B: keep Paper AI workflow subtabs visible above moved workflow cards.
+   On iPad/Safari the moved Total Paper Remake card could visually overlap the
+   workflow tab strip.  Make the Paper AI panel a block scrollport, reserve
+   vertical space for the tab strip, and keep the strip above workflow cards. */
+#paperAiTab.right-tab-panel.active {
+  display: block !important;
+  flex: 1 1 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2rem;
+}
+
+#paperAiTab .section-head,
+#paperAiTab > .settings-note {
+  position: relative;
+  z-index: 4;
+}
+
+#paperAiTab .stage19w10-workflow-tabs {
+  position: relative;
+  z-index: 20;
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  margin-top: .7rem !important;
+  margin-bottom: 1rem !important;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+#paperAiTab .stage19w10-workflow-tab {
+  position: relative;
+  z-index: 21;
+}
+
+#paperAiTab .stage19w10-workflow-pane {
+  position: relative;
+  z-index: 1;
+  clear: both;
+}
+
+#paperAiTab .stage19w10-workflow-pane.active {
+  display: block !important;
+  padding-top: .35rem;
+  overflow: visible;
+}
+
+#paperAiTab .stage19w10-workflow-pane.active > * {
+  position: relative;
+  z-index: 1;
+}
+
+#paperAiTab .document-ai-card,
+#paperAiTab .reviewer-rebuttal-card,
+#paperAiTab .real-agent-branch-card,
+#paperAiTab .competitive-review-card {
+  margin-top: .25rem !important;
+}
