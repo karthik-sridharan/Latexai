@@ -1,0 +1,139 @@
+/* Stage 19W10: right-panel workflow tabs + debug-only diagnostics cleanup. */
+:root {
+  --stage19w10-blue: #2563eb;
+  --stage19w10-green: #059669;
+  --stage19w10-border: rgba(15, 23, 42, .12);
+  --stage19w10-soft: rgba(248, 250, 252, .96);
+}
+
+body.stage19w10-clean-mode .stage19w10-debug-only,
+body.stage19w10-clean-mode #developerDiagnosticsSection,
+body.stage19w10-clean-mode #developerDiagnosticsCards > * {
+  display: none !important;
+}
+
+body.stage19w10-debug-mode #developerDiagnosticsSection {
+  display: block;
+}
+
+.right-tabs.stage19w10-primary-tabs,
+.right-tabs {
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+}
+
+.stage19w10-primary-tabs .right-tab {
+  white-space: nowrap;
+}
+
+.stage19w10-workflow-tabs {
+  display: flex;
+  gap: .4rem;
+  overflow-x: auto;
+  padding: .35rem;
+  margin: .65rem 0 .75rem;
+  border: 1px solid var(--stage19w10-border);
+  border-radius: 16px;
+  background: rgba(241, 245, 249, .78);
+  -webkit-overflow-scrolling: touch;
+}
+
+.stage19w10-workflow-tab {
+  flex: 0 0 auto;
+  min-height: 2rem;
+  padding: .45rem .7rem;
+  border: 1px solid rgba(15, 23, 42, .10);
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stage19w10-workflow-tab.active {
+  background: #ecfdf3;
+  border-color: rgba(5, 150, 105, .32);
+  color: #047857;
+  box-shadow: 0 8px 20px rgba(5, 150, 105, .08);
+}
+
+.stage19w10-workflow-pane {
+  display: none;
+  min-height: 0;
+}
+
+.stage19w10-workflow-pane.active {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  min-height: 0;
+}
+
+.stage19w10-workflow-pane > .settings-note:only-child {
+  margin-top: .5rem;
+}
+
+.stage19w10-developer-diagnostics {
+  margin-top: 1rem;
+  padding: .75rem;
+  border: 1px dashed rgba(245, 158, 11, .45);
+  border-radius: 18px;
+  background: #fffbeb;
+}
+
+.stage19w10-debug-card-host {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  margin-top: .7rem;
+}
+
+.stage19w10-debug-card-host > * {
+  background: #fff !important;
+}
+
+#copilotTab.stage19w10-local-copilot-only #reviewerRebuttalCard,
+#copilotTab.stage19w10-local-copilot-only #documentAiCard,
+#copilotTab.stage19w10-local-copilot-only #competitiveReviewCard,
+#copilotTab.stage19w10-local-copilot-only #realAgentBranchCard,
+#copilotTab.stage19w10-local-copilot-only #projectBlockContextCard,
+#copilotTab.stage19w10-local-copilot-only #contextPolicyDashboardCard,
+#copilotTab.stage19w10-local-copilot-only #paperAiDashboardCard,
+#copilotTab.stage19w10-local-copilot-only #citationAiCard,
+#copilotTab.stage19w10-local-copilot-only #citationVerifierCard {
+  display: none !important;
+}
+
+#paperAiTab .document-ai-card,
+#paperAiTab .reviewer-rebuttal-card,
+#paperAiTab .real-agent-branch-card,
+#paperAiTab .competitive-review-card,
+#literatureTab #citationAiCard,
+#literatureTab #citationVerifierCard,
+#projectTab #projectBlockContextCard {
+  margin-top: 0;
+}
+
+.stage19w10-clean-mode #paperAiDashboardCard,
+.stage19w10-clean-mode #regressionChecklistCard,
+.stage19w10-clean-mode #contextPolicyDashboardCard {
+  display: none !important;
+}
+
+.stage19w10-hidden-by-debug-policy {
+  display: none !important;
+}
+
+.stage19w10-diagnostic-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #92400e;
+  font-weight: 800;
+  margin-bottom: .35rem;
+}
+
+@media (max-width: 1280px) {
+  .stage19w10-primary-tabs .right-tab { font-size: .72rem; padding-left: .1rem; padding-right: .1rem; }
+  .right-tabs.stage19w10-primary-tabs { grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); }
+}
