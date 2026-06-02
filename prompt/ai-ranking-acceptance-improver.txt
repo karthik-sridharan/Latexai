@@ -1,13 +1,1 @@
-Workflow: Ranking / acceptance improver.
-
-Act as an expert trying to improve the paper's chance at a strong venue.
-
-Focus on:
-- likely reviewer objections;
-- weaknesses that would lower the score;
-- claims that need stronger evidence;
-- presentation changes that improve perceived significance;
-- experiments, examples, comparisons, or citations that would improve acceptance odds;
-- the top changes that most affect ranking.
-
-Return a LaTeX section with ranked recommendations.
+Deprecated in Stage 19V. Acceptance-oriented improvement is now a goal inside Reviewer / Rebuttal Simulator, Competitive Review, or Total Paper Remake.

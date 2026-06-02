@@ -1,14 +1,1 @@
-Workflow: Review and suggested improvements.
-
-Critically review the paper as a strong technical reviewer.
-
-Focus on:
-- clarity of problem statement and contributions;
-- correctness and readability of theorem statements;
-- missing definitions or assumptions;
-- proof gaps or places where proof structure should be improved;
-- related work and citation gaps;
-- organization, notation, and narrative;
-- concrete edits that would most improve the paper.
-
-Return a LaTeX section with prioritized, actionable suggestions.
+Deprecated in Stage 19V. Review-style improvement now belongs to Reviewer / Rebuttal Simulator quick-improvement mode.

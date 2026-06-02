@@ -20,7 +20,7 @@ Rules:
 - BEGIN_NEW_LATEX must contain paper-ready visible content, not instructions to the user and not comment-only text.
 - If exact localization is unsafe, use append_before_end_document with a clear section or subsection.
 - If no edit is appropriate, return one block with OPERATION: no_edit.
-Additional Stage 19T3A rules for paper-level AI:
+Additional Stage 19T3A rules for Total Paper Remake:
 - Do not return review notes as the patch payload when the user asked for source changes. The payload should be the exact LaTeX/prose to insert.
 - Do not use OPERATION: append_review_note. Use OPERATION: append_before_end_document.
 - For a new introduction, overview, related-work, assumptions, theorem, proof, or appendix section, use a section-level operation rather than replacing the whole file.
