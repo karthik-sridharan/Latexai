@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19v-ai-workflow-ui-consolidation-20260602-1';
+  const STAGE = 'latex-stage19v3-openreview-trajectory-context-retrieval-20260602-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -161,21 +161,60 @@
     return parts.join('\n\n').replace(/\s+/g, ' ').trim().slice(0, 8000);
   }
 
+  function reviewCorpusItemTypesForPhase(phase) {
+    const p = String(phase || 'reviews');
+    if (p === 'rebuttal') return ['official_review', 'meta_review', 'decision', 'record'];
+    if (p === 'final_synthesis') return ['official_review', 'rebuttal', 'meta_review', 'decision', 'comment', 'record'];
+    return ['official_review', 'meta_review', 'decision', 'record'];
+  }
+
+  function reviewCorpusTrajectoryItemTypesForPhase(phase) {
+    const p = String(phase || 'reviews');
+    if (p === 'reviews') return ['official_review', 'meta_review', 'decision'];
+    return ['official_review', 'rebuttal', 'comment', 'meta_review', 'decision'];
+  }
+
+  function compactReviewCorpusTrajectory(hit) {
+    const traj = hit?.trajectory;
+    if (!traj || !Array.isArray(traj.items) || !traj.items.length) return '';
+    const outcome = clean(traj.outcome || '');
+    const lines = [];
+    if (outcome) lines.push(`Trajectory outcome/decision: ${outcome.slice(0, 260)}`);
+    const grouped = {};
+    traj.items.forEach((it) => {
+      const type = clean(it?.type || 'comment');
+      grouped[type] = grouped[type] || [];
+      grouped[type].push(it);
+    });
+    ['official_review', 'rebuttal', 'comment', 'meta_review', 'decision'].forEach((type) => {
+      (grouped[type] || []).slice(0, type === 'official_review' ? 3 : 2).forEach((it, idx) => {
+        const title = clean(it?.title || `${type} ${idx + 1}`).slice(0, 180);
+        const text = clean(it?.text || '').slice(0, 900);
+        if (!text) return;
+        lines.push(`Trajectory ${type.replace(/_/g, ' ')}${title ? ` — ${title}` : ''}: ${text}`);
+      });
+    });
+    return lines.join('\n');
+  }
+
   function compactReviewCorpusHit(hit, index) {
     const score = Number(hit?.score || 0);
     const title = clean(hit?.title || '(untitled OpenReview paper)');
     const type = clean(hit?.itemType || hit?.kind || 'record');
     const itemTitle = clean(hit?.itemTitle || '');
     const authors = Array.isArray(hit?.authors) ? hit.authors.slice(0, 6).join(', ') : '';
-    const outcome = clean(hit?.metadata?.record?.outcome || hit?.metadata?.outcome || '');
-    const snippet = clean(hit?.snippet || '').slice(0, 1400);
+    const outcome = clean(hit?.metadata?.record?.outcome || hit?.metadata?.outcome || hit?.trajectory?.outcome || '');
+    const snippet = clean(hit?.snippet || '').slice(0, 1000);
+    const trajectory = compactReviewCorpusTrajectory(hit);
     return [
       `[R${index + 1}] ${title}`,
       `Type: ${type}${itemTitle ? ` / ${itemTitle}` : ''}`,
       `Similarity: ${Number.isFinite(score) ? score.toFixed(3) : 'n/a'}`,
       authors ? `Authors: ${authors}` : '',
       outcome ? `Outcome/meta: ${outcome.slice(0, 220)}` : '',
-      snippet ? `Excerpt: ${snippet}` : ''
+      snippet ? `Matched excerpt: ${snippet}` : '',
+      trajectory ? `Sibling review/rebuttal trajectory:
+${trajectory}` : ''
     ].filter(Boolean).join('\n');
   }
 
@@ -188,7 +227,7 @@
     if (!hits.length) return 'Review/rebuttal corpus retrieval returned no examples.';
     return [
       'Review/rebuttal corpus context from OpenReview-like trajectories:',
-      'Use these as examples of realistic reviewer concerns, author-response strategies, meta-review/decision signals, and paper-revision patterns. Do not copy text verbatim. Do not reveal reviewer identities. Cite examples as [R1], [R2], etc. when useful.',
+      'Use these as examples of realistic reviewer concerns, author-response strategies, meta-review/decision signals, and paper-revision patterns. When a sibling trajectory is present, prefer the pattern reviewer concern -> author response -> meta-review/decision signal over isolated snippets. Do not copy text verbatim. Do not reveal reviewer identities. Cite examples as [R1], [R2], etc. when useful.',
       '',
       ...hits.map(compactReviewCorpusHit)
     ].join('\n\n');
@@ -211,7 +250,12 @@
         body: JSON.stringify({
           query,
           topK: payload.reviewCorpusTopK || reviewCorpusTopK(),
-          itemTypes: payload.reviewCorpusItemTypes || []
+          itemTypes: payload.reviewCorpusItemTypes || reviewCorpusItemTypesForPhase(phase),
+          includeTrajectory: true,
+          trajectoryItemTypes: reviewCorpusTrajectoryItemTypesForPhase(phase),
+          trajectoryMaxItems: 10,
+          trajectoryMaxCharsPerItem: 1200,
+          phase
         })
       });
       const text = await response.text().catch(() => '');
