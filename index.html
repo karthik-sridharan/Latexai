@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19w1-w7-block-context-mcts-bundle-20260602-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19t-knowledge-aware-review-agents-20260530-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -67,7 +67,7 @@
 <link rel="stylesheet" href="css/lai-stage17ef-ai-reports-browser.css?v=stage17ef-unified-ai-reports-browser-1" />
 <link rel="stylesheet" href="css/lai-stage17i-ai-routing-inspector.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
 <link rel="stylesheet" href="css/lai-stage17j-right-panel-sections.css?v=stage17u-right-panel-horizontal-review-scroll-1" />
-<link rel="stylesheet" href="css/lai-stage19n0-real-agent-branch-workflow.css?v=stage19t2s-end-to-end-regression-audit-panel-1" />
+<link rel="stylesheet" href="css/lai-stage19n0-real-agent-branch-workflow.css?v=stage19n1r4-devils-release-hardening-verifier-1" />
 <link rel="stylesheet" href="css/lai-stage15f-backend-diagnostics.css?v=stage15f-backend-diagnostics-dashboard-1" />
 <link rel="stylesheet" href="css/lai-stage15g-model-routing.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
 <link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
@@ -77,7 +77,7 @@
 <script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="stage19w1-w7-block-context-mcts-bundle-20260602-1">
+<div class="app-shell" data-stage="stage19n1n-source-scanned-lai-resolver-20260529-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -89,7 +89,6 @@
     <div class="top-actions">
       <button id="newProjectBtn" class="btn ghost" type="button">New project</button>
       <button id="openGithubProjectBtn" class="btn ghost" type="button">Open GitHub</button>
-      <a id="literatureAssistantBtn" class="btn ghost" href="literature.html" target="_blank" rel="noopener">Literature Assistant</a>
       <button id="saveProjectBtn" class="btn ghost" type="button">Save local</button>
       <button id="importFilesBtn" class="btn ghost" type="button">Import</button>
       <button id="exportZipBtn" class="btn ghost" type="button">Export zip</button>
@@ -268,20 +267,6 @@
           </div>
           <label class="field">Paper goal / intended contribution <input id="reviewerSimGoal" type="text" placeholder="Optional: what the paper is trying to establish" /></label>
           <label class="field">Global review instructions <textarea id="reviewerSimInstructions" rows="2" placeholder="Optional: ask reviewers to be very critical, focus on theory, compare to a venue, etc."></textarea></label>
-          <div class="settings-card-subtle knowledge-context-controls" data-knowledge-feature="reviewerSim">
-            <div class="field-grid two">
-              <label class="field checkbox-field"><input id="reviewerSimUseKnowledge" type="checkbox" /> Use knowledge/literature context</label>
-              <label class="field">Knowledge topK <input id="reviewerSimKnowledgeTopK" type="number" min="1" max="12" step="1" value="5" /></label>
-            </div>
-            <div id="reviewerSimKnowledgeStatus" class="settings-note compact">Knowledge/literature context is off. Enable it to retrieve relevant ingested-library papers before reviewers run.</div>
-          </div>
-          <div class="settings-card-subtle review-corpus-context-controls">
-            <div class="field-grid two compact">
-              <label class="field checkbox-field"><input id="reviewerSimUseReviewCorpus" type="checkbox" /> Use OpenReview review/rebuttal corpus context</label>
-              <label class="field">Review corpus topK <input id="reviewerSimReviewCorpusTopK" type="number" min="1" max="12" step="1" value="5" /></label>
-            </div>
-            <div id="reviewerSimReviewCorpusStatus" class="settings-note compact">Review/rebuttal corpus context is off.</div>
-          </div>
           <div id="reviewerSimRows" class="devils-agent-grid"></div>
           <label class="field">Your rebuttal guidance after reading reviews <textarea id="reviewerSimRebuttalGuidance" rows="3" placeholder="Optional: tell the rebuttal agent what to concede, defend, emphasize, or promise to revise."></textarea></label>
           <div class="devils-actions">
@@ -292,7 +277,7 @@
             <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>
             <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>
           </div>
-          <div class="settings-note">Stage 19U9L2 keeps reviewer/rebuttal workflows memory-scoped and can optionally use OpenReview review/rebuttal corpus examples for realistic reviewer concerns and author-response strategies. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
+          <div class="settings-note">Stage 18Y keeps reviewer/rebuttal workflows memory-scoped, uses a separate Settings-tab memory backend URL, and silently extracts notation/citation/reviewer-concern memories. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
           <div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator loading...</div>
           <pre id="reviewerRebuttalOutput" class="devils-output"></pre>
         </div>
@@ -462,7 +447,7 @@
 <script src="js/source-display-sync.js?v=stage8b-source-display-sync-fix-1" defer></script>
 <script src="js/patch-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/patch-manager.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
-<script src="js/copilot.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
+<script src="js/copilot.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1" defer></script>
 <script src="js/selection-action-bubble.js?v=stage7c-move-selection-bubble-left-1" defer></script>
 <script src="js/diagnostics.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
 <script src="js/main.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
@@ -471,14 +456,11 @@
 <script src="js/asset-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
 <script src="js/tikz-maker-service.js?v=stage9h-tikz-cursor-regex-fix-1" defer></script>
 <script src="js/image-to-tikz-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
-<script src="js/lai-safe-edit-pipeline-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
-<script src="js/knowledge-context-service.js?v=stage19u9k-paper-ai-collection-context-wiring-1" defer></script>
-<script src="js/collection-synthesis-paper-ai-service.js?v=stage19u9k-paper-ai-collection-context-wiring-1" defer></script>
-<script src="js/document-ai-service.js?v=stage19v2-document-ai-outmode-startup-fix-20260602-1" defer></script>
+<script src="js/document-ai-service.js?v=stage19n1n-source-scanned-lai-resolver-1" defer></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage16a-paper-ai-workflow-polish-1"></script>
-<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1"></script>
+<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19i11-ai-workflow-memory-wiring-completion-1"></script>
 <script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
-<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19w1-w7-block-context-mcts-bundle-20260602-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
 <script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
 <script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
@@ -496,7 +478,7 @@
 <script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
 <script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
-<script src="js/real-agent-branch-workflow-service.js?v=stage19t2s-end-to-end-regression-audit-panel-1" defer></script>
+<script src="js/real-agent-branch-workflow-service.js?v=stage19t-knowledge-aware-review-agents-1" defer></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 <script id="stage18a-right-panel-organizer-fallback">
 /* LATEXAI_STAGE18A_RIGHT_PANEL_ORGANIZER_FALLBACK_LOADER: load organizer if the feature loader cache, saved flags, or older deployed query string are stale. */
@@ -525,7 +507,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
 (function () {
-  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19w1-w7-block-context-mcts-bundle-20260602-1';
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1';
   function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
   function card() { return document.getElementById('reviewerRebuttalCard'); }
   function tryInit() {
@@ -582,7 +564,7 @@ window.addEventListener('DOMContentLoaded', function () {
   function loadFresh() {
     if (card()) return;
     var s = document.createElement('script');
-    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19w1-w7-block-context-mcts-bundle-20260602-1' + Date.now();
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1' + Date.now();
     s.defer = true;
     s.dataset.loadedBy = 'stage18q5-watchdog';
     s.onload = function () { setTimeout(init, 100); };
@@ -601,6 +583,5 @@ window.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 
-<script src="js/project-block-context-service.js?v=stage19w1-w7-block-context-mcts-bundle-20260602-1" defer></script>
 </body>
 </html>
