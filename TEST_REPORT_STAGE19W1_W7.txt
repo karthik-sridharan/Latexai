@@ -1,0 +1,29 @@
+LatexAI Stage 19W1-W7 Test Report
+=================================
+Stage marker: latex-stage19w1-w7-block-context-mcts-bundle-20260602-1
+
+Backend tests run:
+- python3 -m py_compile main.py
+- FastAPI TestClient suite:
+  - GET /api/lumina/project-blocks/status
+  - POST /api/lumina/project-blocks/analyze
+  - POST /api/lumina/project-blocks/match
+  - POST /api/lumina/project-blocks/citation-suggestions
+  - POST /api/lumina/project-blocks/related-work-rewrite
+  - POST /api/lumina/context-bundles/log
+  - POST /api/lumina/mcts/selfplay/run
+  - GET /api/lumina/mcts/selfplay/runs
+
+Frontend tests run:
+- node --check js/project-block-context-service.js
+- node --check js/reviewer-rebuttal-simulator-service.js
+- static check: index.html references js/project-block-context-service.js
+- static check: frontend stage marker updated
+
+Backend test result:
+ALL_BACKEND_STAGE19W_TESTS_PASSED
+
+Notes:
+- The backend test used deterministic local hash embedding fallback because no OpenAI key is available in the test container.
+- In production, if OPENAI_API_KEY is set, project block embeddings use the configured OpenAI embedding model.
+- Citation suggestions can be zero when the literature library is empty; this is expected in a clean test environment.
