@@ -9,7 +9,7 @@
 
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19v-ai-workflow-ui-consolidation-20260602-1';
+  const STAGE = 'latex-stage19v2-document-ai-outmode-startup-fix-20260602-1';
   // Stage 11G behavior: preserving old content in blue via \\laiold{...}.
 
   const PROMPT_BASE = 'prompt/';
@@ -845,6 +845,7 @@
 
   function updateActionLabels() {
     const mode = documentAiInsertionModeValue();
+    const outMode = documentAiOutputMode();
     const apply = el('appendDocumentAiBtn');
     const runApply = el('runAppendDocumentAiBtn');
     if (apply) apply.textContent = mode === 'inplace' ? 'Apply localized edits' : 'Append remake block';
