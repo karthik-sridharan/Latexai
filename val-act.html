@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LatexAI value/action policy lab</title>
+  <style>
+    :root { color-scheme: light; --bg:#f5f6f8; --card:#ffffff; --ink:#101828; --muted:#667085; --line:#d0d5dd; --blue:#2563eb; --green:#039855; --red:#b42318; --amber:#b54708; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+    header { padding: 18px 22px; background:#111827; color:white; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+    header h1 { margin:0; font-size:20px; }
+    header .stage { color:#cbd5e1; font-size:12px; }
+    main { max-width: 1380px; margin: 18px auto 60px; padding: 0 16px; display:grid; grid-template-columns: 380px 1fr; gap:16px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+    .card h2 { margin:0 0 10px; font-size:17px; }
+    .card h3 { margin:18px 0 8px; font-size:14px; color:#344054; }
+    label { display:block; font-size:12px; color:#475467; margin: 11px 0 5px; }
+    input, select, textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:9px 10px; font:inherit; background:white; }
+    textarea { min-height:78px; resize:vertical; }
+    button { border:1px solid var(--line); border-radius:10px; padding:9px 12px; font-weight:650; background:white; color:#344054; cursor:pointer; }
+    button.primary { background:var(--blue); border-color:var(--blue); color:white; }
+    button.good { background:#ecfdf3; border-color:#abefc6; color:#027a48; }
+    button.warn { background:#fffbeb; border-color:#fedf89; color:#92400e; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .row > * { flex:1; }
+    .hint { color:var(--muted); font-size:12px; line-height:1.45; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { white-space:pre-wrap; word-break:break-word; background:#0b1220; color:#e5e7eb; border-radius:12px; padding:12px; max-height:520px; overflow:auto; font-size:12px; }
+    .pill { display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:999px; border:1px solid var(--line); color:#475467; font-size:12px; background:#f9fafb; margin:3px 4px 3px 0; }
+    .pill.good { color:#027a48; border-color:#abefc6; background:#ecfdf3; }
+    .pill.warn { color:#92400e; border-color:#fedf89; background:#fffbeb; }
+    .pill.bad { color:#b42318; border-color:#fecdca; background:#fef3f2; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .result { border:1px solid var(--line); background:#fcfcfd; border-radius:12px; padding:12px; margin:10px 0; }
+    .scorebar { height:8px; background:#eaecf0; border-radius:999px; overflow:hidden; margin-top:6px; }
+    .scorebar span { display:block; height:100%; background:#2563eb; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { border-bottom:1px solid #eaecf0; padding:8px; text-align:left; vertical-align:top; }
+    th { color:#475467; font-size:12px; }
+    .rightcol { display:flex; flex-direction:column; gap:16px; }
+    @media (max-width: 980px) { main { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>LatexAI value/action policy lab</h1>
+      <div class="stage">Stage 19W12 — OpenReview-derived value/action policy foundation</div>
+    </div>
+    <div class="stage mono" id="stageLabel">not connected</div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Backend + data</h2>
+      <label>Backend URL</label>
+      <input id="backendUrl" placeholder="https://your-cloud-run-url" />
+      <div class="row" style="margin-top:10px">
+        <button id="saveBackend">Save URL</button>
+        <button id="statusBtn" class="primary">Status</button>
+      </div>
+      <p class="hint">This lab trains the first baseline value/action policy from the OpenReview review corpus already stored in Neon/Postgres or JSON fallback.</p>
+      <h3>Dataset builder</h3>
+      <label>Venue filter (optional)</label>
+      <input id="venueId" placeholder="ICLR.cc/2024/Conference" />
+      <div class="grid2">
+        <div><label>Year filter</label><input id="year" placeholder="2024" /></div>
+        <div><label>Max records</label><input id="maxRecords" type="number" min="1" max="5000" value="500" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="buildDataset" class="primary">Build dataset</button>
+        <button id="trainModels" class="good">Train models</button>
+      </div>
+      <h3>Leakage guard</h3>
+      <div class="hint">
+        <div><b>t0</b>: paper only</div>
+        <div><b>t1</b>: paper + official reviews</div>
+        <div><b>t2</b>: paper + reviews + rebuttal</div>
+        <div><b>t3</b>: paper + reviews + rebuttal + meta-review/discussion; decision excluded</div>
+      </div>
+      <h3>Ad-hoc prediction</h3>
+      <label>State stage</label>
+      <select id="stateStage"><option value="t0">t0 paper only</option><option value="t1" selected>t1 paper + reviews</option><option value="t2">t2 + rebuttal</option><option value="t3">t3 + meta/discussion</option></select>
+      <label>Paper title</label><input id="predTitle" placeholder="Paper title" />
+      <label>Paper abstract / summary</label><textarea id="predAbstract" placeholder="Abstract or draft summary"></textarea>
+      <label>Reviews (one or more, separated by blank lines)</label><textarea id="predReviews" placeholder="Reviewer concerns"></textarea>
+      <label>Rebuttal / response (optional)</label><textarea id="predRebuttal" placeholder="Author response"></textarea>
+      <label>Meta-review / discussion (optional)</label><textarea id="predMeta" placeholder="Meta-review or discussion"></textarea>
+      <button id="predictBtn" class="primary" style="margin-top:10px">Predict value + actions</button>
+    </section>
+    <section class="rightcol">
+      <div class="card">
+        <h2>Summary</h2>
+        <div id="summary" class="hint">Click Status, Build Dataset, or Train Models.</div>
+      </div>
+      <div class="card">
+        <h2>Recommended actions</h2>
+        <div id="actionsBox" class="hint">No predictions yet.</div>
+      </div>
+      <div class="card">
+        <h2>Action taxonomy</h2>
+        <div class="row"><button id="taxonomyBtn">Load taxonomy</button><button id="examplesBtn">Load examples</button></div>
+        <div id="taxonomyBox" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <h2>Raw response</h2>
+        <pre id="raw">{}</pre>
+      </div>
+    </section>
+  </main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DEFAULT_BACKEND = localStorage.getItem('luminaBackendUrl') || localStorage.getItem('latexaiBackendUrl') || '';
+  $('backendUrl').value = DEFAULT_BACKEND;
+  function base() { return ($('backendUrl').value || '').replace(/\/+$/, ''); }
+  function showRaw(obj) { $('raw').textContent = JSON.stringify(obj, null, 2); }
+  function setSummary(html) { $('summary').innerHTML = html; }
+  async function api(path, opts={}) {
+    const url = base() + path;
+    const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...opts });
+    const txt = await res.text();
+    let json;
+    try { json = JSON.parse(txt); } catch { json = { ok:false, status:res.status, text:txt }; }
+    if (!res.ok) throw new Error(json.detail || json.error || txt || ('HTTP '+res.status));
+    return json;
+  }
+  function pills(items, kind='') { return (items||[]).map(x => `<span class="pill ${kind}">${String(x)}</span>`).join(' '); }
+  function blankSplit(s) { return String(s || '').split(/\n\s*\n/g).map(x=>x.trim()).filter(Boolean); }
+  $('saveBackend').onclick = () => { localStorage.setItem('luminaBackendUrl', base()); localStorage.setItem('latexaiBackendUrl', base()); setSummary('Saved backend URL.'); };
+  $('statusBtn').onclick = async () => {
+    try {
+      const j = await api('/api/lumina/val-act/status');
+      $('stageLabel').textContent = j.stage || j.valActStage || 'connected';
+      setSummary(`<b>Status OK</b><br>review records: ${j.reviewRecordCount}<br>datasets: ${j.datasetCount}<br>models: ${j.modelCount}<br>latest dataset: <span class="mono">${j.latestDatasetId || ''}</span><br>latest model: <span class="mono">${j.latestModelId || ''}</span>`);
+      showRaw(j);
+    } catch (e) { setSummary(`<span style="color:var(--red)">${e.message}</span>`); showRaw({error:e.message}); }
+  };
+  $('buildDataset').onclick = async () => {
+    try {
+      setSummary('Building dataset...');
+      const body = { venueId:$('venueId').value, year:$('year').value, maxRecords:Number($('maxRecords').value||500), includeSamples:true };
+      const j = await api('/api/lumina/val-act/build-dataset', { method:'POST', body:JSON.stringify(body) });
+      const d = j.dataset || {};
+      setSummary(`<b>Dataset built</b><br>id: <span class="mono">${d.datasetId}</span><br>records considered: ${d.recordCountConsidered}<br>samples: ${d.sampleCount}<br>action samples: ${d.actionSampleCount}<br>unknown outcomes skipped: ${d.skippedUnknownOutcome}<br>${pills(Object.entries(d.countsByStage||{}).map(([k,v])=>k+': '+v),'good')}`);
+      showRaw(j);
+    } catch (e) { setSummary(`<span style="color:var(--red)">${e.message}</span>`); showRaw({error:e.message}); }
+  };
+  $('trainModels').onclick = async () => {
+    try {
+      setSummary('Training baseline value/action networks...');
+      const body = { venueId:$('venueId').value, year:$('year').value, maxRecords:Number($('maxRecords').value||500) };
+      const j = await api('/api/lumina/val-act/train', { method:'POST', body:JSON.stringify(body) });
+      const m = j.model || {};
+      const val = Object.entries(m.valueModels || {}).map(([k,v]) => `${k}: ${v.ok ? 'acc '+v.trainAccuracy+' / n='+(v.positiveCount+v.negativeCount) : v.reason}`).join('<br>');
+      setSummary(`<b>Models trained</b><br>model: <span class="mono">${m.modelId}</span><br>samples: ${m.sampleCount}<br>action samples: ${m.actionSampleCount}<br>trained actions: ${(m.actionModel||{}).trainedActionCount || 0}<br><br>${val}`);
+      showRaw(j);
+    } catch (e) { setSummary(`<span style="color:var(--red)">${e.message}</span>`); showRaw({error:e.message}); }
+  };
+  $('predictBtn').onclick = async () => {
+    try {
+      $('actionsBox').innerHTML = 'Predicting...';
+      const body = { stateStage:$('stateStage').value, title:$('predTitle').value, abstract:$('predAbstract').value, reviews:blankSplit($('predReviews').value), rebuttals:blankSplit($('predRebuttal').value), metaReview:$('predMeta').value, topK:10 };
+      const j = await api('/api/lumina/val-act/predict', { method:'POST', body:JSON.stringify(body) });
+      const actions = j.recommendedActions || [];
+      $('actionsBox').innerHTML = actions.length ? actions.map(a => `<div class="result"><b>${a.label || a.actionId}</b> <span class="pill">${a.family || ''}</span><div class="hint">${a.description || ''}</div><div class="scorebar"><span style="width:${Math.round(100*(a.score||0))}%"></span></div><div class="hint">score ${(a.score||0).toFixed ? (a.score||0).toFixed(3) : a.score}</div></div>`).join('') : 'No trained action recommendations for this state.';
+      setSummary(`<b>Prediction</b><br>state: ${j.stateStage}<br>current value: ${j.currentValue == null ? 'n/a' : j.currentValue}<br>values: ${Object.entries(j.valueByStage||{}).map(([k,v])=>k+': '+v).join(', ')}`);
+      showRaw(j);
+    } catch (e) { $('actionsBox').innerHTML = `<span style="color:var(--red)">${e.message}</span>`; showRaw({error:e.message}); }
+  };
+  $('taxonomyBtn').onclick = async () => {
+    try {
+      const j = await api('/api/lumina/val-act/action-taxonomy');
+      const rows = (j.actions||[]).map(a => `<tr><td><span class="mono">${a.id}</span></td><td>${a.family}</td><td>${a.label}<br><span class="hint">${a.description}</span></td></tr>`).join('');
+      $('taxonomyBox').innerHTML = `<table><thead><tr><th>Action</th><th>Family</th><th>Meaning</th></tr></thead><tbody>${rows}</tbody></table>`;
+      showRaw(j);
+    } catch(e) { $('taxonomyBox').innerHTML = `<span style="color:var(--red)">${e.message}</span>`; }
+  };
+  $('examplesBtn').onclick = async () => {
+    try {
+      const j = await api('/api/lumina/val-act/examples?limit=20');
+      const rows = (j.examples||[]).map(ex => `<tr><td>${ex.stage}<br><span class="hint">${ex.outcomeLabel}</span></td><td>${ex.title || ''}<br><span class="hint mono">${ex.recordId || ''}</span></td><td>${pills(ex.issueLabels || [], 'warn')}</td><td>${pills(ex.actionLabels || [], 'good')}</td></tr>`).join('');
+      $('taxonomyBox').innerHTML = `<table><thead><tr><th>Stage</th><th>Paper</th><th>Issues</th><th>Inferred actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+      showRaw(j);
+    } catch(e) { $('taxonomyBox').innerHTML = `<span style="color:var(--red)">${e.message}</span>`; }
+  };
+})();
+</script>
+</body>
+</html>
