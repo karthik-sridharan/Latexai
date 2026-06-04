@@ -317,3 +317,22 @@ body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #realAgentBr
 body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #competitiveReviewCard .section-head {
   opacity: .72;
 }
+
+
+/* Stage 19W14C: hide legacy/internal Paper AI engine cards by default.
+   The unified Paper AI panel is now the only normal Paper AI surface; the
+   old Reviewer/Rebuttal, Devil's Advocate, Competitive, and Total Remake
+   cards remain mounted only so their services can be routed internally. */
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #documentAiCard,
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #reviewerRebuttalCard,
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #realAgentBranchCard,
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #competitiveReviewCard {
+  display: none !important;
+}
+
+.stage19w14-unified-paper-ai-pane > #reviewerRebuttalCard:not(.stage19w14-engine-hidden),
+.stage19w14-unified-paper-ai-pane > #documentAiCard:not(.stage19w14-engine-hidden),
+.stage19w14-unified-paper-ai-pane > #realAgentBranchCard:not(.stage19w14-engine-hidden),
+.stage19w14-unified-paper-ai-pane > #competitiveReviewCard:not(.stage19w14-engine-hidden) {
+  margin-top: .85rem !important;
+}
