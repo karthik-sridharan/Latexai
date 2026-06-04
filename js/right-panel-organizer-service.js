@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w18-audit-paperai-figures-presentation-tabs-20260604-1';
+  const STAGE = 'latex-stage19w19-paper-ai-audit-subtabs-cleanup-20260604-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -744,8 +744,12 @@
   }
 
   function normalizeBulkTabs(tab = 'all') {
-    if (tab === 'copilot' || tab === 'settings') return [tab];
-    return ['copilot', 'settings'];
+    // Stage 19W19: Audit AI has its own explicit subtabs.  Do not let the
+    // legacy right-panel organizer create Copilot/Audit drawers that can steal
+    // Audit AI Edits into History / Comments or leave empty shells.
+    if (tab === 'copilot') return [];
+    if (tab === 'settings') return ['settings'];
+    return ['settings'];
   }
 
   function setAllGroupsOne(tab, open) {
@@ -786,7 +790,7 @@
 
   function organize(tab = null) {
     clearLegacyForcedState();
-    const tabs = tab ? normalizeBulkTabs(tab) : ['copilot', 'settings'];
+    const tabs = tab ? normalizeBulkTabs(tab) : ['settings'];
 
     for (const t of tabs) {
       const panel = panelFor(t);

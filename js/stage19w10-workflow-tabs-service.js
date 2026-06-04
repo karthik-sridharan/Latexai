@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w18-audit-paperai-figures-presentation-tabs-20260604-1';
+  const STAGE = 'latex-stage19w19-paper-ai-audit-subtabs-cleanup-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
 
@@ -306,7 +306,7 @@
     box.id = 'stage19w14UnifiedPaperAiControls';
     box.className = 'stage19w14-unified-paper-ai-card settings-card-subtle';
     box.innerHTML = [
-      '<div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Goal-driven paper improver</h2></div></div>',
+      '<div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Goal-driven Paper AI</h2></div></div>',
       '<p class="settings-note compact">One unified Paper AI workflow. Choose an objective, scope, review/debate depth, and output mode. Report + edits and edits-only modes require safe <code>\\laiold</code>/<code>\\lai</code> edit proposals.</p>',
       '<div class="field-grid two compact">',
       '  <label class="field">Objective',
@@ -503,6 +503,23 @@
     el('copilotTab')?.classList.add('stage19w10-local-copilot-only');
   }
 
+  function normalizePaperAiSurface() {
+    const paper = el('paperAiTab');
+    const card = el('stage19w14UnifiedPaperAiControls');
+    if (paper) {
+      const directHead = q(':scope > .section-head.compact', paper);
+      const directNote = q(':scope > .settings-note.compact', paper);
+      if (directHead) directHead.classList.add('stage19w19-paper-ai-shell-heading-hidden');
+      if (directNote) directNote.classList.add('stage19w19-paper-ai-shell-note-hidden');
+    }
+    if (card) {
+      const small = q(':scope > .section-head .smallcaps', card);
+      const h2 = q(':scope > .section-head h2', card);
+      if (small) small.textContent = 'Paper AI';
+      if (h2) h2.textContent = 'Goal-driven Paper AI';
+    }
+  }
+
   function normalizeLabels() {
     const stageBadge = el('stageBadge');
     if (stageBadge) stageBadge.textContent = STAGE;
@@ -511,7 +528,7 @@
     const copilotSmall = q('#copilotTab .section-head .smallcaps');
     if (copilotSmall) copilotSmall.textContent = 'AI Copilot';
     const paperHeading = q('#paperAiTab .section-head h2');
-    if (paperHeading) paperHeading.textContent = 'Goal-driven Improver';
+    if (paperHeading) paperHeading.textContent = 'Paper AI';
     const paperSmall = q('#paperAiTab .section-head .smallcaps');
     if (paperSmall) paperSmall.textContent = 'Paper AI';
   }
@@ -541,6 +558,7 @@
     installPrimaryTabMemory();
     normalizeLabels();
     moveWorkflowCards();
+    normalizePaperAiSurface();
     moveDiagnostics();
   }
 

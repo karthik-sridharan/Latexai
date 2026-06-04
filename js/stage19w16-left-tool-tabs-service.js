@@ -5,9 +5,10 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w18-audit-paperai-figures-presentation-tabs-20260604-1';
+  const STAGE = 'latex-stage19w19-paper-ai-audit-subtabs-cleanup-20260604-1';
   const STORAGE_LEFT_TAB = 'latexai:stage19w16:left-tool-tab';
   const STORAGE_RIGHT_TAB = 'latexai:stage19w16:right-output-tab';
+  const STORAGE_AUDIT_SUBTAB = 'latexai:stage19w19:audit-ai-subtab';
 
   function el(id) { return D.getElementById(id); }
   function q(sel, root) { return (root || D).querySelector(sel); }
@@ -122,11 +123,78 @@
     return panel;
   }
 
+  function removeLegacyCopilotOrganizer(copilot) {
+    if (!copilot) return;
+    const toolbar = el('rightPanelOrganizerToolbar-copilot');
+    if (toolbar) toolbar.remove();
+    qa('.right-panel-group[data-group-tab="copilot"]', copilot).forEach((group) => {
+      const body = q('.right-panel-group-body', group);
+      if (body) {
+        ['paperAiPolishCard', 'aiCommentsCard', 'aiRevisionCard', 'aiReportBrowserCard'].forEach((id) => {
+          const c = el(id);
+          if (c && body.contains(c)) copilot.appendChild(c);
+        });
+      }
+      group.remove();
+    });
+  }
+
+  function ensureAuditAiShell(copilot) {
+    let shell = el('stage19w19AuditAiShell');
+    if (!shell) {
+      shell = make('div', { id: 'stage19w19AuditAiShell', class: 'stage19w19-audit-ai-shell' });
+      shell.innerHTML = [
+        '<div class="stage19w19-audit-tabs" role="tablist" aria-label="Audit AI sections">',
+        '  <button class="stage19w19-audit-tab active" type="button" data-audit-subtab="edits">Audit AI Edits</button>',
+        '  <button class="stage19w19-audit-tab" type="button" data-audit-subtab="history">History / Comments</button>',
+        '</div>',
+        '<section id="stage19w19AuditEditsPanel" class="stage19w19-audit-panel active" data-audit-panel="edits" role="tabpanel" aria-label="Audit AI Edits"></section>',
+        '<section id="stage19w19AuditHistoryPanel" class="stage19w19-audit-panel" data-audit-panel="history" role="tabpanel" aria-label="History and comments"></section>'
+      ].join('');
+      const head = q(':scope > .section-head.compact', copilot);
+      if (head && head.nextSibling) copilot.insertBefore(shell, head.nextSibling);
+      else copilot.insertBefore(shell, copilot.firstChild);
+    } else if (shell.parentElement !== copilot) {
+      const head = q(':scope > .section-head.compact', copilot);
+      if (head && head.nextSibling) copilot.insertBefore(shell, head.nextSibling);
+      else copilot.insertBefore(shell, copilot.firstChild);
+    }
+    if (shell.dataset.stage19w19Bound !== 'true') {
+      shell.dataset.stage19w19Bound = 'true';
+      qa('[data-audit-subtab]', shell).forEach((btn) => {
+        btn.addEventListener('click', () => activateAuditAiSubtab(btn.dataset.auditSubtab || 'edits'), true);
+      });
+    }
+    return shell;
+  }
+
+  function activateAuditAiSubtab(name) {
+    const shell = el('stage19w19AuditAiShell');
+    if (!shell) return;
+    const next = name === 'history' ? 'history' : 'edits';
+    qa('[data-audit-subtab]', shell).forEach((btn) => {
+      const active = (btn.dataset.auditSubtab || 'edits') === next;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    qa('[data-audit-panel]', shell).forEach((panel) => {
+      const active = (panel.dataset.auditPanel || 'edits') === next;
+      panel.classList.toggle('active', active);
+      if (active) panel.removeAttribute('aria-hidden'); else panel.setAttribute('aria-hidden', 'true');
+    });
+    try { localStorage.setItem(STORAGE_AUDIT_SUBTAB, next); } catch (_e) {}
+  }
+
   function ensureAuditInCopilotPanel() {
     const copilot = el('copilotTab') || el('leftCopilotTab');
     if (!copilot) return null;
     copilot.dataset.stage19w17AuditHome = 'true';
-    copilot.classList.add('stage19w18-audit-ai-only');
+    copilot.classList.add('stage19w18-audit-ai-only', 'stage19w19-audit-ai-tab');
+
+    const headSmall = q(':scope > .section-head.compact .smallcaps', copilot);
+    const headTitle = q(':scope > .section-head.compact h2', copilot);
+    if (headSmall) headSmall.textContent = 'Audit AI';
+    if (headTitle) headTitle.textContent = 'Audit AI';
 
     // Hide the old core Copilot prompt controls.  The direct no-review use case
     // is now handled by Paper AI with Review/debate rounds = -1.
@@ -143,33 +211,40 @@
     const oldNote = q(':scope > .settings-note', copilot);
     if (oldNote) oldNote.classList.add('stage19w18-core-copilot-hidden');
 
-    let auditWrap = el('stage19w17CopilotAuditWrap');
-    if (!auditWrap) {
-      auditWrap = make('div', { id: 'stage19w17CopilotAuditWrap', class: 'stage19w17-copilot-audit-wrap' });
-      auditWrap.appendChild(make('div', { class: 'section-head compact' }, '<div><div class="smallcaps">Audit AI Edits</div><h2>Review and resolve AI edits</h2></div>'));
-      auditWrap.appendChild(make('div', { class: 'settings-note compact stage19w16-tool-note' }, 'Review, accept, reject, repair, and clean up <code>\\lai</code> / <code>\\laiold</code> edits. Direct prompting/editing now lives in Paper AI with review/debate rounds set to −1.'));
-    }
+    removeLegacyCopilotOrganizer(copilot);
+    const shell = ensureAuditAiShell(copilot);
+    const editsPanel = el('stage19w19AuditEditsPanel');
+    const historyPanel = el('stage19w19AuditHistoryPanel');
 
-    if (auditWrap.parentElement !== copilot) copilot.appendChild(auditWrap);
+    // Remove stale wrapper headings from the previous Audit AI layout after
+    // rescuing any cards that may have been nested inside them.
+    ['stage19w17CopilotAuditWrap', 'stage19w18AuditHistoryWrap'].forEach((id) => {
+      const wrap = el(id);
+      if (!wrap) return;
+      ['paperAiPolishCard', 'aiCommentsCard', 'aiRevisionCard', 'aiReportBrowserCard'].forEach((cardId) => {
+        const c = el(cardId);
+        if (!c || !wrap.contains(c)) return;
+        if (cardId === 'paperAiPolishCard' && editsPanel) editsPanel.appendChild(c);
+        else if (historyPanel) historyPanel.appendChild(c);
+      });
+      wrap.remove();
+    });
 
     const card = el('paperAiPolishCard');
-    if (card && card.parentElement !== auditWrap) auditWrap.appendChild(card);
-
-    let historyWrap = el('stage19w18AuditHistoryWrap');
-    if (!historyWrap) {
-      historyWrap = make('div', { id: 'stage19w18AuditHistoryWrap', class: 'stage19w17-copilot-audit-wrap stage19w18-audit-history-wrap' });
-      historyWrap.appendChild(make('div', { class: 'section-head compact' }, '<div><div class="smallcaps">History / Comments</div><h2>AI edit history and comments</h2></div>'));
-    }
-    if (historyWrap.parentElement !== copilot) copilot.appendChild(historyWrap);
+    if (card && editsPanel && card.parentElement !== editsPanel) editsPanel.appendChild(card);
     ['aiCommentsCard', 'aiRevisionCard', 'aiReportBrowserCard'].forEach((id) => {
       const c = el(id);
-      if (c && c.parentElement !== historyWrap) historyWrap.appendChild(c);
+      if (c && historyPanel && c.parentElement !== historyPanel) historyPanel.appendChild(c);
     });
+
+    let saved = 'edits';
+    try { saved = localStorage.getItem(STORAGE_AUDIT_SUBTAB) || 'edits'; } catch (_e) {}
+    activateAuditAiSubtab(saved);
 
     const staleAudit = el('leftAuditTab');
     if (staleAudit) staleAudit.remove();
     qa('[data-left-tool-tab="audit"]').forEach((btn) => btn.remove());
-    return auditWrap;
+    return shell;
   }
 
   function ensurePresentationPanel(shell) {
