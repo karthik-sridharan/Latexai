@@ -1,4 +1,4 @@
-/* LatexAI Stage 19W19: left tool tabs with Audit AI, Figures, Presentation + large right preview/logs.
+/* LatexAI Stage 19W21: left tool tabs with Audit AI, Figures, Presentation + large right preview/logs.
    Goal: left panel owns navigation/tools, center editor and right preview/logs
    have Overleaf/Prism-like comparable scale. */
 :root {
@@ -316,4 +316,40 @@
 
 #stage19w19AuditHistoryPanel:empty::after {
   content: "History and comments will appear here after the revision/comment services load.";
+}
+
+
+/* Stage 19W21: top bar owns sister-app links and Compile PDF;
+   Project tab owns file/project open-save-import-export actions. */
+.stage19w21-top-app-links {
+  gap: .48rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.stage19w21-top-app-links .btn {
+  white-space: nowrap;
+}
+.stage19w21-project-actions-card {
+  order: -20;
+  background: linear-gradient(180deg, rgba(47,111,237,.08), rgba(255,255,255,.92));
+  border-color: rgba(47,111,237,.16);
+}
+.stage19w21-project-actions-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .42rem;
+}
+.stage19w21-project-actions-grid .btn {
+  width: 100%;
+  justify-content: center;
+}
+.stage19w21-project-actions-grid #newProjectBtn {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1320px) {
+  .stage19w21-top-app-links .btn {
+    padding-left: .62rem;
+    padding-right: .62rem;
+    font-size: .8rem;
+  }
 }
