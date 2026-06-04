@@ -16,7 +16,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w1-w7-block-context-mcts-bundle-20260602-1';
+  const STAGE = 'latex-stage19w14-unified-paper-ai-panel-20260604-1';
 
   // Stage 18Q5: this feature is intentionally loaded as a core visible card.
   // Do not allow stale optional-script safe-mode flags to suppress it silently.
@@ -1567,7 +1567,14 @@ ${input}` : input,
     }
     if (settings.includeEditor) {
       setStatus(`${settings.label}: running final editor/synthesis agent...`);
-      return await synthesizeFinalRevision();
+      const finalResult = await synthesizeFinalRevision();
+      const outMode = clean(el('reviewerSimEditorOutputMode')?.value) || 'report_and_edits';
+      if (finalResult?.ok && outMode !== 'report_only') {
+        setStatus(`${settings.label}: preparing safe \laiold/\lai edit preview...`);
+        await prepareReviewerFinalInsertion();
+        if (outMode === 'edits_only') setOutput(['--- Reviewer/Rebuttal safe edit preview ---', reviewerCompilerReport(lastCompiledSynthesis)].join('\n'));
+      }
+      return finalResult;
     }
     setOutput(fullReport());
     setStatus(`${settings.label} complete.`);
