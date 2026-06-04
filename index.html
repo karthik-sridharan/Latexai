@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19w20-audit-ai-header-subtab-stability-20260604-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19w21-project-actions-top-sister-app-links-20260604-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -73,13 +73,13 @@
 <link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
-<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" />
-<link rel="stylesheet" href="css/lai-stage19w16-left-tools-preview-layout.css?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" />
+<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w21-project-actions-top-sister-app-links-20260604-1" />
+<link rel="stylesheet" href="css/lai-stage19w16-left-tools-preview-layout.css?v=stage19w21-project-actions-top-sister-app-links-20260604-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
 <script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="stage19w20-audit-ai-header-subtab-stability-20260604-1">
+<div class="app-shell" data-stage="stage19w21-project-actions-top-sister-app-links-20260604-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -88,21 +88,35 @@
         <h1>Web LaTeX Editor</h1>
       </div>
     </div>
-    <div class="top-actions">
-      <button id="newProjectBtn" class="btn ghost" type="button">New project</button>
-      <button id="openGithubProjectBtn" class="btn ghost" type="button">Open GitHub</button>
+    <div class="top-actions stage19w21-top-app-links">
       <a id="literatureAssistantBtn" class="btn ghost" href="literature.html" target="_blank" rel="noopener">Literature Assistant</a>
-      <button id="saveProjectBtn" class="btn ghost" type="button">Save local</button>
-      <button id="importFilesBtn" class="btn ghost" type="button">Import</button>
-      <button id="exportZipBtn" class="btn ghost" type="button">Export zip</button>
+      <a id="reviewCorpusTopBtn" class="btn ghost" href="review.html" target="_blank" rel="noopener">Review Corpus</a>
+      <a id="valActLabTopBtn" class="btn ghost" href="val-act.html" target="_blank" rel="noopener">Value/Action Lab</a>
+      <button id="mctsLabTopBtn" class="btn ghost" type="button" data-left-tool-jump="context" title="Open Context / MCTS tools in the left panel">MCTS Lab</button>
       <button id="compileBtn" class="btn primary" type="button">Compile PDF</button>
       <button id="cancelCompileBtn" class="btn ghost hidden" type="button">Cancel compile</button>
-      <input id="importFileInput" class="hidden" type="file" multiple accept=".tex,.bib,.cls,.sty,.json,.txt,.md,.png,.jpg,.jpeg,.pdf" />
     </div>
   </header>
 
   <main class="workspace">
     <aside class="left-panel panel">
+      <section id="projectActionsCard" class="panel-section stage19w21-project-actions-card">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Project actions</div>
+            <h2>Open, save, import/export</h2>
+          </div>
+        </div>
+        <div class="micro-actions stretch stage19w21-project-actions-grid">
+          <button id="newProjectBtn" class="btn mini primary" type="button">New project</button>
+          <button id="openGithubProjectBtn" class="btn mini" type="button">Open GitHub</button>
+          <button id="saveProjectBtn" class="btn mini" type="button">Save local</button>
+          <button id="importFilesBtn" class="btn mini" type="button">Import</button>
+          <button id="exportZipBtn" class="btn mini" type="button">Export zip</button>
+        </div>
+        <input id="importFileInput" class="hidden" type="file" multiple accept=".tex,.bib,.cls,.sty,.json,.txt,.md,.png,.jpg,.jpeg,.pdf" />
+      </section>
+
       <section class="panel-section project-card">
         <div class="section-head compact">
           <div>
@@ -726,7 +740,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script src="js/project-block-context-service.js?v=stage19w12-val-act-policy-foundation-20260602-1" defer></script>
 <script src="js/context-policy-dashboard-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1" defer></script>
-<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" defer></script>
-<script src="js/stage19w16-left-tool-tabs-service.js?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" defer></script>
+<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w21-project-actions-top-sister-app-links-20260604-1" defer></script>
+<script src="js/stage19w16-left-tool-tabs-service.js?v=stage19w21-project-actions-top-sister-app-links-20260604-1" defer></script>
 </body>
 </html>
