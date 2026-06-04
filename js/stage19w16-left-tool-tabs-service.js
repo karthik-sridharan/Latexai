@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w20-audit-ai-header-subtab-stability-20260604-1';
+  const STAGE = 'latex-stage19w21-project-actions-top-sister-app-links-20260604-1';
   const STORAGE_LEFT_TAB = 'latexai:stage19w16:left-tool-tab';
   const STORAGE_RIGHT_TAB = 'latexai:stage19w16:right-output-tab';
   const STORAGE_AUDIT_SUBTAB = 'latexai:stage19w19:audit-ai-subtab';
@@ -399,6 +399,17 @@
     try { localStorage.setItem(STORAGE_LEFT_TAB, next); } catch (_e) {}
   }
 
+  function setupTopAppLinks() {
+    qa('[data-left-tool-jump]').forEach((btn) => {
+      if (btn.dataset.stage19w21Bound === 'true') return;
+      btn.dataset.stage19w21Bound = 'true';
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        activateLeftTab(btn.dataset.leftToolJump || 'project');
+      }, true);
+    });
+  }
+
   function restoreTabs() {
     let left = 'project';
     let right = 'preview';
@@ -422,6 +433,7 @@
     stageBadge();
     setupLeftTools();
     setupRightPreviewLogs();
+    setupTopAppLinks();
     patchStage19W10Api();
     restoreTabs();
   }
@@ -435,7 +447,7 @@
       let timer = null;
       const obs = new MutationObserver(() => {
         if (timer) return;
-        timer = setTimeout(() => { timer = null; setupLeftTools(); setupRightPreviewLogs(); patchStage19W10Api(); }, 100);
+        timer = setTimeout(() => { timer = null; setupLeftTools(); setupRightPreviewLogs(); setupTopAppLinks(); patchStage19W10Api(); }, 100);
       });
       obs.observe(root, { childList: true, subtree: true });
     }
