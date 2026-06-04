@@ -1,11 +1,11 @@
-// Stage 19W14C: hide legacy Reviewer/Rebuttal and engine panels behind unified Paper AI.
+// Stage 19W15: Copilot cleanup; Paper AI remains unified while Copilot exposes only local editing plus Audit AI Edits.
 (function () {
   'use strict';
 
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w14c-hide-legacy-reviewer-rebuttal-panel-20260604-1';
+  const STAGE = 'latex-stage19w15-copilot-audit-edits-cleanup-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
 

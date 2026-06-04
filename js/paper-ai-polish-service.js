@@ -1,4 +1,7 @@
-/* Latexai Stage 17O PaperAiPolishService
+/* Latexai Stage 19W15 AuditAIEditReviewService
+ * Copilot drawer cleanup: this card is now Audit AI Edits and only reviews/resolves \lai edits.
+ *
+ * Original Stage 17O PaperAiPolishService
  * Stage: stage17s-lai-insertion-safety-1
  *
  * Total Paper Remake workflow polish:
@@ -853,8 +856,8 @@
     card.innerHTML = [
       '<div class="section-head compact">',
       '  <div>',
-      '    <div class="smallcaps">Paper AI</div>',
-      '    <h2>AI edit review</h2>',
+      '    <div class="smallcaps">Audit AI Edits</div>',
+      '    <h2>Audit AI Edits</h2>',
       '  </div>',
       '</div>',
       '<p class="paper-ai-help">Review and resolve \\lai / \\laiold Total Paper Remake edits before compiling or committing.</p>',
@@ -874,12 +877,16 @@
       '  <button id="paperAiCopyReportBtn" class="btn mini" type="button">Copy report</button>',
       '</div>',
       '<label class="paper-ai-check"><input id="paperAiRunRegressionAfterApply" type="checkbox" checked /> Run regression checklist after applying</label>',
-      '<div id="paperAiPolishStatus" class="settings-note">Paper AI edit review ready.</div>',
+      '<div id="paperAiPolishStatus" class="settings-note">Audit AI Edits ready.</div>',
       '<div id="paperAiEditList" class="paper-ai-edit-list"></div>',
       '<pre id="paperAiPolishOutput" class="paper-ai-output"></pre>'
     ].join('');
 
     panel.appendChild(card);
+    try {
+      card.querySelectorAll('[data-collection-synthesis-feature="paperAiPolish"], .collection-synthesis-context').forEach((node) => node.remove());
+      card.dataset.collectionSynthesisDisabled = 'true';
+    } catch (_ignored) {}
 
     el('paperAiScanBtn')?.addEventListener('click', scan, true);
     el('paperAiScanProjectBtn')?.addEventListener('click', () => scanProject(), true);

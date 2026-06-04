@@ -1,5 +1,5 @@
-/* Latexai Stage 18Q7 RightPanelOrganizerService
- * Stage: stage17m-tab-integrity-regression-lock-1
+/* Latexai Stage 19W15 RightPanelOrganizerService
+ * Stage: stage19w15-copilot-audit-edits-cleanup-20260604-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage18x6-memory-cors-ipad-fetch-fix-20260524-1';
+  const STAGE = 'latex-stage19w15-copilot-audit-edits-cleanup-20260604-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -27,6 +27,9 @@
 
   const RIGHT_TAB_PANELS = {
     copilot: 'copilotTab',
+    paperAi: 'paperAiTab',
+    literature: 'literatureTab',
+    project: 'projectTab',
     settings: 'settingsTab',
     assets: 'assetsTab'
   };
@@ -36,14 +39,14 @@
     documentAiCard: ['copilot'],
     paperAiDashboardCard: ['copilot'],
     paperAiPolishCard: ['copilot'],
-    competitiveReviewCard: ['copilot'],
-    realAgentBranchCard: ['copilot'],
-    reviewerRebuttalCard: ['copilot'],
-    citationAiCard: ['copilot'],
-    citationVerifierCard: ['copilot'],
-    localCitationVerifierCard: ['copilot'],
-    citationVerifierPanel: ['copilot'],
-    citationAiPanel: ['copilot'],
+    competitiveReviewCard: ['paperAi'],
+    realAgentBranchCard: ['paperAi'],
+    reviewerRebuttalCard: ['paperAi'],
+    citationAiCard: ['literature'],
+    citationVerifierCard: ['literature'],
+    localCitationVerifierCard: ['literature'],
+    citationVerifierPanel: ['literature'],
+    citationAiPanel: ['literature'],
     aiCommentsCard: ['copilot'],
     presentationExportCard: ['copilot'],
     talkPackageCard: ['copilot'],
@@ -152,29 +155,11 @@
     },
     {
       tab: 'copilot',
-      key: 'paper-ai',
-      title: 'Paper AI',
+      key: 'audit-ai-edits',
+      title: 'Audit AI Edits',
       defaultOpen: true,
       cardIds: [
-        'documentAiCard',
-        'paperAiDashboardCard',
-        'paperAiPolishCard',
-        'competitiveReviewCard',
-        'realAgentBranchCard',
-        'reviewerRebuttalCard'
-      ]
-    },
-    {
-      tab: 'copilot',
-      key: 'citations',
-      title: 'Citations',
-      defaultOpen: true,
-      cardIds: [
-        'citationAiCard',
-        'citationVerifierCard',
-        'localCitationVerifierCard',
-        'citationVerifierPanel',
-        'citationAiPanel'
+        'paperAiPolishCard'
       ]
     },
     {
@@ -199,28 +184,7 @@
         'presentationMakerCard'
       ]
     },
-    {
-      tab: 'copilot',
-      key: 'figures',
-      title: 'Figures',
-      defaultOpen: false,
-      cardIds: [
-        'figureAssetCard',
-        'figuresPanel',
-        'tikzMakerCard',
-        'imageToTikzCard',
-        'figureEditorCard'
-      ]
-    },
-    {
-      tab: 'copilot',
-      key: 'other-copilot',
-      title: 'Other Copilot controls',
-      defaultOpen: true,
-      catchAll: true,
-      selectors: [],
-      cardIds: []
-    },
+
     {
       tab: 'settings',
       key: 'reports-reviews',
@@ -374,6 +338,9 @@
   function tabForPanel(panel) {
     if (!panel) return '';
     if (panel.id === 'copilotTab') return 'copilot';
+    if (panel.id === 'paperAiTab') return 'paperAi';
+    if (panel.id === 'literatureTab') return 'literature';
+    if (panel.id === 'projectTab') return 'project';
     if (panel.id === 'settingsTab') return 'settings';
     if (panel.id === 'assetsTab') return 'assets';
     return panel.id || '';
@@ -488,11 +455,9 @@
     const titleNeedles = {
       'core-copilot': ['latex copilot'],
       'compile-settings': ['compile settings', 'backend status', 'browser engine status', 'texlyre busytex status'],
-      'paper-ai': ['paper ai dashboard', 'AI edit review', 'competitive paper review', 'devil’s advocate', "devil's advocate", 'reviewer / rebuttal simulator', 'reviewer/rebuttal simulator'],
-      citations: ['citation filler', 'citation verifier', 'local citation verifier', 'ai citation'],
+      'audit-ai-edits': ['audit ai edits', 'ai edit review'],
       'history-comments': ['ai suggestion comments', 'ai revision history', 'unified ai reports'],
       presentation: ['presentation', 'beamer', 'talk package'],
-      figures: ['figures', 'tikz', 'image-to-tikz'],
       'reports-reviews': ['unified ai reports', 'reviews browser', 'ai revision history', 'ai suggestion comments'],
       diagnostics: ['ai model routing inspector', 'backend diagnostics', 'regression checklist', 'release/deploy verifier', 'feature flags'],
       'model-config': ['model routing', 'ai model routing inspector', 'ai provider', 'model configuration']

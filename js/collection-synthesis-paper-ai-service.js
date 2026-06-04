@@ -12,7 +12,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9k-paper-ai-collection-context-wiring-20260601-1';
+  const STAGE = 'latex-stage19w15-copilot-audit-edits-cleanup-20260604-1';
   const COLLECTIONS_KEY = 'latexai:literature-collections:v1';
   const SELECTED_COLLECTION_KEY = 'latexai:literature-selected-collection:v1';
   const ATTACH_PREFIX = 'latexai:paper-ai-collection-synthesis-attached:';
@@ -44,7 +44,6 @@
 
   const FEATURES = [
     { feature: 'documentAi', cardId: 'documentAiCard', label: 'Total Paper Remake', insertBefore: '#documentAiPrompt' },
-    { feature: 'paperAiPolish', cardId: 'paperAiPolishCard', label: 'Paper AI polish / review' },
     { feature: 'competitive', cardId: 'competitiveReviewCard', label: 'Competitive review / improvement', insertBefore: '#competitiveExtraInstructions' },
     { feature: 'reviewerSim', cardId: 'reviewerRebuttalCard', label: 'Reviewer / rebuttal simulator', insertAfter: '#reviewerSimInstructions' },
     { feature: 'branchWorkflow', cardId: 'realAgentBranchCard', label: "Devil’s Advocate branch runner", insertAfter: '#branchWorkflowQuery' },
@@ -282,7 +281,7 @@
   }
   function installOne(def) {
     const card = el(def.cardId);
-    if (!card || qs('[data-collection-synthesis-feature="' + CSS.escape(def.feature) + '"]', card)) return false;
+    if (!card || card.dataset.collectionSynthesisDisabled === 'true' || qs('[data-collection-synthesis-feature="' + CSS.escape(def.feature) + '"]', card)) return false;
     const holder = D.createElement('div');
     holder.innerHTML = surfaceHtml(def.feature, def.label);
     const surface = holder.firstElementChild;
