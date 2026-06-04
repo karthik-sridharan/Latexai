@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w19-paper-ai-audit-subtabs-cleanup-20260604-1';
+  const STAGE = 'latex-stage19w20-audit-ai-header-subtab-stability-20260604-1';
   const STORAGE_LEFT_TAB = 'latexai:stage19w16:left-tool-tab';
   const STORAGE_RIGHT_TAB = 'latexai:stage19w16:right-output-tab';
   const STORAGE_AUDIT_SUBTAB = 'latexai:stage19w19:audit-ai-subtab';
@@ -185,6 +185,39 @@
     try { localStorage.setItem(STORAGE_AUDIT_SUBTAB, next); } catch (_e) {}
   }
 
+  function routeAuditAiCards() {
+    const editsPanel = el('stage19w19AuditEditsPanel');
+    const historyPanel = el('stage19w19AuditHistoryPanel');
+    if (!editsPanel || !historyPanel) return;
+
+    const auditCard = el('paperAiPolishCard');
+    if (auditCard && auditCard.parentElement !== editsPanel) editsPanel.appendChild(auditCard);
+
+    ['aiCommentsCard', 'aiRevisionCard', 'aiReportBrowserCard'].forEach((id) => {
+      const c = el(id);
+      if (c && c.parentElement !== historyPanel) historyPanel.appendChild(c);
+    });
+  }
+
+  function installAuditAiRouter(copilot) {
+    if (!copilot || copilot.dataset.stage19w20AuditRouter === 'true') return;
+    copilot.dataset.stage19w20AuditRouter = 'true';
+    const schedule = () => {
+      if (copilot.dataset.stage19w20AuditRoutePending === 'true') return;
+      copilot.dataset.stage19w20AuditRoutePending = 'true';
+      setTimeout(() => {
+        copilot.dataset.stage19w20AuditRoutePending = 'false';
+        routeAuditAiCards();
+      }, 0);
+    };
+    try {
+      const observer = new MutationObserver(schedule);
+      observer.observe(copilot, { childList: true, subtree: true });
+      copilot._stage19w20AuditObserver = observer;
+    } catch (_e) {}
+    [0, 100, 350, 900, 1800].forEach((delay) => setTimeout(routeAuditAiCards, delay));
+  }
+
   function ensureAuditInCopilotPanel() {
     const copilot = el('copilotTab') || el('leftCopilotTab');
     if (!copilot) return null;
@@ -230,12 +263,8 @@
       wrap.remove();
     });
 
-    const card = el('paperAiPolishCard');
-    if (card && editsPanel && card.parentElement !== editsPanel) editsPanel.appendChild(card);
-    ['aiCommentsCard', 'aiRevisionCard', 'aiReportBrowserCard'].forEach((id) => {
-      const c = el(id);
-      if (c && historyPanel && c.parentElement !== historyPanel) historyPanel.appendChild(c);
-    });
+    routeAuditAiCards();
+    installAuditAiRouter(copilot);
 
     let saved = 'edits';
     try { saved = localStorage.getItem(STORAGE_AUDIT_SUBTAB) || 'edits'; } catch (_e) {}
@@ -312,7 +341,7 @@
       const small = q(':scope > .section-head .smallcaps', copilot);
       const h2 = q(':scope > .section-head h2', copilot);
       if (small) small.textContent = 'Audit AI';
-      if (h2) h2.textContent = 'AI edits and history';
+      if (h2) h2.textContent = 'Audit AI';
     }
   }
 

@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w19-paper-ai-audit-subtabs-cleanup-20260604-1';
+  const STAGE = 'latex-stage19w20-audit-ai-header-subtab-stability-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
 
@@ -523,14 +523,21 @@
   function normalizeLabels() {
     const stageBadge = el('stageBadge');
     if (stageBadge) stageBadge.textContent = STAGE;
-    const copilotHeading = q('#copilotTab .section-head h2');
-    if (copilotHeading && !/local editing assistant/i.test(copilotHeading.textContent || '')) copilotHeading.textContent = 'Local editing assistant';
-    const copilotSmall = q('#copilotTab .section-head .smallcaps');
-    if (copilotSmall) copilotSmall.textContent = 'AI Copilot';
+
+    // Stage 19W20: Copilot was renamed to Audit AI.  Older tab services used
+    // to re-label this heading on refresh ticks as "Local editing assistant";
+    // that caused the visible title to flicker.  Keep Audit AI stable and let
+    // Paper AI rounds = -1 own direct prompt/edit behavior.
+    const auditHeading = q('#copilotTab > .section-head.compact h2');
+    if (auditHeading) auditHeading.textContent = 'Audit AI';
+    const auditSmall = q('#copilotTab > .section-head.compact .smallcaps');
+    if (auditSmall) auditSmall.textContent = 'Audit AI';
+
     const paperHeading = q('#paperAiTab .section-head h2');
     if (paperHeading) paperHeading.textContent = 'Paper AI';
     const paperSmall = q('#paperAiTab .section-head .smallcaps');
     if (paperSmall) paperSmall.textContent = 'Paper AI';
+    normalizePaperAiSurface();
   }
 
   function installPrimaryTabMemory() {
