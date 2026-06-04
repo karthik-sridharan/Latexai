@@ -1,0 +1,175 @@
+/* LatexAI Stage 19W16: left-tool tabs + large right preview/logs.
+   Goal: left panel owns navigation/tools, center editor and right preview/logs
+   have Overleaf/Prism-like comparable scale. */
+:root {
+  --stage19w16-left-min: 320px;
+  --stage19w16-left-max: 390px;
+}
+
+.workspace {
+  grid-template-columns: minmax(var(--stage19w16-left-min), var(--stage19w16-left-max)) minmax(420px, 1fr) minmax(420px, 1fr) !important;
+  gap: .9rem !important;
+}
+
+.left-panel.stage19w16-left-tools,
+.right-panel.stage19w16-preview-logs-only {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.left-panel.stage19w16-left-tools {
+  padding: .72rem;
+}
+
+.stage19w16-left-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .35rem;
+  padding: .35rem;
+  margin-bottom: .65rem;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 18px;
+  background: rgba(241,245,249,.82);
+  flex: 0 0 auto;
+}
+
+.stage19w16-left-tab {
+  min-height: 2.05rem;
+  padding: .42rem .34rem;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-size: .76rem;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.stage19w16-left-tab.active {
+  color: #174ea6;
+  border-color: rgba(47,111,237,.25);
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15,23,42,.08);
+}
+
+.stage19w16-left-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stage19w16-left-tool-panel {
+  display: none;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: .15rem;
+}
+
+.stage19w16-left-tool-panel.active {
+  display: flex !important;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+#leftProjectTab.stage19w16-left-tool-panel.active {
+  display: flex !important;
+}
+
+.left-panel.stage19w16-left-tools .project-card,
+.left-panel.stage19w16-left-tools .outline-card {
+  width: 100%;
+}
+
+.left-panel.stage19w16-left-tools .file-tree {
+  max-height: 32vh;
+}
+
+.stage19w16-tool-note {
+  padding: .58rem .68rem;
+  border: 1px solid rgba(47,111,237,.14);
+  background: rgba(47,111,237,.07);
+  border-radius: 14px;
+  color: #174ea6;
+  font-size: .8rem;
+  line-height: 1.35;
+}
+
+.right-panel.stage19w16-preview-logs-only {
+  padding: .75rem;
+}
+
+.right-panel.stage19w16-preview-logs-only .right-tabs,
+.right-panel.stage19w16-preview-logs-only .right-tabs.stage19w10-primary-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  flex: 0 0 auto;
+}
+
+.right-panel.stage19w16-preview-logs-only > .right-tab-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.right-panel.stage19w16-preview-logs-only > .right-tab-panel.active {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.right-panel.stage19w16-preview-logs-only #previewTab.active,
+.right-panel.stage19w16-preview-logs-only #logsTab.active {
+  height: 0;
+}
+
+.right-panel.stage19w16-preview-logs-only .draft-preview,
+.right-panel.stage19w16-preview-logs-only .pdf-preview {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  height: 100%;
+  width: 100%;
+}
+
+.right-panel.stage19w16-preview-logs-only .pdf-preview {
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.right-panel.stage19w16-preview-logs-only .log-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stage19w16-left-tool-panel .right-panel-organizer-toolbar {
+  margin-top: 0;
+}
+
+.stage19w16-left-tool-panel .right-panel-group {
+  width: 100%;
+}
+
+/* The old right-tab panels are now left-tool panels. Keep their content visible
+   only through the left tool tab controller, not the preview/log controller. */
+.left-panel.stage19w16-left-tools .right-tab-panel {
+  padding-top: 0;
+}
+
+@media (max-width: 1320px) {
+  .workspace {
+    grid-template-columns: minmax(300px, 360px) minmax(380px, 1fr) minmax(380px, 1fr) !important;
+    gap: .7rem !important;
+  }
+  .stage19w16-left-tab { font-size: .72rem; padding-left: .2rem; padding-right: .2rem; }
+}
+
+@media (max-width: 1040px) {
+  .workspace { grid-template-columns: 1fr !important; }
+  .left-panel.stage19w16-left-tools,
+  .editor-panel,
+  .right-panel.stage19w16-preview-logs-only { min-height: 560px; }
+}
