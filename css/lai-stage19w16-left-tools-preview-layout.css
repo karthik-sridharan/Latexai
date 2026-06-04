@@ -1,4 +1,4 @@
-/* LatexAI Stage 19W16: left-tool tabs + large right preview/logs.
+/* LatexAI Stage 19W18: left tool tabs with Audit AI, Figures, Presentation + large right preview/logs.
    Goal: left panel owns navigation/tools, center editor and right preview/logs
    have Overleaf/Prism-like comparable scale. */
 :root {
@@ -191,4 +191,48 @@
 
 .stage19w16-left-tabs [data-left-tool-tab="audit"] {
   display: none !important;
+}
+
+
+/* Stage 19W18: left tabs are Project, Audit AI, Paper AI, Literature, Figures,
+   Presentation, Context/MCTS, Settings.  Audit AI keeps only edit auditing and
+   history/comments; direct prompting is now Paper AI rounds = -1. */
+.left-panel.stage19w16-left-tools .stage19w16-left-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#copilotTab.stage19w18-audit-ai-only .stage19w18-core-copilot-hidden,
+#rightPanelGroup-copilot-core-copilot,
+#rightPanelGroup-copilot-presentation {
+  display: none !important;
+}
+
+#copilotTab.stage19w18-audit-ai-only > .section-head.compact {
+  margin-bottom: .15rem;
+}
+
+#copilotTab.stage19w18-audit-ai-only > .section-head.compact .smallcaps::after {
+  content: "";
+}
+
+#assetsTab.stage19w16-left-tool-panel.active,
+#leftPresentationTab.stage19w16-left-tool-panel.active {
+  display: flex !important;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+#assetsTab .asset-panel,
+#leftPresentationTab .presentation-export-card {
+  width: 100%;
+}
+
+#stage19w18AuditHistoryWrap:empty::after {
+  content: "History and comment cards will appear here after the relevant services load.";
+  display: block;
+  padding: .65rem .75rem;
+  border-radius: 14px;
+  background: rgba(241,245,249,.8);
+  color: #64748b;
+  font-size: .8rem;
 }
