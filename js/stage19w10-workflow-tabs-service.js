@@ -1,11 +1,11 @@
-// Stage 19W15: Copilot cleanup; Paper AI remains unified while Copilot exposes only local editing plus Audit AI Edits.
+// Stage 19W16: right output panel is Preview/Logs only; tool tabs live in the left panel.
 (function () {
   'use strict';
 
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w15-copilot-audit-edits-cleanup-20260604-1';
+  const STAGE = 'latex-stage19w16-left-tools-large-preview-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
 
@@ -62,12 +62,22 @@
   }
 
   function activateRightTab(name) {
+    // Stage 19W16: the right panel owns only Preview and Logs.
+    // Tool tabs live on the left and are handled by Stage19W16LeftToolTabsService.
     if (!name) return;
-    const btn = q(`[data-right-tab="${cssEscape(name)}"]`);
+    if (!/^(preview|logs)$/.test(String(name))) {
+      try { W.LuminaLatex?.Stage19W16LeftToolTabsService?.activateLeftTab?.(name); } catch (_e) {}
+      return;
+    }
+    const right = D.querySelector('.right-panel') || D;
+    const btn = q(`[data-right-tab="${cssEscape(name)}"]`, right);
     const panel = el(`${name}Tab`);
     if (!btn || !panel) return;
-    qa('[data-right-tab]').forEach((b) => b.classList.toggle('active', b === btn));
-    qa('.right-tab-panel').forEach((p) => p.classList.toggle('active', p === panel));
+    qa('[data-right-tab]', right).forEach((b) => b.classList.toggle('active', b === btn));
+    ['previewTab', 'logsTab'].forEach((id) => {
+      const p = el(id);
+      if (p) p.classList.toggle('active', p === panel);
+    });
     try { localStorage.setItem(STORAGE_TAB, name); } catch (_e) {}
   }
 
@@ -500,11 +510,15 @@
   }
 
   function installPrimaryTabMemory() {
-    qa('[data-right-tab]').forEach((btn) => {
+    const right = D.querySelector('.right-panel') || D;
+    qa('[data-right-tab]', right).forEach((btn) => {
       if (btn.dataset.stage19w10PrimaryBound === 'true') return;
       btn.dataset.stage19w10PrimaryBound = 'true';
       btn.addEventListener('click', () => {
-        try { localStorage.setItem(STORAGE_TAB, btn.dataset.rightTab || 'preview'); } catch (_e) {}
+        const tab = btn.dataset.rightTab || 'preview';
+        if (/^(preview|logs)$/.test(tab)) {
+          try { localStorage.setItem(STORAGE_TAB, tab); } catch (_e) {}
+        }
       }, true);
     });
   }
@@ -512,7 +526,7 @@
   function restoreTabs() {
     let saved = '';
     try { saved = localStorage.getItem(STORAGE_TAB) || ''; } catch (_e) {}
-    if (saved && el(`${saved}Tab`) && q(`[data-right-tab="${cssEscape(saved)}"]`)) activateRightTab(saved);
+    if (saved && /^(preview|logs)$/.test(saved) && el(`${saved}Tab`)) activateRightTab(saved);
   }
 
   function reconcile() {
@@ -524,7 +538,7 @@
   }
 
   function startObserver() {
-    const root = D.querySelector('.right-panel') || D.body;
+    const root = D.querySelector('.workspace') || D.body;
     if (!root || root.dataset.stage19w10Observed === 'true') return;
     root.dataset.stage19w10Observed = 'true';
     let timer = null;
@@ -536,12 +550,12 @@
   }
 
   function jumpToWorkflow(_name) {
-    activateRightTab('paperAi');
+    try { W.LuminaLatex?.Stage19W16LeftToolTabsService?.activateLeftTab?.('paperAi'); } catch (_e) {}
     reconcile();
   }
 
   function activateWorkflow(_name) {
-    activateRightTab('paperAi');
+    try { W.LuminaLatex?.Stage19W16LeftToolTabsService?.activateLeftTab?.('paperAi'); } catch (_e) {}
     reconcile();
   }
 
