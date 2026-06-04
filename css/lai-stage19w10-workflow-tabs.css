@@ -1,4 +1,4 @@
-/* Stage 19W10: right-panel workflow tabs + debug-only diagnostics cleanup. */
+/* Stage 19W14: unified Paper AI panel + debug-only diagnostics cleanup. */
 :root {
   --stage19w10-blue: #2563eb;
   --stage19w10-green: #059669;
@@ -267,4 +267,53 @@ body.stage19w10-debug-mode #developerDiagnosticsSection {
 }
 #paperWorkflowObjectivePane #competitiveReviewCard .section-head .smallcaps::after {
   content: ' · competitive-ranking objective';
+}
+
+
+/* Stage 19W14: one unified Paper AI panel.  The old Paper AI subtabs are
+   removed; the panel below acts as the single goal-driven paper improver. */
+#paperAiTab .stage19w10-workflow-tabs {
+  display: none !important;
+}
+.stage19w14-unified-paper-ai-pane {
+  display: flex !important;
+  flex-direction: column;
+  gap: .75rem;
+  min-height: 0;
+}
+.stage19w14-unified-paper-ai-card {
+  margin: .35rem 0 .85rem;
+  border: 1px solid rgba(37, 99, 235, .20) !important;
+  background: linear-gradient(180deg, rgba(239, 246, 255, .96), rgba(255,255,255,.98)) !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .06);
+}
+.stage19w14-unified-paper-ai-card .section-head { margin-bottom: .25rem; }
+.stage19w14-unified-paper-ai-card select,
+.stage19w14-unified-paper-ai-card input,
+.stage19w14-unified-paper-ai-card textarea { max-width: 100%; }
+.stage19w14-advanced {
+  margin: .45rem 0;
+  border: 1px dashed rgba(37, 99, 235, .22);
+  border-radius: 14px;
+  padding: .55rem .7rem;
+  background: rgba(255,255,255,.72);
+}
+.stage19w14-advanced summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: #334155;
+}
+.stage19w14-engine-hidden { display: none !important; }
+#paperWorkflowUnifiedPane > #documentAiCard,
+#paperWorkflowUnifiedPane > #reviewerRebuttalCard,
+#paperWorkflowUnifiedPane > #realAgentBranchCard,
+#paperWorkflowUnifiedPane > #competitiveReviewCard {
+  margin-top: .45rem !important;
+  border-top: 3px solid rgba(37, 99, 235, .20);
+}
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #documentAiCard .section-head,
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #reviewerRebuttalCard .section-head,
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #realAgentBranchCard .section-head,
+body:not(.stage19w14-show-engine-cards) #paperWorkflowUnifiedPane > #competitiveReviewCard .section-head {
+  opacity: .72;
 }
