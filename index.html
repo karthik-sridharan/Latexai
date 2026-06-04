@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19w14b-unified-paper-ai-static-controls-fix-20260604-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19w14c-hide-legacy-reviewer-rebuttal-panel-20260604-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -73,12 +73,12 @@
 <link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
-<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w14b-unified-paper-ai-static-controls-fix-20260604-1" />
+<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w14c-hide-legacy-reviewer-rebuttal-panel-20260604-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
 <script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="stage19w14b-unified-paper-ai-static-controls-fix-20260604-1">
+<div class="app-shell" data-stage="stage19w14c-hide-legacy-reviewer-rebuttal-panel-20260604-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -309,10 +309,10 @@
         <div class="section-head compact">
           <div>
             <div class="smallcaps">Paper AI</div>
-            <h2>Named whole-paper workflows</h2>
+            <h2>Goal-driven Paper AI</h2>
           </div>
         </div>
-        <div class="settings-note compact">Choose one workflow at a time. Local selected-text work stays in Copilot; diagnostics are under Settings → Developer / diagnostics when <code>?debug=1</code>.</div>
+        <div class="settings-note compact">Configure one unified paper-improvement run. Review/rebuttal, Devil's Advocate, competitive ranking, and total remake are controlled by the settings below; diagnostics are under Settings → Developer / diagnostics when <code>?debug=1</code>.</div>
         <div id="paperWorkflowUnifiedPane" class="stage19w14-unified-paper-ai-pane active" data-workflow-pane="unified">
           <div id="stage19w14UnifiedPaperAiControls" class="stage19w14-unified-paper-ai-card settings-card-subtle">
             <div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Goal-driven paper improver</h2></div></div>
@@ -382,7 +382,7 @@
                 <label class="field checkbox-field"><input id="stage19w14UseProjectMemory" type="checkbox" checked /> Use project memory</label>
                 <label class="field checkbox-field"><input id="stage19w14UseCollections" type="checkbox" checked /> Use selected collections / literature</label>
                 <label class="field checkbox-field"><input id="stage19w14UseReviewCorpus" type="checkbox" /> Use OpenReview examples</label>
-                <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show underlying engine cards</label>
+                <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show internal legacy engine cards (debug)</label>
               </div>
             </details>
             <div id="stage19w14Status" class="settings-note compact">Unified Paper AI ready. Choose an objective and click Run Paper AI.</div>
@@ -729,6 +729,6 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script src="js/project-block-context-service.js?v=stage19w12-val-act-policy-foundation-20260602-1" defer></script>
 <script src="js/context-policy-dashboard-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1" defer></script>
-<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w14b-unified-paper-ai-static-controls-fix-20260604-1" defer></script>
+<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w14c-hide-legacy-reviewer-rebuttal-panel-20260604-1" defer></script>
 </body>
 </html>
