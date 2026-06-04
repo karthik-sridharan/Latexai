@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w16-left-tools-large-preview-20260604-1';
+  const STAGE = 'latex-stage19w18-audit-paperai-figures-presentation-tabs-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
 
@@ -171,7 +171,7 @@
   function outputMode() { return value('stage19w14OutputMode', 'report_and_edits'); }
   function objectiveMode() { return value('stage19w14Objective', 'quality'); }
   function scopeMode() { return value('stage19w14Scope', 'whole'); }
-  function roundCount() { return Math.max(0, Math.min(5, Number(value('stage19w14Rounds', '0')) || 0)); }
+  function roundCount() { const raw = Number(value('stage19w14Rounds', '0')); return Math.max(-1, Math.min(5, Number.isFinite(raw) ? raw : 0)); }
   function focusMode() { return value('stage19w14Focus', 'balanced'); }
   function budgetMode() { return value('stage19w14Budget', 'balanced'); }
 
@@ -226,8 +226,8 @@
       setText('documentAiPrompt', instruction || `Goal: ${obj}. Scope: ${scope}. Focus: ${focusText}. Produce ${out.replace(/_/g, ' ')} using safe LatexAI edits when requested.`);
     }
 
-    // Reviewer/Rebuttal controls. 0 rounds = reviews/critique only; 1+ rounds include rebuttal/revise.
-    if (el('reviewerSimWorkflowMode')) {
+    // Reviewer/Rebuttal controls. -1 rounds = direct prompt/edit through Total Remake; 0 rounds = reviews/critique only; 1+ rounds include rebuttal/revise.
+    if (rounds >= 0 && el('reviewerSimWorkflowMode')) {
       const wantsEdits = out !== 'report_only';
       const mode = rounds <= 0 ? (wantsEdits ? 'quick_improvement' : 'review_only') : (wantsEdits ? 'review_rebuttal_revise' : 'review_rebuttal');
       setValue('reviewerSimWorkflowMode', mode);
@@ -329,6 +329,7 @@
       '<div class="field-grid two compact">',
       '  <label class="field">Review/debate rounds',
       '    <select id="stage19w14Rounds">',
+      '      <option value="-1">−1 — direct prompt/edit, no review</option>',
       '      <option value="0" selected>0 — critique/review only</option>',
       '      <option value="1">1 — review + response/revision</option>',
       '      <option value="2">2 — multi-round debate</option>',
@@ -427,6 +428,12 @@
     const out = outputMode();
     setUnifiedStatus(`Running Paper AI objective: ${obj}...`);
     try {
+      if (roundCount() < 0) {
+        if (out === 'report_only') await NS.DocumentAIService?.runDocumentAi?.();
+        else await NS.DocumentAIService?.runAndAppendDocumentAi?.();
+        setUnifiedStatus('Direct prompt/edit run complete. Safe edits are prepared when available.');
+        return;
+      }
       if (obj === 'remake') {
         if (out === 'report_only') await NS.DocumentAIService?.runDocumentAi?.();
         else await NS.DocumentAIService?.runAndAppendDocumentAi?.();

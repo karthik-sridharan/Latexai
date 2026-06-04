@@ -1,4 +1,4 @@
-/* Latexai Stage 19W15 RightPanelOrganizerService
+/* Latexai Stage 19W18 RightPanelOrganizerService
  * Stage: stage19w15-copilot-audit-edits-cleanup-20260604-1
  *
  * Right panel cleanup / collapsible workflow sections.
@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w16-left-tools-large-preview-20260604-1';
+  const STAGE = 'latex-stage19w18-audit-paperai-figures-presentation-tabs-20260604-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -31,12 +31,13 @@
     literature: 'literatureTab',
     project: 'projectTab',
     settings: 'settingsTab',
-    assets: 'assetsTab'
+    assets: 'assetsTab',
+    presentation: 'leftPresentationTab'
   };
 
   const KNOWN_CARD_OWNERS = {
     // Copilot-owned workflow cards.
-    documentAiCard: ['copilot'],
+    documentAiCard: ['paperAi'],
     paperAiDashboardCard: ['copilot'],
     paperAiPolishCard: ['copilot'],
     competitiveReviewCard: ['paperAi'],
@@ -48,13 +49,13 @@
     citationVerifierPanel: ['literature'],
     citationAiPanel: ['literature'],
     aiCommentsCard: ['copilot'],
-    presentationExportCard: ['copilot'],
-    talkPackageCard: ['copilot'],
-    presentationMakerCard: ['copilot'],
+    presentationExportCard: ['presentation'],
+    talkPackageCard: ['presentation'],
+    presentationMakerCard: ['presentation'],
 
     // Settings-owned diagnostics/model/report cards.
-    aiRevisionCard: ['settings'],
-    aiReportBrowserCard: ['settings'],
+    aiRevisionCard: ['copilot'],
+    aiReportBrowserCard: ['copilot'],
     aiRoutingInspectorCard: ['settings'],
     backendDiagnosticsCard: ['settings'],
     regressionChecklistCard: ['settings'],
@@ -174,7 +175,7 @@
       ]
     },
     {
-      tab: 'copilot',
+      tab: 'presentation',
       key: 'presentation',
       title: 'Presentation',
       defaultOpen: false,
@@ -189,12 +190,8 @@
       tab: 'settings',
       key: 'reports-reviews',
       title: 'Reports / Reviews',
-      defaultOpen: true,
-      cardIds: [
-        'aiReportBrowserCard',
-        'aiRevisionCard',
-        'aiCommentsCard'
-      ]
+      defaultOpen: false,
+      cardIds: []
     },
     {
       tab: 'settings',

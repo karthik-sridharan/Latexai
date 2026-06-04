@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w17-copilot-audit-left-panel-narrower-20260604-1';
+  const STAGE = 'latex-stage19w18-audit-paperai-figures-presentation-tabs-20260604-1';
   const STORAGE_LEFT_TAB = 'latexai:stage19w16:left-tool-tab';
   const STORAGE_RIGHT_TAB = 'latexai:stage19w16:right-output-tab';
 
@@ -55,9 +55,11 @@
 
   const LEFT_TABS = [
     ['project', 'Project'],
-    ['copilot', 'Copilot'],
+    ['copilot', 'Audit AI'],
     ['paperAi', 'Paper AI'],
     ['literature', 'Literature'],
+    ['assets', 'Figures'],
+    ['presentation', 'Presentation'],
     ['context', 'Context / MCTS'],
     ['settings', 'Settings']
   ];
@@ -124,28 +126,84 @@
     const copilot = el('copilotTab') || el('leftCopilotTab');
     if (!copilot) return null;
     copilot.dataset.stage19w17AuditHome = 'true';
+    copilot.classList.add('stage19w18-audit-ai-only');
+
+    // Hide the old core Copilot prompt controls.  The direct no-review use case
+    // is now handled by Paper AI with Review/debate rounds = -1.
+    [
+      '#aiProvider', '#aiModel', '#aiCustomModel', '#copilotTask',
+      '#copilotContextChips', '#copilotPrompt', '#askCopilotBtn',
+      '#previewCopilotPatchBtn', '#insertCopilotBtn', '#replaceCopilotBtn',
+      '#patchReview', '#copilotOutput'
+    ].forEach((sel) => {
+      const node = q(sel, copilot);
+      const wrapper = node?.closest?.('.field-grid, .field, .micro-actions, .patch-review') || node;
+      if (wrapper) wrapper.classList.add('stage19w18-core-copilot-hidden');
+    });
+    const oldNote = q(':scope > .settings-note', copilot);
+    if (oldNote) oldNote.classList.add('stage19w18-core-copilot-hidden');
 
     let auditWrap = el('stage19w17CopilotAuditWrap');
     if (!auditWrap) {
       auditWrap = make('div', { id: 'stage19w17CopilotAuditWrap', class: 'stage19w17-copilot-audit-wrap' });
       auditWrap.appendChild(make('div', { class: 'section-head compact' }, '<div><div class="smallcaps">Audit AI Edits</div><h2>Review and resolve AI edits</h2></div>'));
-      auditWrap.appendChild(make('div', { class: 'settings-note compact stage19w16-tool-note' }, 'Review, accept, reject, repair, and clean up <code>\\lai</code> / <code>\\laiold</code> edits. This lives inside Copilot because it audits local visible AI edit markup, not a separate top-level workflow.'));
+      auditWrap.appendChild(make('div', { class: 'settings-note compact stage19w16-tool-note' }, 'Review, accept, reject, repair, and clean up <code>\\lai</code> / <code>\\laiold</code> edits. Direct prompting/editing now lives in Paper AI with review/debate rounds set to −1.'));
     }
 
-    const output = el('copilotOutput');
-    if (output && output.parentElement === copilot) {
-      output.insertAdjacentElement('afterend', auditWrap);
-    } else if (auditWrap.parentElement !== copilot) {
-      copilot.appendChild(auditWrap);
-    }
+    if (auditWrap.parentElement !== copilot) copilot.appendChild(auditWrap);
 
     const card = el('paperAiPolishCard');
     if (card && card.parentElement !== auditWrap) auditWrap.appendChild(card);
+
+    let historyWrap = el('stage19w18AuditHistoryWrap');
+    if (!historyWrap) {
+      historyWrap = make('div', { id: 'stage19w18AuditHistoryWrap', class: 'stage19w17-copilot-audit-wrap stage19w18-audit-history-wrap' });
+      historyWrap.appendChild(make('div', { class: 'section-head compact' }, '<div><div class="smallcaps">History / Comments</div><h2>AI edit history and comments</h2></div>'));
+    }
+    if (historyWrap.parentElement !== copilot) copilot.appendChild(historyWrap);
+    ['aiCommentsCard', 'aiRevisionCard', 'aiReportBrowserCard'].forEach((id) => {
+      const c = el(id);
+      if (c && c.parentElement !== historyWrap) historyWrap.appendChild(c);
+    });
 
     const staleAudit = el('leftAuditTab');
     if (staleAudit) staleAudit.remove();
     qa('[data-left-tool-tab="audit"]').forEach((btn) => btn.remove());
     return auditWrap;
+  }
+
+  function ensurePresentationPanel(shell) {
+    const panel = ensurePanel(shell.content, 'presentation', 'Presentation');
+    if (panel.dataset.stage19w18PresentationBootstrapped !== 'true') {
+      panel.dataset.stage19w18PresentationBootstrapped = 'true';
+      panel.appendChild(make('div', { class: 'section-head compact' }, '<div><div class="smallcaps">Presentation</div><h2>Paper to presentation tools</h2></div>'));
+      panel.appendChild(make('div', { class: 'settings-note compact stage19w16-tool-note' }, 'Presentation export and talk-package tools live here, separate from Audit AI.'));
+    }
+    ['presentationExportCard', 'talkPackageCard', 'presentationMakerCard'].forEach((id) => {
+      const c = el(id);
+      if (c && c.parentElement !== panel) panel.appendChild(c);
+    });
+    const oldGroup = el('rightPanelGroup-copilot-presentation');
+    if (oldGroup && oldGroup.parentElement !== panel) panel.appendChild(oldGroup);
+    return panel;
+  }
+
+  function ensureFiguresPanel(shell) {
+    try { W.LuminaLatex?.AssetService?.ensureAssetTab?.(); } catch (_e) {}
+    let assets = el('assetsTab');
+    if (!assets) {
+      assets = ensurePanel(shell.content, 'assets', 'Figures');
+      assets.id = 'assetsTab';
+      assets.classList.add('right-tab-panel');
+      assets.innerHTML = '<div class="section-head compact"><div><div class="smallcaps">Figures</div><h2>Figure maker and assets</h2></div></div><div class="settings-note compact stage19w16-tool-note">Figure tools will appear here once the asset, TikZ, and figure services finish loading.</div>';
+    }
+    if (assets.parentElement !== shell.content) shell.content.appendChild(assets);
+    assets.classList.add('stage19w16-left-tool-panel');
+    assets.dataset.leftToolPanel = 'assets';
+    assets.setAttribute('aria-label', 'Figures');
+    const btn = el('assetsTabButton');
+    if (btn) btn.remove();
+    return assets;
   }
 
   function setupLeftTools() {
@@ -154,11 +212,13 @@
     LEFT_TABS.forEach(([name, label]) => ensureLeftTabButton(shell.tabs, name, label));
     bootstrapLeftProjectPanel(shell.content);
 
-    const copilot = movePanelToLeft('copilotTab', 'copilot', 'Copilot');
+    const copilot = movePanelToLeft('copilotTab', 'copilot', 'Audit AI');
     const paper = movePanelToLeft('paperAiTab', 'paperAi', 'Paper AI');
     const literature = movePanelToLeft('literatureTab', 'literature', 'Literature');
     const context = movePanelToLeft('projectTab', 'context', 'Context / MCTS');
     const settings = movePanelToLeft('settingsTab', 'settings', 'Settings');
+    ensureFiguresPanel(shell);
+    ensurePresentationPanel(shell);
     ensureAuditInCopilotPanel();
 
     if (context) {
@@ -176,8 +236,8 @@
     if (copilot) {
       const small = q(':scope > .section-head .smallcaps', copilot);
       const h2 = q(':scope > .section-head h2', copilot);
-      if (small) small.textContent = 'AI Copilot';
-      if (h2) h2.textContent = 'Local editing assistant';
+      if (small) small.textContent = 'Audit AI';
+      if (h2) h2.textContent = 'AI edits and history';
     }
   }
 
