@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w21-project-actions-top-sister-app-links-20260604-1';
+  const STAGE = 'latex-stage19w22-context-tab-no-mcts-top-link-20260604-1';
   const STORAGE_LEFT_TAB = 'latexai:stage19w16:left-tool-tab';
   const STORAGE_RIGHT_TAB = 'latexai:stage19w16:right-output-tab';
   const STORAGE_AUDIT_SUBTAB = 'latexai:stage19w19:audit-ai-subtab';
@@ -61,7 +61,7 @@
     ['literature', 'Literature'],
     ['assets', 'Figures'],
     ['presentation', 'Presentation'],
-    ['context', 'Context / MCTS'],
+    ['context', 'Context'],
     ['settings', 'Settings']
   ];
 
@@ -319,7 +319,7 @@
     const copilot = movePanelToLeft('copilotTab', 'copilot', 'Audit AI');
     const paper = movePanelToLeft('paperAiTab', 'paperAi', 'Paper AI');
     const literature = movePanelToLeft('literatureTab', 'literature', 'Literature');
-    const context = movePanelToLeft('projectTab', 'context', 'Context / MCTS');
+    const context = movePanelToLeft('projectTab', 'context', 'Context');
     const settings = movePanelToLeft('settingsTab', 'settings', 'Settings');
     ensureFiguresPanel(shell);
     ensurePresentationPanel(shell);
@@ -328,8 +328,8 @@
     if (context) {
       const small = q('.smallcaps', context);
       const h2 = q('.section-head h2', context);
-      if (small) small.textContent = 'Context / MCTS';
-      if (h2) h2.textContent = 'Block context and MCTS-lite';
+      if (small) small.textContent = 'Context';
+      if (h2) h2.textContent = 'Block context and planning';
     }
     if (paper) {
       const small = q(':scope > .section-head .smallcaps', paper);
@@ -401,8 +401,8 @@
 
   function setupTopAppLinks() {
     qa('[data-left-tool-jump]').forEach((btn) => {
-      if (btn.dataset.stage19w21Bound === 'true') return;
-      btn.dataset.stage19w21Bound = 'true';
+      if (btn.dataset.stage19w22Bound === 'true') return;
+      btn.dataset.stage19w22Bound = 'true';
       btn.addEventListener('click', (ev) => {
         ev.preventDefault();
         activateLeftTab(btn.dataset.leftToolJump || 'project');
