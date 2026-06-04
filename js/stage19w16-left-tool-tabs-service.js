@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w16-left-tools-large-preview-20260604-1';
+  const STAGE = 'latex-stage19w17-copilot-audit-left-panel-narrower-20260604-1';
   const STORAGE_LEFT_TAB = 'latexai:stage19w16:left-tool-tab';
   const STORAGE_RIGHT_TAB = 'latexai:stage19w16:right-output-tab';
 
@@ -58,7 +58,6 @@
     ['copilot', 'Copilot'],
     ['paperAi', 'Paper AI'],
     ['literature', 'Literature'],
-    ['audit', 'Audit Edits'],
     ['context', 'Context / MCTS'],
     ['settings', 'Settings']
   ];
@@ -121,16 +120,32 @@
     return panel;
   }
 
-  function ensureAuditPanel(content) {
-    const audit = ensurePanel(content, 'audit', 'Audit AI Edits');
-    if (!audit.dataset.stage19w16Header) {
-      audit.dataset.stage19w16Header = 'true';
-      audit.appendChild(make('div', { class: 'section-head compact' }, '<div><div class="smallcaps">Audit AI Edits</div><h2>Review and resolve AI edits</h2></div>'));
-      audit.appendChild(make('div', { class: 'settings-note compact stage19w16-tool-note' }, 'Review, accept, reject, repair, and clean up <code>\\lai</code> / <code>\\laiold</code> edits. Literature collection controls belong in Literature, not here.'));
+  function ensureAuditInCopilotPanel() {
+    const copilot = el('copilotTab') || el('leftCopilotTab');
+    if (!copilot) return null;
+    copilot.dataset.stage19w17AuditHome = 'true';
+
+    let auditWrap = el('stage19w17CopilotAuditWrap');
+    if (!auditWrap) {
+      auditWrap = make('div', { id: 'stage19w17CopilotAuditWrap', class: 'stage19w17-copilot-audit-wrap' });
+      auditWrap.appendChild(make('div', { class: 'section-head compact' }, '<div><div class="smallcaps">Audit AI Edits</div><h2>Review and resolve AI edits</h2></div>'));
+      auditWrap.appendChild(make('div', { class: 'settings-note compact stage19w16-tool-note' }, 'Review, accept, reject, repair, and clean up <code>\\lai</code> / <code>\\laiold</code> edits. This lives inside Copilot because it audits local visible AI edit markup, not a separate top-level workflow.'));
     }
+
+    const output = el('copilotOutput');
+    if (output && output.parentElement === copilot) {
+      output.insertAdjacentElement('afterend', auditWrap);
+    } else if (auditWrap.parentElement !== copilot) {
+      copilot.appendChild(auditWrap);
+    }
+
     const card = el('paperAiPolishCard');
-    if (card && card.parentElement !== audit) audit.appendChild(card);
-    return audit;
+    if (card && card.parentElement !== auditWrap) auditWrap.appendChild(card);
+
+    const staleAudit = el('leftAuditTab');
+    if (staleAudit) staleAudit.remove();
+    qa('[data-left-tool-tab="audit"]').forEach((btn) => btn.remove());
+    return auditWrap;
   }
 
   function setupLeftTools() {
@@ -144,7 +159,7 @@
     const literature = movePanelToLeft('literatureTab', 'literature', 'Literature');
     const context = movePanelToLeft('projectTab', 'context', 'Context / MCTS');
     const settings = movePanelToLeft('settingsTab', 'settings', 'Settings');
-    ensureAuditPanel(shell.content);
+    ensureAuditInCopilotPanel();
 
     if (context) {
       const small = q('.smallcaps', context);
@@ -208,6 +223,7 @@
     if (!shell) return;
     let next = clean(name || 'project');
     if (next === 'projectTab') next = 'context';
+    if (next === 'audit') next = 'copilot';
     const valid = new Set(LEFT_TABS.map((x) => x[0]));
     if (!valid.has(next)) next = 'project';
     qa('[data-left-tool-tab]', shell.tabs).forEach((btn) => btn.classList.toggle('active', btn.dataset.leftToolTab === next));
