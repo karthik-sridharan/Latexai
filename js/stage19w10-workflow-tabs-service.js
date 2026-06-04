@@ -1,11 +1,11 @@
-// Stage 19W14: unified Paper AI panel + debug-only diagnostics cleanup.
+// Stage 19W14B: static unified Paper AI controls visibility fix.
 (function () {
   'use strict';
 
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w14-unified-paper-ai-panel-20260604-1';
+  const STAGE = 'latex-stage19w14b-unified-paper-ai-static-controls-fix-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
 
@@ -254,9 +254,43 @@
     }
   }
 
+  function bindUnifiedPaperAiControls() {
+    ['stage19w14Objective','stage19w14Scope','stage19w14Rounds','stage19w14OutputMode','stage19w14Focus','stage19w14Budget','stage19w14ReviewerCount','stage19w14TargetVenue','stage19w14TargetAudience','stage19w14Competitors','stage19w14Instructions','stage19w14UseProjectMemory','stage19w14UseCollections','stage19w14UseReviewCorpus','stage19w14ShowEngineCards'].forEach((id) => {
+      const node = el(id);
+      if (!node || node.dataset.stage19w14Bound === 'true') return;
+      node.dataset.stage19w14Bound = 'true';
+      const ev = node.tagName === 'INPUT' && node.type === 'checkbox' ? 'change' : 'input';
+      node.addEventListener(ev, () => { applyObjectiveMode(); }, true);
+      node.addEventListener('change', () => { applyObjectiveMode(); }, true);
+    });
+    const runBtn = el('stage19w14RunBtn');
+    if (runBtn && runBtn.dataset.stage19w14Bound !== 'true') {
+      runBtn.dataset.stage19w14Bound = 'true';
+      runBtn.addEventListener('click', () => { void runUnifiedPaperAi(); }, true);
+    }
+    const previewBtn = el('stage19w14PreviewBtn');
+    if (previewBtn && previewBtn.dataset.stage19w14Bound !== 'true') {
+      previewBtn.dataset.stage19w14Bound = 'true';
+      previewBtn.addEventListener('click', () => { syncUnifiedControlsToEngines(); setUnifiedStatus('Settings synced to underlying engine controls.'); }, true);
+    }
+    const applyBtn = el('stage19w14ApplyBtn');
+    if (applyBtn && applyBtn.dataset.stage19w14Bound !== 'true') {
+      applyBtn.dataset.stage19w14Bound = 'true';
+      applyBtn.addEventListener('click', () => { void applyLatestUnifiedEdits(); }, true);
+    }
+    try {
+      const saved = localStorage.getItem(STORAGE_OBJECTIVE);
+      if (saved && el('stage19w14Objective')) el('stage19w14Objective').value = saved;
+    } catch (_e) {}
+  }
+
   function ensureUnifiedPaperAiControls() {
     const pane = el('paperWorkflowUnifiedPane') || el('paperWorkflowObjectivePane') || el('paperAiTab');
-    if (!pane || el('stage19w14UnifiedPaperAiControls')) return;
+    if (!pane) return;
+    if (el('stage19w14UnifiedPaperAiControls')) {
+      bindUnifiedPaperAiControls();
+      return;
+    }
     stripPlaceholder(pane);
     const box = D.createElement('div');
     box.id = 'stage19w14UnifiedPaperAiControls';
@@ -340,23 +374,7 @@
       '</div>'
     ].join('');
     pane.insertBefore(box, pane.firstChild);
-
-    ['stage19w14Objective','stage19w14Scope','stage19w14Rounds','stage19w14OutputMode','stage19w14Focus','stage19w14Budget','stage19w14ReviewerCount','stage19w14TargetVenue','stage19w14TargetAudience','stage19w14Competitors','stage19w14Instructions','stage19w14UseProjectMemory','stage19w14UseCollections','stage19w14UseReviewCorpus','stage19w14ShowEngineCards'].forEach((id) => {
-      const node = el(id);
-      if (!node || node.dataset.stage19w14Bound === 'true') return;
-      node.dataset.stage19w14Bound = 'true';
-      const ev = node.tagName === 'INPUT' && node.type === 'checkbox' ? 'change' : 'input';
-      node.addEventListener(ev, () => { applyObjectiveMode(); }, true);
-      node.addEventListener('change', () => { applyObjectiveMode(); }, true);
-    });
-    el('stage19w14RunBtn')?.addEventListener('click', () => { void runUnifiedPaperAi(); }, true);
-    el('stage19w14PreviewBtn')?.addEventListener('click', () => { syncUnifiedControlsToEngines(); setUnifiedStatus('Settings synced to underlying engine controls.'); }, true);
-    el('stage19w14ApplyBtn')?.addEventListener('click', () => { void applyLatestUnifiedEdits(); }, true);
-
-    try {
-      const saved = localStorage.getItem(STORAGE_OBJECTIVE);
-      if (saved && el('stage19w14Objective')) el('stage19w14Objective').value = saved;
-    } catch (_e) {}
+    bindUnifiedPaperAiControls();
   }
 
   function setUnifiedStatus(text) {
