@@ -1,4 +1,4 @@
-/* LatexAI Stage 19W18: left tool tabs with Audit AI, Figures, Presentation + large right preview/logs.
+/* LatexAI Stage 19W19: left tool tabs with Audit AI, Figures, Presentation + large right preview/logs.
    Goal: left panel owns navigation/tools, center editor and right preview/logs
    have Overleaf/Prism-like comparable scale. */
 :root {
@@ -235,4 +235,85 @@
   background: rgba(241,245,249,.8);
   color: #64748b;
   font-size: .8rem;
+}
+
+
+/* Stage 19W19: Paper AI has one visible title.  The outer shell heading from
+   older layouts is hidden so the unified card is the only Paper AI title. */
+#paperAiTab > .section-head.compact,
+#paperAiTab > .settings-note.compact,
+.stage19w19-paper-ai-shell-heading-hidden,
+.stage19w19-paper-ai-shell-note-hidden {
+  display: none !important;
+}
+
+/* Stage 19W19: Audit AI uses explicit subtabs, not legacy organizer drawers. */
+#copilotTab.stage19w19-audit-ai-tab #rightPanelOrganizerToolbar-copilot,
+#copilotTab.stage19w19-audit-ai-tab .right-panel-group[data-group-tab="copilot"] {
+  display: none !important;
+}
+
+.stage19w19-audit-ai-shell {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  min-height: 0;
+}
+
+.stage19w19-audit-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .35rem;
+  padding: .3rem;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 16px;
+  background: rgba(241,245,249,.82);
+  flex: 0 0 auto;
+}
+
+.stage19w19-audit-tab {
+  min-height: 2rem;
+  padding: .42rem .35rem;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-size: .76rem;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.stage19w19-audit-tab.active {
+  color: #174ea6;
+  border-color: rgba(47,111,237,.25);
+  box-shadow: 0 8px 22px rgba(15,23,42,.08);
+}
+
+.stage19w19-audit-panel {
+  display: none;
+  min-height: 0;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.stage19w19-audit-panel.active {
+  display: flex !important;
+}
+
+#stage19w19AuditEditsPanel:empty::after,
+#stage19w19AuditHistoryPanel:empty::after {
+  display: block;
+  padding: .65rem .75rem;
+  border-radius: 14px;
+  background: rgba(241,245,249,.8);
+  color: #64748b;
+  font-size: .8rem;
+}
+
+#stage19w19AuditEditsPanel:empty::after {
+  content: "Audit AI Edits tools will appear here after the edit-audit service loads.";
+}
+
+#stage19w19AuditHistoryPanel:empty::after {
+  content: "History and comments will appear here after the revision/comment services load.";
 }
