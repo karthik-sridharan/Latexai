@@ -2,8 +2,8 @@
    Goal: left panel owns navigation/tools, center editor and right preview/logs
    have Overleaf/Prism-like comparable scale. */
 :root {
-  --stage19w16-left-min: 320px;
-  --stage19w16-left-max: 390px;
+  --stage19w16-left-min: 285px;
+  --stage19w16-left-max: 350px;
 }
 
 .workspace {
@@ -161,7 +161,7 @@
 
 @media (max-width: 1320px) {
   .workspace {
-    grid-template-columns: minmax(300px, 360px) minmax(380px, 1fr) minmax(380px, 1fr) !important;
+    grid-template-columns: minmax(270px, 330px) minmax(380px, 1fr) minmax(380px, 1fr) !important;
     gap: .7rem !important;
   }
   .stage19w16-left-tab { font-size: .72rem; padding-left: .2rem; padding-right: .2rem; }
@@ -172,4 +172,23 @@
   .left-panel.stage19w16-left-tools,
   .editor-panel,
   .right-panel.stage19w16-preview-logs-only { min-height: 560px; }
+}
+
+
+/* Stage 19W17: Audit AI Edits lives inside Copilot, not as a top-level left tab. */
+.stage19w17-copilot-audit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  margin-top: .7rem;
+  padding-top: .7rem;
+  border-top: 1px solid rgba(15,23,42,.10);
+}
+
+.stage19w17-copilot-audit-wrap .paper-ai-polish-card {
+  margin-top: 0;
+}
+
+.stage19w16-left-tabs [data-left-tool-tab="audit"] {
+  display: none !important;
 }
