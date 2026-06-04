@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19w13-objective-improver-unified-subtab-20260604-1';
+  window.LUMINA_LATEX_STAGE='latex-stage19w14b-unified-paper-ai-static-controls-fix-20260604-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -73,12 +73,12 @@
 <link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
-<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w13-objective-improver-unified-subtab-20260604-1" />
+<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w14b-unified-paper-ai-static-controls-fix-20260604-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
 <script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="stage19w13-objective-improver-unified-subtab-20260604-1">
+<div class="app-shell" data-stage="stage19w14b-unified-paper-ai-static-controls-fix-20260604-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">L</div>
@@ -313,14 +313,86 @@
           </div>
         </div>
         <div class="settings-note compact">Choose one workflow at a time. Local selected-text work stays in Copilot; diagnostics are under Settings → Developer / diagnostics when <code>?debug=1</code>.</div>
-        <div class="stage19w10-workflow-tabs" role="tablist" aria-label="Paper AI workflow tabs">
-          <button class="stage19w10-workflow-tab active" type="button" data-workflow-tab="remake">Total Remake</button>
-          <button class="stage19w10-workflow-tab" type="button" data-workflow-tab="review">Review / Rebuttal</button>
-          <button class="stage19w10-workflow-tab" type="button" data-workflow-tab="objective">Goal-driven Improver</button>
+        <div id="paperWorkflowUnifiedPane" class="stage19w14-unified-paper-ai-pane active" data-workflow-pane="unified">
+          <div id="stage19w14UnifiedPaperAiControls" class="stage19w14-unified-paper-ai-card settings-card-subtle">
+            <div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Goal-driven paper improver</h2></div></div>
+            <p class="settings-note compact">One unified Paper AI workflow. Choose an objective, scope, review/debate depth, and output mode. Report + edits and edits-only modes require safe <code>\laiold</code>/<code>\lai</code> edit proposals.</p>
+            <div class="field-grid two compact">
+              <label class="field">Objective
+                <select id="stage19w14Objective">
+                  <option value="quality" selected>Improve quality / acceptance probability</option>
+                  <option value="ranking">Improve ranking against competitor papers</option>
+                  <option value="stress">Stress-test with adversarial critique</option>
+                  <option value="remake">Full remake / reorganization</option>
+                  <option value="combined">Combined: review + adversarial + competitive</option>
+                </select>
+              </label>
+              <label class="field">Scope
+                <select id="stage19w14Scope">
+                  <option value="whole" selected>Whole paper</option>
+                  <option value="selected">Current section / selected text</option>
+                  <option value="salient">Most salient weak blocks</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-grid two compact">
+              <label class="field">Review/debate rounds
+                <select id="stage19w14Rounds">
+                  <option value="0" selected>0 — critique/review only</option>
+                  <option value="1">1 — review + response/revision</option>
+                  <option value="2">2 — multi-round debate</option>
+                  <option value="3">3 — deeper debate</option>
+                </select>
+              </label>
+              <label class="field">Output mode
+                <select id="stage19w14OutputMode">
+                  <option value="report_only">Report only</option>
+                  <option value="edits_only">Edits only</option>
+                  <option value="report_and_edits" selected>Report + edits</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-grid two compact">
+              <label class="field">Improvement focus
+                <select id="stage19w14Focus">
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="ideas">Ideas / novelty / positioning</option>
+                  <option value="writing">Writing / organization / clarity</option>
+                  <option value="math">Math / assumptions / notation / proof clarity</option>
+                  <option value="citations">Citations / related work</option>
+                </select>
+              </label>
+              <label class="field">Search budget
+                <select id="stage19w14Budget">
+                  <option value="fast">Fast</option>
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="deep">Deep / expensive</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-grid two compact">
+              <label class="field">Reviewer / critic count <select id="stage19w14ReviewerCount"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option></select></label>
+              <label class="field">Target venue <input id="stage19w14TargetVenue" type="text" placeholder="e.g. COLT, NeurIPS, JMLR" /></label>
+            </div>
+            <label class="field">Target audience <input id="stage19w14TargetAudience" type="text" placeholder="e.g. ML theory reviewers, broad ML audience" /></label>
+            <label class="field stage19w14-competitor-field">Competitor papers / URLs / notes <textarea id="stage19w14Competitors" rows="3" placeholder="One URL per line, or paste titles/abstracts/notes. Used only for ranking or combined objectives."></textarea></label>
+            <label class="field">Instructions / focal request <textarea id="stage19w14Instructions" rows="3" placeholder="Example: strengthen novelty positioning, tighten proof assumptions, improve related work, preserve theorem statements."></textarea></label>
+            <details class="stage19w14-advanced"><summary>Advanced context and engine settings</summary>
+              <div class="field-grid two compact">
+                <label class="field checkbox-field"><input id="stage19w14UseProjectMemory" type="checkbox" checked /> Use project memory</label>
+                <label class="field checkbox-field"><input id="stage19w14UseCollections" type="checkbox" checked /> Use selected collections / literature</label>
+                <label class="field checkbox-field"><input id="stage19w14UseReviewCorpus" type="checkbox" /> Use OpenReview examples</label>
+                <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show underlying engine cards</label>
+              </div>
+            </details>
+            <div id="stage19w14Status" class="settings-note compact">Unified Paper AI ready. Choose an objective and click Run Paper AI.</div>
+            <div class="micro-actions stretch devils-actions compact">
+              <button id="stage19w14RunBtn" class="btn mini primary" type="button">Run Paper AI</button>
+              <button id="stage19w14PreviewBtn" class="btn mini" type="button">Preview / sync settings</button>
+              <button id="stage19w14ApplyBtn" class="btn mini" type="button">Apply latest safe edits</button>
+            </div>
+          </div>
         </div>
-        <div id="paperWorkflowRemakePane" class="stage19w10-workflow-pane active" data-workflow-pane="remake"><div class="settings-note compact">Total Paper Remake controls will appear here.</div></div>
-        <div id="paperWorkflowReviewPane" class="stage19w10-workflow-pane" data-workflow-pane="review"><div class="settings-note compact">Reviewer / Rebuttal Simulator will appear here.</div></div>
-        <div id="paperWorkflowObjectivePane" class="stage19w10-workflow-pane" data-workflow-pane="objective"><div class="settings-note compact">Goal-driven improver controls will appear here.</div></div>
       </section>
 
       <section id="literatureTab" class="right-tab-panel stage19w10-literature-panel">
@@ -657,6 +729,6 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script src="js/project-block-context-service.js?v=stage19w12-val-act-policy-foundation-20260602-1" defer></script>
 <script src="js/context-policy-dashboard-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1" defer></script>
-<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w13-objective-improver-unified-subtab-20260604-1" defer></script>
+<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w14b-unified-paper-ai-static-controls-fix-20260604-1" defer></script>
 </body>
 </html>
