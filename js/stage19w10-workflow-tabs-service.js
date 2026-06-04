@@ -5,15 +5,16 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w10b-paper-ai-subtabs-visibility-fix-20260602-1';
+  const STAGE = 'latex-stage19w13-objective-improver-unified-subtab-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_WORKFLOW = 'latexai:stage19w10:paper-ai-workflow-tab';
+  const STORAGE_OBJECTIVE = 'latexai:stage19w13:objective-improver-mode';
 
   const PAPER_WORKFLOW_CARDS = {
     documentAiCard: 'paperWorkflowRemakePane',
     reviewerRebuttalCard: 'paperWorkflowReviewPane',
-    realAgentBranchCard: 'paperWorkflowDevilsPane',
-    competitiveReviewCard: 'paperWorkflowCompetitivePane'
+    realAgentBranchCard: 'paperWorkflowObjectivePane',
+    competitiveReviewCard: 'paperWorkflowObjectivePane'
   };
 
   const LITERATURE_CARDS = {
@@ -70,11 +71,18 @@
     try { localStorage.setItem(STORAGE_TAB, name); } catch (_e) {}
   }
 
+  function normalizeWorkflowKey(name) {
+    const raw = String(name || 'remake').trim();
+    if (/^(devils|competitive|ranking|adversarial)$/i.test(raw)) return 'objective';
+    return raw || 'remake';
+  }
+
   function activateWorkflow(name) {
-    const key = String(name || 'remake');
+    const key = normalizeWorkflowKey(name || 'remake');
     qa('.stage19w10-workflow-tab').forEach((b) => b.classList.toggle('active', b.dataset.workflowTab === key));
     qa('.stage19w10-workflow-pane[data-workflow-pane]').forEach((p) => p.classList.toggle('active', p.dataset.workflowPane === key));
     try { localStorage.setItem(STORAGE_WORKFLOW, key); } catch (_e) {}
+    applyObjectiveMode();
   }
 
   function bindWorkflowTabs() {
@@ -145,8 +153,96 @@
     if (runApp) runApp.classList.add('stage19w10-debug-only');
   }
 
+  function ensureObjectiveImproverControls() {
+    const pane = el('paperWorkflowObjectivePane');
+    if (!pane || el('stage19w13ObjectiveImproverControls')) return;
+    stripPlaceholder(pane);
+    const box = D.createElement('div');
+    box.id = 'stage19w13ObjectiveImproverControls';
+    box.className = 'stage19w13-objective-improver-card settings-card-subtle';
+    box.innerHTML = [
+      '<div class="section-head compact"><div><div class="smallcaps">Unified objective engine</div><h2>Goal-driven paper improver</h2></div></div>',
+      '<p class="settings-note compact">This subtab merges the old Devil’s Advocate branch runner and Competitive Review. The underlying engine is an objective-driven paper improver: choose a scope, focal improvement type, and objective. Competitive ranking is just one objective when competitor papers are supplied.</p>',
+      '<div class="field-grid two compact">',
+      '  <label class="field">Objective mode',
+      '    <select id="stage19w13ObjectiveMode">',
+      '      <option value="acceptance">Increase acceptance probability / paper quality</option>',
+      '      <option value="competitive">Improve ranking against competitor papers</option>',
+      '      <option value="combined">Combined: adversarial + competitive</option>',
+      '    </select>',
+      '  </label>',
+      '  <label class="field">Scope',
+      '    <select id="stage19w13ObjectiveScope">',
+      '      <option value="whole" selected>Whole paper</option>',
+      '      <option value="selected">Selected text / section</option>',
+      '      <option value="salient">Most salient blocks</option>',
+      '    </select>',
+      '  </label>',
+      '</div>',
+      '<div class="field-grid two compact">',
+      '  <label class="field">Improvement focus',
+      '    <select id="stage19w13ObjectiveFocus">',
+      '      <option value="balanced" selected>Balanced</option>',
+      '      <option value="ideas">Ideas / novelty / positioning</option>',
+      '      <option value="writing">Writing / organization / clarity</option>',
+      '      <option value="math">Math / assumptions / notation / proof clarity</option>',
+      '      <option value="citations">Citations / related work</option>',
+      '    </select>',
+      '  </label>',
+      '  <label class="field">Search budget',
+      '    <select id="stage19w13ObjectiveBudget">',
+      '      <option value="fast" selected>Fast</option>',
+      '      <option value="balanced">Balanced</option>',
+      '      <option value="deep">Deep</option>',
+      '    </select>',
+      '  </label>',
+      '</div>',
+      '<div id="stage19w13ObjectiveStatus" class="settings-note compact">Acceptance mode shows the adversarial branch runner. Competitive mode shows competitor-paper ranking/review. Combined mode shows both.</div>'
+    ].join('');
+    pane.insertBefore(box, pane.firstChild);
+    const select = el('stage19w13ObjectiveMode');
+    if (select) {
+      try { select.value = localStorage.getItem(STORAGE_OBJECTIVE) || 'acceptance'; } catch (_e) { select.value = 'acceptance'; }
+      select.addEventListener('change', () => {
+        try { localStorage.setItem(STORAGE_OBJECTIVE, select.value || 'acceptance'); } catch (_e) {}
+        applyObjectiveMode();
+      }, true);
+    }
+  }
+
+  function setCardHidden(card, hidden) {
+    if (!card) return;
+    card.classList.toggle('stage19w13-objective-hidden', !!hidden);
+    if (hidden) card.setAttribute('aria-hidden', 'true');
+    else card.removeAttribute('aria-hidden');
+  }
+
+  function applyObjectiveMode() {
+    const pane = el('paperWorkflowObjectivePane');
+    if (!pane) return;
+    ensureObjectiveImproverControls();
+    const select = el('stage19w13ObjectiveMode');
+    let mode = (select && select.value) || 'acceptance';
+    if (!/^(acceptance|competitive|combined)$/.test(mode)) mode = 'acceptance';
+    const devils = el('realAgentBranchCard');
+    const competitive = el('competitiveReviewCard');
+    setCardHidden(devils, mode === 'competitive');
+    setCardHidden(competitive, mode === 'acceptance');
+    const status = el('stage19w13ObjectiveStatus');
+    if (status) {
+      if (mode === 'competitive') status.textContent = 'Competitive objective selected: use competitor URLs/reference papers to evaluate and improve relative ranking.';
+      else if (mode === 'combined') status.textContent = 'Combined objective selected: use adversarial debate plus competitor-paper ranking context.';
+      else status.textContent = 'Acceptance/quality objective selected: use the adversarial branch runner to stress-test and improve the paper without competitor papers.';
+    }
+    if (select) {
+      try { localStorage.setItem(STORAGE_OBJECTIVE, mode); } catch (_e) {}
+    }
+  }
+
   function moveWorkflowCards() {
     Object.entries(PAPER_WORKFLOW_CARDS).forEach(([card, target]) => moveCard(card, target));
+    ensureObjectiveImproverControls();
+    applyObjectiveMode();
     Object.entries(LITERATURE_CARDS).forEach(([card, target]) => moveCard(card, target));
     Object.entries(PROJECT_CARDS).forEach(([card, target]) => moveCard(card, target));
     el('copilotTab')?.classList.add('stage19w10-local-copilot-only');
@@ -175,7 +271,7 @@
     let saved = '';
     let wf = '';
     try { saved = localStorage.getItem(STORAGE_TAB) || ''; wf = localStorage.getItem(STORAGE_WORKFLOW) || ''; } catch (_e) {}
-    if (wf) activateWorkflow(wf);
+    if (wf) activateWorkflow(normalizeWorkflowKey(wf));
     else activateWorkflow('remake');
     if (saved && el(`${saved}Tab`) && q(`[data-right-tab="${cssEscape(saved)}"]`)) activateRightTab(saved);
   }
@@ -220,6 +316,7 @@
     reconcile,
     activateRightTab,
     activateWorkflow,
+    applyObjectiveMode,
     jumpToWorkflow,
     isDebugMode
   };
