@@ -239,3 +239,32 @@ body.stage19w10-debug-mode #developerDiagnosticsSection {
   color: #667085;
   font-size: .8rem;
 }
+
+/* Stage 19W13: merge Devil's Advocate and Competitive Review into one
+   goal-driven improver subtab. */
+.stage19w13-objective-improver-card {
+  margin: .25rem 0 .75rem;
+  border: 1px solid rgba(37, 99, 235, .18) !important;
+  background: linear-gradient(180deg, rgba(239, 246, 255, .92), rgba(255,255,255,.96)) !important;
+}
+.stage19w13-objective-improver-card .section-head {
+  margin-bottom: .35rem;
+}
+.stage19w13-objective-improver-card select,
+.stage19w13-objective-improver-card input,
+.stage19w13-objective-improver-card textarea {
+  max-width: 100%;
+}
+.stage19w13-objective-hidden {
+  display: none !important;
+}
+#paperWorkflowObjectivePane #realAgentBranchCard,
+#paperWorkflowObjectivePane #competitiveReviewCard {
+  margin-top: .75rem !important;
+}
+#paperWorkflowObjectivePane #realAgentBranchCard .section-head .smallcaps::after {
+  content: ' · acceptance/adversarial objective';
+}
+#paperWorkflowObjectivePane #competitiveReviewCard .section-head .smallcaps::after {
+  content: ' · competitive-ranking objective';
+}
