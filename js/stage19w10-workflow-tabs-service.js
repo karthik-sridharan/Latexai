@@ -1,11 +1,11 @@
-// Stage 19W14B: static unified Paper AI controls visibility fix.
+// Stage 19W14C: hide legacy Reviewer/Rebuttal and engine panels behind unified Paper AI.
 (function () {
   'use strict';
 
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w14b-unified-paper-ai-static-controls-fix-20260604-1';
+  const STAGE = 'latex-stage19w14c-hide-legacy-reviewer-rebuttal-panel-20260604-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
 
@@ -363,10 +363,10 @@
       '    <label class="field checkbox-field"><input id="stage19w14UseProjectMemory" type="checkbox" checked /> Use project memory</label>',
       '    <label class="field checkbox-field"><input id="stage19w14UseCollections" type="checkbox" checked /> Use selected collections / literature</label>',
       '    <label class="field checkbox-field"><input id="stage19w14UseReviewCorpus" type="checkbox" /> Use OpenReview examples</label>',
-      '    <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show underlying engine cards</label>',
+      '    <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show internal legacy engine cards (debug)</label>',
       '  </div>',
       '</details>',
-      '<div id="stage19w14Status" class="settings-note compact">Unified Paper AI ready. Choose an objective and click Run Paper AI.</div>',
+      '<div id="stage19w14Status" class="settings-note compact">Unified Paper AI ready. Review/rebuttal and other engines are internal; choose an objective and click Run Paper AI.</div>',
       '<div class="micro-actions stretch devils-actions compact">',
       '  <button id="stage19w14RunBtn" class="btn mini primary" type="button">Run Paper AI</button>',
       '  <button id="stage19w14PreviewBtn" class="btn mini" type="button">Preview / sync settings</button>',
@@ -385,11 +385,15 @@
   function updateVisibleEngineCards() {
     const v = visibleCardsForObjective();
     const showEngine = !!el('stage19w14ShowEngineCards')?.checked;
-    // Keep active engines visible enough to operate, but hide inactive ones.
-    setHidden('documentAiCard', !v.document);
-    setHidden('reviewerRebuttalCard', !v.reviewer);
-    setHidden('realAgentBranchCard', !v.branch);
-    setHidden('competitiveReviewCard', !v.competitive);
+    // Stage 19W14C: Reviewer/Rebuttal, Devil's Advocate, Competitive,
+    // and Total Remake are internal engines.  They should not appear as
+    // standalone Paper AI panels in normal use; the unified controls above
+    // route to them.  Only reveal the selected internal engine cards when the
+    // explicit debug/advanced checkbox is enabled.
+    setHidden('documentAiCard', !(showEngine && v.document));
+    setHidden('reviewerRebuttalCard', !(showEngine && v.reviewer));
+    setHidden('realAgentBranchCard', !(showEngine && v.branch));
+    setHidden('competitiveReviewCard', !(showEngine && v.competitive));
     D.body.classList.toggle('stage19w14-show-engine-cards', showEngine);
     const compField = q('.stage19w14-competitor-field');
     if (compField) compField.classList.toggle('stage19w14-engine-hidden', !(objectiveMode() === 'ranking' || objectiveMode() === 'combined'));
