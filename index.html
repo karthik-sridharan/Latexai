@@ -73,7 +73,8 @@
 <link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
 <link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
 <link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
-<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w15-copilot-audit-edits-cleanup-20260604-1" />
+<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w16-left-tools-large-preview-20260604-1" />
+<link rel="stylesheet" href="css/lai-stage19w16-left-tools-preview-layout.css?v=stage19w16-left-tools-large-preview-20260604-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
 <script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
 </head>
@@ -164,11 +165,6 @@
       <div class="right-tabs stage19w10-primary-tabs" role="tablist" aria-label="Right panel tabs">
         <button class="right-tab active" data-right-tab="preview" type="button">Preview</button>
         <button class="right-tab" data-right-tab="logs" type="button">Logs</button>
-        <button class="right-tab" data-right-tab="copilot" type="button">Copilot</button>
-        <button class="right-tab" data-right-tab="paperAi" type="button">Paper AI</button>
-        <button class="right-tab" data-right-tab="literature" type="button">Literature</button>
-        <button class="right-tab" data-right-tab="project" type="button">Project</button>
-        <button class="right-tab" data-right-tab="settings" type="button">Settings</button>
       </div>
 
       <section id="previewTab" class="right-tab-panel active">
@@ -621,7 +617,7 @@
 <script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
 <script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
-<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w15-copilot-audit-edits-cleanup-20260604-1"></script>
+<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w16-left-tools-large-preview-20260604-1"></script>
 <script src="js/real-agent-branch-workflow-service.js?v=stage19t2s-end-to-end-regression-audit-panel-1" defer></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 <script id="stage18a-right-panel-organizer-fallback">
@@ -636,7 +632,7 @@ window.addEventListener('DOMContentLoaded', function () {
       var existing = document.querySelector('script[src*="right-panel-organizer-service.js"]');
       if (existing && existing.dataset.stage18aFallbackLoaded === 'true') return;
       var s = document.createElement('script');
-      s.src = 'js/right-panel-organizer-service.js?v=stage19w15-copilot-audit-edits-cleanup-20260604-1';
+      s.src = 'js/right-panel-organizer-service.js?v=stage19w16-left-tools-large-preview-20260604-1';
       s.defer = true;
       s.dataset.stage18aFallbackLoaded = 'true';
       document.body.appendChild(s);
@@ -729,6 +725,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <script src="js/project-block-context-service.js?v=stage19w12-val-act-policy-foundation-20260602-1" defer></script>
 <script src="js/context-policy-dashboard-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1" defer></script>
-<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w15-copilot-audit-edits-cleanup-20260604-1" defer></script>
+<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w16-left-tools-large-preview-20260604-1" defer></script>
+<script src="js/stage19w16-left-tool-tabs-service.js?v=stage19w16-left-tools-large-preview-20260604-1" defer></script>
 </body>
 </html>
