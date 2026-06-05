@@ -42,3 +42,14 @@ Fixes the Settings → Model/provider routing dropdowns so provider changes pers
 - index.html
 - js/real-agent-branch-workflow-service.js
 - README_STAGE19N1R3_EXPLICIT_DEVILS_ACTION_LABELS.md
+
+## Stage 19U9M settings GitHub drawer polish
+- `index.html`
+- `js/right-panel-organizer-service.js`
+- `js/backend-url-settings-service.js`
+- `js/file-tree.js`
+- `css/lai-stage17j-right-panel-sections.css`
+- `tests/stage19u9m-settings-github-drawer-polish.test.cjs`
+- `README_STAGE19U9M_SETTINGS_GITHUB_DRAWER_POLISH.md`
+
+Keeps the right-panel drawer UI, splits Settings into cleaner backend-specific drawers, moves GitHub backend configuration into its own drawer with a Test GitHub backend button, and turns raw GitHub 404/ref failures into branch/repo/token/folder-path guidance.
