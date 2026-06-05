@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w31-restore-working-github-load-20260605-1';
+  const STAGE = 'stage19w33-github-flow-trace-new-project-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -36,6 +36,67 @@
   function activeGithubBackend() {
     const fromSettings = String(settingsGithubBackend() || '').trim();
     return fromSettings || git.backendBase || DEFAULT_GITHUB_BACKEND;
+  }
+
+
+  function githubTrace(event, detail = {}) {
+    try {
+      const root = W.LuminaLatex = W.LuminaLatex || {};
+      const trace = root.__githubOpenTrace = Array.isArray(root.__githubOpenTrace) ? root.__githubOpenTrace : [];
+      const entry = Object.assign({
+        time: new Date().toISOString(),
+        stage: STAGE,
+        event
+      }, detail || {});
+      trace.push(entry);
+      while (trace.length > 40) trace.shift();
+      try { console.info('[Latexai GitHub trace]', entry); } catch (_err) {}
+      return entry;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function summarizeGithubBody(body) {
+    if (!body || typeof body !== 'object') return body || null;
+    const out = {
+      owner: body.owner || '',
+      repo: body.repo || '',
+      branch: body.branch || '',
+      rootPath: body.rootPath || ''
+    };
+    if (body.message) out.message = String(body.message || '').slice(0, 160);
+    if (body.private !== undefined) out.private = !!body.private;
+    if (body.expectedHeadSha !== undefined) out.expectedHeadSha = body.expectedHeadSha || null;
+    if (body.project) out.project = {
+      name: body.project.name || body.project.title || '',
+      rootFile: body.project.rootFile || body.project.activePath || '',
+      fileCount: Array.isArray(body.project.files) ? body.project.files.length : undefined
+    };
+    if (body.files && typeof body.files === 'object') {
+      const paths = Object.keys(body.files).sort();
+      out.files = { count: paths.length, samplePaths: paths.slice(0, 12) };
+    }
+    return out;
+  }
+
+  function shortGithubTraceForAlert(extra = null) {
+    const lines = [];
+    if (extra?.request) {
+      lines.push(`Request: ${extra.request.method || 'POST'} ${extra.request.url || ''}`);
+      lines.push(`Payload: ${JSON.stringify(extra.request.body || {})}`);
+    }
+    const trace = (W.LuminaLatex.__githubOpenTrace || []).slice(-8);
+    if (trace.length) {
+      lines.push('Recent frontend GitHub trace:');
+      trace.forEach((entry) => {
+        const body = entry.body ? ` body=${JSON.stringify(entry.body)}` : '';
+        const status = entry.status ? ` status=${entry.status}` : '';
+        const msg = entry.message ? ` message=${String(entry.message).slice(0, 180)}` : '';
+        lines.push(`- ${entry.event}${status}${msg}${body}`);
+      });
+    }
+    return lines.join('\n');
   }
 
   function syncGitFromProject(project = null) {
@@ -140,7 +201,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W31</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W33</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -584,12 +645,14 @@ Branch: ${git.branch || 'main'}${git.rootPath ? `
 Folder: ${git.rootPath}` : ''}`;
       render();
 
-      const result = await gitFetch('/load-project', {
+      const loadBody = {
         owner: git.owner,
         repo: git.repo,
         branch: git.branch || 'main',
         rootPath: normalizeRepoPath(git.rootPath || '')
-      });
+      };
+      githubTrace('loadFromGithub-request-body', { body: summarizeGithubBody(loadBody) });
+      const result = await gitFetch('/load-project', loadBody);
 
       const github = {
         owner: git.owner,
@@ -625,8 +688,11 @@ Root: ${rootFile}`);
       git.status = `Load failed:
 ${message}`;
       render();
+      const traceText = shortGithubTraceForAlert({
+        request: { method: 'POST', url: String(activeGithubBackend()).replace(/\/$/, '') + '/load-project', body: summarizeGithubBody({ owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: normalizeRepoPath(git.rootPath || '') }) }
+      });
       alert(`GitHub load failed:
-${message}`);
+${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
       logGithubReward('open_project', { ok: false, error: message }, { rewardValue: -0.55, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' } });
       return { ok: false, error: message };
     }
@@ -775,7 +841,7 @@ ${message}`);
     const branch = String(options.branch || git.branch || 'main').trim() || 'main';
     const files = {};
     for (const file of normalizedProject.files || []) files[file.path] = fileContentForGithub(file);
-    const result = await gitFetch('/create-project-repo', {
+    const createBody = {
       owner: options.owner || git.owner || '',
       repo: repoName,
       branch,
@@ -785,7 +851,9 @@ ${message}`);
       project: normalizedProject,
       files,
       message: options.message || `Latexai new project: ${normalizedProject.name || repoName}`
-    });
+    };
+    githubTrace('createProjectRepository-request-body', { body: summarizeGithubBody(createBody) });
+    const result = await gitFetch('/create-project-repo', createBody);
     git.owner = result.owner || result.repoOwner || git.owner || '';
     git.repo = result.repo || repoName;
     git.branch = result.branch || branch;
@@ -865,19 +933,45 @@ ${message}`);
 
   async function gitFetch(path, body) {
     const url = String(activeGithubBackend()).replace(/\/$/, '') + path;
-    const response = await fetch(url, {
-      method: body ? 'POST' : 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    const text = await response.text();
+    const method = body ? 'POST' : 'GET';
+    const traceBody = summarizeGithubBody(body);
+    githubTrace('gitFetch-request', { path, method, url, body: traceBody });
+    let response;
+    let text = '';
     let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
-    if (!response.ok) {
-      const detail = data.detail || data.message || data.raw || `HTTP ${response.status}`;
-      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    try {
+      response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      text = await response.text();
+      try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
+      const detail = data.detail || data.error || data.message || data.raw || '';
+      githubTrace('gitFetch-response', {
+        path,
+        method,
+        url,
+        status: response.status,
+        ok: response.ok,
+        message: typeof detail === 'string' ? detail.slice(0, 260) : JSON.stringify(detail).slice(0, 260),
+        keys: data && typeof data === 'object' ? Object.keys(data).slice(0, 12) : []
+      });
+      if (!response.ok) {
+        const rendered = typeof detail === 'string' ? detail : JSON.stringify(detail);
+        const err = new Error(rendered || `HTTP ${response.status}`);
+        err.githubRequest = { path, method, url, body: traceBody };
+        err.githubStatus = response.status;
+        err.githubResponse = data;
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      if (!response) {
+        githubTrace('gitFetch-network-error', { path, method, url, body: traceBody, message: err?.message || String(err) });
+      }
+      throw err;
     }
-    return data;
   }
 
   function fileContentForGithub(file) {
@@ -984,5 +1078,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi, refreshGithubProjectPanes };
+  NS.FileTree = { STAGE, getGithubTrace: () => (W.LuminaLatex.__githubOpenTrace || []).slice(), bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi, refreshGithubProjectPanes };
 })();

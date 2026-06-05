@@ -53,6 +53,23 @@
   }
 
 
+  function summarizeGithubTraceForAlert() {
+    try {
+      const trace = NS.FileTree?.getGithubTrace?.() || W.LuminaLatex?.__githubOpenTrace || [];
+      const recent = Array.isArray(trace) ? trace.slice(-8) : [];
+      if (!recent.length) return '';
+      return recent.map((entry) => {
+        const status = entry.status ? ` status=${entry.status}` : '';
+        const msg = entry.message ? ` message=${String(entry.message).slice(0, 180)}` : '';
+        const body = entry.body ? ` body=${JSON.stringify(entry.body)}` : '';
+        return `- ${entry.event || 'event'}${status}${msg}${body}`;
+      }).join('\n');
+    } catch (_err) {
+      return '';
+    }
+  }
+
+
   async function createNewProjectWorkflow() {
     const currentName = NS.State.state.project?.name || 'Untitled Lumina LaTeX Project';
     const name = prompt('New project name', 'Untitled Latexai Project');
@@ -61,13 +78,17 @@
     const suggestedRepo = NS.FileTree?.sanitizeRepoName?.(cleanName) || cleanName.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'latexai-project';
     const repoName = prompt('New GitHub repository name', suggestedRepo);
     if (!repoName || !String(repoName).trim()) return;
+    const currentGithub = NS.FileTree?.getGithubSettings?.() || {};
+    const defaultOwner = currentGithub.owner || '';
+    const owner = prompt('GitHub owner/org for the new repository', defaultOwner || 'karthik-sridharan');
+    if (!owner || !String(owner).trim()) return;
 
     const message = [
       `Create new project “${cleanName}”?`,
       '',
       `This will replace the active local project “${currentName}”.`,
       'Backend/API settings will be kept.',
-      `A new GitHub repository named “${String(repoName).trim()}” will be created and used for this project.`
+      `A new GitHub repository named “${String(owner).trim()}/${String(repoName).trim()}” will be created and used for this project.`
     ].join('\n');
     if (!confirm(message)) return;
 
@@ -99,6 +120,7 @@
 
       toast('Creating GitHub repository…');
       const gh = await NS.FileTree?.createProjectRepository?.(project, {
+        owner: String(owner).trim(),
         repoName: String(repoName).trim(),
         private: true,
         message: `Latexai new project: ${cleanName}`

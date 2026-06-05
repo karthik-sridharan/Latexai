@@ -13,7 +13,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19w30-github-load-branch-fallback-20260605-1';
+  const STAGE = 'stage19w33-github-flow-trace-new-project-20260605-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
