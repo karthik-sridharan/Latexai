@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='stage19w39-compile-jobs-load-fallback-20260605-1';
+  window.LUMINA_LATEX_STAGE='stage19w40-backend-compiler-only-settings-20260605-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -473,69 +473,13 @@
           </div>
           <button id="testGithubBackendBtn" class="btn mini" type="button">Test GitHub backend</button>
         </div>
-        <label class="field">Compile backend URL
-          <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-compile-backend.example.com/api/lumina/latex/compile" />
-        </label>
-        <div id="backendStatusCard" class="backend-status-card">
-          <div>
-            <div class="smallcaps">Backend status</div>
-            <strong id="backendStatusText">Not checked</strong>
-            <p id="backendStatusDetail">Use Test backend after setting a compile URL.</p>
-          </div>
-          <button id="testCompileBackendBtn" class="btn mini" type="button">Test backend</button>
+        <div id="backendCompilerOnlyNote" class="settings-note">
+          Backend compiler only. This settings section now shows only the Cloud Run TeX Live backend controls and hides unused local/browser compiler choices.
         </div>
-        <label class="field">Compile proxy token, optional
-          <input id="compileProxyToken" type="password" autocomplete="off" placeholder="Optional bearer token for backend compile" />
+        <input id="compilerModeSelect" type="hidden" value="backend-texlive" />
+        <label class="field">Compile endpoint URL
+          <input id="compileProxyUrl" type="url" value="https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/latex/compile" placeholder="https://your-compile-backend.example.com/api/lumina/latex/compile" />
         </label>
-        <label class="field">Compiler provider
-          <select id="compilerModeSelect">
-            <option value="backend-texlive">Backend TeX Live</option>
-            <option value="mock-draft">Mock draft check</option>
-            <option value="browser-wasm">Browser WASM: SwiftLaTeX experimental</option>
-            <option value="browser-wasm-texlyre">Browser WASM: TeXlyre BusyTeX experimental</option>
-          </select>
-        </label>
-        <div id="wasmStatusCard" class="backend-status-card wasm-status-card">
-          <div>
-            <div class="smallcaps">Browser engine status</div>
-            <strong id="wasmStatusText">Not checked</strong>
-            <p id="wasmStatusDetail">Browser-WASM compile uses SwiftLaTeX-compatible assets in the browser. Click Test browser engine after setting the asset folder.</p>
-          </div>
-          <button id="testBrowserWasmBtn" class="btn mini" type="button">Test browser engine</button>
-        </div>
-        <label class="field">Browser-WASM asset folder
-          <input id="browserWasmAssetBase" type="text" value="vendor/swiftlatex/pdftex/" placeholder="vendor/swiftlatex/pdftex/" />
-        </label>
-        <label class="field">SwiftLaTeX TeXLive-on-demand endpoint
-          <input id="browserWasmTexliveEndpoint" type="url" value="https://texlive.swiftlatex.com/" placeholder="https://texlive.swiftlatex.com/" />
-        </label>
-        <label class="field checkbox-field">
-          <input id="browserWasmReuseCheck" type="checkbox" checked />
-          Reuse SwiftLaTeX engine after first load (faster repeat compiles)
-        </label>
-        <div id="texlyreStatusCard" class="backend-status-card wasm-status-card">
-          <div>
-            <div class="smallcaps">TeXlyre BusyTeX status</div>
-            <strong id="texlyreStatusText">Not checked</strong>
-            <p id="texlyreStatusDetail">TeXlyre BusyTeX can compile in the browser after the module and BusyTeX assets are configured. Click Test TeXlyre after adding assets.</p>
-          </div>
-          <button id="testTexlyreBtn" class="btn mini" type="button">Test TeXlyre</button>
-        </div>
-        <label class="field">TeXlyre module URL
-          <input id="texlyreModuleUrl" type="text" value="https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js" placeholder="https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js or vendor/texlyre/texlyre-busytex/dist/index.js" />
-        </label>
-        <label class="field">TeXlyre BusyTeX asset base
-          <input id="texlyreBusytexBase" type="text" value="vendor/texlyre/core/busytex" placeholder="vendor/texlyre/core/busytex" />
-        </label>
-        <label class="field checkbox-field">
-          <input id="texlyreReuseCheck" type="checkbox" checked />
-          Reuse TeXlyre runner after first load (faster repeat compiles)
-        </label>
-        <label class="field checkbox-field">
-          <input id="texlyreUseWorkerCheck" type="checkbox" />
-          Use TeXlyre Web Worker mode (experimental; disabled on Safari/iPad in this hotfix)
-        </label>
-        <button id="resetTexlyreDirectModeBtn" class="btn mini" type="button">Reset TeXlyre to direct mode</button>
         <div class="field-grid two">
           <label class="field">Root file
             <select id="rootFileSelect"></select>
@@ -549,12 +493,19 @@
             </select>
           </label>
         </div>
-        <label class="field checkbox-field">
-          <input id="shellEscapeCheck" type="checkbox" />
-          Allow shell escape (disabled on static fallback unless backend permits it)
+        <div id="backendStatusCard" class="backend-status-card">
+          <div>
+            <div class="smallcaps">Backend status</div>
+            <strong id="backendStatusText">Not checked</strong>
+            <p id="backendStatusDetail">Use Test backend after setting the compile endpoint. The status and jobs endpoints are derived from the same backend URL.</p>
+          </div>
+          <button id="testCompileBackendBtn" class="btn mini" type="button">Test backend</button>
+        </div>
+        <label class="field">Compile proxy token, optional
+          <input id="compileProxyToken" type="password" autocomplete="off" placeholder="Optional bearer token for backend compile" />
         </label>
         <label class="field checkbox-field">
-          <input id="compileJobsCheck" type="checkbox" checked />
+          <input id="compileJobsCheck" type="checkbox" />
           Use job-based compile pipeline with status polling
         </label>
         <label class="field">Compile poll interval
@@ -564,13 +515,16 @@
             <option value="2000">Conservative, 2s</option>
           </select>
         </label>
+        <label class="field checkbox-field">
+          <input id="shellEscapeCheck" type="checkbox" />
+          Allow shell escape (only if the backend explicitly permits it)
+        </label>
         <div id="compileBackendSettingsNote" class="settings-note">
-          Static GitHub Pages can run the editor and draft preview. Stage 1G keeps the real backend runner and adds TeXlyre BusyTeX browser-WASM compile; use Test backend to confirm that your TeX Live backend is reachable before compiling. Default relative /api URLs still fall back to draft validation on static hosts.
+          Direct backend compile is the default. If job-based compile is enabled, Lumina derives <code>/api/lumina/latex/compile/jobs</code> and <code>/api/lumina/latex/status</code> from the compile endpoint so stale backend URLs do not linger.
         </div>
         <div id="compileContractSettingsNote" class="settings-note">
-          Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
+          Active backend routes: <code>POST /api/lumina/latex/compile</code>, optional <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and <code>GET /api/lumina/latex/status</code>.
         </div>
-        <button id="openOverleafBtn" class="btn ghost" type="button">Open root in Overleaf</button>
         <button id="runAppDiagnosticsBtn" class="btn ghost stage19w10-debug-only" type="button">Run app diagnostics</button>
         <div id="developerDiagnosticsSection" class="stage19w10-developer-diagnostics stage19w10-debug-only">
           <div class="section-head compact"><div><div class="smallcaps">Developer</div><h2>Developer / diagnostics</h2></div></div>
@@ -588,11 +542,9 @@
 <script src="js/sync-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/editor-adapter.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/preview-adapter.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
-<script src="js/browser-wasm-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
-<script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
-<script src="js/compiler-provider.js?v=stage19w39-compile-jobs-load-fallback-20260605-1" defer></script>
+<script src="js/compiler-provider.js?v=stage19w40-backend-compiler-only-settings-20260605-1" defer></script>
 <script src="js/ai-provider.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1" defer></script>
-<script src="js/backend-url-settings-service.js?v=stage19w39-compile-jobs-load-fallback-20260605-1" defer></script>
+<script src="js/backend-url-settings-service.js?v=stage19w40-backend-compiler-only-settings-20260605-1" defer></script>
 <script src="js/research-memory-extraction-service.js?v=stage19c-clean-new-project-github-repo-workflow-1" defer></script>
 <script src="js/state.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
 <script src="js/reward-logging-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
@@ -601,16 +553,16 @@
 <script src="js/high-value-ai-outcome-memory-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
 <script src="js/editor.js?v=stage4j-always-visible-lai-guard-1" defer></script>
 <script src="js/stage19w23-editor-lite-service.js?v=stage19w28-settings-github-backend-restore-20260604-1" defer></script>
-<script src="js/file-tree.js?v=stage19w39-compile-jobs-load-fallback-20260605-1" defer></script>
-<script src="js/preview.js?v=stage19w39-compile-jobs-load-fallback-20260605-1" defer></script>
+<script src="js/file-tree.js?v=stage19w40-backend-compiler-only-settings-20260605-1" defer></script>
+<script src="js/preview.js?v=stage19w40-backend-compiler-only-settings-20260605-1" defer></script>
 <script src="js/import-export.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/selection-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/source-display-sync.js?v=stage8b-source-display-sync-fix-1" defer></script>
 <script src="js/patch-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/patch-manager.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/copilot.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
-<script src="js/diagnostics.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
-<script src="js/main.js?v=stage19w39-compile-jobs-load-fallback-20260605-1" defer></script>
+<script src="js/diagnostics.js?v=stage19w40-backend-compiler-only-settings-20260605-1" defer></script>
+<script src="js/main.js?v=stage19w40-backend-compiler-only-settings-20260605-1" defer></script>
 <script src="js/lai-stage5e-panel-scroll-pdf-viewer.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/pdf-region-selection-service.js?v=stage7d-pdf-region-selection-1" defer></script>
 <script src="js/asset-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
@@ -640,7 +592,7 @@
 <script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
 <script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
-<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w30-github-load-branch-fallback-20260605-1"></script>
+<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w40-backend-compiler-only-settings-20260605-1"></script>
 <script src="js/real-agent-branch-workflow-service.js?v=stage19t2s-end-to-end-regression-audit-panel-1" defer></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 <script id="stage18a-right-panel-organizer-fallback">
@@ -655,7 +607,7 @@ window.addEventListener('DOMContentLoaded', function () {
       var existing = document.querySelector('script[src*="right-panel-organizer-service.js"]');
       if (existing && existing.dataset.stage18aFallbackLoaded === 'true') return;
       var s = document.createElement('script');
-      s.src = 'js/right-panel-organizer-service.js?v=stage19w30-github-load-branch-fallback-20260605-1';
+      s.src = 'js/right-panel-organizer-service.js?v=stage19w40-backend-compiler-only-settings-20260605-1';
       s.defer = true;
       s.dataset.stage18aFallbackLoaded = 'true';
       document.body.appendChild(s);
