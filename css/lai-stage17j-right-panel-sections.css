@@ -295,3 +295,66 @@
 #paperAiPolishCard .paper-ai-preview-grid {
   max-width: none;
 }
+
+/* Stage 19U9M: keep the drawer UI but split Settings into clean backend-specific drawers.
+   GitHub sync now has its own drawer/status card instead of landing in Other Settings. */
+#settingsTab .right-panel-group[data-group-key="ai-memory-backends"] .right-panel-group-summary,
+#settingsTab .right-panel-group[data-group-key="github-sync"] .right-panel-group-summary,
+#settingsTab .right-panel-group[data-group-key="compile-engines"] .right-panel-group-summary {
+  padding-top: .78rem;
+  padding-bottom: .78rem;
+}
+
+#settingsTab .right-panel-group[data-group-key="github-sync"] {
+  border-color: rgba(37,99,235,.22);
+  background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.96));
+}
+
+#settingsTab .right-panel-group-body > label.field,
+#settingsTab .right-panel-group-body > .field,
+#settingsTab .right-panel-group-body > .field-grid,
+#settingsTab .right-panel-group-body > .settings-note,
+#settingsTab .right-panel-group-body > .backend-status-card {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#settingsTab .right-panel-group-body > label.field,
+#settingsTab .right-panel-group-body > .field {
+  padding: .58rem .62rem;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 13px;
+  background: rgba(248,250,252,.72);
+}
+
+#settingsTab .right-panel-group-body input,
+#settingsTab .right-panel-group-body select,
+#settingsTab .right-panel-group-body textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#settingsTab .right-panel-group-body > .settings-note {
+  padding: .58rem .62rem;
+  border: 1px solid rgba(15,23,42,.07);
+  border-radius: 13px;
+  background: rgba(241,245,249,.72);
+}
+
+#settingsTab .right-panel-group-body > .backend-status-card {
+  align-items: center;
+  gap: .65rem;
+}
+
+#githubBackendStatusCard.github-status-card.ok {
+  border-color: rgba(22,163,74,.28);
+}
+
+#githubBackendStatusCard.github-status-card.bad {
+  border-color: rgba(220,38,38,.28);
+}
+
+#rightPanelGroup-settings-other-settings:not(.empty) {
+  opacity: .88;
+}
