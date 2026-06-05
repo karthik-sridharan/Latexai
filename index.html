@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='latex-stage19w28-settings-github-backend-restore-20260604-1';
+  window.LUMINA_LATEX_STAGE='stage19w30-github-load-branch-fallback-20260605-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -66,7 +66,7 @@
 <link rel="stylesheet" href="css/lai-stage17d-left-panel-layout.css?v=stage17d-left-panel-layout-fix-1" />
 <link rel="stylesheet" href="css/lai-stage17ef-ai-reports-browser.css?v=stage17ef-unified-ai-reports-browser-1" />
 <link rel="stylesheet" href="css/lai-stage17i-ai-routing-inspector.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
-<link rel="stylesheet" href="css/lai-stage17j-right-panel-sections.css?v=stage19w29-settings-github-drawers-cleanup-20260605-1" />
+<link rel="stylesheet" href="css/lai-stage17j-right-panel-sections.css?v=stage19w30-github-load-branch-fallback-20260605-1" />
 <link rel="stylesheet" href="css/lai-stage19n0-real-agent-branch-workflow.css?v=stage19t2s-end-to-end-regression-audit-panel-1" />
 <link rel="stylesheet" href="css/lai-stage15f-backend-diagnostics.css?v=stage15f-backend-diagnostics-dashboard-1" />
 <link rel="stylesheet" href="css/lai-stage15g-model-routing.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
@@ -469,7 +469,7 @@
           <div>
             <div class="smallcaps">GitHub backend status</div>
             <strong id="githubBackendStatusText">Not checked</strong>
-            <p id="githubBackendStatusDetail">Used by Project → Open GitHub / Save GitHub. Click Test GitHub backend to confirm the sync service URL and token configuration.</p>
+            <p id="githubBackendStatusDetail">Used by Project → Open GitHub / Save GitHub. Test GitHub backend only confirms the sync service URL/token; repository loading still requires the exact owner/repo, branch, folder path, and token access.</p>
           </div>
           <button id="testGithubBackendBtn" class="btn mini" type="button">Test GitHub backend</button>
         </div>
@@ -592,7 +592,7 @@
 <script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/compiler-provider.js?v=stage17x-compile-log-diagnostics-surfacing-1" defer></script>
 <script src="js/ai-provider.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1" defer></script>
-<script src="js/backend-url-settings-service.js?v=stage19w29-settings-github-drawers-cleanup-20260605-1" defer></script>
+<script src="js/backend-url-settings-service.js?v=stage19w30-github-load-branch-fallback-20260605-1" defer></script>
 <script src="js/research-memory-extraction-service.js?v=stage19c-clean-new-project-github-repo-workflow-1" defer></script>
 <script src="js/state.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
 <script src="js/reward-logging-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
@@ -601,7 +601,7 @@
 <script src="js/high-value-ai-outcome-memory-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
 <script src="js/editor.js?v=stage4j-always-visible-lai-guard-1" defer></script>
 <script src="js/stage19w23-editor-lite-service.js?v=stage19w28-settings-github-backend-restore-20260604-1" defer></script>
-<script src="js/file-tree.js?v=stage19w29-settings-github-drawers-cleanup-20260605-1" defer></script>
+<script src="js/file-tree.js?v=stage19w30-github-load-branch-fallback-20260605-1" defer></script>
 <script src="js/preview.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/import-export.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
 <script src="js/selection-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
@@ -640,7 +640,7 @@
 <script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
 <script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
-<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w29-settings-github-drawers-cleanup-20260605-1"></script>
+<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w30-github-load-branch-fallback-20260605-1"></script>
 <script src="js/real-agent-branch-workflow-service.js?v=stage19t2s-end-to-end-regression-audit-panel-1" defer></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 <script id="stage18a-right-panel-organizer-fallback">
@@ -655,7 +655,7 @@ window.addEventListener('DOMContentLoaded', function () {
       var existing = document.querySelector('script[src*="right-panel-organizer-service.js"]');
       if (existing && existing.dataset.stage18aFallbackLoaded === 'true') return;
       var s = document.createElement('script');
-      s.src = 'js/right-panel-organizer-service.js?v=stage19w29-settings-github-drawers-cleanup-20260605-1';
+      s.src = 'js/right-panel-organizer-service.js?v=stage19w30-github-load-branch-fallback-20260605-1';
       s.defer = true;
       s.dataset.stage18aFallbackLoaded = 'true';
       document.body.appendChild(s);
