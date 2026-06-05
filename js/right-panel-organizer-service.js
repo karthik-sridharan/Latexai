@@ -1,5 +1,5 @@
-/* Latexai Stage 19W18 RightPanelOrganizerService
- * Stage: stage19w15-copilot-audit-edits-cleanup-20260604-1
+/* Latexai Stage 19U9M RightPanelOrganizerService
+ * Stage: stage19u9m-settings-github-drawer-polish-20260604-1
  *
  * Right panel cleanup / collapsible workflow sections.
  *
@@ -14,8 +14,9 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w28-settings-github-backend-restore-20260604-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v7';
+  const STAGE = 'stage19u9m-settings-github-drawer-polish-20260604-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v8';
+  const STAGE18X6_STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
   const STAGE17J9_STORAGE_KEY = 'latexai:right-panel-sections:v4';
@@ -27,35 +28,31 @@
 
   const RIGHT_TAB_PANELS = {
     copilot: 'copilotTab',
-    paperAi: 'paperAiTab',
-    literature: 'literatureTab',
-    project: 'projectTab',
     settings: 'settingsTab',
-    assets: 'assetsTab',
-    presentation: 'leftPresentationTab'
+    assets: 'assetsTab'
   };
 
   const KNOWN_CARD_OWNERS = {
     // Copilot-owned workflow cards.
-    documentAiCard: ['paperAi'],
+    documentAiCard: ['copilot'],
     paperAiDashboardCard: ['copilot'],
     paperAiPolishCard: ['copilot'],
-    competitiveReviewCard: ['paperAi'],
-    realAgentBranchCard: ['paperAi'],
-    reviewerRebuttalCard: ['paperAi'],
-    citationAiCard: ['literature'],
-    citationVerifierCard: ['literature'],
-    localCitationVerifierCard: ['literature'],
-    citationVerifierPanel: ['literature'],
-    citationAiPanel: ['literature'],
+    competitiveReviewCard: ['copilot'],
+    devilsDebateCard: ['copilot'],
+    reviewerRebuttalCard: ['copilot'],
+    citationAiCard: ['copilot'],
+    citationVerifierCard: ['copilot'],
+    localCitationVerifierCard: ['copilot'],
+    citationVerifierPanel: ['copilot'],
+    citationAiPanel: ['copilot'],
     aiCommentsCard: ['copilot'],
-    presentationExportCard: ['presentation'],
-    talkPackageCard: ['presentation'],
-    presentationMakerCard: ['presentation'],
+    presentationExportCard: ['copilot'],
+    talkPackageCard: ['copilot'],
+    presentationMakerCard: ['copilot'],
 
     // Settings-owned diagnostics/model/report cards.
-    aiRevisionCard: ['copilot'],
-    aiReportBrowserCard: ['copilot'],
+    aiRevisionCard: ['settings'],
+    aiReportBrowserCard: ['settings'],
     aiRoutingInspectorCard: ['settings'],
     backendDiagnosticsCard: ['settings'],
     regressionChecklistCard: ['settings'],
@@ -120,15 +117,38 @@
     },
     {
       tab: 'settings',
-      key: 'compile-settings',
-      title: 'Compile / backend settings',
+      key: 'ai-memory-backends',
+      title: 'AI / memory backends',
       defaultOpen: true,
       selectors: [
         '#settingsTab > .section-head.compact',
+        '#settingsBackendIntroNote',
         '#aiProxyUrl',
         '#aiProxyToken',
         '#memoryBackendUrl',
         '#memoryProxyToken',
+        '#memoryBackendStatusCard'
+      ],
+      cardIds: []
+    },
+    {
+      tab: 'settings',
+      key: 'github-sync',
+      title: 'GitHub backend / project sync',
+      defaultOpen: true,
+      selectors: [
+        '#githubBackendUrl',
+        '#githubBackendSettingsNote',
+        '#githubBackendStatusCard'
+      ],
+      cardIds: []
+    },
+    {
+      tab: 'settings',
+      key: 'compile-engines',
+      title: 'Compile backend / engines',
+      defaultOpen: true,
+      selectors: [
         '#compileProxyUrl',
         '#backendStatusCard',
         '#compileProxyToken',
@@ -148,7 +168,8 @@
         '#shellEscapeCheck',
         '#compileJobsCheck',
         '#compilePollSelect',
-        '#settingsTab > .settings-note',
+        '#compileBackendSettingsNote',
+        '#compileContractSettingsNote',
         '#openOverleafBtn',
         '#runAppDiagnosticsBtn'
       ],
@@ -156,11 +177,29 @@
     },
     {
       tab: 'copilot',
-      key: 'audit-ai-edits',
-      title: 'Audit AI Edits',
+      key: 'paper-ai',
+      title: 'Paper AI',
       defaultOpen: true,
       cardIds: [
-        'paperAiPolishCard'
+        'documentAiCard',
+        'paperAiDashboardCard',
+        'paperAiPolishCard',
+        'competitiveReviewCard',
+        'devilsDebateCard',
+        'reviewerRebuttalCard'
+      ]
+    },
+    {
+      tab: 'copilot',
+      key: 'citations',
+      title: 'Citations',
+      defaultOpen: true,
+      cardIds: [
+        'citationAiCard',
+        'citationVerifierCard',
+        'localCitationVerifierCard',
+        'citationVerifierPanel',
+        'citationAiPanel'
       ]
     },
     {
@@ -175,7 +214,7 @@
       ]
     },
     {
-      tab: 'presentation',
+      tab: 'copilot',
       key: 'presentation',
       title: 'Presentation',
       defaultOpen: false,
@@ -185,13 +224,51 @@
         'presentationMakerCard'
       ]
     },
-
+    {
+      tab: 'copilot',
+      key: 'figures',
+      title: 'Figures',
+      defaultOpen: false,
+      cardIds: [
+        'figureAssetCard',
+        'figuresPanel',
+        'tikzMakerCard',
+        'imageToTikzCard',
+        'figureEditorCard'
+      ]
+    },
+    {
+      tab: 'copilot',
+      key: 'other-copilot',
+      title: 'Other Copilot controls',
+      defaultOpen: true,
+      catchAll: true,
+      selectors: [],
+      cardIds: []
+    },
+    {
+      tab: 'settings',
+      key: 'model-config',
+      title: 'AI / Model configuration',
+      defaultOpen: true,
+      cardIds: [
+        'modelRegistryCard',
+        'modelRoutingCard',
+        'aiSettingsCard',
+        'aiProviderCard',
+        'aiRoutingInspectorCard'
+      ]
+    },
     {
       tab: 'settings',
       key: 'reports-reviews',
       title: 'Reports / Reviews',
-      defaultOpen: false,
-      cardIds: []
+      defaultOpen: true,
+      cardIds: [
+        'aiReportBrowserCard',
+        'aiRevisionCard',
+        'aiCommentsCard'
+      ]
     },
     {
       tab: 'settings',
@@ -209,22 +286,9 @@
     },
     {
       tab: 'settings',
-      key: 'model-config',
-      title: 'AI / Model configuration',
-      defaultOpen: true,
-      cardIds: [
-        'modelRegistryCard',
-        'modelRoutingCard',
-        'aiSettingsCard',
-        'aiProviderCard',
-        'aiRoutingInspectorCard'
-      ]
-    },
-    {
-      tab: 'settings',
       key: 'other-settings',
       title: 'Other Settings controls',
-      defaultOpen: true,
+      defaultOpen: false,
       catchAll: true,
       selectors: [],
       cardIds: []
@@ -293,6 +357,8 @@
   function readState() {
     const fresh = readJson(STORAGE_KEY);
     if (Object.keys(fresh).length) return fresh;
+    const legacyX6 = readJson(STAGE18X6_STORAGE_KEY);
+    if (Object.keys(legacyX6).length) return legacyX6;
     const legacyL = readJson(STAGE17L_STORAGE_KEY);
     if (Object.keys(legacyL).length) return legacyL;
     const legacyJ10 = readJson(STAGE17J10_STORAGE_KEY);
@@ -335,9 +401,6 @@
   function tabForPanel(panel) {
     if (!panel) return '';
     if (panel.id === 'copilotTab') return 'copilot';
-    if (panel.id === 'paperAiTab') return 'paperAi';
-    if (panel.id === 'literatureTab') return 'literature';
-    if (panel.id === 'projectTab') return 'project';
     if (panel.id === 'settingsTab') return 'settings';
     if (panel.id === 'assetsTab') return 'assets';
     return panel.id || '';
@@ -451,10 +514,14 @@
 
     const titleNeedles = {
       'core-copilot': ['latex copilot'],
-      'compile-settings': ['compile settings', 'backend status', 'browser engine status', 'texlyre busytex status'],
-      'audit-ai-edits': ['audit ai edits', 'ai edit review'],
+      'ai-memory-backends': ['ai backend proxy', 'memory backend status', 'memory backend url'],
+      'github-sync': ['github backend', 'github backend status', 'project sync'],
+      'compile-engines': ['compile backend', 'backend status', 'browser engine status', 'texlyre busytex status'],
+      'paper-ai': ['paper ai dashboard', 'paper-level edit review', 'competitive paper review', 'devil’s advocate', "devil's advocate", 'reviewer / rebuttal simulator', 'reviewer/rebuttal simulator'],
+      citations: ['citation filler', 'citation verifier', 'local citation verifier', 'ai citation'],
       'history-comments': ['ai suggestion comments', 'ai revision history', 'unified ai reports'],
       presentation: ['presentation', 'beamer', 'talk package'],
+      figures: ['figures', 'tikz', 'image-to-tikz'],
       'reports-reviews': ['unified ai reports', 'reviews browser', 'ai revision history', 'ai suggestion comments'],
       diagnostics: ['ai model routing inspector', 'backend diagnostics', 'regression checklist', 'release/deploy verifier', 'feature flags'],
       'model-config': ['model routing', 'ai model routing inspector', 'ai provider', 'model configuration']
@@ -743,37 +810,9 @@
     return Array.from(panel.querySelectorAll(`.right-panel-group[data-group-tab="${tab}"]`));
   }
 
-
-  function unwrapOrganizerGroups(tab) {
-    const panel = panelFor(tab);
-    if (!panel) return false;
-    const toolbar = el(`rightPanelOrganizerToolbar-${tab}`);
-    if (toolbar) toolbar.remove();
-    Array.from(panel.querySelectorAll(`.right-panel-group[data-group-tab="${tab}"]`)).forEach((group) => {
-      const body = group.querySelector('.right-panel-group-body');
-      if (body) {
-        while (body.firstChild) panel.insertBefore(body.firstChild, group);
-      }
-      group.remove();
-    });
-    panel.classList.remove('rpo-scroll-containment');
-    panel.style.height = '';
-    panel.style.minHeight = '';
-    panel.style.flex = '';
-    panel.style.overflowY = '';
-    panel.style.overflowX = '';
-    panel.style.webkitOverflowScrolling = '';
-    panel.style.overscrollBehavior = '';
-    panel.style.touchAction = '';
-    return true;
-  }
-
   function normalizeBulkTabs(tab = 'all') {
-    // Stage 19W28: workflow tools are now left-panel tabs.  Do not organize
-    // Settings/Copilot into legacy drawers; leave Settings as ordinary form
-    // sections so backend URLs, GitHub sync, compile, and diagnostics stay visible.
-    if (tab === 'copilot' || tab === 'settings') return [];
-    return [];
+    if (tab === 'copilot' || tab === 'settings') return [tab];
+    return ['copilot', 'settings'];
   }
 
   function setAllGroupsOne(tab, open) {
@@ -814,9 +853,7 @@
 
   function organize(tab = null) {
     clearLegacyForcedState();
-    unwrapOrganizerGroups('settings');
-    unwrapOrganizerGroups('copilot');
-    const tabs = tab ? normalizeBulkTabs(tab) : [];
+    const tabs = tab ? normalizeBulkTabs(tab) : ['copilot', 'settings'];
 
     for (const t of tabs) {
       const panel = panelFor(t);
@@ -1043,7 +1080,7 @@
   }
 
   function installToolbarReportButton() {
-    [].forEach((tab) => {
+    ['copilot', 'settings'].forEach((tab) => {
       const toolbar = ensureToolbar(tab);
       if (!toolbar || toolbar.querySelector('[data-rpo-copy-report]')) return;
       const actions = toolbar.querySelector('.right-panel-organizer-actions');
@@ -1139,11 +1176,9 @@
 
   function init() {
     clearLegacyForcedState();
-    unwrapOrganizerGroups('settings');
-    unwrapOrganizerGroups('copilot');
-    // Legacy grouping is intentionally disabled after Stage 19W28.
-    // Left-panel tabs now provide structure; Settings should remain a plain,
-    // visible configuration page.
+    installDelegatedHandlers();
+    organize();
+    installToolbarReportButton();
   }
 
   W.LatexaiRightPanelExpandAll = function LatexaiRightPanelExpandAll(tab = 'all') {

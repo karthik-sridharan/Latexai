@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19i-agent-role-specific-context-policy-20260526-1';
+  const STAGE = 'stage19u9m-settings-github-drawer-polish-20260604-1';
 
   const git = {
     setupOpen: false,
@@ -566,6 +566,27 @@
     return state.state.project;
   }
 
+  function formatGithubLoadError(err, context = {}) {
+    const raw = String(err?.message || err || 'Unknown GitHub load failure').trim();
+    const owner = cleanGithubField(context.owner || git.owner);
+    const repo = cleanGithubField(context.repo || git.repo);
+    const branch = cleanGithubField(context.branch || git.branch || 'main') || 'main';
+    const rootPath = normalizeRepoPath(context.rootPath ?? git.rootPath ?? '');
+    const repoLabel = owner && repo ? `${owner}/${repo}${rootPath ? '/' + rootPath : ''} @ ${branch}` : `selected repository @ ${branch}`;
+    const notFound = /\b404\b|not found|get-a-reference|git\/refs/i.test(raw);
+    if (!notFound) return raw;
+    return [
+      `GitHub could not find ${repoLabel}.`,
+      'Most common causes: wrong branch name, private-repo/token access, or wrong folder path.',
+      'Open Source tree → Git and try the repo default branch (often main or master), then click Load attached again.',
+      `Raw backend detail: ${raw}`
+    ].join('\n');
+  }
+
+  function cleanGithubField(value) {
+    return String(value || '').trim();
+  }
+
   async function loadFromGithub(options = {}) {
     try {
       const hasExplicitRepoSelection = !!(options.fromPrompt || options.owner || options.repo || options.branch || options.rootPath !== undefined);
@@ -621,7 +642,7 @@ Root: ${rootFile}`);
       logGithubReward('open_project', { ok: true, fileCount, commitSha: github.headSha || '' }, { rewardValue: 0.35, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' } });
       return { ok: true, project: loadedProject, result };
     } catch (err) {
-      const message = err?.message || String(err);
+      const message = formatGithubLoadError(err, { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' });
       git.status = `Load failed:
 ${message}`;
       render();
