@@ -12,7 +12,7 @@
 
   function run() {
     const missingDomIds = REQUIRED_IDS.filter((id) => !document.getElementById(id));
-    const modules = ['Kernel','ProjectModel','ProjectStore','SyncProvider','EditorAdapter','PreviewAdapter','CompilerProvider','AIProvider','PatchManager','State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','Main'];
+    const modules = ['Kernel','ProjectModel','ProjectStore','SyncProvider','EditorAdapter','PreviewAdapter','CompilerProvider','AIProvider','PatchManager','State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','ProjectWorkspaceService','Main'];
     const missingModules = modules.filter((name) => !NS[name]);
     let localStorageWorks = false;
     try {
@@ -45,6 +45,7 @@
       compileBackendAvailability: compilerAvailability,
       localCompilerUiRemoved: true,
       compilerUiMode: 'backend-texlive-only',
+      projectWorkspace: NS.ProjectWorkspaceService?.currentSummary?.() || null,
       backendProbe,
       shellEscapeRequested: !!state?.settings?.shellEscape,
       shellEscapeEffective: !!compilerAvailability?.shellEscapeEffective,

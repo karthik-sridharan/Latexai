@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w36-github-backend-contract-diagnostics-20260605-1';
+  const STAGE = 'stage19w41-project-workspace-restore-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -199,7 +199,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W35</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W41</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -696,6 +696,9 @@ Folder: ${git.rootPath}` : ''}`;
 
       const nextProject = applyGithubIdentity(coerceGithubProjectResult(result, github), github);
       const loadedProject = forceGithubProjectIntoUi(nextProject, options.source || 'github-open');
+      try {
+        await W.LuminaLatex.ProjectWorkspaceService?.restoreForProject?.(loadedProject, { source: options.source || 'github-open', silent: true });
+      } catch (_workspaceErr) {}
 
       git.branch = github.branch || git.branch || 'main';
       git.headSha = github.headSha || null;

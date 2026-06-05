@@ -11,6 +11,8 @@
     NS.Editor.init();
     NS.FileTree.bind();
     NS.FileTree.render();
+    NS.ProjectWorkspaceService?.init?.();
+    NS.ProjectWorkspaceService?.render?.();
     NS.Preview.init();
     NS.CompilerProvider?.init?.();
     NS.ImportExport.init();
@@ -130,6 +132,8 @@
       project.meta = Object.assign({}, project.meta || {}, { architectureStage: 'stage19e5-github-project-state-export-refresh-fix' });
       NS.State.resetProjectClean ? NS.State.resetProjectClean(project, { preserveSettings: true }) : NS.State.resetProject(project);
       NS.FileTree?.render?.();
+      await NS.ProjectWorkspaceService?.restoreForProject?.(NS.State.state.project, { source: 'new-github-project-created', silent: true });
+      NS.ProjectWorkspaceService?.render?.();
       NS.Preview?.renderDraftPreview?.();
       toast(`New project created: ${gh.github.owner}/${gh.github.repo}`);
     } catch (err) {
