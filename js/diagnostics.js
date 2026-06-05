@@ -7,12 +7,12 @@
 
   const REQUIRED_IDS = [
     'sourceEditor','lineGutter','fileTree','outlineList','draftPreview','pdfPreview','logPanel','problemList',
-    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','memoryBackendUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','wasmStatusCard','wasmStatusText','wasmStatusDetail','testBrowserWasmBtn','browserWasmAssetBase','browserWasmTexliveEndpoint','browserWasmReuseCheck','texlyreStatusCard','texlyreStatusText','texlyreStatusDetail','testTexlyreBtn','texlyreModuleUrl','texlyreBusytexBase','texlyreReuseCheck','texlyreUseWorkerCheck','resetTexlyreDirectModeBtn','openOverleafBtn','rootFileSelect','compileStatusCard','compileProgressBar','copilotContextChips','patchReview','patchMeta','patchSummary','patchDiff','previewCopilotPatchBtn','applyCopilotPatchBtn','discardCopilotPatchBtn'
+    'compileBtn','cancelCompileBtn','exportZipBtn','importFileInput','aiProvider','aiModel','aiProxyUrl','memoryBackendUrl','compileProxyUrl','compileProxyToken','backendStatusCard','backendStatusText','backendStatusDetail','testCompileBackendBtn','compileJobsCheck','compilePollSelect','compilerModeSelect','rootFileSelect','compileStatusCard','compileProgressBar','copilotContextChips','patchReview','patchMeta','patchSummary','patchDiff','previewCopilotPatchBtn','applyCopilotPatchBtn','discardCopilotPatchBtn'
   ];
 
   function run() {
     const missingDomIds = REQUIRED_IDS.filter((id) => !document.getElementById(id));
-    const modules = ['Kernel','ProjectModel','ProjectStore','SyncProvider','EditorAdapter','PreviewAdapter','BrowserWasmProvider','TexlyreBusyTexProvider','CompilerProvider','AIProvider','PatchManager','State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','Main'];
+    const modules = ['Kernel','ProjectModel','ProjectStore','SyncProvider','EditorAdapter','PreviewAdapter','CompilerProvider','AIProvider','PatchManager','State','Editor','FileTree','Preview','ImportExport','Copilot','Diagnostics','Main'];
     const missingModules = modules.filter((name) => !NS[name]);
     let localStorageWorks = false;
     try {
@@ -43,8 +43,8 @@
       compileProxyConfigured: !!compileProxyValue,
       compileJobsEnabled: !!document.getElementById('compileJobsCheck')?.checked,
       compileBackendAvailability: compilerAvailability,
-      browserWasmStatus: NS.BrowserWasmProvider?.status?.() || null,
-      texlyreBusyTexStatus: NS.TexlyreBusyTexProvider?.status?.() || null,
+      localCompilerUiRemoved: true,
+      compilerUiMode: 'backend-texlive-only',
       backendProbe,
       shellEscapeRequested: !!state?.settings?.shellEscape,
       shellEscapeEffective: !!compilerAvailability?.shellEscapeEffective,

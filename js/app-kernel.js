@@ -34,7 +34,7 @@
 
   const providers = {
     editor: 'textarea-adapter-now-codemirror-ready',
-    compiler: 'backend-texlive-real-runner | browser-wasm-swiftlatex-experimental | browser-wasm-texlyre-busytex-experimental | mock-draft | overleaf-export',
+    compiler: 'backend-texlive-real-runner',
     ai: 'backend-provider-proxy + structured-workflow-context',
     sync: 'local-only | http-project | websocket-placeholder',
     preview: 'draft-html | pdf-blob'

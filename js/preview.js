@@ -4,6 +4,9 @@
   const W = window;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
+  const DEFAULT_COMPILE_URL = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/latex/compile';
+  const DEFAULT_COMPILE_JOBS_URL = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/latex/compile/jobs';
+  const DEFAULT_BACKEND_STATUS_URL = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/latex/status';
 
   let previewTimer = null;
   let lastPdfObjectUrl = null;
@@ -15,18 +18,21 @@
     document.getElementById('showDraftPreviewBtn')?.addEventListener('click', () => setPreviewMode('draft'));
     document.getElementById('showPdfPreviewBtn')?.addEventListener('click', () => setPreviewMode('pdf'));
     document.getElementById('engineSelect')?.addEventListener('change', (event) => State().setSetting('engine', event.target.value));
-    document.getElementById('compilerModeSelect')?.addEventListener('change', (event) => {
-      State().setSetting('compilerMode', event.target.value);
-      NS.BrowserWasmProvider?.renderStatus?.();
-      NS.TexlyreBusyTexProvider?.renderStatus?.();
-    });
+    const compilerModeNode = document.getElementById('compilerModeSelect');
+    if (compilerModeNode) compilerModeNode.value = 'backend-texlive';
+    State().setSetting('compilerMode', 'backend-texlive');
     document.getElementById('compileProxyUrl')?.addEventListener('change', (event) => {
-      const compileUrl = event.target.value.trim() || '/api/lumina/latex/compile';
+      const compileUrl = normalizeCompileUrl(event.target.value);
+      event.target.value = compileUrl;
+      State().setSetting('compilerMode', 'backend-texlive');
       State().setSetting('compileUrl', compileUrl);
       State().setSetting('compileStatusUrl', deriveCompileJobsUrl(compileUrl));
       State().setSetting('backendStatusUrl', deriveBackendStatusUrl(compileUrl));
     });
-    document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => State().setSetting('useCompileJobs', !!event.target.checked));
+    document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => {
+      State().setSetting('compileJobsUserEnabled', !!event.target.checked);
+      State().setSetting('useCompileJobs', !!event.target.checked);
+    });
     document.getElementById('compilePollSelect')?.addEventListener('change', (event) => State().setSetting('compilePollMs', Number(event.target.value) || 1000));
     document.getElementById('shellEscapeCheck')?.addEventListener('change', (event) => {
       const allowed = shellEscapeUiAllowed();
@@ -61,31 +67,18 @@
     const compileJobs = document.getElementById('compileJobsCheck');
     const compilePoll = document.getElementById('compilePollSelect');
     const compilerMode = document.getElementById('compilerModeSelect');
-    const wasmAssetBase = document.getElementById('browserWasmAssetBase');
-    const wasmEndpoint = document.getElementById('browserWasmTexliveEndpoint');
-    const wasmReuse = document.getElementById('browserWasmReuseCheck');
-    const texlyreModule = document.getElementById('texlyreModuleUrl');
-    const texlyreBase = document.getElementById('texlyreBusytexBase');
-    const texlyreReuse = document.getElementById('texlyreReuseCheck');
-    const texlyreUseWorker = document.getElementById('texlyreUseWorkerCheck');
-    if (compileUrl) compileUrl.value = settings.compileUrl || '/api/lumina/latex/compile';
+    const normalizedCompileUrl = normalizeCompileUrl(settings.compileUrl || DEFAULT_COMPILE_URL);
+    if (compileUrl) compileUrl.value = normalizedCompileUrl;
     if (engine) engine.value = settings.engine || 'pdflatex';
-    if (compilerMode) compilerMode.value = settings.compilerMode || 'backend-texlive';
-    if (compileJobs) compileJobs.checked = settings.useCompileJobs !== false;
-    if (compilePoll) compilePoll.value = String(settings.compilePollMs || 1000);
-    if (wasmAssetBase) wasmAssetBase.value = settings.browserWasmAssetBase || 'vendor/swiftlatex/pdftex/';
-    if (wasmEndpoint) wasmEndpoint.value = settings.browserWasmTexliveEndpoint || 'https://texlive.swiftlatex.com/';
-    if (wasmReuse) wasmReuse.checked = settings.browserWasmReuseEngine !== false;
-    if (texlyreModule) texlyreModule.value = settings.texlyreModuleUrl || 'https://esm.sh/texlyre-busytex?bundle';
-    if (texlyreBase) texlyreBase.value = settings.texlyreBusytexBase || 'vendor/texlyre/core/busytex';
-    if (texlyreReuse) texlyreReuse.checked = settings.texlyreReuseRunner !== false;
-    if (texlyreUseWorker) {
-      const forcedDirect = State().forceTeXlyreDirectMode?.() === true;
-      texlyreUseWorker.checked = forcedDirect ? false : settings.texlyreUseWorker === true;
-      texlyreUseWorker.disabled = forcedDirect;
-      texlyreUseWorker.title = forcedDirect ? 'Disabled on Safari/iPad for this hotfix so TeXlyre direct mode is tested first.' : 'Experimental worker mode.';
-      if (forcedDirect && settings.texlyreUseWorker === true) State().setSetting('texlyreUseWorker', false);
+    if (compilerMode) compilerMode.value = 'backend-texlive';
+    if (settings.compilerMode !== 'backend-texlive') State().setSetting('compilerMode', 'backend-texlive');
+    if (settings.compileUrl !== normalizedCompileUrl) {
+      State().setSetting('compileUrl', normalizedCompileUrl);
+      State().setSetting('compileStatusUrl', deriveCompileJobsUrl(normalizedCompileUrl));
+      State().setSetting('backendStatusUrl', deriveBackendStatusUrl(normalizedCompileUrl));
     }
+    if (compileJobs) compileJobs.checked = settings.compileJobsUserEnabled === true && settings.useCompileJobs === true;
+    if (compilePoll) compilePoll.value = String(settings.compilePollMs || 1000);
     const shellAllowed = shellEscapeUiAllowed();
     if (shellEscape) {
       shellEscape.checked = shellAllowed && !!settings.shellEscape;
@@ -101,8 +94,13 @@
 
   function shellEscapeUiAllowed() {
     const settings = Object.assign({}, State().state.settings || {});
-    const compileUrl = document.getElementById('compileProxyUrl')?.value?.trim();
-    if (compileUrl) settings.compileUrl = compileUrl;
+    const compileUrl = normalizeCompileUrl(document.getElementById('compileProxyUrl')?.value?.trim());
+    if (compileUrl) {
+      settings.compileUrl = compileUrl;
+      settings.compileStatusUrl = deriveCompileJobsUrl(compileUrl);
+      settings.backendStatusUrl = deriveBackendStatusUrl(compileUrl);
+      settings.compilerMode = 'backend-texlive';
+    }
     const availability = NS.CompilerProvider?.backendAvailability?.(settings);
     if (!availability || availability.staticDraftFallbackActive) return false;
     const probe = NS.CompilerProvider?.getLastBackendProbe?.();
@@ -353,22 +351,42 @@
     return null;
   }
 
+  function normalizeCompileUrl(raw) {
+    try {
+      const value = String(raw || DEFAULT_COMPILE_URL).trim() || DEFAULT_COMPILE_URL;
+      const u = new URL(value, window.location.href);
+      u.hash = '';
+      u.search = '';
+      u.pathname = u.pathname.replace(/\/+$/, '');
+      if (/\/api\/lumina\/latex\/compile\/jobs$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/compile\/jobs$/i, '/compile');
+      } else if (/\/api\/lumina\/latex\/status$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/status$/i, '/compile');
+      } else if (!/\/api\/lumina\/latex\/compile$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/+$/, '') + '/api/lumina/latex/compile';
+      }
+      return u.href;
+    } catch (err) {
+      return DEFAULT_COMPILE_URL;
+    }
+  }
+
   function deriveCompileJobsUrl(compileUrl) {
     try {
-      const u = new URL(String(compileUrl || '/api/lumina/latex/compile'), window.location.href);
+      const u = new URL(normalizeCompileUrl(compileUrl), window.location.href);
       u.hash = '';
       u.search = '';
       u.pathname = u.pathname.replace(/\/+$/, '').replace(/\/compile$/, '/compile/jobs');
       if (!/\/compile\/jobs$/i.test(u.pathname)) u.pathname = '/api/lumina/latex/compile/jobs';
       return u.href;
     } catch (err) {
-      return '/api/lumina/latex/compile/jobs';
+      return DEFAULT_COMPILE_JOBS_URL;
     }
   }
 
   function deriveBackendStatusUrl(compileUrl) {
     try {
-      const u = new URL(String(compileUrl || '/api/lumina/latex/compile'), window.location.href);
+      const u = new URL(normalizeCompileUrl(compileUrl), window.location.href);
       u.hash = '';
       u.search = '';
       u.pathname = u.pathname.replace(/\/+$/, '');
@@ -381,7 +399,7 @@
       }
       return u.href;
     } catch (err) {
-      return '/api/lumina/latex/status';
+      return DEFAULT_BACKEND_STATUS_URL;
     }
   }
 

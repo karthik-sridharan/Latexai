@@ -7,14 +7,14 @@
  * window.LuminaLatex.
  *
  * Backend target:
- *   https://lumina-latex-backend-y4piylmfja-ue.a.run.app
+ *   https://lumina-latex-backend-zugntkn2la-ue.a.run.app
  */
 (function () {
   'use strict';
 
   var root = typeof window !== 'undefined' ? window : globalThis;
-  var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage19w39-compile-jobs-load-fallback-20260605-1';
+  var BACKEND_BASE = 'https://lumina-latex-backend-zugntkn2la-ue.a.run.app';
+  var STAGE = 'stage19w40-backend-compiler-only-settings-20260605-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
   var DEFAULT_COMPILE_URL = BACKEND_BASE + '/api/lumina/latex/compile';
   var DEFAULT_JOBS_URL = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
@@ -36,16 +36,53 @@
     return BACKEND_BASE + fallbackPath;
   }
 
+  function normalizeCompileUrl(raw) {
+    try {
+      var value = String(raw || DEFAULT_COMPILE_URL).trim() || DEFAULT_COMPILE_URL;
+      var u = new URL(value, (root.location && root.location.href) || BACKEND_BASE + '/');
+      u.hash = '';
+      u.search = '';
+      u.pathname = u.pathname.replace(/\/+$/, '');
+      if (/\/api\/lumina\/latex\/compile\/jobs$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/compile\/jobs$/i, '/compile');
+      } else if (/\/api\/lumina\/latex\/status$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/status$/i, '/compile');
+      } else if (!/\/api\/lumina\/latex\/compile$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/+$/, '') + '/api/lumina/latex/compile';
+      }
+      return u.href;
+    } catch (err) {
+      return DEFAULT_COMPILE_URL;
+    }
+  }
+
   function deriveCompileJobsUrl(compileUrl) {
     var fallback = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
     try {
       var base = (root.location && root.location.href) || BACKEND_BASE + '/';
-      var u = new URL(String(compileUrl || ''), base);
+      var u = new URL(normalizeCompileUrl(compileUrl), base);
       u.hash = '';
       u.search = '';
       u.pathname = u.pathname.replace(/\/+$/, '').replace(/\/compile$/, '/compile/jobs');
       if (!/\/compile\/jobs$/i.test(u.pathname)) {
         u.pathname = '/api/lumina/latex/compile/jobs';
+      }
+      return u.href;
+    } catch (err) {
+      return fallback;
+    }
+  }
+
+  function deriveBackendStatusUrl(compileUrl) {
+    var fallback = BACKEND_BASE + '/api/lumina/latex/status';
+    try {
+      var base = (root.location && root.location.href) || BACKEND_BASE + '/';
+      var u = new URL(normalizeCompileUrl(compileUrl), base);
+      u.hash = '';
+      u.search = '';
+      u.pathname = u.pathname.replace(/\/+$/, '').replace(/\/compile$/, '/status');
+      if (!/\/status$/i.test(u.pathname)) {
+        u.pathname = '/api/lumina/latex/status';
       }
       return u.href;
     } catch (err) {
@@ -182,30 +219,13 @@
     var next = shallowClone(settings || getGlobalSettings());
     next.schema = next.schema || SETTINGS_SCHEMA;
     next.compilerMode = 'backend-texlive';
-    next.compileUrl = absoluteBackendUrl(next.compileUrl, '/api/lumina/latex/compile');
-    next.compileStatusUrl = absoluteBackendUrl(next.compileStatusUrl, '/api/lumina/latex/compile/jobs');
-    next.backendStatusUrl = absoluteBackendUrl(next.backendStatusUrl, '/api/lumina/latex/status');
-
-    // Stage 17T: repair stale settings created by the Stage 17Q auto-sync.
-    // Some browsers had compileUrl pointing at the generic Lumina backend
-    // (lumina-backend-*.run.app) while backendStatusUrl still pointed at the
-    // real LaTeX compiler. Sending LaTeX compile payloads to the generic backend
-    // causes HTTP 400 before TeX even runs. Prefer the status-derived LaTeX
-    // compiler endpoint in that case, and keep the direct/jobs endpoints paired.
-    var statusDerivedCompileUrl = deriveCompileUrlFromStatusUrl(next.backendStatusUrl);
-    if (looksLikeGenericLuminaBackend(next.compileUrl) && statusDerivedCompileUrl) {
-      next.compileUrl = statusDerivedCompileUrl;
-      next.compileStatusUrl = deriveCompileJobsUrl(statusDerivedCompileUrl);
-      next.compileEndpointRepair = 'stage17t-repaired-generic-backend-compile-url-from-backendStatusUrl';
-      next.compileStatusUrlAutoDerived = false;
-    } else {
-      var derivedJobsUrl = deriveCompileJobsUrl(next.compileUrl);
-      if (shouldSyncJobsUrlWithCompileUrl(next.compileUrl, next.compileStatusUrl)) {
-        next.compileStatusUrl = derivedJobsUrl;
-        next.compileStatusUrlAutoDerived = true;
-      }
-    }
-    next.useCompileJobs = next.useCompileJobs !== false;
+    next.compileUrl = normalizeCompileUrl(next.compileUrl || DEFAULT_COMPILE_URL);
+    // Stage 19W40: backend compiler only. Keep direct, jobs, and status URLs
+    // derived from the same Cloud Run origin so stale job/status endpoints from
+    // old deployments cannot linger in localStorage.
+    next.compileStatusUrl = deriveCompileJobsUrl(next.compileUrl);
+    next.backendStatusUrl = deriveBackendStatusUrl(next.compileUrl);
+    next.useCompileJobs = next.compileJobsUserEnabled === true && next.useCompileJobs === true;
     next.engine = next.engine || 'pdflatex';
     next.bibliography = next.bibliography || 'bibtex';
     next.shellEscape = false;

@@ -168,9 +168,8 @@
         compileProxyUrl: value('compileProxyUrl'),
         aiProvider: value('aiProvider'),
         aiModel: value('aiModel'),
-        compilerMode: value('compilerModeSelect'),
-        browserWasmAssetBase: value('browserWasmAssetBase'),
-        browserWasmTexliveEndpoint: value('browserWasmTexliveEndpoint')
+        compilerMode: 'backend-texlive',
+        backendCompilerOnly: true
       },
       checks
     };
