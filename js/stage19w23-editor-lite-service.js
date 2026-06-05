@@ -1,7 +1,8 @@
-/* LatexAI Stage 19W25 — stable editor helpers without syntax overlay
+/* LatexAI Stage 19W26 — stable editor helpers with always-on auto-indent
  * Robust design: explicit text operations only. Overlay token coloring is disabled
  * because textarea overlays can desync cursor/display on Safari/iPad. Native syntax
  * colors should be implemented later with a real editor engine (CodeMirror/Monaco).
+ * Auto-indent is always on; whole-document format is intentionally not exposed.
  */
 (function () {
   'use strict';
@@ -9,9 +10,9 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w25-disable-overlay-syntax-colors-20260604-1';
+  const STAGE = 'latex-stage19w26-editor-helper-simplify-autoindent-20260604-1';
   const SYNTAX_KEY = 'latexai:stage19w25:syntax-colors-disabled:v1';
-  const AUTO_INDENT_KEY = 'latexai:stage19w23:auto-indent:v1';
+  const AUTO_INDENT_KEY = 'latexai:stage19w26:auto-indent-always-on:v1';
   const MAX_HIGHLIGHT_CHARS = 260000;
 
   let editor = null;
@@ -59,7 +60,7 @@
     bindButton('liteIndentBtn', indentSelection);
     bindButton('liteOutdentBtn', outdentSelection);
     bindButton('liteFormatSelectionBtn', formatSelection);
-    bindButton('liteFormatDocumentBtn', formatDocument);
+    // Format-document is intentionally not exposed in the UI; whole-file whitespace changes are too broad for the stable helper toolbar.
 
     // Stage 19W25: syntax overlay coloring is intentionally disabled.
     // Textarea overlay highlighting causes cursor/display desync in Safari/iPad.
@@ -71,14 +72,10 @@
       syntaxToggle.disabled = true;
       syntaxToggle.closest?.('.editor-lite-toggle')?.remove?.();
     }
+    // Stage 19W26: auto-indent is always on and no longer user-toggled.
+    setBool(AUTO_INDENT_KEY, true);
     const autoToggle = $('liteAutoIndentToggle');
-    if (autoToggle) {
-      autoToggle.checked = getBool(AUTO_INDENT_KEY, false);
-      autoToggle.addEventListener('change', () => {
-        setBool(AUTO_INDENT_KEY, autoToggle.checked);
-        toast(autoToggle.checked ? 'Auto-indent on Enter enabled.' : 'Auto-indent on Enter disabled.');
-      });
-    }
+    if (autoToggle) autoToggle.closest?.('.editor-lite-toggle')?.remove?.();
 
     editor.addEventListener('keydown', onKeydown, true);
     editor.addEventListener('input', () => { scheduleRender(); scheduleEnvStatus(); }, true);
@@ -259,7 +256,7 @@
         return;
       }
     }
-    if (event.key === 'Enter' && getBool(AUTO_INDENT_KEY, false)) {
+    if (event.key === 'Enter') {
       event.preventDefault();
       insertAutoIndentedNewline();
     }
@@ -417,7 +414,6 @@
     indentSelection,
     outdentSelection,
     formatSelection,
-    formatDocument,
     setSyntaxEnabled,
     formatLatexBlock
   };
