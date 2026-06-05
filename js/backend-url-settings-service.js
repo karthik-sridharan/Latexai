@@ -1,5 +1,5 @@
-/* Latexai Stage 19U9M BackendUrlSettingsService
- * Stage: stage19u9m-settings-github-drawer-polish-20260604-1
+/* Latexai Stage 19N1Q8 BackendUrlSettingsService
+ * Stage: stage19n1q8-normalized-ai-proxy-url-20260529-1
  *
  * Keeps backend endpoint configuration in the Settings tab:
  * - AI backend proxy URL remains the existing AI proxy route.
@@ -13,7 +13,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19u9m-settings-github-drawer-polish-20260604-1';
+  const STAGE = 'stage19w30-github-load-branch-fallback-20260605-1';
 
   const LS_AI_PROXY_URL = 'lumina-latex.ai.proxyUrl';
   const LS_AI_PROXY_TOKEN = 'lumina-latex.ai.proxyToken';
@@ -180,50 +180,6 @@
     }
   }
 
-  function setGithubStatus(text, detail, ok = null) {
-    const title = el('githubBackendStatusText');
-    const body = el('githubBackendStatusDetail');
-    const card = el('githubBackendStatusCard');
-    if (title) title.textContent = text || 'Not checked';
-    if (body) body.textContent = detail || '';
-    if (card) {
-      card.classList.toggle('ok', ok === true);
-      card.classList.toggle('bad', ok === false);
-    }
-  }
-
-  async function githubRequest(path, options = {}) {
-    const base = getGithubBackendUrl();
-    const response = await fetch(`${base}${path}`, {
-      ...options,
-      headers: { ...(options.headers || {}) }
-    });
-    const text = await response.text().catch(() => '');
-    let json = {};
-    try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
-    if (!response.ok || json.ok === false) {
-      throw new Error(json?.detail || json?.message || json?.error?.message || json?.raw || `HTTP ${response.status}`);
-    }
-    return json;
-  }
-
-  async function testGithubBackend() {
-    const base = mirrorGithubBackendToGitSettings(getGithubBackendUrl());
-    setGithubStatus('Testing GitHub backend...', `Checking ${base}/status`, null);
-    try {
-      const status = await githubRequest('/status');
-      setGithubStatus(
-        status.ok === false ? 'GitHub backend responded' : 'GitHub backend OK',
-        `Connected to ${base}. Token: ${status.githubTokenConfigured ? 'configured' : 'missing/unknown'}. Stage: ${status.stage || 'unknown'}.`,
-        status.ok !== false
-      );
-      return { ok: status.ok !== false, base, status, stage: STAGE };
-    } catch (err) {
-      setGithubStatus('GitHub backend failed', `${base}: ${err?.message || err}. Verify the GitHub backend URL ends in /api/lumina/github and that Cloud Run CORS allows this site.`, false);
-      return { ok: false, base, error: err?.message || String(err), stage: STAGE };
-    }
-  }
-
   async function memoryRequest(path, options = {}) {
     const base = getMemoryApiBaseUrl();
     const response = await fetch(`${base}${path}`, {
@@ -287,6 +243,42 @@
     return true;
   }
 
+
+  function setGithubStatus(text, detail, ok = null) {
+    const title = el('githubBackendStatusText');
+    const body = el('githubBackendStatusDetail');
+    const card = el('githubBackendStatusCard');
+    if (title) title.textContent = text || 'Not checked';
+    if (body) body.textContent = detail || '';
+    if (card) {
+      card.classList.toggle('ok', ok === true);
+      card.classList.toggle('bad', ok === false);
+    }
+  }
+
+  async function testGithubBackend() {
+    const base = mirrorGithubBackendToGitSettings(getGithubBackendUrl());
+    const url = `${base.replace(/\/+$/, '')}/status`;
+    setGithubStatus('Testing GitHub backend...', `Checking ${url}`, null);
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {},
+        cache: 'no-store'
+      });
+      const text = await response.text().catch(() => '');
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
+      if (!response.ok || json.ok === false) throw new Error(json?.detail || json?.error || `HTTP ${response.status}`);
+      const token = json.githubTokenConfigured === true ? 'token configured' : (json.githubTokenConfigured === false ? 'token missing' : 'token status unknown');
+      setGithubStatus('GitHub backend OK', `Connected to ${base}. ${token}. Stage: ${json.stage || 'unknown'}. This confirms the sync backend is reachable; repository load still depends on the owner/repo, branch, folder path, and token access.`, true);
+      return { ok: true, base, status: json, stage: STAGE };
+    } catch (err) {
+      setGithubStatus('GitHub backend failed', `${base}: ${err?.message || err}. Verify the GitHub sync Cloud Run URL ends in /api/lumina/github and CORS allows https://karthik-sridharan.github.io. This backend check is separate from Project → Open GitHub repository lookup.`, false);
+      return { ok: false, base, error: err?.message || String(err), stage: STAGE };
+    }
+  }
+
   function init() {
     syncInput('aiProxyUrl', LS_AI_PROXY_URL, DEFAULT_AI_PROXY_URL);
     const aiProxyInput = el('aiProxyUrl');
@@ -309,16 +301,16 @@
       githubInput.addEventListener('change', persistGithub);
       githubInput.addEventListener('blur', persistGithub);
     }
+    const testGithubBtn = el('testGithubBackendBtn');
+    if (testGithubBtn && !testGithubBtn.dataset.boundStage19w28) {
+      testGithubBtn.dataset.boundStage19w28 = 'true';
+      testGithubBtn.addEventListener('click', () => { testGithubBackend(); });
+    }
     if (!safeGet('latexai:memory-enabled', '')) safeSet('latexai:memory-enabled', 'true');
     const testBtn = el('testMemoryBackendBtn');
     if (testBtn && !testBtn.dataset.boundStage18x6) {
       testBtn.dataset.boundStage18x6 = 'true';
       testBtn.addEventListener('click', () => { testMemoryBackend(); });
-    }
-    const githubTestBtn = el('testGithubBackendBtn');
-    if (githubTestBtn && !githubTestBtn.dataset.boundStage19u9m) {
-      githubTestBtn.dataset.boundStage19u9m = 'true';
-      githubTestBtn.addEventListener('click', () => { testGithubBackend(); });
     }
     return true;
   }
@@ -331,14 +323,13 @@
     normalizeGithubApiBase,
     getGithubBackendUrl,
     mirrorGithubBackendToGitSettings,
+    testGithubBackend,
     getAiProxyUrl,
     getAiProxyToken,
     getMemoryBackendUrl,
     getMemoryApiBaseUrl,
     getMemoryProxyToken,
-    testMemoryBackend,
-    setGithubStatus,
-    testGithubBackend
+    testMemoryBackend
   };
   NS.BackendUrlSettings = NS.BackendUrlSettingsService;
 

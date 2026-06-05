@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w29-settings-github-drawers-cleanup-20260605-1';
+  const STAGE = 'stage19w30-github-load-branch-fallback-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -140,7 +140,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19E5</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W30</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -165,6 +165,7 @@
       button('Check', checkGithubBackend, 'btn mini'),
       button('Load attached', () => loadFromGithub({ source: 'load-attached-github-project' }), 'btn mini'),
       button('Open GitHub', promptOpenGithubProject, 'btn mini'),
+      button('Detach', detachGithubProject, 'btn mini'),
       button('Save GitHub', commitAllToGithub, 'btn mini'),
       button('Checkpoint', promptCheckpointToGithub, 'btn mini')
     );
@@ -464,7 +465,7 @@
     loadGitSettings();
     syncGitFromProject();
     const existing = git.owner && git.repo ? `${git.owner}/${git.repo}` : '';
-    const spec = prompt('Open GitHub project (owner/repo or GitHub URL)', existing || 'owner/repo');
+    const spec = prompt('Open GitHub project (owner/repo or GitHub URL). Backend test only checks the Cloud Run sync service; this must be the actual repository.', existing || 'owner/repo');
     if (!spec || !String(spec).trim()) return { ok: false, cancelled: true };
     const parsed = parseGithubRepoSpec(spec);
     if (!parsed) {
@@ -566,6 +567,101 @@
     return state.state.project;
   }
 
+  function githubLoadBody() {
+    return {
+      owner: git.owner,
+      repo: git.repo,
+      branch: git.branch || 'main',
+      rootPath: normalizeRepoPath(git.rootPath || '')
+    };
+  }
+
+  function githubLoadFallbackBranches(branch) {
+    const current = String(branch || 'main').trim() || 'main';
+    const candidates = [];
+    const add = (value) => {
+      const clean = String(value || '').trim();
+      if (clean && clean !== current && !candidates.includes(clean)) candidates.push(clean);
+    };
+    // Many older repos still use master, and GitHub Pages repos often use gh-pages.
+    if (/^main$/i.test(current)) { add('master'); add('gh-pages'); }
+    else if (/^master$/i.test(current)) { add('main'); add('gh-pages'); }
+    else { add('main'); add('master'); }
+    return candidates;
+  }
+
+  function isLoadNotFoundError(err) {
+    const status = err?.githubStatus || err?.status || 0;
+    const path = String(err?.githubPath || '');
+    const message = String(err?.message || err || '');
+    return path.includes('/load-project') && (status === 404 || /\bnot\s+found\b/i.test(message) || /could not find/i.test(message));
+  }
+
+  function withTriedBranchesMessage(err, triedBranches = []) {
+    const base = String(err?.message || err || '').trim();
+    const tried = Array.from(new Set(triedBranches.filter(Boolean))).join(', ');
+    if (!tried || base.includes('Tried branches:')) return base;
+    return `${base}\nTried branches: ${tried}.\nNote: Settings → Test GitHub backend only confirms the sync backend/token endpoint; Project → Open GitHub also requires the selected repository, branch, and folder to exist.`;
+  }
+
+  async function fetchGithubProjectWithFallback(initialBody) {
+    const triedBranches = [];
+    const first = Object.assign({}, initialBody, { branch: String(initialBody.branch || 'main').trim() || 'main' });
+    triedBranches.push(first.branch);
+    try {
+      return { result: await gitFetch('/load-project', first), branch: first.branch, triedBranches };
+    } catch (firstErr) {
+      if (!isLoadNotFoundError(firstErr)) throw firstErr;
+      let lastErr = firstErr;
+      for (const branch of githubLoadFallbackBranches(first.branch)) {
+        const body = Object.assign({}, first, { branch });
+        triedBranches.push(branch);
+        git.status = `GitHub branch/folder not found on ${first.branch}. Retrying ${branch}...\nRepo: ${git.owner}/${git.repo}${body.rootPath ? `\nFolder: ${body.rootPath}` : ''}`;
+        render();
+        try {
+          return { result: await gitFetch('/load-project', body), branch, triedBranches };
+        } catch (err) {
+          lastErr = err;
+          if (!isLoadNotFoundError(err)) throw err;
+        }
+      }
+      const wrapped = new Error(withTriedBranchesMessage(lastErr || firstErr, triedBranches));
+      wrapped.githubStatus = (lastErr || firstErr)?.githubStatus || (lastErr || firstErr)?.status || 404;
+      wrapped.githubPath = '/load-project';
+      wrapped.githubRequestBody = first;
+      throw wrapped;
+    }
+  }
+
+  function detachGithubProject() {
+    loadGitSettings();
+    syncGitFromProject();
+    const label = attachedRepoLabel();
+    if (!git.owner && !git.repo) {
+      git.status = 'No GitHub repository is attached. Use Open GitHub to load one.';
+      render();
+      return { ok: false, skipped: true };
+    }
+    const ok = confirm(`Detach this browser project from GitHub?\n\n${label}\n\nThis only clears the local GitHub attachment/settings. It does not delete the GitHub repository or local files.`);
+    if (!ok) return { ok: false, cancelled: true };
+    git.owner = '';
+    git.repo = '';
+    git.rootPath = '';
+    git.headSha = null;
+    git.status = 'Detached local project from GitHub. Use Open GitHub to load the correct repository, or Save GitHub after creating/attaching one.';
+    try {
+      const project = State().state.project;
+      if (project) {
+        delete project.github;
+        if (project.meta) delete project.meta.github;
+        State().save?.();
+      }
+    } catch (_err) {}
+    saveGitSettings();
+    render();
+    return { ok: true };
+  }
+
   async function loadFromGithub(options = {}) {
     try {
       const hasExplicitRepoSelection = !!(options.fromPrompt || options.owner || options.repo || options.branch || options.rootPath !== undefined);
@@ -584,12 +680,12 @@ Branch: ${git.branch || 'main'}${git.rootPath ? `
 Folder: ${git.rootPath}` : ''}`;
       render();
 
-      const result = await gitFetch('/load-project', {
-        owner: git.owner,
-        repo: git.repo,
-        branch: git.branch || 'main',
-        rootPath: normalizeRepoPath(git.rootPath || '')
-      });
+      const loadResult = await fetchGithubProjectWithFallback(githubLoadBody());
+      const result = loadResult.result;
+      if (loadResult.branch && loadResult.branch !== git.branch) {
+        git.branch = loadResult.branch;
+        git.status = `Loaded after trying fallback branch ${loadResult.branch}.`;
+      }
 
       const github = {
         owner: git.owner,
@@ -896,8 +992,9 @@ ${message}`);
       const rootPath = normalizeRepoPath(requestBody?.rootPath || git.rootPath || '');
       return [
         `GitHub could not find ${owner}/${repo} @ ${branch}${rootPath ? `, folder ${rootPath}` : ''}.`,
+        'The backend itself may still be OK: the Settings test only checks the Cloud Run sync service and token endpoint.',
         'Check: owner/repo spelling, branch name, GitHub token access for private repos, and folder path.',
-        'For a repository root import, leave Folder path blank. If the branch is not main, try the exact branch name from GitHub.',
+        'For a repository root import, leave Folder path blank. If the Source tree shows an old repo, use Detach and then Open GitHub.',
         `Backend: ${activeGithubBackend()}`
       ].join('\n');
     }
@@ -929,7 +1026,12 @@ ${message}`);
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
     if (!response.ok || data?.ok === false) {
-      throw new Error(actionableGithubErrorMessage(data, response.status, path, body));
+      const err = new Error(actionableGithubErrorMessage(data, response.status, path, body));
+      err.githubStatus = response.status;
+      err.githubPath = path;
+      err.githubData = data;
+      err.githubRequestBody = body || null;
+      throw err;
     }
     return data;
   }
@@ -1038,5 +1140,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi, refreshGithubProjectPanes };
+  NS.FileTree = { bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, detachGithubProject, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi, refreshGithubProjectPanes, githubLoadFallbackBranches };
 })();
