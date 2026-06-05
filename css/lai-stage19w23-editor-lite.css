@@ -1,0 +1,86 @@
+/* LatexAI Stage 19W23 — stable lightweight editor helpers
+ * This intentionally does not reuse the old Stage 18 editor overlay/shortcut layer.
+ * It adds explicit formatting commands plus an opt-in visual-only syntax overlay.
+ */
+.editor-lite-actions {
+  gap: .35rem;
+}
+.editor-lite-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .28rem;
+  min-height: 2rem;
+  padding: .24rem .5rem;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 12px;
+  background: rgba(255,255,255,.86);
+  color: #334155;
+  font-size: .76rem;
+  font-weight: 780;
+  white-space: nowrap;
+}
+.editor-lite-toggle input { margin: 0; }
+.editor-lite-env-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  max-width: 16rem;
+  padding: .24rem .55rem;
+  border-radius: 12px;
+  border: 1px solid rgba(47,111,237,.18);
+  color: #174ea6;
+  background: rgba(47,111,237,.08);
+  font-size: .75rem;
+  font-weight: 820;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-shell.lai-lite-source-shell { position: relative; }
+.lai-lite-syntax-overlay {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 0 3.45rem;
+  margin: 0;
+  padding: 1rem 1.1rem;
+  border: 0;
+  color: #e5e7eb;
+  background: #0f172a;
+  font: 14px/1.55 var(--mono);
+  tab-size: 2;
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+  border-bottom-right-radius: var(--radius-xl);
+}
+.source-shell.lai-lite-syntax-enabled #sourceEditor {
+  position: relative;
+  z-index: 2;
+  background: transparent !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: #ffffff;
+}
+.source-shell.lai-lite-syntax-enabled #sourceEditor::selection {
+  background: rgba(47,111,237,.48);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.lai-lite-line { display: block; min-height: 1.55em; }
+.lai-lite-line.lai-lite-env-match-line {
+  background: rgba(250,204,21,.10);
+  box-shadow: inset 3px 0 0 rgba(250,204,21,.65);
+}
+.lai-lite-command { color: #93c5fd; font-weight: 650; }
+.lai-lite-env-command { color: #a7f3d0; font-weight: 760; }
+.lai-lite-env-name { color: #fef08a; font-weight: 760; }
+.lai-lite-brace { color: #c4b5fd; }
+.lai-lite-comment { color: #94a3b8; font-style: italic; }
+.lai-lite-cite { color: #f9a8d4; font-weight: 700; }
+.lai-lite-ref { color: #fdba74; font-weight: 700; }
+.lai-lite-math { color: #67e8f9; }
+.lai-lite-math-zone { background: rgba(8,145,178,.11); border-radius: 4px; }
+@media (max-width: 1120px) {
+  .editor-lite-env-status { display: none; }
+  .editor-lite-toggle { font-size: .72rem; padding-left: .42rem; padding-right: .42rem; }
+}
