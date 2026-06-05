@@ -1,0 +1,8 @@
+/* Stage 19W24: disable floating selection action bubble.
+   Paper AI/direct prompt now owns selected-text AI edits. */
+#laiSelectionActionBubble,
+.lai-selection-action-bubble {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
