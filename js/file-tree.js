@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19u9m-settings-github-drawer-polish-20260604-1';
+  const STAGE = 'stage19w29-settings-github-drawers-cleanup-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -566,27 +566,6 @@
     return state.state.project;
   }
 
-  function formatGithubLoadError(err, context = {}) {
-    const raw = String(err?.message || err || 'Unknown GitHub load failure').trim();
-    const owner = cleanGithubField(context.owner || git.owner);
-    const repo = cleanGithubField(context.repo || git.repo);
-    const branch = cleanGithubField(context.branch || git.branch || 'main') || 'main';
-    const rootPath = normalizeRepoPath(context.rootPath ?? git.rootPath ?? '');
-    const repoLabel = owner && repo ? `${owner}/${repo}${rootPath ? '/' + rootPath : ''} @ ${branch}` : `selected repository @ ${branch}`;
-    const notFound = /\b404\b|not found|get-a-reference|git\/refs/i.test(raw);
-    if (!notFound) return raw;
-    return [
-      `GitHub could not find ${repoLabel}.`,
-      'Most common causes: wrong branch name, private-repo/token access, or wrong folder path.',
-      'Open Source tree → Git and try the repo default branch (often main or master), then click Load attached again.',
-      `Raw backend detail: ${raw}`
-    ].join('\n');
-  }
-
-  function cleanGithubField(value) {
-    return String(value || '').trim();
-  }
-
   async function loadFromGithub(options = {}) {
     try {
       const hasExplicitRepoSelection = !!(options.fromPrompt || options.owner || options.repo || options.branch || options.rootPath !== undefined);
@@ -642,7 +621,7 @@ Root: ${rootFile}`);
       logGithubReward('open_project', { ok: true, fileCount, commitSha: github.headSha || '' }, { rewardValue: 0.35, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' } });
       return { ok: true, project: loadedProject, result };
     } catch (err) {
-      const message = formatGithubLoadError(err, { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' });
+      const message = err?.message || String(err);
       git.status = `Load failed:
 ${message}`;
       render();
@@ -884,6 +863,61 @@ ${message}`);
     saveGitSettings();
   }
 
+
+  function parseMaybeGithubError(value) {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    const text = String(value || '').trim();
+    if (!text) return {};
+    if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+      try { return JSON.parse(text); } catch (_err) {}
+    }
+    return { message: text };
+  }
+
+  function compactGithubErrorText(value) {
+    const parsed = parseMaybeGithubError(value);
+    const nested = parseMaybeGithubError(parsed.detail || parsed.error || parsed.message || parsed.raw || '');
+    const merged = Object.assign({}, parsed, nested && typeof nested === 'object' ? nested : {});
+    return String(merged.message || merged.detail || merged.error || merged.raw || value || '').trim();
+  }
+
+  function actionableGithubErrorMessage(data, status, path, requestBody = null) {
+    const parsed = parseMaybeGithubError(data);
+    const detail = parseMaybeGithubError(parsed.detail || parsed.error || parsed.message || parsed.raw || parsed);
+    const message = compactGithubErrorText(detail.message || parsed.message || parsed.detail || parsed.error || parsed.raw || data);
+    const statusText = String(detail.status || parsed.status || status || '').trim();
+    const isNotFound = status === 404 || statusText === '404' || /\bnot\s+found\b/i.test(message);
+    const isLoadProject = String(path || '').includes('/load-project');
+    if (isNotFound && isLoadProject) {
+      const owner = String(requestBody?.owner || git.owner || '').trim() || 'owner';
+      const repo = String(requestBody?.repo || git.repo || '').trim() || 'repo';
+      const branch = String(requestBody?.branch || git.branch || 'main').trim() || 'main';
+      const rootPath = normalizeRepoPath(requestBody?.rootPath || git.rootPath || '');
+      return [
+        `GitHub could not find ${owner}/${repo} @ ${branch}${rootPath ? `, folder ${rootPath}` : ''}.`,
+        'Check: owner/repo spelling, branch name, GitHub token access for private repos, and folder path.',
+        'For a repository root import, leave Folder path blank. If the branch is not main, try the exact branch name from GitHub.',
+        `Backend: ${activeGithubBackend()}`
+      ].join('\n');
+    }
+    if (isNotFound) {
+      return [
+        `GitHub backend returned 404 for ${String(path || 'request')}.`,
+        'Check that the GitHub backend URL ends in /api/lumina/github and that the selected repo/branch/folder exists.',
+        `Backend: ${activeGithubBackend()}`
+      ].join('\n');
+    }
+    if (/bad credentials|token|forbidden|unauthori[sz]ed|permission/i.test(message)) {
+      return [
+        message || `GitHub request failed${status ? ` (HTTP ${status})` : ''}.`,
+        'Check the GitHub backend token and repository permissions. Private repositories require a token with access to that repo.',
+        `Backend: ${activeGithubBackend()}`
+      ].join('\n');
+    }
+    return message || `HTTP ${status || 'error'}`;
+  }
+
   async function gitFetch(path, body) {
     const url = String(activeGithubBackend()).replace(/\/$/, '') + path;
     const response = await fetch(url, {
@@ -894,9 +928,8 @@ ${message}`);
     const text = await response.text();
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch (_err) { data = { raw: text }; }
-    if (!response.ok) {
-      const detail = data.detail || data.message || data.raw || `HTTP ${response.status}`;
-      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    if (!response.ok || data?.ok === false) {
+      throw new Error(actionableGithubErrorMessage(data, response.status, path, body));
     }
     return data;
   }
