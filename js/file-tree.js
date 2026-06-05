@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w34-github-load-default-branch-probe-20260605-1';
+  const STAGE = 'stage19w35-github-new-project-stale-owner-fix-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -165,7 +165,7 @@
       backendBase: activeGithubBackend(),
       owner: git.owner || '',
       repo: git.repo || '',
-      branch: git.branch || 'main',
+      branch: String(git.branch || '').trim(),
       rootPath: normalizeRepoPath(git.rootPath || ''),
       headSha: git.headSha || null,
       commitMessage: String(git.commitMessage || ''),
@@ -201,7 +201,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W34</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W35</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -871,14 +871,23 @@ ${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
     const normalizedProject = State().defaultProject ? W.LuminaLatex.ProjectModel.normalizeProject(project) : project;
     const repoName = sanitizeRepoName(options.repoName || normalizedProject?.name || 'latexai-project');
     if (!repoName) throw new Error('Could not derive a GitHub repository name from the project name.');
-    const branch = String(options.branch || git.branch || 'main').trim() || 'main';
+    const branch = String(options.branch || 'main').trim() || 'main';
     const files = {};
     for (const file of normalizedProject.files || []) files[file.path] = fileContentForGithub(file);
+    // New Project must not inherit the last attached/opened repository identity.
+    // If git.owner is still karthik-sridharan from a previous Open GitHub attempt,
+    // sending it here can make the backend choose an org/user-specific creation
+    // path and return a plain 404. Only pass owner when the caller explicitly
+    // asks for a target owner/org; otherwise let the GitHub backend create under
+    // the authenticated token user, which is the Stage 19C backend contract.
+    const explicitOwner = Object.prototype.hasOwnProperty.call(options, 'owner')
+      ? String(options.owner || '').trim()
+      : '';
     const createBody = {
-      owner: options.owner || git.owner || '',
+      owner: explicitOwner,
       repo: repoName,
       branch,
-      rootPath: normalizeRepoPath(options.rootPath || git.rootPath || ''),
+      rootPath: normalizeRepoPath(options.rootPath || ''),
       private: options.private !== false,
       description: options.description || `Latexai project: ${normalizedProject.name || repoName}`,
       project: normalizedProject,
@@ -887,7 +896,7 @@ ${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
     };
     githubTrace('createProjectRepository-request-body', { body: summarizeGithubBody(createBody) });
     const result = await gitFetch('/create-project-repo', createBody);
-    git.owner = result.owner || result.repoOwner || git.owner || '';
+    git.owner = result.owner || result.repoOwner || explicitOwner || git.owner || '';
     git.repo = result.repo || repoName;
     git.branch = result.branch || branch;
     git.rootPath = normalizeRepoPath(result.rootPath || options.rootPath || git.rootPath || '');
