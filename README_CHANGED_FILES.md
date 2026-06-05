@@ -1,18 +1,14 @@
-# Changed files — Stage 19W35
+# Changed files — Stage 19W36
 
-Apply these files on top of Stage 19W34 / latest frontend.
-
-Files:
+Changed relative to Stage 19W35:
 
 - `index.html`
+  - cache-busts frontend scripts to Stage 19W36.
 - `js/file-tree.js`
-- `js/main.js`
-- `js/backend-url-settings-service.js`
-- `tests/stage19w35-github-new-project-stale-owner-fix.test.cjs`
-- `README_STAGE19W35_GITHUB_NEW_PROJECT_STALE_OWNER_FIX.md`
-- `README_CHANGED_FILES.md`
-
-Main functional fix:
-
-- `New project` no longer leaks the previously opened/attached GitHub `owner` and `rootPath` into `/create-project-repo`.
-- A deliberately blank Open-GitHub branch is preserved so the frontend can try the backend/default branch path.
+  - omits blank `owner` from the primary New Project `/create-project-repo` request;
+  - retries once with legacy `owner: ""` if the backend returns plain `404 Not Found`;
+  - probes `/status` on GitHub load/create failures and includes backend stage/token status in the trace.
+- `tests/stage19w36-github-backend-contract-diagnostics.test.cjs`
+  - regression checks for the frontend/backend contract diagnostics.
+- `README_STAGE19W36_GITHUB_BACKEND_CONTRACT_DIAGNOSTICS.md`
+  - patch notes.
