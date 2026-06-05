@@ -78,17 +78,12 @@
     const suggestedRepo = NS.FileTree?.sanitizeRepoName?.(cleanName) || cleanName.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'latexai-project';
     const repoName = prompt('New GitHub repository name', suggestedRepo);
     if (!repoName || !String(repoName).trim()) return;
-    const currentGithub = NS.FileTree?.getGithubSettings?.() || {};
-    const defaultOwner = currentGithub.owner || '';
-    const owner = prompt('GitHub owner/org for the new repository', defaultOwner || 'karthik-sridharan');
-    if (!owner || !String(owner).trim()) return;
-
     const message = [
       `Create new project “${cleanName}”?`,
       '',
       `This will replace the active local project “${currentName}”.`,
       'Backend/API settings will be kept.',
-      `A new GitHub repository named “${String(owner).trim()}/${String(repoName).trim()}” will be created and used for this project.`
+      `A new GitHub repository named “${String(repoName).trim()}” will be created and used for this project.`
     ].join('\n');
     if (!confirm(message)) return;
 
@@ -120,7 +115,10 @@
 
       toast('Creating GitHub repository…');
       const gh = await NS.FileTree?.createProjectRepository?.(project, {
-        owner: String(owner).trim(),
+        // Do not pass owner for the normal user-account flow. The GitHub sync
+        // backend creates under the authenticated token user when owner is blank;
+        // passing a username can make some backends incorrectly try the org repo
+        // creation endpoint and return GitHub's plain "Not Found".
         repoName: String(repoName).trim(),
         private: true,
         message: `Latexai new project: ${cleanName}`
@@ -135,7 +133,8 @@
       NS.Preview?.renderDraftPreview?.();
       toast(`New project created: ${gh.github.owner}/${gh.github.repo}`);
     } catch (err) {
-      alert(`New project failed:\n${err?.message || err}\n\nNo local project reset was performed.`);
+      const trace = summarizeGithubTraceForAlert();
+      alert(`New project failed:\n${err?.message || err}${trace ? `\n\nFrontend GitHub trace:\n${trace}` : ''}\n\nNo local project reset was performed.`);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = oldText || 'New project'; }
     }

@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w33-github-flow-trace-new-project-20260605-1';
+  const STAGE = 'stage19w34-github-load-default-branch-probe-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -201,7 +201,7 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W33</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W34</span>`;
 
     const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
       git.setupOpen = !git.setupOpen;
@@ -532,7 +532,7 @@
       alert('Please enter a GitHub repository as owner/repo, or paste a https://github.com/owner/repo URL.');
       return { ok: false, error: 'invalid repo spec' };
     }
-    const branch = prompt('Branch', git.branch || 'main');
+    const branch = prompt('Branch (leave blank to let backend use repository default)', git.branch || 'main');
     if (branch === null) return { ok: false, cancelled: true };
     const rootPath = prompt('Folder path inside repo (blank for repo root)', git.rootPath || '');
     if (rootPath === null) return { ok: false, cancelled: true };
@@ -547,7 +547,7 @@
     if (!confirm(message)) return { ok: false, cancelled: true };
     git.owner = parsed.owner;
     git.repo = parsed.repo;
-    git.branch = String(branch || 'main').trim() || 'main';
+    git.branch = String(branch || '').trim();
     git.rootPath = normalizeRepoPath(rootPath || '');
     saveGitSettings();
     return loadFromGithub({ source: 'open-existing-github-project', preserveSettings: true, fromPrompt: true, alertSuccess: true });
@@ -645,20 +645,52 @@ Branch: ${git.branch || 'main'}${git.rootPath ? `
 Folder: ${git.rootPath}` : ''}`;
       render();
 
-      const loadBody = {
-        owner: git.owner,
-        repo: git.repo,
-        branch: git.branch || 'main',
-        rootPath: normalizeRepoPath(git.rootPath || '')
-      };
-      githubTrace('loadFromGithub-request-body', { body: summarizeGithubBody(loadBody) });
-      const result = await gitFetch('/load-project', loadBody);
+      const rootPath = normalizeRepoPath(git.rootPath || '');
+      const preferredBranch = String(git.branch || '').trim();
+      const branchCandidates = [];
+      const seenBranches = new Set();
+      function pushCandidate(branch, label) {
+        const key = branch ? `branch:${branch}` : 'backend-default';
+        if (seenBranches.has(key)) return;
+        seenBranches.add(key);
+        const body = { owner: git.owner, repo: git.repo, rootPath };
+        if (branch) body.branch = branch;
+        branchCandidates.push({ label, branch, body });
+      }
+      pushCandidate(preferredBranch, preferredBranch ? `selected branch ${preferredBranch}` : 'backend/default branch');
+      // Important diagnostic/probe path: old working flows could rely on the
+      // backend/default branch. If the browser forces "main" and the repo uses a
+      // different default branch, the backend's GitHub refs lookup returns 404.
+      pushCandidate('', 'backend/default branch');
+      ['main', 'master', 'gh-pages'].forEach((fallback) => pushCandidate(fallback, `fallback branch ${fallback}`));
 
+      let result = null;
+      let usedCandidate = null;
+      const failures = [];
+      for (const candidate of branchCandidates) {
+        githubTrace('loadFromGithub-request-body', { candidate: candidate.label, body: summarizeGithubBody(candidate.body) });
+        try {
+          result = await gitFetch('/load-project', candidate.body);
+          usedCandidate = candidate;
+          break;
+        } catch (candidateErr) {
+          const message = candidateErr?.message || String(candidateErr);
+          failures.push(`${candidate.label}: ${message}`);
+          githubTrace('loadFromGithub-candidate-failed', { candidate: candidate.label, message: message.slice(0, 260) });
+        }
+      }
+      if (!result) {
+        const err = new Error(failures.join('\n') || 'All GitHub load candidates failed.');
+        err.githubLoadFailures = failures;
+        throw err;
+      }
+
+      const resolvedBranch = result.branch || result.project?.github?.branch || usedCandidate?.branch || preferredBranch || 'main';
       const github = {
         owner: git.owner,
         repo: git.repo,
-        branch: git.branch || 'main',
-        rootPath: normalizeRepoPath(git.rootPath || ''),
+        branch: resolvedBranch,
+        rootPath,
         headSha: result.headSha || result.commitSha || result.project?.github?.headSha || null,
         openedAt: new Date().toISOString(),
         openStage: STAGE
@@ -667,6 +699,7 @@ Folder: ${git.rootPath}` : ''}`;
       const nextProject = applyGithubIdentity(coerceGithubProjectResult(result, github), github);
       const loadedProject = forceGithubProjectIntoUi(nextProject, options.source || 'github-open');
 
+      git.branch = github.branch || git.branch || 'main';
       git.headSha = github.headSha || null;
       const fileCount = loadedProject.files?.length || result.fileCount || countProjectFiles(result.project || {});
       const rootFile = loadedProject.rootFile || loadedProject.activePath || 'main.tex';
@@ -689,7 +722,7 @@ Root: ${rootFile}`);
 ${message}`;
       render();
       const traceText = shortGithubTraceForAlert({
-        request: { method: 'POST', url: String(activeGithubBackend()).replace(/\/$/, '') + '/load-project', body: summarizeGithubBody({ owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: normalizeRepoPath(git.rootPath || '') }) }
+        request: { method: 'POST', url: String(activeGithubBackend()).replace(/\/$/, '') + '/load-project', body: summarizeGithubBody(Object.assign({ owner: git.owner, repo: git.repo, rootPath: normalizeRepoPath(git.rootPath || '') }, git.branch ? { branch: git.branch } : {})) }
       });
       alert(`GitHub load failed:
 ${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
