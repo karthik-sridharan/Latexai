@@ -1,5 +1,7 @@
-/* LatexAI Stage 19W23 — stable lightweight editor helpers
- * Robust design: explicit text operations, no hidden rewrites, optional syntax overlay.
+/* LatexAI Stage 19W25 — stable editor helpers without syntax overlay
+ * Robust design: explicit text operations only. Overlay token coloring is disabled
+ * because textarea overlays can desync cursor/display on Safari/iPad. Native syntax
+ * colors should be implemented later with a real editor engine (CodeMirror/Monaco).
  */
 (function () {
   'use strict';
@@ -7,8 +9,8 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w23-stable-editor-helpers-20260604-1';
-  const SYNTAX_KEY = 'latexai:stage19w23:syntax-colors:v1';
+  const STAGE = 'latex-stage19w25-disable-overlay-syntax-colors-20260604-1';
+  const SYNTAX_KEY = 'latexai:stage19w25:syntax-colors-disabled:v1';
   const AUTO_INDENT_KEY = 'latexai:stage19w23:auto-indent:v1';
   const MAX_HIGHLIGHT_CHARS = 260000;
 
@@ -59,14 +61,15 @@
     bindButton('liteFormatSelectionBtn', formatSelection);
     bindButton('liteFormatDocumentBtn', formatDocument);
 
+    // Stage 19W25: syntax overlay coloring is intentionally disabled.
+    // Textarea overlay highlighting causes cursor/display desync in Safari/iPad.
+    // Keep this as a no-op until we move to a native editor engine.
+    setBool(SYNTAX_KEY, false);
     const syntaxToggle = $('liteSyntaxToggle');
     if (syntaxToggle) {
-      syntaxToggle.checked = getBool(SYNTAX_KEY, syntaxDefault());
-      syntaxToggle.addEventListener('change', () => {
-        setBool(SYNTAX_KEY, syntaxToggle.checked);
-        setSyntaxEnabled(syntaxToggle.checked);
-        toast(syntaxToggle.checked ? 'Syntax colors enabled.' : 'Syntax colors disabled.');
-      });
+      syntaxToggle.checked = false;
+      syntaxToggle.disabled = true;
+      syntaxToggle.closest?.('.editor-lite-toggle')?.remove?.();
     }
     const autoToggle = $('liteAutoIndentToggle');
     if (autoToggle) {
@@ -114,23 +117,13 @@
     }
   }
 
-  function setSyntaxEnabled(enabled) {
+  function setSyntaxEnabled(_enabled) {
     activeEditor();
-    if (!editor || !shell) return;
     cleanupOldOverlays();
-    if (!enabled) {
-      if (overlay) overlay.remove();
-      overlay = null;
-      shell.classList.remove('lai-lite-syntax-enabled');
-      return;
-    }
-    overlay = D.createElement('pre');
-    overlay.id = 'laiLiteSyntaxOverlay';
-    overlay.className = 'lai-lite-syntax-overlay';
-    overlay.setAttribute('aria-hidden', 'true');
-    shell.insertBefore(overlay, editor);
-    shell.classList.add('lai-lite-syntax-enabled');
-    scheduleRender({ force: true, immediate: true });
+    if (overlay) overlay.remove();
+    overlay = null;
+    if (shell) shell.classList.remove('lai-lite-syntax-enabled');
+    setBool(SYNTAX_KEY, false);
   }
 
   function notifyChanged(selectStart, selectEnd) {
@@ -338,33 +331,17 @@
     }).join('\n');
   }
 
-  function scheduleRender(options = {}) {
-    if (!getBool(SYNTAX_KEY, syntaxDefault())) return;
-    activeEditor();
-    if (!editor || !overlay) return;
-    if (options.immediate) { renderOverlay(); return; }
-    clearTimeout(renderTimer);
-    renderTimer = setTimeout(renderOverlay, options.force ? 0 : 90);
+  function scheduleRender(_options = {}) {
+    // No overlay rendering in Stage 19W25. Native syntax coloring requires a real
+    // editor engine, not a hidden textarea overlay.
   }
 
   function renderOverlay() {
-    clearTimeout(renderTimer);
-    renderTimer = 0;
-    activeEditor();
-    if (!editor || !overlay || !getBool(SYNTAX_KEY, syntaxDefault())) return;
-    const text = String(editor.value || '');
-    if (text.length > MAX_HIGHLIGHT_CHARS) {
-      overlay.textContent = 'Syntax colors paused for very large file. Formatting helpers still work.';
-      return;
-    }
-    overlay.innerHTML = renderHtml(text);
-    syncOverlayScroll();
+    // Intentionally disabled.
   }
 
   function syncOverlayScroll() {
-    if (!editor || !overlay) return;
-    overlay.scrollTop = editor.scrollTop;
-    overlay.scrollLeft = editor.scrollLeft;
+    // Intentionally disabled.
   }
 
   function lineNumberAt(text, pos) {
