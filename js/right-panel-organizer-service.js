@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w19-paper-ai-audit-subtabs-cleanup-20260604-1';
+  const STAGE = 'latex-stage19w28-settings-github-backend-restore-20260604-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v7';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -743,13 +743,37 @@
     return Array.from(panel.querySelectorAll(`.right-panel-group[data-group-tab="${tab}"]`));
   }
 
+
+  function unwrapOrganizerGroups(tab) {
+    const panel = panelFor(tab);
+    if (!panel) return false;
+    const toolbar = el(`rightPanelOrganizerToolbar-${tab}`);
+    if (toolbar) toolbar.remove();
+    Array.from(panel.querySelectorAll(`.right-panel-group[data-group-tab="${tab}"]`)).forEach((group) => {
+      const body = group.querySelector('.right-panel-group-body');
+      if (body) {
+        while (body.firstChild) panel.insertBefore(body.firstChild, group);
+      }
+      group.remove();
+    });
+    panel.classList.remove('rpo-scroll-containment');
+    panel.style.height = '';
+    panel.style.minHeight = '';
+    panel.style.flex = '';
+    panel.style.overflowY = '';
+    panel.style.overflowX = '';
+    panel.style.webkitOverflowScrolling = '';
+    panel.style.overscrollBehavior = '';
+    panel.style.touchAction = '';
+    return true;
+  }
+
   function normalizeBulkTabs(tab = 'all') {
-    // Stage 19W19: Audit AI has its own explicit subtabs.  Do not let the
-    // legacy right-panel organizer create Copilot/Audit drawers that can steal
-    // Audit AI Edits into History / Comments or leave empty shells.
-    if (tab === 'copilot') return [];
-    if (tab === 'settings') return ['settings'];
-    return ['settings'];
+    // Stage 19W28: workflow tools are now left-panel tabs.  Do not organize
+    // Settings/Copilot into legacy drawers; leave Settings as ordinary form
+    // sections so backend URLs, GitHub sync, compile, and diagnostics stay visible.
+    if (tab === 'copilot' || tab === 'settings') return [];
+    return [];
   }
 
   function setAllGroupsOne(tab, open) {
@@ -790,7 +814,9 @@
 
   function organize(tab = null) {
     clearLegacyForcedState();
-    const tabs = tab ? normalizeBulkTabs(tab) : ['settings'];
+    unwrapOrganizerGroups('settings');
+    unwrapOrganizerGroups('copilot');
+    const tabs = tab ? normalizeBulkTabs(tab) : [];
 
     for (const t of tabs) {
       const panel = panelFor(t);
@@ -1017,7 +1043,7 @@
   }
 
   function installToolbarReportButton() {
-    ['copilot', 'settings'].forEach((tab) => {
+    [].forEach((tab) => {
       const toolbar = ensureToolbar(tab);
       if (!toolbar || toolbar.querySelector('[data-rpo-copy-report]')) return;
       const actions = toolbar.querySelector('.right-panel-organizer-actions');
@@ -1113,9 +1139,11 @@
 
   function init() {
     clearLegacyForcedState();
-    installDelegatedHandlers();
-    organize();
-    installToolbarReportButton();
+    unwrapOrganizerGroups('settings');
+    unwrapOrganizerGroups('copilot');
+    // Legacy grouping is intentionally disabled after Stage 19W28.
+    // Left-panel tabs now provide structure; Settings should remain a plain,
+    // visible configuration page.
   }
 
   W.LatexaiRightPanelExpandAll = function LatexaiRightPanelExpandAll(tab = 'all') {

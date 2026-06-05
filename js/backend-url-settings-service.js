@@ -243,6 +243,42 @@
     return true;
   }
 
+
+  function setGithubStatus(text, detail, ok = null) {
+    const title = el('githubBackendStatusText');
+    const body = el('githubBackendStatusDetail');
+    const card = el('githubBackendStatusCard');
+    if (title) title.textContent = text || 'Not checked';
+    if (body) body.textContent = detail || '';
+    if (card) {
+      card.classList.toggle('ok', ok === true);
+      card.classList.toggle('bad', ok === false);
+    }
+  }
+
+  async function testGithubBackend() {
+    const base = mirrorGithubBackendToGitSettings(getGithubBackendUrl());
+    const url = `${base.replace(/\/+$/, '')}/status`;
+    setGithubStatus('Testing GitHub backend...', `Checking ${url}`, null);
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {},
+        cache: 'no-store'
+      });
+      const text = await response.text().catch(() => '');
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch (_err) { json = { raw: text }; }
+      if (!response.ok || json.ok === false) throw new Error(json?.detail || json?.error || `HTTP ${response.status}`);
+      const token = json.githubTokenConfigured === true ? 'token configured' : (json.githubTokenConfigured === false ? 'token missing' : 'token status unknown');
+      setGithubStatus('GitHub backend OK', `Connected to ${base}. ${token}. Stage: ${json.stage || 'unknown'}.`, true);
+      return { ok: true, base, status: json, stage: STAGE };
+    } catch (err) {
+      setGithubStatus('GitHub backend failed', `${base}: ${err?.message || err}. Verify the GitHub sync Cloud Run URL ends in /api/lumina/github and CORS allows https://karthik-sridharan.github.io.`, false);
+      return { ok: false, base, error: err?.message || String(err), stage: STAGE };
+    }
+  }
+
   function init() {
     syncInput('aiProxyUrl', LS_AI_PROXY_URL, DEFAULT_AI_PROXY_URL);
     const aiProxyInput = el('aiProxyUrl');
@@ -265,6 +301,11 @@
       githubInput.addEventListener('change', persistGithub);
       githubInput.addEventListener('blur', persistGithub);
     }
+    const testGithubBtn = el('testGithubBackendBtn');
+    if (testGithubBtn && !testGithubBtn.dataset.boundStage19w28) {
+      testGithubBtn.dataset.boundStage19w28 = 'true';
+      testGithubBtn.addEventListener('click', () => { testGithubBackend(); });
+    }
     if (!safeGet('latexai:memory-enabled', '')) safeSet('latexai:memory-enabled', 'true');
     const testBtn = el('testMemoryBackendBtn');
     if (testBtn && !testBtn.dataset.boundStage18x6) {
@@ -282,6 +323,7 @@
     normalizeGithubApiBase,
     getGithubBackendUrl,
     mirrorGithubBackendToGitSettings,
+    testGithubBackend,
     getAiProxyUrl,
     getAiProxyToken,
     getMemoryBackendUrl,

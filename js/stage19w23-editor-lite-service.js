@@ -10,7 +10,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w27-remove-refresh-preview-20260604-1';
+  const STAGE = 'latex-stage19w28-settings-github-backend-restore-20260604-1';
   const SYNTAX_KEY = 'latexai:stage19w25:syntax-colors-disabled:v1';
   const AUTO_INDENT_KEY = 'latexai:stage19w27:auto-indent-always-on:v1';
   const MAX_HIGHLIGHT_CHARS = 260000;
