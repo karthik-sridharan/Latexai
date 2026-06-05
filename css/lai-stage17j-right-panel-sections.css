@@ -296,7 +296,7 @@
   max-width: none;
 }
 
-/* Stage 19U9M: keep the drawer UI but split Settings into clean backend-specific drawers.
+/* Stage 19W29: keep the drawer UI but split Settings into clean backend-specific drawers.
    GitHub sync now has its own drawer/status card instead of landing in Other Settings. */
 #settingsTab .right-panel-group[data-group-key="ai-memory-backends"] .right-panel-group-summary,
 #settingsTab .right-panel-group[data-group-key="github-sync"] .right-panel-group-summary,
