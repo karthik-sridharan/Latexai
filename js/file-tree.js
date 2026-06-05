@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w35-github-new-project-stale-owner-fix-20260605-1';
+  const STAGE = 'stage19w36-github-backend-contract-diagnostics-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -59,12 +59,10 @@
 
   function summarizeGithubBody(body) {
     if (!body || typeof body !== 'object') return body || null;
-    const out = {
-      owner: body.owner || '',
-      repo: body.repo || '',
-      branch: body.branch || '',
-      rootPath: body.rootPath || ''
-    };
+    const out = {};
+    ['owner', 'repo', 'branch', 'rootPath'].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(body, key)) out[key] = body[key] || '';
+    });
     if (body.message) out.message = String(body.message || '').slice(0, 160);
     if (body.private !== undefined) out.private = !!body.private;
     if (body.expectedHeadSha !== undefined) out.expectedHeadSha = body.expectedHeadSha || null;
@@ -721,11 +719,15 @@ Root: ${rootFile}`);
       git.status = `Load failed:
 ${message}`;
       render();
+      const status = await probeGithubBackendStatusForTrace('load-project-failed');
+      const backendNote = status?.stage
+        ? `\n\nGitHub backend status stage: ${status.stage}\nGitHub token configured: ${status.githubTokenConfigured === true ? 'yes' : (status.githubTokenConfigured === false ? 'no' : 'unknown')}`
+        : '';
       const traceText = shortGithubTraceForAlert({
         request: { method: 'POST', url: String(activeGithubBackend()).replace(/\/$/, '') + '/load-project', body: summarizeGithubBody(Object.assign({ owner: git.owner, repo: git.repo, rootPath: normalizeRepoPath(git.rootPath || '') }, git.branch ? { branch: git.branch } : {})) }
       });
       alert(`GitHub load failed:
-${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
+${message}${backendNote}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
       logGithubReward('open_project', { ok: false, error: message }, { rewardValue: -0.55, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main', rootPath: git.rootPath || '' } });
       return { ok: false, error: message };
     }
@@ -865,6 +867,37 @@ ${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
   }
 
 
+  async function probeGithubBackendStatusForTrace(reason = 'diagnostic') {
+    try {
+      const status = await gitFetch('/status');
+      githubTrace('github-backend-status-probe', {
+        reason,
+        stage: status?.stage || '',
+        ok: status?.ok !== false,
+        githubTokenConfigured: status?.githubTokenConfigured === true
+      });
+      return status;
+    } catch (err) {
+      githubTrace('github-backend-status-probe-failed', { reason, message: err?.message || String(err) });
+      return null;
+    }
+  }
+
+  function isPlainGithubBackendNotFound(err) {
+    const status = Number(err?.githubStatus || 0);
+    const message = String(err?.message || err || '').trim();
+    return status === 404 && /^not found$/i.test(message);
+  }
+
+  function withOptionalCreateOwner(body, owner) {
+    const next = Object.assign({}, body || {});
+    const cleanOwner = String(owner || '').trim();
+    if (cleanOwner) next.owner = cleanOwner;
+    else delete next.owner;
+    return next;
+  }
+
+
   async function createProjectRepository(project, options = {}) {
     loadGitSettings();
     pullGitSetup();
@@ -883,8 +916,7 @@ ${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
     const explicitOwner = Object.prototype.hasOwnProperty.call(options, 'owner')
       ? String(options.owner || '').trim()
       : '';
-    const createBody = {
-      owner: explicitOwner,
+    const baseCreateBody = {
       repo: repoName,
       branch,
       rootPath: normalizeRepoPath(options.rootPath || ''),
@@ -894,8 +926,38 @@ ${message}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`);
       files,
       message: options.message || `Latexai new project: ${normalizedProject.name || repoName}`
     };
-    githubTrace('createProjectRepository-request-body', { body: summarizeGithubBody(createBody) });
-    const result = await gitFetch('/create-project-repo', createBody);
+    const createCandidates = [
+      { path: '/create-project-repo', label: explicitOwner ? 'explicit-owner' : 'token-user', body: withOptionalCreateOwner(baseCreateBody, explicitOwner) }
+    ];
+    // Stage 19W36: keep one legacy retry for older GitHub backends that expected
+    // owner: "" to mean "create under the authenticated token user". The primary
+    // request omits owner entirely because blank owner and absent owner can be
+    // interpreted differently by backend routing code.
+    if (!explicitOwner) createCandidates.push({ path: '/create-project-repo', label: 'legacy-empty-owner', body: Object.assign({ owner: '' }, baseCreateBody) });
+
+    let result = null;
+    let usedCreate = null;
+    const failures = [];
+    for (const candidate of createCandidates) {
+      githubTrace('createProjectRepository-request-body', { path: candidate.path, candidate: candidate.label, body: summarizeGithubBody(candidate.body) });
+      try {
+        result = await gitFetch(candidate.path, candidate.body);
+        usedCreate = candidate;
+        break;
+      } catch (err) {
+        const message = err?.message || String(err);
+        failures.push(`${candidate.path} (${candidate.label}): ${message}`);
+        githubTrace('createProjectRepository-candidate-failed', { path: candidate.path, candidate: candidate.label, status: err?.githubStatus || 0, message: message.slice(0, 260) });
+        if (!isPlainGithubBackendNotFound(err)) break;
+      }
+    }
+    if (!result) {
+      const status = await probeGithubBackendStatusForTrace('create-project-repo-failed');
+      const stageText = status?.stage ? `\nGitHub backend status stage: ${status.stage}` : '';
+      const tokenText = status ? `\nGitHub token configured: ${status.githubTokenConfigured === true ? 'yes' : (status.githubTokenConfigured === false ? 'no' : 'unknown')}` : '';
+      throw new Error(`${failures.join('\n') || 'GitHub repository create failed.'}${stageText}${tokenText}\nThis means the browser reached the GitHub backend, but the backend returned 404 for the create-project route. Check that the Settings GitHub backend URL points at the Stage 19C+ GitHub sync backend, not an older status/load-only service.`);
+    }
+    githubTrace('createProjectRepository-success', { path: usedCreate?.path || '/create-project-repo', candidate: usedCreate?.label || '', owner: result.owner || result.repoOwner || explicitOwner || '' });
     git.owner = result.owner || result.repoOwner || explicitOwner || git.owner || '';
     git.repo = result.repo || repoName;
     git.branch = result.branch || branch;
