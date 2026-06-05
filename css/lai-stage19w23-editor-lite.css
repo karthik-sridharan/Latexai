@@ -1,6 +1,6 @@
-/* LatexAI Stage 19W23 — stable lightweight editor helpers
- * This intentionally does not reuse the old Stage 18 editor overlay/shortcut layer.
- * It adds explicit formatting commands plus an opt-in visual-only syntax overlay.
+/* LatexAI Stage 19W25 — stable lightweight editor helpers
+ * Overlay syntax colors are disabled to avoid textarea cursor/display desync.
+ * Keep explicit formatting helpers, auto-indent, and environment status only.
  */
 .editor-lite-actions {
   gap: .35rem;
@@ -37,34 +37,16 @@
   text-overflow: ellipsis;
 }
 .source-shell.lai-lite-source-shell { position: relative; }
-.lai-lite-syntax-overlay {
-  position: absolute;
-  z-index: 1;
-  inset: 0 0 0 3.45rem;
-  margin: 0;
-  padding: 1rem 1.1rem;
-  border: 0;
-  color: #e5e7eb;
-  background: #0f172a;
-  font: 14px/1.55 var(--mono);
-  tab-size: 2;
-  white-space: pre;
-  overflow: hidden;
-  pointer-events: none;
-  border-bottom-right-radius: var(--radius-xl);
+.lai-lite-syntax-overlay,
+#laiLiteSyntaxOverlay,
+#latexSyntaxOverlay,
+.latex-syntax-overlay {
+  display: none !important;
 }
 .source-shell.lai-lite-syntax-enabled #sourceEditor {
-  position: relative;
-  z-index: 2;
-  background: transparent !important;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
-  caret-color: #ffffff;
-}
-.source-shell.lai-lite-syntax-enabled #sourceEditor::selection {
-  background: rgba(47,111,237,.48);
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  background: inherit !important;
 }
 .lai-lite-line { display: block; min-height: 1.55em; }
 .lai-lite-line.lai-lite-env-match-line {
