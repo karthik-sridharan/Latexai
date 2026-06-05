@@ -24,6 +24,7 @@
       const compileUrl = event.target.value.trim() || '/api/lumina/latex/compile';
       State().setSetting('compileUrl', compileUrl);
       State().setSetting('compileStatusUrl', deriveCompileJobsUrl(compileUrl));
+      State().setSetting('backendStatusUrl', deriveBackendStatusUrl(compileUrl));
     });
     document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => State().setSetting('useCompileJobs', !!event.target.checked));
     document.getElementById('compilePollSelect')?.addEventListener('change', (event) => State().setSetting('compilePollMs', Number(event.target.value) || 1000));
@@ -362,6 +363,25 @@
       return u.href;
     } catch (err) {
       return '/api/lumina/latex/compile/jobs';
+    }
+  }
+
+  function deriveBackendStatusUrl(compileUrl) {
+    try {
+      const u = new URL(String(compileUrl || '/api/lumina/latex/compile'), window.location.href);
+      u.hash = '';
+      u.search = '';
+      u.pathname = u.pathname.replace(/\/+$/, '');
+      if (/\/api\/lumina\/latex\/compile\/jobs$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/compile\/jobs$/i, '/status');
+      } else if (/\/api\/lumina\/latex\/compile$/i.test(u.pathname)) {
+        u.pathname = u.pathname.replace(/\/compile$/i, '/status');
+      } else {
+        u.pathname = '/api/lumina/latex/status';
+      }
+      return u.href;
+    } catch (err) {
+      return '/api/lumina/latex/status';
     }
   }
 

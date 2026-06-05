@@ -14,7 +14,7 @@
 
   var root = typeof window !== 'undefined' ? window : globalThis;
   var BACKEND_BASE = 'https://lumina-latex-backend-y4piylmfja-ue.a.run.app';
-  var STAGE = 'stage17x-compile-log-diagnostics-surfacing-1';
+  var STAGE = 'stage19w39-compile-jobs-load-fallback-20260605-1';
   var SETTINGS_SCHEMA = 'lumina-latex-settings-v1';
   var DEFAULT_COMPILE_URL = BACKEND_BASE + '/api/lumina/latex/compile';
   var DEFAULT_JOBS_URL = BACKEND_BASE + '/api/lumina/latex/compile/jobs';
@@ -860,6 +860,11 @@
     var status = Number(err && err.httpStatus);
     if (status === 400 || status === 404 || status === 405 || status === 501) return true;
     var msg = String((err && err.message) || err || '');
+    // Safari/iPad often reports CORS/network failures simply as "Load failed".
+    // When this happens while creating/polling /compile/jobs, treat it as a
+    // job-endpoint transport failure and fall back to the direct /compile route
+    // instead of surfacing a useless provider error.
+    if (/load failed|failed to fetch|networkerror|network error|cors|cancelled|cancelled/i.test(msg)) return true;
     return /HTTP\s+(400|404|405|501)\b/i.test(msg) || /compile\/jobs/i.test(String(err && err.url || '')) && /not found|unsupported|bad request|method/i.test(msg);
   }
 
