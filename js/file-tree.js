@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w42-project-actions-workspace-ui-20260605-1';
+  const STAGE = 'stage19w44-open-project-picker-modal-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -564,7 +564,208 @@
     return `${index + 1}. ${item.owner}/${item.repo} @ ${item.branch || 'main'} (${visibility}${updated})`;
   }
 
-  async function promptOpenProject() {
+  function parseGithubProjectPathSpec(raw) {
+    let text = String(raw || '').trim();
+    if (!text) return null;
+    text = text.replace(/^https?:\/\/github\.com\//i, '');
+    text = text.replace(/^git@github\.com:/i, '');
+    text = text.replace(/\.git$/i, '');
+    text = text.replace(/^\/+|\/+$/g, '');
+    const parts = text.split('/').filter(Boolean);
+    if (!parts.length) return null;
+    const out = { owner: parts[0] || '', repo: parts[1] || '', branch: '', rootPath: '' };
+    if (parts[2] === 'tree' || parts[2] === 'blob') {
+      out.branch = parts[3] || '';
+      out.rootPath = normalizeRepoPath(parts.slice(4).join('/'));
+    } else {
+      out.rootPath = normalizeRepoPath(parts.slice(2).join('/'));
+    }
+    return out;
+  }
+
+  function defaultOpenProjectPath() {
+    loadGitSettings();
+    syncGitFromProject();
+    const projectGh = State()?.state?.project?.github || {};
+    const owner = String(projectGh.owner || git.owner || '').trim();
+    if (owner) return `${owner}/`;
+    return 'owner/';
+  }
+
+  function projectPathLabel(item, rootPath = '') {
+    const folder = normalizeRepoPath(rootPath || item.rootPath || '');
+    return `${item.owner}/${item.repo}${folder ? '/' + folder : ''}`;
+  }
+
+  function mergeProjectSelectionWithPath(item, parsed) {
+    const selected = Object.assign({}, item || {});
+    if (parsed?.owner) selected.owner = parsed.owner;
+    if (parsed?.repo) selected.repo = parsed.repo;
+    if (parsed?.branch) selected.branch = parsed.branch;
+    if (parsed && Object.prototype.hasOwnProperty.call(parsed, 'rootPath')) selected.rootPath = normalizeRepoPath(parsed.rootPath || '');
+    selected.branch = String(selected.branch || git.branch || 'main').trim() || 'main';
+    selected.rootPath = normalizeRepoPath(selected.rootPath || '');
+    return selected;
+  }
+
+  function filterProjectsForPath(projects, rawPath) {
+    const text = String(rawPath || '').trim();
+    const parsed = parseGithubProjectPathSpec(text);
+    const query = text.toLowerCase();
+    const source = Array.isArray(projects) ? projects : [];
+    let rootPath = parsed?.rootPath || '';
+    let rows = source.filter((project) => {
+      if (!project?.owner || !project?.repo) return false;
+      if (!parsed) {
+        const haystack = `${project.owner}/${project.repo} ${project.description || ''}`.toLowerCase();
+        return !query || haystack.includes(query);
+      }
+      if (parsed.owner && project.owner.toLowerCase() !== parsed.owner.toLowerCase()) return false;
+      if (parsed.repo) {
+        const wanted = parsed.repo.toLowerCase();
+        const repo = project.repo.toLowerCase();
+        if (repo !== wanted && !repo.includes(wanted)) return false;
+      }
+      return true;
+    });
+    if (parsed?.repo) {
+      const exact = rows.filter((project) => project.repo.toLowerCase() === parsed.repo.toLowerCase());
+      if (exact.length) rows = exact;
+    }
+    return rows.slice(0, 100).map((project) => mergeProjectSelectionWithPath(project, parsed ? { rootPath, branch: parsed.branch || project.branch } : null));
+  }
+
+  function ensureOpenProjectModalStyles() {
+    if (D.getElementById('latexaiOpenProjectModalStyles')) return;
+    const style = D.createElement('style');
+    style.id = 'latexaiOpenProjectModalStyles';
+    style.textContent = `
+      .lai-open-project-modal[hidden]{display:none!important}
+      .lai-open-project-modal{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.48);display:grid;place-items:center;padding:18px}
+      .lai-open-project-dialog{width:min(760px,94vw);max-height:min(82vh,760px);background:#fff;color:#111827;border:1px solid rgba(15,23,42,.14);border-radius:20px;box-shadow:0 28px 80px rgba(15,23,42,.34);display:flex;flex-direction:column;overflow:hidden}
+      .lai-open-project-head{padding:18px 20px 12px;border-bottom:1px solid rgba(15,23,42,.1);display:flex;gap:12px;justify-content:space-between;align-items:flex-start}
+      .lai-open-project-head h3{margin:0;font-size:20px;line-height:1.2}
+      .lai-open-project-head p{margin:5px 0 0;color:#475569;font-size:13px;line-height:1.45}
+      .lai-open-project-close{border:1px solid rgba(15,23,42,.14);background:#fff;border-radius:999px;width:32px;height:32px;cursor:pointer;font-weight:800}
+      .lai-open-project-body{padding:14px 20px 18px;display:grid;gap:12px;overflow:auto}
+      .lai-open-project-field{display:grid;gap:6px;font-size:12px;font-weight:800;color:#334155}
+      .lai-open-project-field input{width:100%;box-sizing:border-box;border:1px solid rgba(15,23,42,.18);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;font-weight:600;background:#fff}
+      .lai-open-project-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+      .lai-open-project-tools button{border:1px solid rgba(15,23,42,.16);background:#fff;border-radius:10px;padding:8px 10px;font:inherit;font-weight:800;cursor:pointer}
+      .lai-open-project-tools button.primary{background:#17365d;color:#fff;border-color:#17365d}
+      .lai-open-project-status{margin-left:auto;color:#64748b;font-size:12px}
+      .lai-open-project-list{display:grid;gap:8px;max-height:46vh;overflow:auto;border:1px solid rgba(15,23,42,.1);border-radius:14px;background:#f8fafc;padding:8px}
+      .lai-open-project-row{border:1px solid rgba(15,23,42,.12);background:#fff;border-radius:13px;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;text-align:left;cursor:pointer}
+      .lai-open-project-row:hover,.lai-open-project-row:focus{border-color:#17365d;box-shadow:0 0 0 3px rgba(23,54,93,.12);outline:none}
+      .lai-open-project-title{font-weight:900;color:#0f172a}
+      .lai-open-project-meta{margin-top:3px;color:#64748b;font-size:12px;line-height:1.35}
+      .lai-open-project-badge{font-size:11px;border:1px solid rgba(15,23,42,.14);border-radius:999px;padding:3px 7px;color:#334155;background:#f8fafc;white-space:nowrap}
+      .lai-open-project-empty{color:#64748b;font-size:13px;padding:18px;text-align:center}
+    `;
+    D.head.appendChild(style);
+  }
+
+  function openProjectPickerModal(projects = [], options = {}) {
+    ensureOpenProjectModalStyles();
+    return new Promise((resolve) => {
+      let done = false;
+      const overlay = D.createElement('div');
+      overlay.className = 'lai-open-project-modal';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.innerHTML = `
+        <div class="lai-open-project-dialog">
+          <div class="lai-open-project-head">
+            <div>
+              <h3>Open Project</h3>
+              <p>Type a GitHub owner/repo path, then click a project below. Examples: <strong>karthik-sridharan/</strong>, <strong>karthik-sridharan/pred</strong>, or <strong>karthik-sridharan/pred/subfolder</strong>.</p>
+            </div>
+            <button class="lai-open-project-close" type="button" aria-label="Close Open Project dialog">×</button>
+          </div>
+          <div class="lai-open-project-body">
+            <label class="lai-open-project-field">
+              GitHub root/path
+              <input class="lai-open-project-path" type="text" autocomplete="off" />
+            </label>
+            <div class="lai-open-project-tools">
+              <button class="primary lai-open-project-open-typed" type="button">Open typed path</button>
+              <button class="lai-open-project-refresh" type="button">Refresh list</button>
+              <span class="lai-open-project-status"></span>
+            </div>
+            <div class="lai-open-project-list" role="listbox" aria-label="Projects"></div>
+          </div>
+        </div>
+      `;
+      D.body.appendChild(overlay);
+      const pathInput = overlay.querySelector('.lai-open-project-path');
+      const listEl = overlay.querySelector('.lai-open-project-list');
+      const statusEl = overlay.querySelector('.lai-open-project-status');
+      const initialPath = options.path || defaultOpenProjectPath();
+      pathInput.value = initialPath;
+
+      function close(result) {
+        if (done) return;
+        done = true;
+        overlay.remove();
+        D.removeEventListener('keydown', onKeyDown, true);
+        resolve(result || { ok: false, cancelled: true });
+      }
+      function onKeyDown(evt) {
+        if (evt.key === 'Escape') { evt.preventDefault(); close({ ok: false, cancelled: true }); }
+      }
+      function renderList() {
+        const filtered = filterProjectsForPath(projects, pathInput.value);
+        statusEl.textContent = filtered.length ? `${filtered.length} project${filtered.length === 1 ? '' : 's'}` : 'No matching projects';
+        listEl.replaceChildren();
+        if (!filtered.length) {
+          const empty = D.createElement('div');
+          empty.className = 'lai-open-project-empty';
+          empty.textContent = 'No matching repositories were returned by the GitHub backend. You can still use “Open typed path” if you know the exact owner/repo.';
+          listEl.appendChild(empty);
+          return;
+        }
+        filtered.forEach((project) => {
+          const row = D.createElement('button');
+          row.type = 'button';
+          row.className = 'lai-open-project-row';
+          row.setAttribute('role', 'option');
+          const visibility = project.private ? 'private' : 'public';
+          const updated = project.updatedAt ? `Updated ${String(project.updatedAt).slice(0, 10)}` : '';
+          row.innerHTML = `
+            <div>
+              <div class="lai-open-project-title"></div>
+              <div class="lai-open-project-meta"></div>
+            </div>
+            <span class="lai-open-project-badge"></span>
+          `;
+          row.querySelector('.lai-open-project-title').textContent = projectPathLabel(project, project.rootPath);
+          row.querySelector('.lai-open-project-meta').textContent = [project.description || '', `branch ${project.branch || 'main'}`, visibility, updated].filter(Boolean).join(' • ');
+          row.querySelector('.lai-open-project-badge').textContent = 'Open';
+          row.addEventListener('click', () => close({ ok: true, selection: project }));
+          listEl.appendChild(row);
+        });
+      }
+      function typedSelection() {
+        const parsed = parseGithubProjectPathSpec(pathInput.value);
+        if (!parsed?.owner || !parsed?.repo) {
+          alert('Enter at least owner/repo, for example karthik-sridharan/pred.');
+          return;
+        }
+        close({ ok: true, selection: { owner: parsed.owner, repo: parsed.repo, branch: parsed.branch || git.branch || 'main', rootPath: parsed.rootPath || '' } });
+      }
+      overlay.querySelector('.lai-open-project-close').addEventListener('click', () => close({ ok: false, cancelled: true }));
+      overlay.querySelector('.lai-open-project-open-typed').addEventListener('click', typedSelection);
+      overlay.querySelector('.lai-open-project-refresh').addEventListener('click', () => close({ ok: true, refresh: true, path: pathInput.value }));
+      pathInput.addEventListener('input', renderList);
+      pathInput.addEventListener('keydown', (evt) => { if (evt.key === 'Enter') typedSelection(); });
+      overlay.addEventListener('click', (evt) => { if (evt.target === overlay) close({ ok: false, cancelled: true }); });
+      D.addEventListener('keydown', onKeyDown, true);
+      renderList();
+      setTimeout(() => { try { pathInput.focus(); pathInput.select(); } catch (_err) {} }, 0);
+    });
+  }
+
+  async function promptOpenProject(options = {}) {
     let projects = [];
     let listError = '';
     try {
@@ -572,36 +773,27 @@
     } catch (err) {
       listError = err?.message || String(err);
     }
-    if (projects.length) {
-      const shown = projects.slice(0, 25);
-      const lines = shown.map(formatProjectChoice);
-      lines.push('');
-      lines.push('Enter a number from the list, or paste owner/repo or a GitHub URL.');
-      const answer = prompt(`Open Project\n\n${lines.join('\n')}`, '1');
-      if (!answer || !String(answer).trim()) return { ok: false, cancelled: true };
-      const n = Number(String(answer).trim());
-      let selected = null;
-      if (Number.isInteger(n) && n >= 1 && n <= shown.length) selected = shown[n - 1];
-      else {
-        const parsed = parseGithubRepoSpec(answer);
-        if (!parsed) {
-          alert('Please enter a list number, owner/repo, or a GitHub URL.');
-          return { ok: false, error: 'invalid project selection' };
-        }
-        selected = { owner: parsed.owner, repo: parsed.repo, branch: git.branch || 'main', rootPath: '' };
-      }
-      return openGithubProjectSelection(selected);
+    if (listError) githubTrace('list-projects-failed', { message: listError });
+    let picker = await openProjectPickerModal(projects, { path: options.path || defaultOpenProjectPath(), listError });
+    if (picker?.refresh) {
+      return promptOpenProject({ path: picker.path || defaultOpenProjectPath() });
     }
-    if (listError) console.warn('[Latexai] Project list unavailable; falling back to manual GitHub open.', listError);
-    return promptOpenGithubProject();
+    if (!picker?.ok || !picker.selection) return picker || { ok: false, cancelled: true };
+    return openGithubProjectSelection(picker.selection, { skipPrompts: true, source: 'open-project-picker-modal' });
   }
 
-  async function openGithubProjectSelection(selection) {
+  async function openGithubProjectSelection(selection, options = {}) {
     if (!selection?.owner || !selection?.repo) return { ok: false, error: 'missing project selection' };
-    const branch = prompt('Branch (leave blank to let backend use repository default)', selection.branch || git.branch || 'main');
-    if (branch === null) return { ok: false, cancelled: true };
-    const rootPath = prompt('Folder path inside repo (blank for repo root)', selection.rootPath || '');
-    if (rootPath === null) return { ok: false, cancelled: true };
+    let branch = String(selection.branch || git.branch || 'main').trim();
+    let rootPath = normalizeRepoPath(selection.rootPath || '');
+    if (!options.skipPrompts) {
+      const branchAnswer = prompt('Branch (leave blank to let backend use repository default)', branch || 'main');
+      if (branchAnswer === null) return { ok: false, cancelled: true };
+      branch = String(branchAnswer || '').trim();
+      const rootPathAnswer = prompt('Folder path inside repo (blank for repo root)', rootPath || '');
+      if (rootPathAnswer === null) return { ok: false, cancelled: true };
+      rootPath = normalizeRepoPath(rootPathAnswer || '');
+    }
     const currentName = State().state.project?.name || 'current local project';
     const message = [
       `Open project ${selection.owner}/${selection.repo}${rootPath ? '/' + normalizeRepoPath(rootPath) : ''} @ ${branch || 'repository default'}?`,
@@ -613,10 +805,10 @@
     if (!confirm(message)) return { ok: false, cancelled: true };
     git.owner = selection.owner;
     git.repo = selection.repo;
-    git.branch = String(branch || '').trim();
-    git.rootPath = normalizeRepoPath(rootPath || '');
+    git.branch = branch;
+    git.rootPath = rootPath;
     saveGitSettings();
-    return loadFromGithub({ source: 'open-project-list-selection', preserveSettings: true, fromPrompt: true, alertSuccess: true });
+    return loadFromGithub({ source: options.source || 'open-project-list-selection', preserveSettings: true, fromPrompt: true, alertSuccess: true });
   }
 
   async function promptOpenGithubProject() {
