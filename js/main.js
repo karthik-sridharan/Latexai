@@ -47,7 +47,16 @@
 
   function bindTopActions() {
     document.getElementById('newProjectBtn')?.addEventListener('click', createNewProjectWorkflow);
-    document.getElementById('openGithubProjectBtn')?.addEventListener('click', () => NS.FileTree?.promptOpenProject?.());
+    document.getElementById('openGithubProjectBtn')?.addEventListener('click', async () => {
+      try {
+        const open = NS.FileTree?.promptOpenProject;
+        if (typeof open !== 'function') throw new Error('Open Project is not ready yet. Reload the app and try again.');
+        await open();
+      } catch (err) {
+        alert(`Open Project failed:
+${err?.message || err}`);
+      }
+    });
     document.getElementById('saveProjectBtn')?.addEventListener('click', async () => {
       const btn = document.getElementById('saveProjectBtn');
       const oldText = btn?.textContent;

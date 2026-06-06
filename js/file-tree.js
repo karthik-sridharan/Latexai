@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w44-open-project-picker-modal-20260605-1';
+  const STAGE = 'stage19w45-open-project-picker-immediate-modal-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -669,6 +669,9 @@
     ensureOpenProjectModalStyles();
     return new Promise((resolve) => {
       let done = false;
+      let currentProjects = Array.isArray(projects) ? projects.slice() : [];
+      let currentError = options.listError || '';
+      let isLoading = !!options.loading;
       const overlay = D.createElement('div');
       overlay.className = 'lai-open-project-modal';
       overlay.setAttribute('role', 'dialog');
@@ -714,9 +717,29 @@
         if (evt.key === 'Escape') { evt.preventDefault(); close({ ok: false, cancelled: true }); }
       }
       function renderList() {
-        const filtered = filterProjectsForPath(projects, pathInput.value);
-        statusEl.textContent = filtered.length ? `${filtered.length} project${filtered.length === 1 ? '' : 's'}` : 'No matching projects';
+        const filtered = filterProjectsForPath(currentProjects, pathInput.value);
+        if (isLoading) {
+          statusEl.textContent = 'Loading projects…';
+        } else if (currentError) {
+          statusEl.textContent = 'Project list failed';
+        } else {
+          statusEl.textContent = filtered.length ? `${filtered.length} project${filtered.length === 1 ? '' : 's'}` : 'No matching projects';
+        }
         listEl.replaceChildren();
+        if (isLoading && !filtered.length) {
+          const empty = D.createElement('div');
+          empty.className = 'lai-open-project-empty';
+          empty.textContent = 'Loading repositories from the GitHub backend… You can still type owner/repo and press “Open typed path”.';
+          listEl.appendChild(empty);
+          return;
+        }
+        if (currentError && !filtered.length) {
+          const empty = D.createElement('div');
+          empty.className = 'lai-open-project-empty';
+          empty.textContent = `Could not load the project list: ${currentError}. Type owner/repo above and press “Open typed path”, or check the GitHub backend settings.`;
+          listEl.appendChild(empty);
+          return;
+        }
         if (!filtered.length) {
           const empty = D.createElement('div');
           empty.className = 'lai-open-project-empty';
@@ -761,20 +784,32 @@
       overlay.addEventListener('click', (evt) => { if (evt.target === overlay) close({ ok: false, cancelled: true }); });
       D.addEventListener('keydown', onKeyDown, true);
       renderList();
+      if (options.projectsPromise && typeof options.projectsPromise.then === 'function') {
+        options.projectsPromise.then((nextProjects) => {
+          if (done) return;
+          currentProjects = Array.isArray(nextProjects) ? nextProjects.slice() : [];
+          currentError = '';
+          isLoading = false;
+          renderList();
+        }).catch((err) => {
+          if (done) return;
+          currentProjects = [];
+          currentError = err?.message || String(err);
+          isLoading = false;
+          githubTrace('list-projects-failed', { message: currentError });
+          renderList();
+        });
+      }
       setTimeout(() => { try { pathInput.focus(); pathInput.select(); } catch (_err) {} }, 0);
     });
   }
 
   async function promptOpenProject(options = {}) {
-    let projects = [];
-    let listError = '';
-    try {
-      projects = await listGithubProjects();
-    } catch (err) {
-      listError = err?.message || String(err);
-    }
-    if (listError) githubTrace('list-projects-failed', { message: listError });
-    let picker = await openProjectPickerModal(projects, { path: options.path || defaultOpenProjectPath(), listError });
+    loadGitSettings();
+    syncGitFromProject();
+    const path = options.path || defaultOpenProjectPath();
+    const projectsPromise = listGithubProjects();
+    let picker = await openProjectPickerModal([], { path, loading: true, projectsPromise });
     if (picker?.refresh) {
       return promptOpenProject({ path: picker.path || defaultOpenProjectPath() });
     }
