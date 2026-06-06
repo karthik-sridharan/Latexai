@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lumina LaTeX Help</title>
+  <style>
+    :root {
+      --bg: #f6f3ed;
+      --paper: #fffaf2;
+      --ink: #1f2933;
+      --muted: #657080;
+      --line: rgba(31, 41, 51, 0.14);
+      --accent: #8b4d2b;
+      --accent-2: #2f6f73;
+      --soft: rgba(139, 77, 43, 0.08);
+      --soft-blue: rgba(47, 111, 115, 0.08);
+      --shadow: 0 18px 50px rgba(34, 28, 21, 0.10);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(139, 77, 43, 0.13), transparent 34rem),
+        radial-gradient(circle at bottom right, rgba(47, 111, 115, 0.12), transparent 32rem),
+        var(--bg);
+      line-height: 1.58;
+    }
+    a { color: #245f65; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem clamp(1rem, 3vw, 2.2rem);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+      background: rgba(255, 250, 242, 0.86);
+    }
+    .brand { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+    .mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+    .smallcaps {
+      text-transform: uppercase;
+      letter-spacing: .13em;
+      font-size: .68rem;
+      font-weight: 800;
+      color: var(--muted);
+    }
+    h1, h2, h3 { line-height: 1.16; margin: 0 0 .65rem; }
+    h1 { font-size: clamp(2rem, 4vw, 4.2rem); letter-spacing: -.055em; }
+    h2 { font-size: clamp(1.35rem, 2.2vw, 2rem); letter-spacing: -.03em; margin-top: 2.2rem; }
+    h3 { font-size: 1.08rem; margin-top: 1.25rem; }
+    p { margin: .55rem 0 1rem; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    code {
+      border: 1px solid rgba(31,41,51,.12);
+      background: rgba(255,255,255,.56);
+      border-radius: .45rem;
+      padding: .08rem .32rem;
+      font-size: .92em;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: #1f2933;
+      color: #f7efe2;
+      padding: 1rem;
+      border-radius: 1rem;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+    }
+    .nav { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      border: 1px solid rgba(31,41,51,.14);
+      border-radius: 999px;
+      padding: .55rem .78rem;
+      text-decoration: none;
+      color: var(--ink);
+      background: rgba(255,255,255,.55);
+      font-weight: 700;
+      font-size: .88rem;
+      line-height: 1;
+    }
+    .btn.primary { background: var(--ink); color: #fff; }
+    .hero {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: clamp(2rem, 6vw, 5rem) clamp(1rem, 3vw, 2rem) 1.5rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr);
+      gap: clamp(1rem, 4vw, 3rem);
+      align-items: center;
+    }
+    .hero-card, .card, .toc {
+      background: rgba(255, 250, 242, 0.84);
+      border: 1px solid var(--line);
+      border-radius: 1.4rem;
+      box-shadow: var(--shadow);
+    }
+    .hero-card { padding: clamp(1rem, 3vw, 1.6rem); }
+    .hero-card ul { margin: .6rem 0 0; padding-left: 1.15rem; }
+    .layout {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 1rem clamp(1rem, 3vw, 2rem) 4rem;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 1.25rem;
+      align-items: start;
+    }
+    .toc {
+      position: sticky;
+      top: 78px;
+      padding: 1rem;
+      max-height: calc(100vh - 96px);
+      overflow: auto;
+    }
+    .toc a {
+      display: block;
+      padding: .42rem .55rem;
+      border-radius: .7rem;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: .92rem;
+    }
+    .toc a:hover { background: var(--soft); }
+    .content { min-width: 0; }
+    .card { padding: clamp(1rem, 2.4vw, 1.6rem); margin-bottom: 1rem; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--soft);
+      padding: .85rem 1rem;
+      border-radius: .8rem;
+      margin: 1rem 0;
+    }
+    .callout.blue { border-left-color: var(--accent-2); background: var(--soft-blue); }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
+    .mini-card {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.45);
+      border-radius: 1rem;
+      padding: .9rem;
+    }
+    .mini-card strong { display: block; margin-bottom: .3rem; }
+    ol, ul { padding-left: 1.35rem; }
+    li { margin: .35rem 0; }
+    table { border-collapse: collapse; width: 100%; margin: .8rem 0; font-size: .94rem; }
+    th, td { border: 1px solid var(--line); padding: .55rem .65rem; vertical-align: top; }
+    th { background: rgba(31,41,51,.06); text-align: left; }
+    footer { text-align: center; color: var(--muted); padding: 2rem; }
+    @media (max-width: 860px) {
+      .hero, .layout { grid-template-columns: 1fr; }
+      .toc { position: static; max-height: none; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .nav { justify-content: flex-start; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">L</div>
+      <div>
+        <div class="smallcaps">Lumina LaTeX</div>
+        <strong>Help & documentation</strong>
+      </div>
+    </div>
+    <nav class="nav" aria-label="App links">
+      <a class="btn primary" href="index.html">Open editor</a>
+      <a class="btn" href="literature.html">Literature Assistant</a>
+      <a class="btn" href="review.html">Review Corpus</a>
+      <a class="btn" href="val-act.html">Value/Action Lab</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div>
+      <div class="smallcaps">Research writing workspace</div>
+      <h1>Use Lumina LaTeX as a project-centered research assistant.</h1>
+      <p>Lumina combines a browser LaTeX editor, a backend TeX compiler, GitHub-backed project storage, project-scoped memory, and AI workflows for reviewing, revising, rebutting, and improving research papers.</p>
+      <div class="callout blue"><strong>Recommended mental model:</strong> a project is more than a folder of <code>.tex</code> files. It is a GitHub workspace plus saved reports, revision history, and project memory.</div>
+    </div>
+    <aside class="hero-card">
+      <div class="smallcaps">Quick start</div>
+      <ul>
+        <li>Create or open a project from the left Project panel.</li>
+        <li>Set the root file, usually <code>main.tex</code>.</li>
+        <li>Compile with the backend compiler.</li>
+        <li>Run AI review/rebuttal workflows from the right panel.</li>
+        <li>Save Project to commit source files, reports, and workspace state to GitHub.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <div class="layout">
+    <aside class="toc">
+      <div class="smallcaps">Contents</div>
+      <a href="#overview">Overview</a>
+      <a href="#projects">Projects and memory</a>
+      <a href="#project-actions">Project actions</a>
+      <a href="#files">Project files</a>
+      <a href="#compile">Compile and preview</a>
+      <a href="#ai-workflows">AI workflows</a>
+      <a href="#literature">Literature Assistant</a>
+      <a href="#review-corpus">Review Corpus</a>
+      <a href="#value-action">Value/Action Lab</a>
+      <a href="#settings">Settings</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+      <a href="#workflow">Suggested workflow</a>
+    </aside>
+
+    <main class="content">
+      <section id="overview" class="card">
+        <h2>Overview</h2>
+        <p>The main editor is designed around a three-panel workflow:</p>
+        <div class="grid">
+          <div class="mini-card"><strong>Left panel</strong>Project actions, project workspace state, and the file tree.</div>
+          <div class="mini-card"><strong>Center panel</strong>The active LaTeX source editor and PDF/draft preview.</div>
+          <div class="mini-card"><strong>Right panel</strong>AI tools, reviewer/rebuttal workflows, literature tools, settings, diagnostics, and reports.</div>
+        </div>
+        <p>The top bar links to the standalone companion apps: Literature Assistant, Review Corpus, Value/Action Lab, and this Help page.</p>
+      </section>
+
+      <section id="projects" class="card">
+        <h2>Projects and memory</h2>
+        <p>A Lumina project should be treated as the unit of work for a paper or research document. When a GitHub project is loaded, Lumina restores the source files and uses the project identity to restore project-scoped memory.</p>
+        <p>A project can include:</p>
+        <ul>
+          <li>LaTeX source files such as <code>main.tex</code>, <code>refs.bib</code>, style files, and figures.</li>
+          <li>Saved reports under paths such as <code>/reviews/</code>.</li>
+          <li>Workspace metadata under <code>.latexai/</code> or <code>latexai/</code> when present.</li>
+          <li>Backend memory about reviewer concerns, notation, successful edits, failed edits, citations, and agent runs.</li>
+        </ul>
+        <div class="callout"><strong>Switching projects:</strong> when you open a different project, the file tree, project identity, reports, and restored memory should switch with it. Old project memory should not leak into the new project unless you explicitly import it.</div>
+      </section>
+
+      <section id="project-actions" class="card">
+        <h2>Project actions</h2>
+        <table>
+          <thead><tr><th>Action</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>New Project</strong></td><td>Creates a fresh GitHub-backed project with default LaTeX files and a fresh project memory scope.</td></tr>
+            <tr><td><strong>Open Project</strong></td><td>Opens an existing project in its last saved state. Project files, reports, and memory are restored for the selected workspace.</td></tr>
+            <tr><td><strong>Save Project</strong></td><td>Commits the current source files and project artifacts to GitHub. Use the save-comment field to describe the change.</td></tr>
+            <tr><td><strong>Import Project</strong></td><td>Imports an existing set of files. If the imported files do not contain Lumina metadata or memory, they start with empty project memory.</td></tr>
+            <tr><td><strong>Export zip</strong></td><td>Downloads a zip of the current project files.</td></tr>
+            <tr><td><strong>Revert version</strong></td><td>Allows returning to an older GitHub revision when supported by the GitHub backend.</td></tr>
+          </tbody>
+        </table>
+        <p>Use the save comment field next to Save Project like a Git commit message, for example: <code>Added rebuttal edits and fixed theorem statement</code>.</p>
+      </section>
+
+      <section id="files" class="card">
+        <h2>Project files</h2>
+        <p>The file tree shows the files in the current project. Select a file to edit it. Common actions include rename, delete, and download. Folder and file insertion actions create new project entries before the next save.</p>
+        <ul>
+          <li>Use <strong>Insert file</strong> for new <code>.tex</code>, <code>.bib</code>, style, note, or asset files.</li>
+          <li>Use <strong>Insert folder</strong> to organize sources, notes, figures, or reviews.</li>
+          <li>Use the small download icon beside a file when you only want that one file.</li>
+          <li>Use <strong>Export zip</strong> when you want the whole project.</li>
+        </ul>
+      </section>
+
+      <section id="compile" class="card">
+        <h2>Compile and preview</h2>
+        <p>Lumina now uses the backend compiler as the main compile path. The local browser WASM and TeXlyre compiler options are intentionally hidden from the normal UI.</p>
+        <h3>Backend URL</h3>
+        <p>The compile endpoint should end in:</p>
+        <pre>.../api/lumina/latex/compile</pre>
+        <p>The backend status endpoint should end in:</p>
+        <pre>.../api/lumina/latex/status</pre>
+        <h3>Root file</h3>
+        <p>Set the root file to the main LaTeX entry point, usually <code>main.tex</code>. If the wrong root file is selected, compilation may fail even when individual files are valid.</p>
+        <h3>Style files and packages</h3>
+        <p>If a project uses style files such as conference templates, make sure those files are present in the repo or installed in the backend TeX Live image. Recent backend stages include broader TeX Live support for common packages such as <code>MnSymbol</code>.</p>
+      </section>
+
+      <section id="ai-workflows" class="card">
+        <h2>AI workflows</h2>
+        <p>The right panel contains AI workflows for paper improvement. The exact buttons may change by stage, but the main patterns are:</p>
+        <ul>
+          <li><strong>Reviewer/rebuttal simulator:</strong> generates reviewer-style critiques, rebuttals, and synthesized revision suggestions.</li>
+          <li><strong>Competitive review:</strong> compares the paper against nearby work or benchmark papers and suggests changes.</li>
+          <li><strong>Devil’s Advocate debate:</strong> runs adversarial critique and defense rounds to expose weaknesses.</li>
+          <li><strong>Editor/revision workflows:</strong> insert suggested LaTeX edits using <code>\laiold</code> and <code>\lai</code> style markup when enabled.</li>
+        </ul>
+        <div class="callout blue"><strong>Best practice:</strong> run AI workflows after compiling successfully. Save Project after accepting important changes so reports and source edits are committed together.</div>
+      </section>
+
+      <section id="literature" class="card">
+        <h2>Literature Assistant</h2>
+        <p>The Literature Assistant is the standalone app for managing and searching a literature collection. Use it when you want to ingest papers, retrieve related work, build citation context, or gather evidence before running a paper review workflow.</p>
+        <p>Typical use:</p>
+        <ol>
+          <li>Open Literature Assistant from the top bar.</li>
+          <li>Ingest or search papers relevant to your current project.</li>
+          <li>Return to the editor and enable literature/knowledge context in workflows that support it.</li>
+        </ol>
+      </section>
+
+      <section id="review-corpus" class="card">
+        <h2>Review Corpus</h2>
+        <p>The Review Corpus app is for working with review/rebuttal examples and reviewer-style corpora. Use it to inspect examples, build review context, and support reviewer simulation workflows.</p>
+      </section>
+
+      <section id="value-action" class="card">
+        <h2>Value/Action Lab</h2>
+        <p>The Value/Action Lab is a standalone experimental app for testing action-selection, feedback, and learning policies used by agentic workflows. It is mainly useful when developing or debugging the agent strategy layer.</p>
+      </section>
+
+      <section id="settings" class="card">
+        <h2>Settings and diagnostics</h2>
+        <p>Settings are intentionally focused on the backends that are currently used:</p>
+        <ul>
+          <li><strong>Backend compiler:</strong> compile URL, status URL, root file, engine, timeout, and shell-escape safety.</li>
+          <li><strong>AI backend:</strong> provider/model routing and AI endpoint configuration.</li>
+          <li><strong>Memory backend:</strong> project memory restore and retrieval configuration.</li>
+          <li><strong>GitHub backend:</strong> project open/save/revert operations.</li>
+        </ul>
+        <p>Use <strong>Copy diagnostics</strong> when reporting a problem. It includes the active project, root file, backend URLs, compile status, memory status, and stage identifiers.</p>
+      </section>
+
+      <section id="troubleshooting" class="card">
+        <h2>Troubleshooting</h2>
+        <h3>Compile says “Load failed”</h3>
+        <p>This usually means the browser could not complete the backend request, or the backend crashed before returning a normal JSON error. Check the compile backend URL, CORS, and Cloud Run logs.</p>
+        <h3>A package is missing</h3>
+        <p>If the log says a file such as <code>something.sty</code> is missing, either add that style file to the project or install the corresponding TeX Live package in the backend Docker image.</p>
+        <h3>GitHub project does not open</h3>
+        <p>Test the GitHub backend, check that the token can access the repo, and verify that the project backend stage is current. Private repositories do not need to be public, but the backend token needs access.</p>
+        <h3>Memory or reports look stale</h3>
+        <p>Confirm the Project Workspace card shows the correct repository, branch, root path, project ID, and paper ID. Save reports under <code>/reviews/</code> and commit them with Save Project.</p>
+      </section>
+
+      <section id="workflow" class="card">
+        <h2>Suggested end-to-end workflow</h2>
+        <ol>
+          <li><strong>Open Project</strong> or create a <strong>New Project</strong>.</li>
+          <li>Confirm the Project Workspace card shows the correct project and memory state.</li>
+          <li>Set or confirm the root file.</li>
+          <li>Compile until the PDF is clean enough to inspect.</li>
+          <li>Run reviewer/rebuttal or competitive-review workflows.</li>
+          <li>Review generated reports under <code>/reviews/</code>.</li>
+          <li>Apply selected edits to source files.</li>
+          <li>Compile again.</li>
+          <li>Write a save comment and press <strong>Save Project</strong>.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    Lumina LaTeX Help · Stage 19W43 · backend compiler and project workspace documentation
+  </footer>
+</body>
+</html>

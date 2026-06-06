@@ -1,10 +1,8 @@
-Changed files for Stage 19W42 frontend:
+Changed files for Stage 19W43:
 
 - index.html
-- js/file-tree.js
-- js/main.js
-- js/import-export.js
-- js/project-workspace-service.js
-- js/backend-url-settings-service.js
-- README_STAGE19W42_PROJECT_ACTIONS_WORKSPACE_UI.md
+- help.html
+- README_STAGE19W43_HELP_DOCS_TOPBAR.md
 - README_CHANGED_FILES.md
+
+Apply these files on top of Stage 19W42 frontend.
