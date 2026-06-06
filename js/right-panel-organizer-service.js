@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19w48-settings-drawer-badges-cleanup-20260605-1';
+  const STAGE = 'stage19w49-debug-only-diagnostics-cleanup-20260605-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v9';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -204,6 +204,8 @@
       key: 'diagnostics',
       title: 'Diagnostics',
       defaultOpen: false,
+      debugOnly: true,
+      hideWhenEmpty: true,
       cardIds: [
         'aiRoutingInspectorCard',
         'backendDiagnosticsCard',
@@ -736,6 +738,7 @@
     const toolbar = ensureToolbar(tab);
     let anchor = toolbar?.nextSibling || panel.firstChild;
     GROUPS.filter((group) => group.tab === tab).forEach((group) => {
+      if (!shouldRenderGroup(group)) { removeGroupIfPresent(group); return; }
       const shell = ensureGroup(group);
       if (!shell) return;
       if (shell.parentElement !== panel) panel.insertBefore(shell, anchor);
@@ -747,7 +750,10 @@
   function allRenderedGroups(tab) {
     const panel = panelFor(tab);
     if (!panel) return [];
-    GROUPS.filter((group) => group.tab === tab).forEach((group) => ensureGroup(group));
+    GROUPS.filter((group) => group.tab === tab).forEach((group) => {
+      if (!shouldRenderGroup(group)) { removeGroupIfPresent(group); return; }
+      ensureGroup(group);
+    });
     return Array.from(panel.querySelectorAll(`.right-panel-group[data-group-tab="${tab}"]`));
   }
 
@@ -785,6 +791,18 @@
     return [];
   }
 
+  function shouldRenderGroup(group) {
+    if (!group) return false;
+    if (group.debugOnly && !isDebugModeEnabled()) return false;
+    return true;
+  }
+
+  function removeGroupIfPresent(group) {
+    const shell = el(groupId(group));
+    if (shell) shell.remove();
+  }
+
+
   function setAllGroupsOne(tab, open) {
     const desired = Boolean(open);
     const panel = panelFor(tab);
@@ -796,6 +814,7 @@
 
     let changed = 0;
     GROUPS.filter((group) => group.tab === tab).forEach((group) => {
+      if (!shouldRenderGroup(group)) { removeGroupIfPresent(group); return; }
       const shell = ensureGroup(group);
       if (!shell) return;
       setGroupOpen(group, shell, desired, { remember: true });
@@ -805,6 +824,7 @@
     // One delayed pass handles cards mounted right after optional feature scripts.
     setTimeout(() => {
       GROUPS.filter((group) => group.tab === tab).forEach((group) => {
+        if (!shouldRenderGroup(group)) { removeGroupIfPresent(group); return; }
         const shell = ensureGroup(group);
         if (shell) setGroupOpen(group, shell, desired, { remember: true });
       });
@@ -836,6 +856,7 @@
       placeGroupsInOrder(t);
 
       for (const group of GROUPS.filter((item) => item.tab === t)) {
+        if (!shouldRenderGroup(group)) { removeGroupIfPresent(group); continue; }
         const shell = ensureGroup(group);
         const body = el(bodyId(group));
         if (!shell || !body) continue;
@@ -879,10 +900,15 @@
     return Boolean(node.offsetWidth || node.offsetHeight || node.getClientRects?.().length);
   }
 
+  function isTruthyDebugValue(value) {
+    return /^(1|true|yes|on)$/i.test(String(value || '').trim());
+  }
+
   function isDebugModeEnabled() {
     try {
       const qs = new URLSearchParams(W.location?.search || '');
-      return qs.get('debug') === '1' || qs.get('dev') === '1';
+      return ['debug', 'dev', 'laiDebug', 'luminaDebug', 'diagnostics']
+        .some((key) => isTruthyDebugValue(qs.get(key)));
     } catch (_err) {
       return false;
     }
@@ -915,6 +941,10 @@
   }
 
   function refreshGroupShellState(group, shell, body) {
+    if (group.debugOnly && !isDebugModeEnabled()) {
+      shell.remove();
+      return false;
+    }
     const meaningful = meaningfulDrawerChildren(body);
     const count = el(`${groupId(group)}Count`);
     if (count) count.remove();

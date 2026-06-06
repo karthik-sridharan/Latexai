@@ -20,7 +20,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage15j-feature-flag-registry-guarded-loader-1';
+  const STAGE = 'stage19w49-feature-flags-diagnostics-cleanup-20260605-1';
   const STORAGE_KEY = 'latexai:feature-flags:v1';
   const LAST_ADDED_FEATURE = 'release-verifier';
 
@@ -29,7 +29,6 @@
     { key: 'paper-ai-polish', title: 'Paper AI edit review', tier: 'stable', defaultEnabled: true, description: 'Review and resolve \\lai / \\laiold Total Paper Remake edits before compile or commit.' },
     { key: 'model-registry', title: 'Backend model registry', tier: 'stable', defaultEnabled: true, description: 'Central provider/model registry with backend validation and safe fallback repair.' },
     { key: 'competitive-review', title: 'Competitive paper review', tier: 'experimental', defaultEnabled: true, description: 'Requires a web-search-capable AI backend; compares the current draft against competitor URLs and produces an improvement roadmap.' },
-    { key: 'legacy-debate-disabled', title: 'Legacy debate disabled', tier: 'experimental', defaultEnabled: false, description: 'Legacy debate removed in Stage 19V; use the Devil’s Advocate branch runner instead.' },
     { key: 'reviewer-rebuttal-simulator', title: 'Reviewer / rebuttal simulator', tier: 'experimental', defaultEnabled: true, description: 'Simulate 2–4 configurable reviewers, generate an author rebuttal, and synthesize a final revision plan.' },
     { key: 'ai-revision-history', title: 'AI revision history', tier: 'stable', defaultEnabled: true, description: 'Create snapshots, compare AI changes, and restore/revert if needed.' },
     { key: 'ai-suggestion-comments', title: 'AI suggestion comments', tier: 'stable', defaultEnabled: true, description: 'Annotate AI suggestions, resolve/reopen comments, and exchange comments with coauthors as JSON.' },
@@ -45,7 +44,6 @@
     { key: 'model-routing', title: 'Model/provider routing', tier: 'experimental', defaultEnabled: true, description: 'Developer workflow-to-model routing for AI calls.' },
     { key: 'regression-checklist', title: 'Regression checklist', tier: 'experimental', defaultEnabled: true, description: 'In-app local smoke checks and copyable report.' },
     { key: 'release-verifier', title: 'Release/deploy verifier', tier: 'experimental', defaultEnabled: true, description: 'Checks deployed files, cache busting, and loaded stage refs.' },
-    { key: 'ui-cleanup', title: 'Experimental UI cleanup', tier: 'experimental', defaultEnabled: false, description: 'Optional UI cleanup. Disabled by default after Stage 15A–15C instability.' }
   ];
 
   const status = {};
@@ -249,7 +247,7 @@
     const flags = readFlags();
     const card = D.createElement('div');
     card.id = 'featureFlagCard';
-    card.className = 'feature-flag-card';
+    card.className = 'feature-flag-card stage19w10-debug-only';
     card.innerHTML = [
       '<div class="section-head compact">',
       '  <div>',
