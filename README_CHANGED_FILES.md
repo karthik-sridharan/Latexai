@@ -1,8 +1,6 @@
-Changed files for Stage 19W43:
+# Changed files — Stage 19W44
 
-- index.html
-- help.html
-- README_STAGE19W43_HELP_DOCS_TOPBAR.md
-- README_CHANGED_FILES.md
-
-Apply these files on top of Stage 19W42 frontend.
+- `index.html`
+- `js/file-tree.js`
+- `README_STAGE19W44_OPEN_PROJECT_PICKER_MODAL.md`
+- `README_CHANGED_FILES.md`
