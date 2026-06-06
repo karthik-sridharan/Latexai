@@ -222,7 +222,7 @@
     return {
       schema: "lumina-latex-project-v1",
       storageStage: STAGE,
-      name: project.name || project.projectName || "Untitled Chuvadi Project",
+      name: project.name || project.projectName || "Project",
       projectId: project.projectId || project.id || null,
       rootFile: rootFile,
       activePath: activePath,

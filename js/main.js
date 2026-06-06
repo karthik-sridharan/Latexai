@@ -92,8 +92,8 @@ ${err?.message || err}`);
 
 
   async function createNewProjectWorkflow() {
-    const currentName = NS.State.state.project?.name || 'Untitled Chuvadi Project';
-    const name = prompt('New project name', 'Untitled Latexai Project');
+    const currentName = NS.State.state.project?.name || 'Project';
+    const name = prompt('New project name', 'Project');
     if (!name || !String(name).trim()) return;
     const cleanName = String(name).trim();
     const suggestedRepo = NS.FileTree?.sanitizeRepoName?.(cleanName) || cleanName.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'latexai-project';
