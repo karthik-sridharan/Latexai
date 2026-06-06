@@ -54,7 +54,7 @@
     const item = { module: moduleName, message: err?.message || String(err), at: new Date().toISOString() };
     boot.errors.push(item);
     W.LUMINA_LATEX_BOOT_ERRORS?.push?.(`${moduleName}: ${item.message}`);
-    console.error('Lumina kernel error', item, err);
+    console.error('Chuvadi kernel error', item, err);
   }
 
   function getArchitectureReport() {

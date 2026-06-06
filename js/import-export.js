@@ -18,7 +18,7 @@
     if (!files.length) return;
     const settings = Object.assign({}, State().state.settings || {}, State().state.project?.settings || {});
 
-    // A full Lumina project JSON remains the strongest import format.
+    // A full Chuvadi project JSON remains the strongest import format.
     if (files.length === 1 && files[0].name.toLowerCase().endsWith('.json')) {
       const text = await files[0].text();
       try {
@@ -135,7 +135,7 @@
     const project = State().state.project;
     const files = project.files.map((file) => ({ path: file.path, content: file.text || '', base64: file.base64 || '', encoding: file.encoding || 'utf8' }));
     files.push({ path: 'lumina-project.json', content: JSON.stringify(project, null, 2) });
-    files.push({ path: 'README_LUMINA_LATEX.txt', content: `Lumina LaTeX export\nProject: ${project.name}\nRoot file: ${project.rootFile}\nStage: ${State().STAGE}\n` });
+    files.push({ path: 'README_CHUVADI.txt', content: `Chuvadi export\nProject: ${project.name}\nRoot file: ${project.rootFile}\nStage: ${State().STAGE}\n` });
     const blob = makeZip(files);
     downloadBlob(blob, slug(project.name || 'lumina-latex-project') + '.zip');
   }

@@ -1523,7 +1523,7 @@ ${message}${backendNote}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`
     if (kind === 'beamer') {
       State().createFile('beamer-talk.tex', String.raw`\documentclass{beamer}
 \usetheme{Madrid}
-\title{Lumina Beamer Talk}
+\title{Chuvadi Beamer Talk}
 \author{Karthik Sridharan}
 \date{\today}
 \begin{document}

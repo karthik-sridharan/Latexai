@@ -166,7 +166,7 @@
     return {
       schema: "lumina-latex-project-v1",
       storageStage: STAGE,
-      name: (originalProject && originalProject.name) || "Untitled Lumina LaTeX Project",
+      name: (originalProject && originalProject.name) || "Untitled Chuvadi Project",
       projectId: originalProject && originalProject.projectId || null,
       rootFile: rootFile,
       activePath: activePath,

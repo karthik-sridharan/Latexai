@@ -64,7 +64,7 @@
 \usepackage{graphicx}
 \usepackage{hyperref}
 
-\title{A Lumina LaTeX Project}
+\title{A Chuvadi Project}
 \author{Karthik Sridharan}
 \date{\today}
 
@@ -75,7 +75,7 @@
 \maketitle
 
 \begin{abstract}
-This Stage 1E keeps the Lumina provider foundation and adds a real backend compile runner with TeX Live, isolated temporary workspaces, backend health checks, status polling, structured logs, and click-to-line diagnostics.
+This Stage 1E keeps the Chuvadi provider foundation and adds a real backend compile runner with TeX Live, isolated temporary workspaces, backend health checks, status polling, structured logs, and click-to-line diagnostics.
 \end{abstract}
 
 \section{Architecture}
@@ -229,8 +229,8 @@ The project is represented by stable file paths and ids. UI events update the pr
       id: uid('project'),
       projectId: uid('project'),
       stage: STAGE,
-      name: 'Untitled Lumina LaTeX Project',
-      title: 'Untitled Lumina LaTeX Project',
+      name: 'Untitled Chuvadi Project',
+      title: 'Untitled Chuvadi Project',
       rootFile: 'main.tex',
       mainFile: 'main.tex',
       activePath: 'main.tex',
@@ -275,7 +275,7 @@ The project is represented by stable file paths and ids. UI events update the pr
     project.id = project.id || project.projectId || uid('project');
     project.projectId = project.projectId || project.id;
     project.stage = project.stage || STAGE;
-    project.name = String(project.name || project.title || 'Untitled Lumina LaTeX Project');
+    project.name = String(project.name || project.title || 'Untitled Chuvadi Project');
     project.title = String(project.title || project.name);
     project.createdAt = project.createdAt || t;
     project.updatedAt = project.updatedAt || t;

@@ -28,7 +28,7 @@
     });
     setTimeout(() => {
       const report = NS.Diagnostics.run();
-      console.info('Lumina LaTeX diagnostics', report);
+      console.info('Chuvadi diagnostics', report);
     }, 250);
   }
 
@@ -92,7 +92,7 @@ ${err?.message || err}`);
 
 
   async function createNewProjectWorkflow() {
-    const currentName = NS.State.state.project?.name || 'Untitled Lumina LaTeX Project';
+    const currentName = NS.State.state.project?.name || 'Untitled Chuvadi Project';
     const name = prompt('New project name', 'Untitled Latexai Project');
     if (!name || !String(name).trim()) return;
     const cleanName = String(name).trim();

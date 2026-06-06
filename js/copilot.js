@@ -355,7 +355,7 @@ Prefer replace-selection when selected LaTeX is provided. Prefer find-replace wh
   }
 
   function systemPromptFor(task) {
-    const base = 'You are Lumina LaTeX Copilot inside a browser-based Overleaf-like editor. Be precise, preserve mathematical meaning, avoid unnecessary rewrites, and never invent packages unless needed.';
+    const base = 'You are Chuvadi Copilot inside a browser-based Overleaf-like editor. Be precise, preserve mathematical meaning, avoid unnecessary rewrites, and never invent packages unless needed.';
     if (task === 'fix-error-patch') return `${base} Fix the current LaTeX compile error. Return exactly one safe patch as valid JSON.`;
     if (task === 'rewrite-selection-patch') return `${base} Rewrite the selected LaTeX. Preserve notation. Return ONLY raw replacement LaTeX/prose, not JSON. Latexai will add all change-tracking wrappers after validation.`;
     if (task === 'insert-section-patch') return `${base} Draft a polished LaTeX section or subsection to insert. Return valid JSON patch.`;

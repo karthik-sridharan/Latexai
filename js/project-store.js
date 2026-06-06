@@ -143,7 +143,7 @@
         project: compact
       });
     } catch (err) {
-      console.warn('Lumina full-project browser cache skipped because storage quota was reached.', err);
+      console.warn('Chuvadi full-project browser cache skipped because storage quota was reached.', err);
     }
   }
 
@@ -182,7 +182,7 @@
     try {
       safeSetJson(STORAGE_KEY, normalized, compact);
     } catch (err) {
-      console.warn('Lumina local project autosave skipped because browser storage quota was reached.', err);
+      console.warn('Chuvadi local project autosave skipped because browser storage quota was reached.', err);
       try { localStorage.removeItem(STORAGE_KEY); } catch (_err) {}
     }
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedSettings)); } catch (_err) {}
@@ -198,13 +198,13 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) project = mergeWithFullProjectCache(JSON.parse(raw), 'load-local');
     } catch (err) {
-      console.warn('Lumina project load failed', err);
+      console.warn('Chuvadi project load failed', err);
     }
     try {
       const rawSettings = localStorage.getItem(SETTINGS_KEY);
       if (rawSettings) settings = Object.assign(Model().defaultSettings(), JSON.parse(rawSettings));
     } catch (err) {
-      console.warn('Lumina settings load failed', err);
+      console.warn('Chuvadi settings load failed', err);
     }
     if (!project) project = mergeWithFullProjectCache(Model().defaultProject(), 'load-default');
     project.settings = Object.assign(Model().defaultSettings(), project.settings || {}, settings || {});

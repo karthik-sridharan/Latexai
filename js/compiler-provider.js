@@ -1,5 +1,5 @@
 /*
- * Latexai / Lumina LaTeX Stage 1I Step 1 CompilerProvider bootstrap.
+ * Latexai / Chuvadi Stage 1I Step 1 CompilerProvider bootstrap.
  *
  * Load this BEFORE the main app scripts. It guarantees that all historical
  * namespaces have a CompilerProvider with a compile(...) method, and it keeps

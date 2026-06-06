@@ -171,7 +171,7 @@
       const resultSuccess = result?.success === true || result?.status === 'success' || result?.exitCode === 0;
       const extractionProblem = !pdfBytes
         ? [{ level: resultSuccess ? 'warn' : 'error', message: resultSuccess
-          ? 'TeXlyre reported a successful compile, but Lumina could not extract PDF bytes from the result. Check raw.pdfCandidateSummary in diagnostics.'
+          ? 'TeXlyre reported a successful compile, but Chuvadi could not extract PDF bytes from the result. Check raw.pdfCandidateSummary in diagnostics.'
           : 'TeXlyre did not return PDF bytes. Check the LaTeX log and raw result summary.', line: null }]
         : [];
       const problems = parsedProblems.concat(extractionProblem);
@@ -325,7 +325,7 @@
     }
     const bibliographyMode = String(payload.bibliography || '').toLowerCase();
     const bibtexRequested = bibliographyMode === 'bibtex';
-    // BusyTeX treats a non-zero BibTeX pass as a failed compile. The default Lumina
+    // BusyTeX treats a non-zero BibTeX pass as a failed compile. The default Chuvadi
     // sample includes \bibliography{refs} but has no \cite or \nocite, which can
     // make BibTeX exit with diagnostics even though the TeX document itself is valid.
     // Only run BibTeX when the root actually contains citation commands.
