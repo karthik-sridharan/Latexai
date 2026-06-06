@@ -1,11 +1,6 @@
-# Changed files — Stage 19W51 Chuvadi/Kalvi branding correction
+# Changed files — Stage 19W52
 
-- index.html
-- literature.html
-- help.html
-- js/project-model.js
-- js/main.js
-- js/lai-full-project-commit-patch.js
-- js/lai-storage-provider-preload.js
-- README_STAGE19W51_CHUVADI_KALVI_PROJECT_NAME.md
-- README_CHANGED_FILES.md
+- `index.html`
+- `help.html`
+- `README_STAGE19W52_LITERATURE_LINK_LABEL.md`
+- `README_CHANGED_FILES.md`
