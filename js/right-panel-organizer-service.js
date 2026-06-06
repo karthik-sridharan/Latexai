@@ -14,7 +14,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w29-settings-github-drawers-cleanup-20260605-1';
+  const STAGE = 'stage19w47-settings-hide-empty-drawers-20260605-1';
   const STORAGE_KEY = 'latexai:right-panel-sections:v8';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
@@ -201,13 +201,6 @@
 
     {
       tab: 'settings',
-      key: 'reports-reviews',
-      title: 'Reports / Reviews',
-      defaultOpen: false,
-      cardIds: []
-    },
-    {
-      tab: 'settings',
       key: 'diagnostics',
       title: 'Diagnostics',
       defaultOpen: false,
@@ -239,6 +232,7 @@
       title: 'Other settings / advanced',
       defaultOpen: false,
       catchAll: true,
+      hideWhenEmpty: true,
       selectors: [],
       cardIds: []
     }
@@ -470,7 +464,6 @@
       'audit-ai-edits': ['audit ai edits', 'ai edit review'],
       'history-comments': ['ai suggestion comments', 'ai revision history', 'unified ai reports'],
       presentation: ['presentation', 'beamer', 'talk package'],
-      'reports-reviews': ['unified ai reports', 'reviews browser', 'ai revision history', 'ai suggestion comments'],
       diagnostics: ['ai model routing inspector', 'backend diagnostics', 'regression checklist', 'release/deploy verifier', 'feature flags'],
       'model-config': ['model routing', 'ai model routing inspector', 'ai provider', 'model configuration']
     }[group.key] || [];
@@ -863,6 +856,10 @@
         const count = el(`${groupId(group)}Count`);
         if (count) count.textContent = String(body.children.length);
         shell.classList.toggle('empty', body.children.length === 0);
+        if (group.hideWhenEmpty && body.children.length === 0) {
+          shell.remove();
+          continue;
+        }
         setGroupOpen(group, shell, desiredGroupOpen(group, shell.dataset.rpoOpen !== 'false'), { remember: false });
       }
     }
