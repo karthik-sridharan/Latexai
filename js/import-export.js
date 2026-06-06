@@ -16,48 +16,112 @@
   async function importFilesFromInput(event) {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
-    let imported = 0;
-    for (const file of files) {
-      const path = file.webkitRelativePath || file.name;
-      if (file.name.toLowerCase().endsWith('.json')) {
-        const text = await file.text();
-        try {
-          const parsed = JSON.parse(text);
-          if (parsed && Array.isArray(parsed.files)) {
-            const ok = confirm(`Replace current project with project JSON: ${parsed.name || file.name}?`);
-            if (ok) {
-              State().resetProject(parsed);
-              imported++;
-              continue;
-            }
+    const settings = Object.assign({}, State().state.settings || {}, State().state.project?.settings || {});
+
+    // A full Lumina project JSON remains the strongest import format.
+    if (files.length === 1 && files[0].name.toLowerCase().endsWith('.json')) {
+      const text = await files[0].text();
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && Array.isArray(parsed.files)) {
+          const ok = confirm(`Import project JSON and replace the current project with “${parsed.name || files[0].name}”?\n\nThis imports files and project metadata. Project memory starts from this imported workspace unless the JSON includes existing project IDs.`);
+          if (ok) {
+            parsed.settings = Object.assign({}, settings, parsed.settings || {});
+            State().resetProject(parsed);
+            await W.LuminaLatex.ProjectWorkspaceService?.restoreForProject?.(State().state.project, { source: 'import-project-json', silent: true });
+            State().save();
+            W.LuminaLatex.Preview?.renderDraftPreview?.();
+            W.LuminaLatex.Main?.toast?.('Project imported.');
           }
-        } catch (_err) {
-          // fall through to import as text
+          event.target.value = '';
+          return;
         }
-      }
-      if (isLikelyText(file.name)) {
-        State().importFile(path, await file.text(), { overwrite: confirm(`Overwrite ${path} if it exists?`) });
-        imported++;
-      } else {
-        const base64 = await fileToBase64(file);
-        State().importFile(path, '', { overwrite: confirm(`Overwrite ${path} if it exists?`), base64 });
-        imported++;
+      } catch (_err) {
+        // fall through to generic file import
       }
     }
+
+    const projectName = prompt('Imported project name', guessImportedProjectName(files));
+    if (!projectName || !String(projectName).trim()) {
+      event.target.value = '';
+      return;
+    }
+    if (!confirm(`Import ${files.length} file${files.length === 1 ? '' : 's'} as a fresh project “${projectName}”?\n\nThis replaces the current editor project. It starts with empty project memory and no GitHub attachment until you save/create a GitHub-backed project.`)) {
+      event.target.value = '';
+      return;
+    }
+
+    const importedFiles = [];
+    for (const file of files) {
+      const path = State().normalizePath(file.webkitRelativePath || file.name);
+      if (!path) continue;
+      if (isLikelyText(file.name)) {
+        importedFiles.push({ path, kind: path.toLowerCase().endsWith('.tex') ? 'tex' : 'support', text: await file.text() });
+      } else {
+        importedFiles.push({ path, kind: 'asset', text: '', encoding: 'base64', base64: await fileToBase64(file) });
+      }
+    }
+    if (!importedFiles.length) {
+      W.LuminaLatex.Main?.toast?.('No supported files were imported.');
+      event.target.value = '';
+      return;
+    }
+    const defaultProject = State().defaultProject();
+    const rootFile = importedFiles.find((f) => f.path === 'main.tex')?.path || importedFiles.find((f) => /\.tex$/i.test(f.path))?.path || importedFiles[0].path;
+    const now = new Date().toISOString();
+    const projectId = W.LuminaLatex.ProjectModel?.uid?.('imported-project') || `imported-project-${Date.now()}`;
+    const project = Object.assign({}, defaultProject, {
+      name: String(projectName).trim(),
+      title: String(projectName).trim(),
+      projectId,
+      id: projectId,
+      paperId: `imported-paper-${Date.now().toString(36)}`,
+      rootFile,
+      activePath: rootFile,
+      files: importedFiles,
+      settings,
+      github: null,
+      createdAt: now,
+      updatedAt: now,
+      meta: {
+        importedProject: true,
+        importedAt: now,
+        importedFileCount: importedFiles.length,
+        projectWorkspaceFreshMemory: true,
+        importStage: 'stage19w42-project-actions-workspace-ui-20260605-1'
+      }
+    });
+    State().resetProject(project);
+    await W.LuminaLatex.ProjectWorkspaceService?.restoreForProject?.(State().state.project, { source: 'import-project-files', silent: true });
     State().save();
     W.LuminaLatex.Preview?.renderDraftPreview?.();
-    W.LuminaLatex.Main?.toast?.(`Imported ${imported} file${imported === 1 ? '' : 's'}.`);
+    W.LuminaLatex.Main?.toast?.(`Imported project with ${importedFiles.length} file${importedFiles.length === 1 ? '' : 's'}.`);
     event.target.value = '';
   }
 
   function isLikelyText(name) {
-    return /\.(tex|bib|sty|cls|txt|md|log|aux|json)$/i.test(name || '');
+    return /\.(tex|bib|sty|cls|bst|txt|md|log|aux|json|yaml|yml|csv)$/i.test(name || '');
+  }
+
+  function guessImportedProjectName(files) {
+    const firstTex = Array.from(files || []).find((file) => /\.tex$/i.test(file.name || ''));
+    const first = firstTex || Array.from(files || [])[0];
+    const raw = first?.webkitRelativePath ? String(first.webkitRelativePath).split('/')[0] : String(first?.name || 'Imported LatexAI Project').replace(/\.[^.]+$/, '');
+    return raw || 'Imported LatexAI Project';
   }
 
   function downloadActiveFile() {
     const file = State().getActiveFile();
     if (!file) return;
-    downloadBlob(new Blob([file.text || ''], { type: 'text/plain;charset=utf-8' }), basename(file.path));
+    downloadFile(file.path);
+  }
+
+  function downloadFile(path) {
+    const file = State().getFile?.(path) || (State().state.project.files || []).find((item) => item.path === path);
+    if (!file) return;
+    const content = file.encoding === 'base64' && file.base64 ? base64ToBytes(file.base64) : (file.text || '');
+    const blob = content instanceof Uint8Array ? new Blob([content], { type: 'application/octet-stream' }) : new Blob([content], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, basename(file.path));
   }
 
   function exportProjectJson() {
@@ -241,5 +305,5 @@
     form.appendChild(input);
   }
 
-  NS.ImportExport = { init, exportZip, exportProjectJson, downloadActiveFile, openRootInOverleaf, makeZip };
+  NS.ImportExport = { init, exportZip, exportProjectJson, downloadActiveFile, downloadFile, openRootInOverleaf, makeZip };
 })();

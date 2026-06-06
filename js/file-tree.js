@@ -8,7 +8,7 @@
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w41-project-workspace-restore-20260605-1';
+  const STAGE = 'stage19w42-project-actions-workspace-ui-20260605-1';
 
   const git = {
     setupOpen: false,
@@ -199,42 +199,10 @@
     title.style.gap = '0.5rem';
 
     const titleText = document.createElement('div');
-    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • GitHub: ${escapeHtml(attachedRepoLabel())} • Stage 19W41</span>`;
+    titleText.innerHTML = `<strong>Project files</strong><br><span style="font-size:11px;opacity:.72">${project.files.length} files${State().state.dirty ? ' • unsaved' : ''} • Stage 19W42</span>`;
 
-    const gitToggle = button(git.setupOpen ? 'Hide Git' : 'Git', () => {
-      git.setupOpen = !git.setupOpen;
-      saveGitSettings();
-      render();
-    }, 'btn mini');
-
-    title.append(titleText, gitToggle);
+    title.append(titleText);
     header.appendChild(title);
-
-    if (git.setupOpen) header.appendChild(renderGitSetup());
-
-    header.appendChild(renderCommitMessageBox());
-
-    const actions = document.createElement('div');
-    actions.className = 'git-actions';
-    actions.style.display = 'flex';
-    actions.style.flexWrap = 'wrap';
-    actions.style.gap = '0.25rem';
-    actions.style.marginTop = '0.4rem';
-    actions.append(
-      button('Check', checkGithubBackend, 'btn mini'),
-      button('Load attached', () => loadFromGithub({ source: 'load-attached-github-project' }), 'btn mini'),
-      button('Open GitHub', promptOpenGithubProject, 'btn mini'),
-      button('Save GitHub', commitAllToGithub, 'btn mini'),
-      button('Checkpoint', promptCheckpointToGithub, 'btn mini')
-    );
-    header.appendChild(actions);
-
-    const status = document.createElement('div');
-    status.className = 'git-status';
-    status.style.cssText = 'white-space:pre-wrap;font-size:11px;line-height:1.25;background:rgba(255,255,255,.62);border-radius:9px;padding:6px;margin-top:6px;max-height:78px;overflow:auto;';
-    status.textContent = git.status || 'GitHub sync ready.';
-    header.appendChild(status);
-
     tree.appendChild(header);
 
     const sorted = [...project.files].sort((a, b) => a.path.localeCompare(b.path));
@@ -285,7 +253,16 @@
         if (confirm(`Delete ${file.path}?`)) State().removeFile(file.path);
       });
 
-      actions.append(rename, remove);
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.title = 'Download file';
+      download.textContent = '⇩';
+      download.addEventListener('click', (event) => {
+        event.stopPropagation();
+        NS.ImportExport?.downloadFile?.(file.path);
+      });
+
+      actions.append(download, rename, remove);
       row.append(main, actions);
       tree.appendChild(row);
     }
@@ -381,6 +358,59 @@
       el.__gitBound = true;
     });
   }
+  function syncProjectSaveCommentInput() {
+    const input = document.getElementById('projectSaveCommentInput');
+    if (!input) return;
+    if (document.activeElement !== input) input.value = git.commitMessage || '';
+  }
+
+  function bindProjectSaveCommentInput() {
+    const input = document.getElementById('projectSaveCommentInput');
+    if (!input || input.__projectSaveCommentBound) return;
+    input.value = git.commitMessage || '';
+    const update = () => {
+      git.commitMessage = String(input.value || '');
+      saveGitSettings();
+    };
+    input.addEventListener('input', update);
+    input.addEventListener('change', update);
+    input.addEventListener('blur', update);
+    input.__projectSaveCommentBound = true;
+  }
+
+  function projectSaveCommentValue() {
+    const input = document.getElementById('projectSaveCommentInput');
+    if (input) git.commitMessage = String(input.value || '');
+    return String(git.commitMessage || '').trim();
+  }
+
+  function createFileFromPrompt(defaultPath = 'sections/new-section.tex') {
+    const path = prompt('Insert file path', defaultPath);
+    if (!path) return;
+    const ext = path.toLowerCase().split('.').pop();
+    let starter = '';
+    if (ext === 'tex') starter = '% New LaTeX file\n';
+    if (ext === 'bib') starter = '@article{key,\n  title={},\n  author={},\n  year={}\n}\n';
+    if (!State().createFile(path, starter)) alert('Could not create file. It may already exist.');
+    else {
+      State().save();
+      W.LuminaLatex.Main?.toast?.('File inserted.');
+    }
+  }
+
+  function createFolderFromPrompt(defaultPath = 'sections') {
+    const raw = prompt('Insert folder path', defaultPath);
+    if (!raw) return;
+    const folder = normalizeRepoPath(raw);
+    if (!folder) return;
+    const keepPath = `${folder}/.gitkeep`;
+    if (!State().createFile(keepPath, '')) alert('Could not create folder placeholder. It may already exist.');
+    else {
+      State().save();
+      W.LuminaLatex.Main?.toast?.(`Folder inserted: ${folder}`);
+    }
+  }
+
 
   function renderRootSelect() {
     const root = document.getElementById('rootFileSelect');
@@ -394,19 +424,11 @@
   function bind() {
     loadGitSettings();
 
-    document.getElementById('newFileBtn')?.addEventListener('click', () => {
-      const path = prompt('New file path', 'sections/new-section.tex');
-      if (!path) return;
-      const ext = path.toLowerCase().split('.').pop();
-      let starter = '';
-      if (ext === 'tex') starter = '% New LaTeX file\n';
-      if (ext === 'bib') starter = '@article{key,\n  title={},\n  author={},\n  year={}\n}\n';
-      if (!State().createFile(path, starter)) alert('Could not create file. It may already exist.');
-      else {
-        State().save();
-        W.LuminaLatex.Main?.toast?.('File added.');
-      }
-    });
+    document.getElementById('newFileBtn')?.addEventListener('click', () => createFileFromPrompt());
+    document.getElementById('insertFileBtn')?.addEventListener('click', () => createFileFromPrompt());
+    document.getElementById('insertFolderBtn')?.addEventListener('click', () => createFolderFromPrompt());
+    document.getElementById('revertProjectVersionBtn')?.addEventListener('click', () => promptRevertProjectVersion());
+    bindProjectSaveCommentInput();
 
     document.getElementById('addTemplateBtn')?.addEventListener('click', () => {
       const template = prompt('Add template: article, beamer, homework, theorem-envs', 'beamer');
@@ -429,6 +451,7 @@
       if (['load','reset','active-file','file-change','file-create','file-remove','file-rename','file-import-overwrite','project-rename','settings','save'].includes(reason)) {
         render();
         updateProjectTitle();
+          syncProjectSaveCommentInput();
       }
     });
   }
@@ -519,11 +542,88 @@
     return project;
   }
 
+  async function listGithubProjects() {
+    loadGitSettings();
+    const result = await gitFetch('/list-projects');
+    const projects = Array.isArray(result.projects) ? result.projects : (Array.isArray(result.repositories) ? result.repositories : []);
+    return projects.map((item) => ({
+      owner: String(item.owner || item.repoOwner || item.fullName?.split?.('/')[0] || '').trim(),
+      repo: String(item.repo || item.name || item.fullName?.split?.('/')[1] || '').trim(),
+      branch: String(item.defaultBranch || item.branch || 'main').trim() || 'main',
+      rootPath: normalizeRepoPath(item.rootPath || ''),
+      private: item.private === true,
+      updatedAt: item.pushedAt || item.updatedAt || '',
+      description: item.description || '',
+      htmlUrl: item.htmlUrl || item.url || ''
+    })).filter((item) => item.owner && item.repo);
+  }
+
+  function formatProjectChoice(item, index) {
+    const visibility = item.private ? 'private' : 'public';
+    const updated = item.updatedAt ? `, ${String(item.updatedAt).slice(0, 10)}` : '';
+    return `${index + 1}. ${item.owner}/${item.repo} @ ${item.branch || 'main'} (${visibility}${updated})`;
+  }
+
+  async function promptOpenProject() {
+    let projects = [];
+    let listError = '';
+    try {
+      projects = await listGithubProjects();
+    } catch (err) {
+      listError = err?.message || String(err);
+    }
+    if (projects.length) {
+      const shown = projects.slice(0, 25);
+      const lines = shown.map(formatProjectChoice);
+      lines.push('');
+      lines.push('Enter a number from the list, or paste owner/repo or a GitHub URL.');
+      const answer = prompt(`Open Project\n\n${lines.join('\n')}`, '1');
+      if (!answer || !String(answer).trim()) return { ok: false, cancelled: true };
+      const n = Number(String(answer).trim());
+      let selected = null;
+      if (Number.isInteger(n) && n >= 1 && n <= shown.length) selected = shown[n - 1];
+      else {
+        const parsed = parseGithubRepoSpec(answer);
+        if (!parsed) {
+          alert('Please enter a list number, owner/repo, or a GitHub URL.');
+          return { ok: false, error: 'invalid project selection' };
+        }
+        selected = { owner: parsed.owner, repo: parsed.repo, branch: git.branch || 'main', rootPath: '' };
+      }
+      return openGithubProjectSelection(selected);
+    }
+    if (listError) console.warn('[Latexai] Project list unavailable; falling back to manual GitHub open.', listError);
+    return promptOpenGithubProject();
+  }
+
+  async function openGithubProjectSelection(selection) {
+    if (!selection?.owner || !selection?.repo) return { ok: false, error: 'missing project selection' };
+    const branch = prompt('Branch (leave blank to let backend use repository default)', selection.branch || git.branch || 'main');
+    if (branch === null) return { ok: false, cancelled: true };
+    const rootPath = prompt('Folder path inside repo (blank for repo root)', selection.rootPath || '');
+    if (rootPath === null) return { ok: false, cancelled: true };
+    const currentName = State().state.project?.name || 'current local project';
+    const message = [
+      `Open project ${selection.owner}/${selection.repo}${rootPath ? '/' + normalizeRepoPath(rootPath) : ''} @ ${branch || 'repository default'}?`,
+      '',
+      `This will replace the active local project “${currentName}”.`,
+      'Project files, reports, and project-scoped memory will be restored for the selected workspace.',
+      'If the current project is important, use Save Project or Export zip first.'
+    ].join('\n');
+    if (!confirm(message)) return { ok: false, cancelled: true };
+    git.owner = selection.owner;
+    git.repo = selection.repo;
+    git.branch = String(branch || '').trim();
+    git.rootPath = normalizeRepoPath(rootPath || '');
+    saveGitSettings();
+    return loadFromGithub({ source: 'open-project-list-selection', preserveSettings: true, fromPrompt: true, alertSuccess: true });
+  }
+
   async function promptOpenGithubProject() {
     loadGitSettings();
     syncGitFromProject();
     const existing = git.owner && git.repo ? `${git.owner}/${git.repo}` : '';
-    const spec = prompt('Open GitHub project (owner/repo or GitHub URL)', existing || 'owner/repo');
+    const spec = prompt('Open Project manually (owner/repo or GitHub URL)', existing || 'owner/repo');
     if (!spec || !String(spec).trim()) return { ok: false, cancelled: true };
     const parsed = parseGithubRepoSpec(spec);
     if (!parsed) {
@@ -536,11 +636,11 @@
     if (rootPath === null) return { ok: false, cancelled: true };
     const currentName = State().state.project?.name || 'current local project';
     const message = [
-      `Open ${parsed.owner}/${parsed.repo}${rootPath ? '/' + normalizeRepoPath(rootPath) : ''} @ ${branch || 'main'}?`,
+      `Open project ${parsed.owner}/${parsed.repo}${rootPath ? '/' + normalizeRepoPath(rootPath) : ''} @ ${branch || 'main'}?`,
       '',
       `This will replace the active local project “${currentName}”.`,
       'Backend/API settings will be kept.',
-      'If the current project is important, use Save GitHub or Export zip first.'
+      'If the current project is important, use Save Project or Export zip first.'
     ].join('\n');
     if (!confirm(message)) return { ok: false, cancelled: true };
     git.owner = parsed.owner;
@@ -644,6 +744,7 @@ Folder: ${git.rootPath}` : ''}`;
       render();
 
       const rootPath = normalizeRepoPath(git.rootPath || '');
+      const requestedCommitSha = String(options.commitSha || '').trim();
       const preferredBranch = String(git.branch || '').trim();
       const branchCandidates = [];
       const seenBranches = new Set();
@@ -655,12 +756,18 @@ Folder: ${git.rootPath}` : ''}`;
         if (branch) body.branch = branch;
         branchCandidates.push({ label, branch, body });
       }
-      pushCandidate(preferredBranch, preferredBranch ? `selected branch ${preferredBranch}` : 'backend/default branch');
-      // Important diagnostic/probe path: old working flows could rely on the
-      // backend/default branch. If the browser forces "main" and the repo uses a
-      // different default branch, the backend's GitHub refs lookup returns 404.
-      pushCandidate('', 'backend/default branch');
-      ['main', 'master', 'gh-pages'].forEach((fallback) => pushCandidate(fallback, `fallback branch ${fallback}`));
+      if (requestedCommitSha) {
+        const body = { owner: git.owner, repo: git.repo, rootPath, commitSha: requestedCommitSha };
+        if (preferredBranch) body.branch = preferredBranch;
+        branchCandidates.push({ label: `saved version ${requestedCommitSha.slice(0, 7)}`, branch: preferredBranch, body });
+      } else {
+        pushCandidate(preferredBranch, preferredBranch ? `selected branch ${preferredBranch}` : 'backend/default branch');
+        // Important diagnostic/probe path: old working flows could rely on the
+        // backend/default branch. If the browser forces "main" and the repo uses a
+        // different default branch, the backend's GitHub refs lookup returns 404.
+        pushCandidate('', 'backend/default branch');
+        ['main', 'master', 'gh-pages'].forEach((fallback) => pushCandidate(fallback, `fallback branch ${fallback}`));
+      }
 
       let result = null;
       let usedCandidate = null;
@@ -709,8 +816,8 @@ Repo: ${attachedRepoLabel()}
 Root: ${rootFile}`;
       saveGitSettings();
       render();
-      W.LuminaLatex.Main?.toast?.(`GitHub project opened: ${git.owner}/${git.repo}`);
-      if (options.alertSuccess) alert(`GitHub project opened.
+      W.LuminaLatex.Main?.toast?.(`Project opened: ${git.owner}/${git.repo}`);
+      if (options.alertSuccess) alert(`Project opened.
 
 Repo: ${git.owner}/${git.repo}
 Files: ${fileCount}
@@ -792,6 +899,79 @@ ${message}${backendNote}${traceText ? `\n\nFrontend trace:\n${traceText}` : ''}`
       render();
     }
     return result;
+  }
+
+  async function listProjectRevisions() {
+    loadGitSettings();
+    syncGitFromProject();
+    if (!isGithubAttached()) throw new Error('No GitHub project is attached.');
+    const result = await gitFetch('/list-revisions', {
+      owner: git.owner,
+      repo: git.repo,
+      branch: git.branch || 'main',
+      rootPath: normalizeRepoPath(git.rootPath || ''),
+      perPage: 25
+    });
+    return Array.isArray(result.revisions) ? result.revisions : [];
+  }
+
+  async function promptRevertProjectVersion() {
+    try {
+      const revisions = await listProjectRevisions();
+      if (!revisions.length) {
+        alert('No saved Git versions were found for this project.');
+        return { ok: false, error: 'no revisions' };
+      }
+      const lines = revisions.slice(0, 25).map((rev, i) => {
+        const sha = String(rev.sha || '').slice(0, 7);
+        const date = String(rev.date || '').slice(0, 10);
+        const msg = String(rev.message || '').split('\n')[0].slice(0, 72);
+        return `${i + 1}. ${sha} ${date} — ${msg}`;
+      });
+      const answer = prompt(`Revert Project Version\n\nSelect a saved Git version to load into the editor. After it loads, use Save Project to commit the revert.\n\n${lines.join('\n')}`, '1');
+      if (!answer || !String(answer).trim()) return { ok: false, cancelled: true };
+      const idx = Number(String(answer).trim()) - 1;
+      if (!Number.isInteger(idx) || idx < 0 || idx >= revisions.length) {
+        alert('Please enter a valid version number.');
+        return { ok: false, error: 'invalid revision selection' };
+      }
+      const rev = revisions[idx];
+      const sha = String(rev.sha || '').trim();
+      if (!sha) throw new Error('Selected revision did not include a commit sha.');
+      if (!confirm(`Load project version ${sha.slice(0, 7)}?\n\nThis replaces the current editor files. Use Save Project afterwards to commit the revert.`)) return { ok: false, cancelled: true };
+      const result = await loadFromGithub({ source: 'revert-project-version', fromPrompt: true, commitSha: sha, alertSuccess: false });
+      if (result?.ok) {
+        git.status = `Loaded older Git version ${sha.slice(0, 7)}.\nUse Save Project to commit this revert if it looks correct.`;
+        render();
+        W.LuminaLatex.Main?.toast?.(`Loaded version ${sha.slice(0, 7)}. Save Project to commit revert.`);
+      }
+      return result;
+    } catch (err) {
+      alert(`Revert version failed:\n${err?.message || err}`);
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
+  async function saveCurrentProject(options = {}) {
+    loadGitSettings();
+    syncGitFromProject();
+    projectSaveCommentValue();
+    if (!isGithubAttached()) {
+      State().save();
+      const message = 'This project is not attached to GitHub yet. Use New Project to create a GitHub-backed project, or Export zip for a local copy.';
+      W.LuminaLatex.Main?.toast?.('Saved locally; no GitHub project attached.');
+      return { ok: false, error: message, localOnly: true };
+    }
+    return commitProjectToGithub({
+      reason: options.reason || 'save-project',
+      message: String(options.message || projectSaveCommentValue() || '').trim() || undefined,
+      statusPrefix: 'Saving project',
+      donePrefix: 'Saved project'
+    }).then((result) => {
+      W.LuminaLatex.Main?.toast?.(`Project saved: ${(result.commitSha || '').slice(0, 7) || 'commit created'}`);
+      logGithubReward('save_project', result, { rewardValue: 0.7, metadata: { owner: git.owner, repo: git.repo, branch: git.branch || 'main' } });
+      return Object.assign({ ok: true }, result);
+    });
   }
 
   async function commitAllToGithub() {
@@ -1185,5 +1365,5 @@ Solution.
     return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  NS.FileTree = { STAGE, getGithubTrace: () => (W.LuminaLatex.__githubOpenTrace || []).slice(), bind, render, renderRootSelect, addTemplate, loadFromGithub, promptOpenGithubProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi, refreshGithubProjectPanes };
+  NS.FileTree = { STAGE, getGithubTrace: () => (W.LuminaLatex.__githubOpenTrace || []).slice(), bind, render, renderRootSelect, addTemplate, loadFromGithub, listGithubProjects, promptOpenProject, promptOpenGithubProject, openGithubProjectSelection, saveCurrentProject, commitAllToGithub, commitProjectToGithub, promptCheckpointToGithub, createCheckpointToGithub, autoCheckpointBeforeRiskyAction, checkGithubBackend, createProjectRepository, promptRevertProjectVersion, listProjectRevisions, getGithubSettings, sanitizeRepoName, defaultCommitMessage, commitMessageForGithub, isGithubAttached, githubScopedIds, applyGithubIdentity, parseGithubRepoSpec, forceGithubProjectIntoUi, refreshGithubProjectPanes };
 })();

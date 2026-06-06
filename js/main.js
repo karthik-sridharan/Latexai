@@ -47,10 +47,20 @@
 
   function bindTopActions() {
     document.getElementById('newProjectBtn')?.addEventListener('click', createNewProjectWorkflow);
-    document.getElementById('openGithubProjectBtn')?.addEventListener('click', () => NS.FileTree?.promptOpenGithubProject?.());
-    document.getElementById('saveProjectBtn')?.addEventListener('click', () => {
-      NS.State.save();
-      toast('Saved locally.');
+    document.getElementById('openGithubProjectBtn')?.addEventListener('click', () => NS.FileTree?.promptOpenProject?.());
+    document.getElementById('saveProjectBtn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('saveProjectBtn');
+      const oldText = btn?.textContent;
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const result = await NS.FileTree?.saveCurrentProject?.({ reason: 'project-actions-save' });
+        if (result?.ok === false) throw new Error(result.error || 'Save failed.');
+      } catch (err) {
+        alert(`Save Project failed:
+${err?.message || err}`);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = oldText || 'Save Project'; }
+      }
     });
   }
 
@@ -140,7 +150,7 @@
       const trace = summarizeGithubTraceForAlert();
       alert(`New project failed:\n${err?.message || err}${trace ? `\n\nFrontend GitHub trace:\n${trace}` : ''}\n\nNo local project reset was performed.`);
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = oldText || 'New project'; }
+      if (btn) { btn.disabled = false; btn.textContent = oldText || 'New Project'; }
     }
   }
 

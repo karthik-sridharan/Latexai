@@ -11,7 +11,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19w41-project-workspace-restore-20260605-1';
+  const STAGE = 'stage19w42-project-actions-workspace-ui-20260605-1';
   const LAST_RESTORE_KEY = 'lumina-latex.project-workspace.last-restore.v1';
 
   let initialized = false;

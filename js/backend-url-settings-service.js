@@ -274,7 +274,7 @@
       setGithubStatus('GitHub backend OK', `Connected to ${base}. ${token}. Stage: ${json.stage || 'unknown'}. This confirms the sync backend is reachable; repository load still depends on the owner/repo, branch, folder path, and token access.`, true);
       return { ok: true, base, status: json, stage: STAGE };
     } catch (err) {
-      setGithubStatus('GitHub backend failed', `${base}: ${err?.message || err}. Verify the GitHub sync Cloud Run URL ends in /api/lumina/github and CORS allows https://karthik-sridharan.github.io. This backend check is separate from Project → Open GitHub repository lookup.`, false);
+      setGithubStatus('GitHub backend failed', `${base}: ${err?.message || err}. Verify the GitHub sync Cloud Run URL ends in /api/lumina/github and CORS allows https://karthik-sridharan.github.io. This backend check is separate from Project → Open Project repository lookup.`, false);
       return { ok: false, base, error: err?.message || String(err), stage: STAGE };
     }
   }
