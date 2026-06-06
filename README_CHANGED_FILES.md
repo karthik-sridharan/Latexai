@@ -1,6 +1,6 @@
-# Changed files — Stage 19W46
+# Changed files — Stage 19W47
 
 - `index.html`
-- `js/file-tree.js`
-- `README_STAGE19W46_OPEN_PROJECT_PICKER_DOCUMENT_ALIAS_FIX.md`
+- `js/right-panel-organizer-service.js`
+- `README_STAGE19W47_SETTINGS_HIDE_EMPTY_DRAWERS.md`
 - `README_CHANGED_FILES.md`
