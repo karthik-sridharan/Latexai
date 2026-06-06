@@ -14,8 +14,8 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'stage19w47-settings-hide-empty-drawers-20260605-1';
-  const STORAGE_KEY = 'latexai:right-panel-sections:v8';
+  const STAGE = 'stage19w48-settings-drawer-badges-cleanup-20260605-1';
+  const STORAGE_KEY = 'latexai:right-panel-sections:v9';
   const STAGE17L_STORAGE_KEY = 'latexai:right-panel-sections:v6';
   const STAGE17J10_STORAGE_KEY = 'latexai:right-panel-sections:v5';
   const STAGE17J9_STORAGE_KEY = 'latexai:right-panel-sections:v4';
@@ -498,8 +498,7 @@
     button.dataset.rpoGroupToggle = `${group.tab}:${group.key}`;
     button.setAttribute('aria-controls', bodyId(group));
     button.innerHTML = [
-      `<span class="right-panel-group-title">${escapeHtml(group.title)}</span>`,
-      `<span class="right-panel-group-count" id="${groupId(group)}Count">0</span>`
+      `<span class="right-panel-group-title">${escapeHtml(group.title)}</span>`
     ].join('');
 
     const body = existingBody || D.createElement('div');
@@ -538,6 +537,7 @@
 
     const button = shell.querySelector('.right-panel-group-summary[data-rpo-group-toggle]');
     const body = shell.querySelector('.right-panel-group-body');
+    shell.querySelectorAll?.('.right-panel-group-count').forEach((node) => node.remove());
     if (button) bindGroupToggleEvents(button);
     if (body) body.id = bodyId(group);
     setGroupOpen(group, shell, desiredGroupOpen(group, shell.dataset.rpoOpen !== 'false'), { remember: false });
@@ -853,14 +853,7 @@
           body.appendChild(card);
         }
 
-        const count = el(`${groupId(group)}Count`);
-        if (count) count.textContent = String(body.children.length);
-        shell.classList.toggle('empty', body.children.length === 0);
-        if (group.hideWhenEmpty && body.children.length === 0) {
-          shell.remove();
-          continue;
-        }
-        setGroupOpen(group, shell, desiredGroupOpen(group, shell.dataset.rpoOpen !== 'false'), { remember: false });
+        if (!refreshGroupShellState(group, shell, body)) continue;
       }
     }
 
@@ -884,6 +877,54 @@
     const cs = W.getComputedStyle ? W.getComputedStyle(node) : null;
     if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
     return Boolean(node.offsetWidth || node.offsetHeight || node.getClientRects?.().length);
+  }
+
+  function isDebugModeEnabled() {
+    try {
+      const qs = new URLSearchParams(W.location?.search || '');
+      return qs.get('debug') === '1' || qs.get('dev') === '1';
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function isMeaningfulDrawerItem(node) {
+    if (!isElement(node)) return false;
+    if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+    if (node.matches?.('script,style,template')) return false;
+    if (node.classList.contains('right-panel-group') || node.classList.contains('right-panel-organizer-toolbar')) return false;
+    if (node.id && node.id.startsWith('rightPanelOrganizer')) return false;
+    // Developer-only/debug-only cards are intentionally not user-facing unless
+    // the URL explicitly opts into debug mode.  They were the common source of
+    // empty-looking catch-all drawers that showed a badge count of 1.
+    if (!isDebugModeEnabled() && (
+      node.classList.contains('stage19w10-debug-only') ||
+      node.classList.contains('debug-only') ||
+      node.closest?.('.stage19w10-debug-only,.debug-only')
+    )) return false;
+    const cs = W.getComputedStyle ? W.getComputedStyle(node) : null;
+    if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+    const text = clean(node.textContent || '');
+    const hasControl = Boolean(node.querySelector?.('input,select,textarea,button,a,[role=button]'));
+    return Boolean(text || hasControl);
+  }
+
+  function meaningfulDrawerChildren(body) {
+    if (!isElement(body)) return [];
+    return Array.from(body.children).filter(isMeaningfulDrawerItem);
+  }
+
+  function refreshGroupShellState(group, shell, body) {
+    const meaningful = meaningfulDrawerChildren(body);
+    const count = el(`${groupId(group)}Count`);
+    if (count) count.remove();
+    shell.classList.toggle('empty', meaningful.length === 0);
+    if (group.hideWhenEmpty && meaningful.length === 0) {
+      shell.remove();
+      return false;
+    }
+    setGroupOpen(group, shell, desiredGroupOpen(group, shell.dataset.rpoOpen !== 'false'), { remember: false });
+    return true;
   }
 
   function visibleUngroupedCards(tab) {
