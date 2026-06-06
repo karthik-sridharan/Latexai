@@ -2,13 +2,14 @@
   'use strict';
 
   const W = window;
+  const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
   const State = () => NS.State;
 
   const GIT_SETTINGS_KEY = 'lumina-latex-editor.github-sync.v1';
   const FULL_PROJECT_CACHE_KEY = 'lumina-latex-editor.full-project-cache.v1';
   const DEFAULT_GITHUB_BACKEND = 'https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github';
-  const STAGE = 'stage19w45-open-project-picker-immediate-modal-20260605-1';
+  const STAGE = 'stage19w46-open-project-picker-document-alias-fix-20260605-1';
 
   const git = {
     setupOpen: false,
