@@ -4,11 +4,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Lumina LaTeX Editor</title>
+<title>Chuvadi LaTeX Editor</title>
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='stage19w48-settings-drawer-badges-cleanup-20260605-1';
+  window.LUMINA_LATEX_STAGE='stage19w50-chuvadi-branding-20260606-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -32,13 +32,13 @@
       if(!window.LUMINA_LATEX_BOOT_ERRORS.length)return;
       var box=document.createElement('pre');
       box.className='boot-error-box';
-      box.textContent='Lumina LaTeX startup error(s):\n\n'+window.LUMINA_LATEX_BOOT_ERRORS.join('\n\n');
+      box.textContent='Chuvadi startup error(s):\n\n'+window.LUMINA_LATEX_BOOT_ERRORS.join('\n\n');
       document.body.appendChild(box);
     },650);
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=stage19w43-help-docs-topbar-20260605-1" />
+<link rel="stylesheet" href="css/styles.css?v=stage19w50-chuvadi-branding-20260606-1" />
 <link rel="stylesheet" href="css/lai-stage19w23-editor-lite.css?v=stage19w28-settings-github-backend-restore-20260604-1" />
 <link rel="stylesheet" href="css/lai-stage19w24-disable-selection-action-bubble.css?v=stage19w28-settings-github-backend-restore-20260604-1" />
 <link rel="stylesheet" href="css/lai-stage5e-layout.css?v=stage5g-selectable-pdf-text-layer-1" />
@@ -76,15 +76,15 @@
 <link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w28-settings-github-backend-restore-20260604-1" />
 <link rel="stylesheet" href="css/lai-stage19w16-left-tools-preview-layout.css?v=stage19w28-settings-github-backend-restore-20260604-1" />
 <script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
-<script src="js/feature-flag-service.js?v=stage19w49-debug-only-diagnostics-cleanup-20260605-1"></script>
+<script src="js/feature-flag-service.js?v=stage19w50-chuvadi-branding-20260606-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="stage19w48-settings-drawer-badges-cleanup-20260605-1">
+<div class="app-shell" data-stage="stage19w50-chuvadi-branding-20260606-1">
   <header class="topbar">
     <div class="brand-block">
-      <div class="brand-mark">L</div>
+      <div class="brand-mark">C</div>
       <div>
-        <div class="smallcaps">Lumina LaTeX</div>
+        <div class="smallcaps">Chuvadi</div>
         <h1>Web LaTeX Editor</h1>
       </div>
     </div>
@@ -531,7 +531,7 @@
           Allow shell escape (only if the backend explicitly permits it)
         </label>
         <div id="compileBackendSettingsNote" class="settings-note">
-          Direct backend compile is the default. If job-based compile is enabled, Lumina derives <code>/api/lumina/latex/compile/jobs</code> and <code>/api/lumina/latex/status</code> from the compile endpoint so stale backend URLs do not linger.
+          Direct backend compile is the default. If job-based compile is enabled, Chuvadi derives <code>/api/lumina/latex/compile/jobs</code> and <code>/api/lumina/latex/status</code> from the compile endpoint so stale backend URLs do not linger.
         </div>
         <div id="compileContractSettingsNote" class="settings-note">
           Active backend routes: <code>POST /api/lumina/latex/compile</code>, optional <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and <code>GET /api/lumina/latex/status</code>.
@@ -574,7 +574,7 @@
 <script src="js/patch-manager.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/copilot.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
 <script src="js/diagnostics.js?v=stage19w43-help-docs-topbar-20260605-1" defer></script>
-<script src="js/main.js?v=stage19w49-debug-only-diagnostics-cleanup-20260605-1" defer></script>
+<script src="js/main.js?v=stage19w50-chuvadi-branding-20260606-1" defer></script>
 <script src="js/lai-stage5e-panel-scroll-pdf-viewer.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/pdf-region-selection-service.js?v=stage7d-pdf-region-selection-1" defer></script>
 <script src="js/asset-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
@@ -604,7 +604,7 @@
 <script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
 <script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
 <script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
-<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w49-debug-only-diagnostics-cleanup-20260605-1"></script>
+<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w50-chuvadi-branding-20260606-1"></script>
 <script src="js/real-agent-branch-workflow-service.js?v=stage19t2s-end-to-end-regression-audit-panel-1" defer></script>
 <script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
 <script id="stage18a-right-panel-organizer-fallback">
@@ -619,7 +619,7 @@ window.addEventListener('DOMContentLoaded', function () {
       var existing = document.querySelector('script[src*="right-panel-organizer-service.js"]');
       if (existing && existing.dataset.stage18aFallbackLoaded === 'true') return;
       var s = document.createElement('script');
-      s.src = 'js/right-panel-organizer-service.js?v=stage19w49-debug-only-diagnostics-cleanup-20260605-1';
+      s.src = 'js/right-panel-organizer-service.js?v=stage19w50-chuvadi-branding-20260606-1';
       s.defer = true;
       s.dataset.stage18aFallbackLoaded = 'true';
       document.body.appendChild(s);

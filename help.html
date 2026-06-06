@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lumina LaTeX Help</title>
+  <title>Chuvadi Help</title>
   <style>
     :root {
       --bg: #f6f3ed;
@@ -179,9 +179,9 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="mark">L</div>
+      <div class="mark">C</div>
       <div>
-        <div class="smallcaps">Lumina LaTeX</div>
+        <div class="smallcaps">Chuvadi</div>
         <strong>Help & documentation</strong>
       </div>
     </div>
@@ -196,8 +196,8 @@
   <section class="hero">
     <div>
       <div class="smallcaps">Research writing workspace</div>
-      <h1>Use Lumina LaTeX as a project-centered research assistant.</h1>
-      <p>Lumina combines a browser LaTeX editor, a backend TeX compiler, GitHub-backed project storage, project-scoped memory, and AI workflows for reviewing, revising, rebutting, and improving research papers.</p>
+      <h1>Use Chuvadi as a project-centered research assistant.</h1>
+      <p>Chuvadi combines a browser LaTeX editor, a backend TeX compiler, GitHub-backed project storage, project-scoped memory, and AI workflows for reviewing, revising, rebutting, and improving research papers.</p>
       <div class="callout blue"><strong>Recommended mental model:</strong> a project is more than a folder of <code>.tex</code> files. It is a GitHub workspace plus saved reports, revision history, and project memory.</div>
     </div>
     <aside class="hero-card">
@@ -243,7 +243,7 @@
 
       <section id="projects" class="card">
         <h2>Projects and memory</h2>
-        <p>A Lumina project should be treated as the unit of work for a paper or research document. When a GitHub project is loaded, Lumina restores the source files and uses the project identity to restore project-scoped memory.</p>
+        <p>A Chuvadi project should be treated as the unit of work for a paper or research document. When a GitHub project is loaded, Chuvadi restores the source files and uses the project identity to restore project-scoped memory.</p>
         <p>A project can include:</p>
         <ul>
           <li>LaTeX source files such as <code>main.tex</code>, <code>refs.bib</code>, style files, and figures.</li>
@@ -262,7 +262,7 @@
             <tr><td><strong>New Project</strong></td><td>Creates a fresh GitHub-backed project with default LaTeX files and a fresh project memory scope.</td></tr>
             <tr><td><strong>Open Project</strong></td><td>Opens an existing project in its last saved state. Project files, reports, and memory are restored for the selected workspace.</td></tr>
             <tr><td><strong>Save Project</strong></td><td>Commits the current source files and project artifacts to GitHub. Use the save-comment field to describe the change.</td></tr>
-            <tr><td><strong>Import Project</strong></td><td>Imports an existing set of files. If the imported files do not contain Lumina metadata or memory, they start with empty project memory.</td></tr>
+            <tr><td><strong>Import Project</strong></td><td>Imports an existing set of files. If the imported files do not contain Chuvadi metadata or memory, they start with empty project memory.</td></tr>
             <tr><td><strong>Export zip</strong></td><td>Downloads a zip of the current project files.</td></tr>
             <tr><td><strong>Revert version</strong></td><td>Allows returning to an older GitHub revision when supported by the GitHub backend.</td></tr>
           </tbody>
@@ -283,7 +283,7 @@
 
       <section id="compile" class="card">
         <h2>Compile and preview</h2>
-        <p>Lumina now uses the backend compiler as the main compile path. The local browser WASM and TeXlyre compiler options are intentionally hidden from the normal UI.</p>
+        <p>Chuvadi now uses the backend compiler as the main compile path. The local browser WASM and TeXlyre compiler options are intentionally hidden from the normal UI.</p>
         <h3>Backend URL</h3>
         <p>The compile endpoint should end in:</p>
         <pre>.../api/lumina/latex/compile</pre>
@@ -370,7 +370,7 @@
   </div>
 
   <footer>
-    Lumina LaTeX Help · Stage 19W43 · backend compiler and project workspace documentation
+    Chuvadi Help · Stage 19W50 · backend compiler and project workspace documentation
   </footer>
 </body>
 </html>
