@@ -5,7 +5,7 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w55-paper-ai-run-status-stability-20260607-1';
+  const STAGE = 'latex-stage19w56-total-remake-visible-lai-edits-20260607-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
   let unifiedRunInFlight = false;
@@ -233,15 +233,23 @@
 
     // Total Paper Remake controls.
     if (el('documentAiOutputMode')) {
-      setValue('documentAiOutputMode', out === 'report_only' ? 'plan_only' : out === 'edits_only' ? 'edits_only' : 'plan_and_edits');
-      setValue('documentAiMode', scope === 'whole' ? 'append' : 'inplace');
+      const documentOutMode = out === 'report_only' ? 'plan_only' : out === 'edits_only' ? 'edits_only' : 'plan_and_edits';
+      // Stage 19W56: source-changing whole-paper remake must use in-place safe edits.
+      // The earlier mapping sent Whole paper -> append, which could append/replace output
+      // without paired \laiold/\lai visible change markup. For any edit-producing mode,
+      // force the Document AI engine into in-place safe-edit mode so the backend/compiler
+      // returns app-managed LatexAI change blocks.
+      const documentEditMode = documentOutMode === 'plan_only' ? 'append' : 'inplace';
+      setValue('documentAiOutputMode', documentOutMode);
+      setValue('documentAiMode', documentEditMode);
       setValue('documentAiTargetVenue', venue);
       setValue('documentAiTargetAudience', audience);
       setValue('documentAiStylePreferences', focusText);
       setChecked('documentAiUseProjectMemory', useMemory);
       setChecked('documentAiUseSelectedCollections', useCollections);
       setChecked('documentAiUseReferences', true);
-      setText('documentAiPrompt', instruction || `Goal: ${obj}. Scope: ${scope}. Focus: ${focusText}. Produce ${out.replace(/_/g, ' ')} using safe LatexAI edits when requested.`);
+      const defaultDocumentInstruction = instruction || `Goal: ${obj}. Scope: ${scope}. Focus: ${focusText}. Produce ${out.replace(/_/g, ' ')}. If this is an edit-producing whole-paper remake, return concrete LATEXAI_BLOCK_PATCH edits for the existing source, not a plain rewritten paper and not an appended prose report; the app must insert visible \\laiold/\\lai markup.`;
+      setText('documentAiPrompt', defaultDocumentInstruction);
     }
 
     // Reviewer/Rebuttal controls. -1 rounds = direct prompt/edit through Total Remake; 0 rounds = reviews/critique only; 1+ rounds include rebuttal/revise.
@@ -443,6 +451,22 @@
   }
 
 
+  function editMarkerSummary() {
+    const state = NS.State?.state || {};
+    const project = state.project || {};
+    const normalize = (p) => {
+      try { return NS.State?.normalizePath?.(p) || String(p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/'); }
+      catch (_e) { return String(p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/'); }
+    };
+    const root = normalize(project.rootFile || 'main.tex');
+    const files = Array.isArray(project.files) ? project.files : [];
+    const file = files.find((f) => normalize(f.path) === root) || files.find((f) => /\.tex$/i.test(f.path || '')) || null;
+    const text = String(file?.text ?? file?.content ?? file?.source ?? '');
+    const matches = text.match(/\\laiold\s*\{|\\lai\s*\{/g) || [];
+    return { path: normalize(file?.path || root), count: matches.length, hasMarkers: matches.length > 0 };
+  }
+
+
   async function runUnifiedPaperAi() {
     if (unifiedRunInFlight) {
       setUnifiedStatus('Paper AI is already running. Please wait for the current run to finish.');
@@ -462,18 +486,32 @@
         const fn = out === 'report_only'
           ? requireFn(service, 'runDocumentAi', 'Direct Paper AI report runner')
           : requireFn(service, 'runAndAppendDocumentAi', 'Direct Paper AI edit runner');
-        await fn();
-        if (runId === unifiedRunSerial) setUnifiedStatus('Direct Paper AI run complete. Safe edits are prepared when available.');
-        return;
+        const result = await fn();
+        if (runId === unifiedRunSerial) {
+          const markerCheck = editMarkerSummary();
+          setUnifiedStatus(out === 'report_only'
+            ? 'Direct Paper AI report run complete.'
+            : markerCheck.hasMarkers
+              ? `Direct Paper AI inserted visible \\laiold/\\lai markup (${markerCheck.count} marker block(s)).`
+              : `Direct Paper AI completed, but no visible \\laiold/\\lai markup was found in ${markerCheck.path}. Check the Total Paper Remake output; the safe compiler may have blocked or returned non-marked edits.`);
+        }
+        return result;
       }
       if (obj === 'remake') {
         const service = NS.DocumentAIService;
         const fn = out === 'report_only'
           ? requireFn(service, 'runDocumentAi', 'Total remake report runner')
           : requireFn(service, 'runAndAppendDocumentAi', 'Total remake edit runner');
-        await fn();
-        if (runId === unifiedRunSerial) setUnifiedStatus('Total remake run complete.');
-        return;
+        const result = await fn();
+        if (runId === unifiedRunSerial) {
+          const markerCheck = editMarkerSummary();
+          setUnifiedStatus(out === 'report_only'
+            ? 'Total remake report run complete.'
+            : markerCheck.hasMarkers
+              ? `Total remake inserted visible \\laiold/\\lai markup (${markerCheck.count} marker block(s)).`
+              : `Total remake completed, but no visible \\laiold/\\lai markup was found in ${markerCheck.path}. Check Total Paper Remake output; no source-changing edit was applied.`);
+        }
+        return result;
       }
       if (obj === 'quality') {
         const service = NS.ReviewerRebuttalSimulatorService;
