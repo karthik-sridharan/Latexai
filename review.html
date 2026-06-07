@@ -91,21 +91,23 @@
 </div>
 <script>
 (()=>{
-const STAGE='latex-stage19v5-v8-review-corpus-trajectory-filters-editor-logging-20260602-1';
-const LS_API='luminaLiteratureApiBase';
+const STAGE='latex-stage19w57-review-corpus-base-diagnostics-20260607-1';
+const LS_API='luminaReviewCorpusApiBase';
+const LS_ROOT='luminaReviewCorpusBackendRoot';
 const LS_TOKEN='luminaIngestToken';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function normalizeApi(v){v=String(v||'').trim().replace(/\/+$/,''); if(!v)return ''; if(v.endsWith('/api/lumina'))return v; const idx=v.indexOf('/api/lumina/'); if(idx>=0)return v.slice(0,idx)+'/api/lumina'; if(v.endsWith('/api'))return v+'/lumina'; return v+'/api/lumina'}
+function rootFromApi(v){v=normalizeApi(v); return v.replace(/\/api\/lumina$/,'')}
 function scanForApi(){const p=new URLSearchParams(location.search); if(p.get('api'))return normalizeApi(p.get('api')); const stored=localStorage.getItem(LS_API); if(stored)return normalizeApi(stored); for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i); const v=String(localStorage.getItem(k)||''); const m=v.match(/https:\/\/[^"'\s]+\.run\.app(?:\/api\/lumina(?:\/[A-Za-z0-9_\-/]+)?)?/); if(m)return normalizeApi(m[0]);} return location.origin.includes('github.io')?'':normalizeApi(location.origin+'/api/lumina')}
 function api(){return normalizeApi($('apiBase').value)}
 function token(){return String($('token').value||'').trim()}
 function headers(){const h={'Content-Type':'application/json'}; if(token())h['x-lumina-ingest-token']=token(); return h}
 function setBox(id,msg,cls='note'){const el=$(id); if(el){el.className=cls; el.innerHTML=msg}}
 function debug(obj){$('debugOut').textContent=typeof obj==='string'?obj:JSON.stringify(obj,null,2)}
-async function post(path,payload){const base=api(); if(!base)throw new Error('Set backend API base first.'); const r=await fetch(base+path,{method:'POST',headers:headers(),body:JSON.stringify(payload||{})}); const txt=await r.text(); let data={}; try{data=txt?JSON.parse(txt):{}}catch(e){data={raw:txt}} if(!r.ok)throw new Error(data?.detail||data?.error?.message||txt||('HTTP '+r.status)); return data}
-async function get(path){const base=api(); if(!base)throw new Error('Set backend API base first.'); const r=await fetch(base+path,{headers:headers()}); const txt=await r.text(); let data={}; try{data=txt?JSON.parse(txt):{}}catch(e){data={raw:txt}} if(!r.ok)throw new Error(data?.detail||data?.error?.message||txt||('HTTP '+r.status)); return data}
-function saveSettings(){localStorage.setItem(LS_API,api()); localStorage.setItem(LS_TOKEN,token()); setBox('statusBox','Saved settings for this browser.','note good')}
+async function post(path,payload){const base=api(); if(!base)throw new Error('Set backend API base first.'); const url=base+path; let r; try{r=await fetch(url,{method:'POST',headers:headers(),body:JSON.stringify(payload||{})})}catch(e){throw new Error('Load failed for '+url+'. Check exact Cloud Run URL and CORS ALLOWED_ORIGINS.')} const txt=await r.text(); let data={}; try{data=txt?JSON.parse(txt):{}}catch(e){data={raw:txt}} if(!r.ok)throw new Error(data?.detail||data?.error?.message||txt||('HTTP '+r.status+' at '+url)); return data}
+async function get(path){const base=api(); if(!base)throw new Error('Set backend API base first.'); const url=base+path; let r; try{r=await fetch(url,{headers:headers()})}catch(e){throw new Error('Load failed for '+url+'. Check exact Cloud Run URL and CORS ALLOWED_ORIGINS.')} const txt=await r.text(); let data={}; try{data=txt?JSON.parse(txt):{}}catch(e){data={raw:txt}} if(!r.ok)throw new Error(data?.detail||data?.error?.message||txt||('HTTP '+r.status+' at '+url)); return data}
+function saveSettings(){const a=api(); localStorage.setItem(LS_API,a); localStorage.setItem(LS_ROOT,rootFromApi(a)); localStorage.setItem(LS_TOKEN,token()); setBox('statusBox','Saved Review Corpus settings for this browser.<br><span class="mono">'+esc(a)+'</span>','note good')}
 async function status(){try{const data=await get('/reviews/status'); debug(data); const st=data.storage||{}; setBox('statusBox',`Backend ok.<br><span class="mono">${esc(data.stage||'')}</span><br>Review records: ${esc(st.recordCount||0)} · storage: ${esc(st.backend||'')}`,'note good')}catch(e){setBox('statusBox','Backend check failed: '+esc(e.message),'note bad')}}
 function payload(){return{venueId:$('venueId').value.trim(),submissionInvitation:$('submissionInvitation').value.trim(),forumId:$('forumId').value.trim(),apiVersion:$('apiVersion').value,limit:Number($('limit').value||25),offset:Number($('offset').value||0),includeAlreadyIngested:$('includeAlreadyIngested').checked,embed:$('embedItems').checked,strictEmbeddings:$('strictEmbeddings').checked}}
 function counts(rec){const m=(rec.metadata&&rec.metadata.itemCounts)||{}; const get=k=>Number(m[k]||0); return {reviews:get('official_review'), rebuttals:get('rebuttal'), meta:get('meta_review'), decisions:get('decision'), comments:get('comment')}}

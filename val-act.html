@@ -47,7 +47,7 @@
   <header>
     <div>
       <h1>LatexAI value/action policy lab</h1>
-      <div class="stage">Stage 19W12 — OpenReview-derived value/action policy foundation</div>
+      <div class="stage">Stage 19W57 — OpenReview-derived value/action policy foundation</div>
     </div>
     <div class="stage mono" id="stageLabel">not connected</div>
   </header>
@@ -112,14 +112,18 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const DEFAULT_BACKEND = localStorage.getItem('luminaBackendUrl') || localStorage.getItem('latexaiBackendUrl') || '';
+  function rootBackend(v) { v = String(v || '').trim().replace(/\/+$/, ''); return v.replace(/\/api\/lumina$/,''); }
+  const qs = new URLSearchParams(location.search);
+  const DEFAULT_BACKEND = rootBackend(qs.get('backend') || qs.get('api') || localStorage.getItem('luminaReviewCorpusBackendRoot') || localStorage.getItem('luminaBackendUrl') || localStorage.getItem('latexaiBackendUrl') || '');
   $('backendUrl').value = DEFAULT_BACKEND;
-  function base() { return ($('backendUrl').value || '').replace(/\/+$/, ''); }
+  function base() { return rootBackend($('backendUrl').value || ''); }
   function showRaw(obj) { $('raw').textContent = JSON.stringify(obj, null, 2); }
   function setSummary(html) { $('summary').innerHTML = html; }
   async function api(path, opts={}) {
     const url = base() + path;
-    const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...opts });
+    let res;
+    try { res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...opts }); }
+    catch (e) { throw new Error('Load failed for '+url+'. Use the review-corpus backend root and check CORS.'); }
     const txt = await res.text();
     let json;
     try { json = JSON.parse(txt); } catch { json = { ok:false, status:res.status, text:txt }; }
@@ -128,7 +132,7 @@
   }
   function pills(items, kind='') { return (items||[]).map(x => `<span class="pill ${kind}">${String(x)}</span>`).join(' '); }
   function blankSplit(s) { return String(s || '').split(/\n\s*\n/g).map(x=>x.trim()).filter(Boolean); }
-  $('saveBackend').onclick = () => { localStorage.setItem('luminaBackendUrl', base()); localStorage.setItem('latexaiBackendUrl', base()); setSummary('Saved backend URL.'); };
+  $('saveBackend').onclick = () => { localStorage.setItem('luminaReviewCorpusBackendRoot', base()); localStorage.setItem('luminaBackendUrl', base()); localStorage.setItem('latexaiBackendUrl', base()); setSummary('Saved backend URL: <span class="mono">'+base()+'</span>'); };
   $('statusBtn').onclick = async () => {
     try {
       const j = await api('/api/lumina/val-act/status');
