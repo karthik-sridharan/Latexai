@@ -474,7 +474,9 @@ function typeBadge(t){
 document.getElementById('addNodeBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('addNodeBtn');
   const statusEl = document.getElementById('addNodeStatus');
+  const editId = document.getElementById('nodeTitle').dataset.editId || null;
   const node = {
+    ...(editId ? {node_id: editId} : {}),
     title: document.getElementById('nodeTitle').value.trim(),
     node_type: document.getElementById('nodeType').value,
     statement: document.getElementById('nodeStatement').value.trim(),
@@ -491,6 +493,11 @@ document.getElementById('addNodeBtn').addEventListener('click', async ()=>{
     const d = await api('POST','/api/kg/nodes', node);
     const saved = d.nodes?.[0];
     setStatus(statusEl,`✓ Saved node ${saved?.node_id||'?'} — embedded: ${saved?.embedded}. Copy ID: ${saved?.node_id||'?'}`,'good');
+    // Reset edit mode
+    document.getElementById('nodeTitle').dataset.editId = '';
+    const saveBtn = document.getElementById('addNodeBtn');
+    saveBtn.textContent = 'Save node + embed';
+    saveBtn.style.background = '';
   }catch(e){
     setStatus(statusEl,'Error: '+e.message,'bad');
   }finally{ hideSpinner(btn); }
@@ -498,6 +505,11 @@ document.getElementById('addNodeBtn').addEventListener('click', async ()=>{
 document.getElementById('clearNodeBtn').addEventListener('click',()=>{
   ['nodeTitle','nodeStatement','nodePaperId','nodePageRef','nodeSubfield','nodeYear'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nodeConf').value='1.0';
+  document.getElementById('nodeTitle').dataset.editId = '';
+  const saveBtn = document.getElementById('addNodeBtn');
+  saveBtn.textContent = 'Save node + embed';
+  saveBtn.style.background = '';
+  document.getElementById('addNodeStatus').style.display = 'none';
 });
 
 // ── Add edge ──────────────────────────────────────────────────────────────────
@@ -587,6 +599,7 @@ function renderNodeCard(n, showCopyId=true){
       ${showCopyId?`<button class="btn sm" onclick="copyId('${esc(n.node_id)}')">Copy ID</button>`:''}
       <button class="btn sm" onclick="loadNeighborhood('${esc(n.node_id)}')">Neighborhood</button>
       <button class="btn sm" onclick="prefillEdgeSrc('${esc(n.node_id)}')">Use as edge src</button>
+      <button class="btn sm" onclick="editNode(${JSON.stringify(n).replace(/"/g,'&quot;')})">Edit</button>
       <button class="btn sm danger" onclick="deleteNode('${esc(n.node_id)}', '${esc(n.title||'this node')}')">Delete</button>
     </div>
   </div>`;
@@ -612,6 +625,32 @@ async function deleteEdge(id){
     document.getElementById('browseEdgesBtn').click();
     document.getElementById('refreshStatsBtn').click();
   }catch(e){ alert('Delete failed: ' + e.message); }
+}
+
+function editNode(n){
+  // Pre-fill the Add node form with existing node data
+  document.getElementById('nodeTitle').value = n.title || '';
+  document.getElementById('nodeType').value = n.node_type || 'theorem';
+  document.getElementById('nodeStatement').value = n.statement || '';
+  document.getElementById('nodePaperId').value = n.paper_id || '';
+  document.getElementById('nodePageRef').value = n.page_ref || '';
+  document.getElementById('nodeSubfield').value = n.subfield || '';
+  document.getElementById('nodeYear').value = n.year || '';
+  document.getElementById('nodeConf').value = n.confidence != null ? n.confidence : 1.0;
+  document.getElementById('nodeProvenance').value = n.provenance || 'real';
+  // Store node_id so the upsert updates rather than creates
+  document.getElementById('nodeTitle').dataset.editId = n.node_id;
+  // Switch to Add node tab
+  switchToTab('add');
+  switchToSubtab('node');
+  // Update button label to indicate edit mode
+  const btn = document.getElementById('addNodeBtn');
+  btn.textContent = 'Update node + re-embed';
+  btn.style.background = 'linear-gradient(135deg,#059669,#0d9488)';
+  document.getElementById('addNodeStatus').style.display = 'none';
+  // Show a note
+  const statusEl = document.getElementById('addNodeStatus');
+  setStatus(statusEl, 'Editing node: ' + (n.title||n.node_id) + ' — make changes and click Update.', 'info');
 }
 function prefillEdgeSrc(id){ document.getElementById('edgeSrc').value=id; switchToTab('add'); switchToSubtab('edge'); }
 function loadNeighborhood(id){ document.getElementById('vizNodeId').value=id; switchToTab('viz'); document.getElementById('vizBtn').click(); }
