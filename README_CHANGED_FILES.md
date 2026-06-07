@@ -1,4 +1,6 @@
-# Changed files — Stage 19W54
+# Changed files — Stage 19W52
 
-- `index.html` — restored top-bar links to `literature.html` and `review.html` while keeping Chuvadi frontend package separate from the standalone pages.
-- `README_STAGE19W54_LINKED_TOPBAR_SEPARATED_BACKENDS.md`
+- `index.html`
+- `help.html`
+- `README_STAGE19W52_LITERATURE_LINK_LABEL.md`
+- `README_CHANGED_FILES.md`

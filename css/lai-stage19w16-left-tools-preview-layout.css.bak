@@ -1,0 +1,319 @@
+/* LatexAI Stage 19W19: left tool tabs with Audit AI, Figures, Presentation + large right preview/logs.
+   Goal: left panel owns navigation/tools, center editor and right preview/logs
+   have Overleaf/Prism-like comparable scale. */
+:root {
+  --stage19w16-left-min: 285px;
+  --stage19w16-left-max: 350px;
+}
+
+.workspace {
+  grid-template-columns: minmax(var(--stage19w16-left-min), var(--stage19w16-left-max)) minmax(420px, 1fr) minmax(420px, 1fr) !important;
+  gap: .9rem !important;
+}
+
+.left-panel.stage19w16-left-tools,
+.right-panel.stage19w16-preview-logs-only {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.left-panel.stage19w16-left-tools {
+  padding: .72rem;
+}
+
+.stage19w16-left-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .35rem;
+  padding: .35rem;
+  margin-bottom: .65rem;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 18px;
+  background: rgba(241,245,249,.82);
+  flex: 0 0 auto;
+}
+
+.stage19w16-left-tab {
+  min-height: 2.05rem;
+  padding: .42rem .34rem;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-size: .76rem;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.stage19w16-left-tab.active {
+  color: #174ea6;
+  border-color: rgba(47,111,237,.25);
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15,23,42,.08);
+}
+
+.stage19w16-left-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stage19w16-left-tool-panel {
+  display: none;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: .15rem;
+}
+
+.stage19w16-left-tool-panel.active {
+  display: flex !important;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+#leftProjectTab.stage19w16-left-tool-panel.active {
+  display: flex !important;
+}
+
+.left-panel.stage19w16-left-tools .project-card,
+.left-panel.stage19w16-left-tools .outline-card {
+  width: 100%;
+}
+
+.left-panel.stage19w16-left-tools .file-tree {
+  max-height: 32vh;
+}
+
+.stage19w16-tool-note {
+  padding: .58rem .68rem;
+  border: 1px solid rgba(47,111,237,.14);
+  background: rgba(47,111,237,.07);
+  border-radius: 14px;
+  color: #174ea6;
+  font-size: .8rem;
+  line-height: 1.35;
+}
+
+.right-panel.stage19w16-preview-logs-only {
+  padding: .75rem;
+}
+
+.right-panel.stage19w16-preview-logs-only .right-tabs,
+.right-panel.stage19w16-preview-logs-only .right-tabs.stage19w10-primary-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  flex: 0 0 auto;
+}
+
+.right-panel.stage19w16-preview-logs-only > .right-tab-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.right-panel.stage19w16-preview-logs-only > .right-tab-panel.active {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.right-panel.stage19w16-preview-logs-only #previewTab.active,
+.right-panel.stage19w16-preview-logs-only #logsTab.active {
+  height: 0;
+}
+
+.right-panel.stage19w16-preview-logs-only .draft-preview,
+.right-panel.stage19w16-preview-logs-only .pdf-preview {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  height: 100%;
+  width: 100%;
+}
+
+.right-panel.stage19w16-preview-logs-only .pdf-preview {
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.right-panel.stage19w16-preview-logs-only .log-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stage19w16-left-tool-panel .right-panel-organizer-toolbar {
+  margin-top: 0;
+}
+
+.stage19w16-left-tool-panel .right-panel-group {
+  width: 100%;
+}
+
+/* The old right-tab panels are now left-tool panels. Keep their content visible
+   only through the left tool tab controller, not the preview/log controller. */
+.left-panel.stage19w16-left-tools .right-tab-panel {
+  padding-top: 0;
+}
+
+@media (max-width: 1320px) {
+  .workspace {
+    grid-template-columns: minmax(270px, 330px) minmax(380px, 1fr) minmax(380px, 1fr) !important;
+    gap: .7rem !important;
+  }
+  .stage19w16-left-tab { font-size: .72rem; padding-left: .2rem; padding-right: .2rem; }
+}
+
+@media (max-width: 1040px) {
+  .workspace { grid-template-columns: 1fr !important; }
+  .left-panel.stage19w16-left-tools,
+  .editor-panel,
+  .right-panel.stage19w16-preview-logs-only { min-height: 560px; }
+}
+
+
+/* Stage 19W17: Audit AI Edits lives inside Copilot, not as a top-level left tab. */
+.stage19w17-copilot-audit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  margin-top: .7rem;
+  padding-top: .7rem;
+  border-top: 1px solid rgba(15,23,42,.10);
+}
+
+.stage19w17-copilot-audit-wrap .paper-ai-polish-card {
+  margin-top: 0;
+}
+
+.stage19w16-left-tabs [data-left-tool-tab="audit"] {
+  display: none !important;
+}
+
+
+/* Stage 19W18: left tabs are Project, Audit AI, Paper AI, Literature, Figures,
+   Presentation, Context/MCTS, Settings.  Audit AI keeps only edit auditing and
+   history/comments; direct prompting is now Paper AI rounds = -1. */
+.left-panel.stage19w16-left-tools .stage19w16-left-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#copilotTab.stage19w18-audit-ai-only .stage19w18-core-copilot-hidden,
+#rightPanelGroup-copilot-core-copilot,
+#rightPanelGroup-copilot-presentation {
+  display: none !important;
+}
+
+#copilotTab.stage19w18-audit-ai-only > .section-head.compact {
+  margin-bottom: .15rem;
+}
+
+#copilotTab.stage19w18-audit-ai-only > .section-head.compact .smallcaps::after {
+  content: "";
+}
+
+#assetsTab.stage19w16-left-tool-panel.active,
+#leftPresentationTab.stage19w16-left-tool-panel.active {
+  display: flex !important;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+#assetsTab .asset-panel,
+#leftPresentationTab .presentation-export-card {
+  width: 100%;
+}
+
+#stage19w18AuditHistoryWrap:empty::after {
+  content: "History and comment cards will appear here after the relevant services load.";
+  display: block;
+  padding: .65rem .75rem;
+  border-radius: 14px;
+  background: rgba(241,245,249,.8);
+  color: #64748b;
+  font-size: .8rem;
+}
+
+
+/* Stage 19W19: Paper AI has one visible title.  The outer shell heading from
+   older layouts is hidden so the unified card is the only Paper AI title. */
+#paperAiTab > .section-head.compact,
+#paperAiTab > .settings-note.compact,
+.stage19w19-paper-ai-shell-heading-hidden,
+.stage19w19-paper-ai-shell-note-hidden {
+  display: none !important;
+}
+
+/* Stage 19W19: Audit AI uses explicit subtabs, not legacy organizer drawers. */
+#copilotTab.stage19w19-audit-ai-tab #rightPanelOrganizerToolbar-copilot,
+#copilotTab.stage19w19-audit-ai-tab .right-panel-group[data-group-tab="copilot"] {
+  display: none !important;
+}
+
+.stage19w19-audit-ai-shell {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  min-height: 0;
+}
+
+.stage19w19-audit-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .35rem;
+  padding: .3rem;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 16px;
+  background: rgba(241,245,249,.82);
+  flex: 0 0 auto;
+}
+
+.stage19w19-audit-tab {
+  min-height: 2rem;
+  padding: .42rem .35rem;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-size: .76rem;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.stage19w19-audit-tab.active {
+  color: #174ea6;
+  border-color: rgba(47,111,237,.25);
+  box-shadow: 0 8px 22px rgba(15,23,42,.08);
+}
+
+.stage19w19-audit-panel {
+  display: none;
+  min-height: 0;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.stage19w19-audit-panel.active {
+  display: flex !important;
+}
+
+#stage19w19AuditEditsPanel:empty::after,
+#stage19w19AuditHistoryPanel:empty::after {
+  display: block;
+  padding: .65rem .75rem;
+  border-radius: 14px;
+  background: rgba(241,245,249,.8);
+  color: #64748b;
+  font-size: .8rem;
+}
+
+#stage19w19AuditEditsPanel:empty::after {
+  content: "Audit AI Edits tools will appear here after the edit-audit service loads.";
+}
+
+#stage19w19AuditHistoryPanel:empty::after {
+  content: "History and comments will appear here after the revision/comment services load.";
+}

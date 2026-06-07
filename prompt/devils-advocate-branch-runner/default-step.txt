@@ -8,4 +8,4 @@ Prior debate transcript:
 {{transcript}}
 
 Return a concise, actionable result for the next agent.
-Important: Do not output literal final \lai{...} or \laiold{...} blocks. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final patch blocks.
+Important: Do not output Latexai internal change-marker macros. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final raw patch blocks.

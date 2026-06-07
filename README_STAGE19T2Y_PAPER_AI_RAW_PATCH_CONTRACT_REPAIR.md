@@ -1,4 +1,4 @@
-# Stage 19T2Z — Paper AI raw-patch contract repair
+# Stage 19T3A — Paper AI raw-patch contract repair
 
 Frontend hardening for paper-level AI after the Stage 19T2W all-feature raw-patch rewiring.
 

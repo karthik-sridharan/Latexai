@@ -13,6 +13,13 @@ Memory ids to use: {{memoryIds}}
 
 {{equationCoverageContext}}
 
+Explicit appendix request active: {{appendixRequestActive}}
+{{appendixRequestContext}}
+
+Explicit named section creation request active: {{sectionCreationRequestActive}}
+Requested named section title: {{requestedBodySectionTitle}}
+{{sectionCreationRequestContext}}
+
 Paper summary:
 {{paperSummary}}
 

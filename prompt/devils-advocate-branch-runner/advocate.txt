@@ -11,8 +11,8 @@ Prior debate transcript:
 Round-specific advocate task:
 - If this is round 1, defend the current draft where reasonable, identify the best interpretation of its contribution, and propose minimal revision directions that address the critique without overstating claims.
 - If this is round 2 or later, respond directly to the latest critic points, defend what is defensible, concede what should be fixed, and propose precise revision directions that preserve the paper's strongest claims.
-- Do not output final \lai blocks; leave final visible edits to the editor agent.
+- Do not output final patch blocks; leave final raw patch edits to the editor agent.
 
 Return a concise defense plus a list of concrete revision directions for each requested target section/unit.
 Do not write the final paper edit yet.
-Important: Do not output literal final \lai{...} or \laiold{...} blocks. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final patch blocks.
+Important: Do not output Latexai internal change-marker macros. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final raw patch blocks.

@@ -1,67 +1,51 @@
 # Stage 18A — Model routing audit + validation lock
 
-Stage string:
+Stage string: `stage18a-model-routing-audit-validation-lock-1`
 
-```txt
-stage18a-model-routing-audit-validation-lock-1
-```
+This stage does not add another duplicate model-selection UI. It stabilizes and audits the model selectors that already exist.
 
-This stage does **not** duplicate the existing model selectors. Instead, it audits and hardens the model routing already present in Latexai.
+## Main changes
 
-## What changed
+- Adds `ModelRegistryService`, a central provider/model registry.
+- Fetches backend `/api/lumina/models` and `/api/lumina/ai/status` when available.
+- Repairs unsupported or stale frontend model choices before an AI request is sent.
+- Converts workflow route model fields to controlled dropdowns rather than free-text fields.
+- Adds explicit route keys for:
+  - default/copilot,
+  - paper-level AI,
+  - citations,
+  - presentation export,
+  - figures/TikZ,
+  - slide repair,
+  - diagnostics,
+  - competitive ranking,
+  - competitive improvement,
+  - devil’s advocate supporter,
+  - devil’s advocate critic,
+  - devil’s advocate synthesis.
+- Devil’s Advocate per-agent model selectors are now validated by role-specific routes.
+- Competitive Review declares the `competitive-improvement` route for its AI call.
+- The AI request body now includes `context.modelRoutingAudit` with requested/final provider/model and fallback reason.
+- The backend now exposes model registry metadata and falls back to an allowed model instead of throwing `Unsupported model for ...` for model-name mismatches.
+- The AI routing inspector now reports model registry information and registry repair notes.
 
-- Added a central frontend `ModelRegistryService`.
-- Added backend `/api/lumina/models` and richer `/api/lumina/ai/status` model metadata.
-- Added validation/repair for unsupported provider/model selections before AI calls.
-- Added request-level `modelRoutingAudit` metadata so each AI call records the requested model, final model, route key, and fallback reason.
-- Added route keys for:
-  - default / Copilot
-  - paper-level AI
-  - citation AI
-  - presentation export
-  - figure/TikZ generation
-  - slide repair
-  - diagnostics
-  - competitive review ranking
-  - competitive review improvement
-  - Devil’s Advocate supporter
-  - Devil’s Advocate critic
-  - Devil’s Advocate synthesis
-- Converted Devil’s Advocate agent model text fields into registry-backed selects.
-- Preserved the explicit per-agent model routing bypass so the generic paper route does not override individual debate agents.
-- Competitive Review now uses the `competitive-improvement` route key for the improvement workflow.
-- The backend no longer hard-fails unsupported model aliases where a safe allowed fallback exists; it returns `modelFallback` metadata instead.
+## Expected behavior
+
+If a stale route or agent row contains an unsupported model such as `gpt-4.1` on a backend that only allows `gpt-4.1-mini`, the request should be repaired to the backend default/allowed model and the repair should be visible in the model routing audit/report rather than stopping the workflow.
 
 ## Files changed
 
 - `index.html`
-- `css/lai-stage18a-model-registry.css`
+- `js/ai-provider.js`
+- `js/copilot.js`
+- `js/feature-flag-service.js`
 - `js/model-registry-service.js`
 - `js/model-provider-service.js`
-- `js/ai-provider.js`
 - `js/ai-routing-inspector-service.js`
-- `js/competitive-paper-review-service.js`
 - `js/devils-advocate-debate-service.js`
-- `js/feature-flag-service.js`
+- `js/competitive-paper-review-service.js`
 - `js/right-panel-organizer-service.js`
+- `css/lai-stage18a-model-registry.css`
 - `server.mjs`
 - `backend/server.mjs`
 - `tests/stage18a-model-routing-audit-validation-lock.test.cjs`
-
-## Expected visual behavior
-
-In Settings, the **AI / Model configuration** area should now include:
-
-- Backend model registry
-- Model/provider routing
-- AI model routing inspector
-
-Devil’s Advocate should show provider/model dropdowns for the supporter, critic, and synthesis agents.
-
-## Expected safety behavior
-
-If a workflow tries to use an unsupported model, Latexai should repair to a supported model and expose the fallback in routing diagnostics instead of stopping with an error like:
-
-```txt
-Unsupported model for openai: gpt-4.1
-```

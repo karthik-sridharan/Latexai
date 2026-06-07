@@ -1,4 +1,4 @@
-Mode: In-place with LAI comments.
+Mode: In-place exact source edits with frontend-managed change markers.
 
 Return JSON only. Do not return Markdown fences, prose, or LaTeX outside JSON.
 
@@ -19,6 +19,6 @@ Rules:
 - Each oldText must be an exact substring of the corresponding file in the project context.
 - Do not invent file paths.
 - Prefer small section/subsection/paragraph-sized edits.
-- Do not include \lai{...} in newText; the frontend will wrap newText in \lai{...}.
-- Do not comment out oldText yourself; the frontend will preserve oldText as LAI-OLD comments.
+- Do not include Latexai internal change-marker macros in newText; the frontend/backend will add all change markers deterministically.
+- Do not comment out oldText yourself; the frontend/backend will preserve old content using deterministic change markers.
 - If you are not confident, return {"edits":[],"summary":"No safe exact edits found."}.

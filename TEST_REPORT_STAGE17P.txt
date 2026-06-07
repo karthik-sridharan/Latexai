@@ -1,7 +1,7 @@
 Latexai test report
 ===================
 
-Stage: stage17p-right-panel-action-row-containment-1
+Stage: stage17s-lai-insertion-safety-1
 
 Commands run:
 - node --check js/competitive-paper-review-service.js

@@ -1,0 +1,732 @@
+<!-- LATEXAI_STAGE19E4_OPEN_GITHUB_LEFT_PANEL_HARD_REFRESH -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lumina LaTeX Editor</title>
+<script>
+(function(){
+  window.LUMINA_LATEX_BOOT_ERRORS=[];
+  window.LUMINA_LATEX_STAGE='latex-stage19w20-audit-ai-header-subtab-stability-20260604-1';
+  try{
+    var p=new URLSearchParams(location.search);
+    if(p.has('clearLuminaStorage')){
+      Object.keys(localStorage).forEach(function(k){
+        var low=String(k).toLowerCase();
+        if(low.indexOf('lumina-latex')>=0 || low.indexOf('latex-editor')>=0){ localStorage.removeItem(k); }
+      });
+      sessionStorage.setItem('lumina-latex-storage-cleared','1');
+    }
+  }catch(e){ window.LUMINA_LATEX_BOOT_ERRORS.push('Storage clear check failed: '+(e.message||e)); }
+  window.luminaLatexBootError=function(message){ window.LUMINA_LATEX_BOOT_ERRORS.push(String(message)); };
+  window.addEventListener('error',function(event){
+    var where=event.filename?(' at '+event.filename.split('/').slice(-1)[0]+':'+event.lineno+':'+event.colno):'';
+    window.luminaLatexBootError((event.message||'Script error')+where);
+  });
+  window.addEventListener('unhandledrejection',function(event){
+    window.luminaLatexBootError('Unhandled promise rejection: '+(event.reason&&(event.reason.stack||event.reason.message||event.reason)||'unknown'));
+  });
+  window.addEventListener('DOMContentLoaded',function(){
+    setTimeout(function(){
+      if(!window.LUMINA_LATEX_BOOT_ERRORS.length)return;
+      var box=document.createElement('pre');
+      box.className='boot-error-box';
+      box.textContent='Lumina LaTeX startup error(s):\n\n'+window.LUMINA_LATEX_BOOT_ERRORS.join('\n\n');
+      document.body.appendChild(box);
+    },650);
+  });
+})();
+</script>
+<link rel="stylesheet" href="css/styles.css?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" />
+<link rel="stylesheet" href="css/lai-stage18f-editor-enhancements.css?v=stage18l-shortcut-manager-full-width-layout-1" />
+<link rel="stylesheet" href="css/lai-stage5e-layout.css?v=stage5g-selectable-pdf-text-layer-1" />
+<link rel="stylesheet" href="css/lai-stage6-selection.css?v=stage8b-source-display-sync-fix-1" />
+<link rel="stylesheet" href="css/lai-stage7a-selection-action-bubble.css?v=stage7c-move-selection-bubble-left-1" />
+<link rel="stylesheet" href="css/lai-stage7d-pdf-region-selection.css?v=stage7d-pdf-region-selection-1" />
+<link rel="stylesheet" href="css/lai-stage8a-assets.css?v=stage8a-asset-service-image-figures-1" />
+<link rel="stylesheet" href="css/lai-stage8e-figure-editor.css?v=stage8e-native-figure-editor-1" />
+<link rel="stylesheet" href="css/lai-stage9a-tikz-maker.css?v=stage9a-ai-tikz-maker-1" />
+<link rel="stylesheet" href="css/lai-stage10a-image-to-tikz.css?v=stage10i-insert-raw-returned-tikz-figure-1" />
+<link rel="stylesheet" href="css/lai-stage11a-document-ai.css?v=stage11g-resolve-laiold-lai-edits-1" />
+<link rel="stylesheet" href="css/lai-stage12a-citation-ai.css?v=stage12a-ai-citation-filler-1" />
+<link rel="stylesheet" href="css/lai-stage12b-citation-verifier.css?v=stage12f-clickable-link-panel-fix-1" />
+<link rel="stylesheet" href="css/lai-stage13a-presentation-export.css?v=stage13g-talk-package-validator-zip-1" />
+<link rel="stylesheet" href="css/lai-stage14a-compile-root.css?v=stage14a-active-standalone-compile-root-1" />
+<link rel="stylesheet" href="css/lai-stage14b-path-fixer.css?v=stage14b-standalone-path-fixer-1" />
+<link rel="stylesheet" href="css/lai-stage15a-ui-cleanup.css?v=stage15d-freeze-hotfix-disable-ui-cleanup-1" />
+<link rel="stylesheet" href="css/lai-stage15e-safe-mode.css?v=stage15e-safe-mode-recovery-1" />
+<link rel="stylesheet" href="css/lai-stage15j-feature-flags.css?v=stage15j-feature-flag-registry-guarded-loader-1" />
+<link rel="stylesheet" href="css/lai-stage16a-paper-ai-polish.css?v=stage17u-right-panel-horizontal-review-scroll-1" />
+<link rel="stylesheet" href="css/lai-stage16b-competitive-review.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
+<link rel="stylesheet" href="css/lai-stage16d-devils-debate.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
+<link rel="stylesheet" href="css/lai-stage16e-ai-revision-history.css?v=stage16e-ai-revision-history-1" />
+<link rel="stylesheet" href="css/lai-stage16f-ai-comments.css?v=stage16f-ai-suggestion-comments-1" />
+<link rel="stylesheet" href="css/lai-stage17c-paper-ai-dashboard.css?v=stage17c-paper-ai-dashboard-1" />
+<link rel="stylesheet" href="css/lai-stage17d-left-panel-layout.css?v=stage17d-left-panel-layout-fix-1" />
+<link rel="stylesheet" href="css/lai-stage17ef-ai-reports-browser.css?v=stage17ef-unified-ai-reports-browser-1" />
+<link rel="stylesheet" href="css/lai-stage17i-ai-routing-inspector.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
+<link rel="stylesheet" href="css/lai-stage17j-right-panel-sections.css?v=stage17u-right-panel-horizontal-review-scroll-1" />
+<link rel="stylesheet" href="css/lai-stage19n0-real-agent-branch-workflow.css?v=stage19t2s-end-to-end-regression-audit-panel-1" />
+<link rel="stylesheet" href="css/lai-stage15f-backend-diagnostics.css?v=stage15f-backend-diagnostics-dashboard-1" />
+<link rel="stylesheet" href="css/lai-stage15g-model-routing.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
+<link rel="stylesheet" href="css/lai-stage18a-model-registry.css?v=stage18x6-memory-cors-ipad-fetch-fix-1" />
+<link rel="stylesheet" href="css/lai-stage15h-regression-checklist.css?v=stage15h-in-app-regression-checklist-1" />
+<link rel="stylesheet" href="css/lai-stage15i-release-verify.css?v=stage15i-release-deploy-verifier-1" />
+<link rel="stylesheet" href="css/lai-stage19w10-workflow-tabs.css?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" />
+<link rel="stylesheet" href="css/lai-stage19w16-left-tools-preview-layout.css?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" />
+<script src="js/safe-mode-service.js?v=stage18f-editor-syntax-shortcuts-recovery-token-1"></script>
+<script src="js/feature-flag-service.js?v=stage19c-clean-new-project-github-repo-workflow-1"></script>
+</head>
+<body>
+<div class="app-shell" data-stage="stage19w20-audit-ai-header-subtab-stability-20260604-1">
+  <header class="topbar">
+    <div class="brand-block">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="smallcaps">Lumina LaTeX</div>
+        <h1>Web LaTeX Editor</h1>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="newProjectBtn" class="btn ghost" type="button">New project</button>
+      <button id="openGithubProjectBtn" class="btn ghost" type="button">Open GitHub</button>
+      <a id="literatureAssistantBtn" class="btn ghost" href="literature.html" target="_blank" rel="noopener">Literature Assistant</a>
+      <button id="saveProjectBtn" class="btn ghost" type="button">Save local</button>
+      <button id="importFilesBtn" class="btn ghost" type="button">Import</button>
+      <button id="exportZipBtn" class="btn ghost" type="button">Export zip</button>
+      <button id="compileBtn" class="btn primary" type="button">Compile PDF</button>
+      <button id="cancelCompileBtn" class="btn ghost hidden" type="button">Cancel compile</button>
+      <input id="importFileInput" class="hidden" type="file" multiple accept=".tex,.bib,.cls,.sty,.json,.txt,.md,.png,.jpg,.jpeg,.pdf" />
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="left-panel panel">
+      <section class="panel-section project-card">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Project</div>
+            <h2 id="projectTitleDisplay">Untitled LaTeX Project</h2>
+          </div>
+          <button id="renameProjectBtn" class="icon-btn" type="button" title="Rename project">✎</button>
+        </div>
+        <div class="project-meta">
+          <span id="autosaveStatus">Autosaved locally</span>
+          <span id="stageBadge">latex-stage1f</span>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Files</div>
+            <h2>Source tree</h2>
+          </div>
+          <button id="newFileBtn" class="icon-btn" type="button" title="New file">＋</button>
+        </div>
+        <div id="fileTree" class="file-tree" role="tree"></div>
+        <div class="micro-actions">
+          <button id="addTemplateBtn" class="btn mini" type="button">Add template</button>
+          <button id="downloadActiveBtn" class="btn mini" type="button">Download file</button>
+        </div>
+      </section>
+
+      <section class="panel-section outline-card">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Outline</div>
+            <h2>Document map</h2>
+          </div>
+        </div>
+        <div id="outlineList" class="outline-list"></div>
+      </section>
+    </aside>
+
+    <section class="editor-panel panel">
+      <div class="editor-toolbar">
+        <div class="active-file-info">
+          <span class="file-pill" id="activeFilePill">main.tex</span>
+          <span id="cursorStatus">Ln 1, Col 1</span>
+        </div>
+        <div class="toolbar-actions">
+          <button id="formatTexBtn" class="btn mini" type="button">Soft format</button>
+          <button id="wrapSelectionBtn" class="btn mini" type="button">Wrap selection</button>
+          <button id="togglePreviewBtn" class="btn mini" type="button">Refresh preview</button>
+        </div>
+      </div>
+      <div class="source-shell">
+        <pre id="lineGutter" class="line-gutter" aria-hidden="true">1</pre>
+        <textarea id="sourceEditor" spellcheck="false" aria-label="LaTeX source editor"></textarea>
+      </div>
+    </section>
+
+    <aside class="right-panel panel">
+      <div class="right-tabs stage19w10-primary-tabs" role="tablist" aria-label="Right panel tabs">
+        <button class="right-tab active" data-right-tab="preview" type="button">Preview</button>
+        <button class="right-tab" data-right-tab="logs" type="button">Logs</button>
+      </div>
+
+      <section id="previewTab" class="right-tab-panel active">
+        <div class="section-head preview-head">
+          <div>
+            <div class="smallcaps">Preview</div>
+            <h2>Draft / PDF</h2>
+          </div>
+          <div class="preview-mode-toggle" aria-label="Preview mode">
+            <button id="showDraftPreviewBtn" class="seg active" type="button">Draft</button>
+            <button id="showPdfPreviewBtn" class="seg" type="button">PDF</button>
+          </div>
+        </div>
+        <div id="draftPreview" class="draft-preview"></div>
+        <iframe id="pdfPreview" class="pdf-preview hidden" title="Compiled PDF preview"></iframe>
+      </section>
+
+      <section id="logsTab" class="right-tab-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Diagnostics</div>
+            <h2>Compile and app logs</h2>
+          </div>
+          <button id="copyDiagnosticsBtn" class="btn mini" type="button">Copy diagnostics</button>
+        </div>
+        <div id="compileStatusCard" class="compile-status-card" aria-live="polite">
+          <div class="compile-status-row">
+            <strong id="compileStatusText">Idle</strong>
+            <span id="compileJobIdText">No compile job</span>
+          </div>
+          <div class="compile-progress-track"><div id="compileProgressBar" class="compile-progress-bar" style="width:0%"></div></div>
+        </div>
+        <div id="problemList" class="problem-list"></div>
+        <pre id="logPanel" class="log-panel">No compile has been run yet.</pre>
+      </section>
+
+      <section id="copilotTab" class="right-tab-panel copilot-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Audit AI</div>
+            <h2>Audit AI</h2>
+          </div>
+        </div>
+        <div class="settings-note compact">Review, resolve, comment on, and clean up AI edit markup. Direct prompt/edit work now lives in Paper AI with review/debate rounds = −1.</div>
+        <div class="field-grid two">
+          <label class="field">Provider
+            <select id="aiProvider" data-lumina-ai-provider>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Claude / Anthropic</option>
+              <option value="gemini">Gemini / Google</option>
+            </select>
+          </label>
+          <label class="field">Model
+            <select id="aiModel" data-lumina-ai-model></select>
+          </label>
+          <label class="field">Custom model override, optional
+            <input id="aiCustomModel" data-lumina-ai-custom-model type="text" placeholder="Disabled: choose a currently available model from the dropdown" />
+          </label>
+        </div>
+        <label class="field">Workflow
+          <select id="copilotTask">
+            <option value="fix-error-patch">Fix current compile error as patch</option>
+            <option value="explain-log">Explain compile log</option>
+            <option value="rewrite-selection-patch">Rewrite selected LaTeX as patch</option>
+            <option value="insert-section-patch">Draft section and insert</option>
+            <option value="beamer-outline-patch">Create Beamer outline</option>
+            <option value="table-helper-patch">Create table / align environment</option>
+            <option value="raw-advice">General LaTeX advice</option>
+          </select>
+        </label>
+        <div id="copilotContextChips" class="context-chips" aria-live="polite"></div>
+        <label class="field">Prompt
+          <textarea id="copilotPrompt" rows="5" placeholder="Ask for a theorem rewrite, table, proof sketch, Beamer frame, bibliography fix, etc."></textarea>
+        </label>
+        <div class="micro-actions stretch">
+          <button id="askCopilotBtn" class="btn primary" type="button">Ask Copilot</button>
+          <button id="previewCopilotPatchBtn" class="btn mini" type="button">Preview patch</button>
+          <button id="insertCopilotBtn" class="btn mini" type="button">Insert text</button>
+          <button id="replaceCopilotBtn" class="btn mini" type="button">Replace selection</button>
+        </div>
+        <div id="patchReview" class="patch-review hidden" aria-live="polite">
+          <div class="patch-review-head">
+            <div>
+              <div class="smallcaps">Patch preview</div>
+              <strong id="patchMeta">No patch proposed</strong>
+            </div>
+            <div class="micro-actions">
+              <button id="applyCopilotPatchBtn" class="btn mini primary" type="button">Apply patch</button>
+              <button id="discardCopilotPatchBtn" class="btn mini" type="button">Discard</button>
+            </div>
+          </div>
+          <p id="patchSummary" class="patch-summary"></p>
+          <pre id="patchDiff" class="patch-diff"></pre>
+        </div>
+
+        <div id="reviewerRebuttalCard" class="devils-debate-card reviewer-rebuttal-card" data-stage18q6-static="true">
+          <div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Reviewer / rebuttal simulator</h2></div></div>
+          <p class="devils-help">Simulate 2–4 configurable reviewers, write a rebuttal with your guidance, then synthesize a final revision plan.</p>
+          <div class="field-grid two">
+            <label class="field">Reviewer count <select id="reviewerSimCount"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
+            <label class="field">Target venue <input id="reviewerSimVenue" type="text" placeholder="e.g. NeurIPS, COLT, JMLR" /></label>
+          </div>
+          <label class="field">Paper goal / intended contribution <input id="reviewerSimGoal" type="text" placeholder="Optional: what the paper is trying to establish" /></label>
+          <label class="field">Global review instructions <textarea id="reviewerSimInstructions" rows="2" placeholder="Optional: ask reviewers to be very critical, focus on theory, compare to a venue, etc."></textarea></label>
+          <div class="settings-card-subtle knowledge-context-controls" data-knowledge-feature="reviewerSim">
+            <div class="field-grid two">
+              <label class="field checkbox-field"><input id="reviewerSimUseKnowledge" type="checkbox" /> Use knowledge/literature context</label>
+              <label class="field">Knowledge topK <input id="reviewerSimKnowledgeTopK" type="number" min="1" max="12" step="1" value="5" /></label>
+            </div>
+            <div id="reviewerSimKnowledgeStatus" class="settings-note compact">Knowledge/literature context is off. Enable it to retrieve relevant ingested-library papers before reviewers run.</div>
+          </div>
+          <div class="settings-card-subtle review-corpus-context-controls">
+            <div class="field-grid two compact">
+              <label class="field checkbox-field"><input id="reviewerSimUseReviewCorpus" type="checkbox" /> Use OpenReview review/rebuttal corpus context</label>
+              <label class="field">Review corpus topK <input id="reviewerSimReviewCorpusTopK" type="number" min="1" max="12" step="1" value="5" /></label>
+            </div>
+            <div id="reviewerSimReviewCorpusStatus" class="settings-note compact">Review/rebuttal corpus context is off.</div>
+          </div>
+          <div id="reviewerSimRows" class="devils-agent-grid"></div>
+          <label class="field">Your rebuttal guidance after reading reviews <textarea id="reviewerSimRebuttalGuidance" rows="3" placeholder="Optional: tell the rebuttal agent what to concede, defend, emphasize, or promise to revise."></textarea></label>
+          <div class="devils-actions">
+            <button id="runReviewerSimBtn" class="btn mini primary" type="button">Run reviews</button>
+            <button id="generateReviewerRebuttalBtn" class="btn mini" type="button">Generate rebuttal</button>
+            <button id="synthesizeReviewerFinalBtn" class="btn mini" type="button">Synthesize final revision</button>
+            <button id="runReviewerFullLoopBtn" class="btn mini" type="button">Run full loop</button>
+            <button id="cancelReviewerSimBtn" class="btn mini" type="button">Cancel</button>
+            <button id="copyReviewerSimBtn" class="btn mini" type="button">Copy report</button>
+          </div>
+          <div class="settings-note">Stage 19U9L2 keeps reviewer/rebuttal workflows memory-scoped and can optionally use OpenReview review/rebuttal corpus examples for realistic reviewer concerns and author-response strategies. It produces reviews, rebuttal, and a final revision proposal; it does not overwrite source.</div>
+          <div id="reviewerRebuttalStatus" class="settings-note">Reviewer/rebuttal simulator loading...</div>
+          <pre id="reviewerRebuttalOutput" class="devils-output"></pre>
+        </div>
+
+        <pre id="copilotOutput" class="copilot-output">Copilot responses will appear here.</pre>
+      </section>
+
+      <section id="paperAiTab" class="right-tab-panel stage19w10-paper-ai-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Paper AI</div>
+            <h2>Goal-driven Paper AI</h2>
+          </div>
+        </div>
+        <div class="settings-note compact">Configure one unified paper-improvement run. Review/rebuttal, Devil's Advocate, competitive ranking, and total remake are controlled by the settings below; diagnostics are under Settings → Developer / diagnostics when <code>?debug=1</code>.</div>
+        <div id="paperWorkflowUnifiedPane" class="stage19w14-unified-paper-ai-pane active" data-workflow-pane="unified">
+          <div id="stage19w14UnifiedPaperAiControls" class="stage19w14-unified-paper-ai-card settings-card-subtle">
+            <div class="section-head compact"><div><div class="smallcaps">Paper AI</div><h2>Goal-driven Paper AI</h2></div></div>
+            <p class="settings-note compact">One unified Paper AI workflow. Choose an objective, scope, review/debate depth, and output mode. Report + edits and edits-only modes require safe <code>\laiold</code>/<code>\lai</code> edit proposals.</p>
+            <div class="field-grid two compact">
+              <label class="field">Objective
+                <select id="stage19w14Objective">
+                  <option value="quality" selected>Improve quality / acceptance probability</option>
+                  <option value="ranking">Improve ranking against competitor papers</option>
+                  <option value="stress">Stress-test with adversarial critique</option>
+                  <option value="remake">Full remake / reorganization</option>
+                  <option value="combined">Combined: review + adversarial + competitive</option>
+                </select>
+              </label>
+              <label class="field">Scope
+                <select id="stage19w14Scope">
+                  <option value="whole" selected>Whole paper</option>
+                  <option value="selected">Current section / selected text</option>
+                  <option value="salient">Most salient weak blocks</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-grid two compact">
+              <label class="field">Review/debate rounds
+                <select id="stage19w14Rounds">
+                  <option value="-1">−1 — direct prompt/edit, no review</option>
+                  <option value="0" selected>0 — critique/review only</option>
+                  <option value="1">1 — review + response/revision</option>
+                  <option value="2">2 — multi-round debate</option>
+                  <option value="3">3 — deeper debate</option>
+                </select>
+              </label>
+              <label class="field">Output mode
+                <select id="stage19w14OutputMode">
+                  <option value="report_only">Report only</option>
+                  <option value="edits_only">Edits only</option>
+                  <option value="report_and_edits" selected>Report + edits</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-grid two compact">
+              <label class="field">Improvement focus
+                <select id="stage19w14Focus">
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="ideas">Ideas / novelty / positioning</option>
+                  <option value="writing">Writing / organization / clarity</option>
+                  <option value="math">Math / assumptions / notation / proof clarity</option>
+                  <option value="citations">Citations / related work</option>
+                </select>
+              </label>
+              <label class="field">Search budget
+                <select id="stage19w14Budget">
+                  <option value="fast">Fast</option>
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="deep">Deep / expensive</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-grid two compact">
+              <label class="field">Reviewer / critic count <select id="stage19w14ReviewerCount"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option></select></label>
+              <label class="field">Target venue <input id="stage19w14TargetVenue" type="text" placeholder="e.g. COLT, NeurIPS, JMLR" /></label>
+            </div>
+            <label class="field">Target audience <input id="stage19w14TargetAudience" type="text" placeholder="e.g. ML theory reviewers, broad ML audience" /></label>
+            <label class="field stage19w14-competitor-field">Competitor papers / URLs / notes <textarea id="stage19w14Competitors" rows="3" placeholder="One URL per line, or paste titles/abstracts/notes. Used only for ranking or combined objectives."></textarea></label>
+            <label class="field">Instructions / focal request <textarea id="stage19w14Instructions" rows="3" placeholder="Example: strengthen novelty positioning, tighten proof assumptions, improve related work, preserve theorem statements."></textarea></label>
+            <details class="stage19w14-advanced"><summary>Advanced context and engine settings</summary>
+              <div class="field-grid two compact">
+                <label class="field checkbox-field"><input id="stage19w14UseProjectMemory" type="checkbox" checked /> Use project memory</label>
+                <label class="field checkbox-field"><input id="stage19w14UseCollections" type="checkbox" checked /> Use selected collections / literature</label>
+                <label class="field checkbox-field"><input id="stage19w14UseReviewCorpus" type="checkbox" /> Use OpenReview examples</label>
+                <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show internal legacy engine cards (debug)</label>
+              </div>
+            </details>
+            <div id="stage19w14Status" class="settings-note compact">Unified Paper AI ready. Choose an objective and click Run Paper AI.</div>
+            <div class="micro-actions stretch devils-actions compact">
+              <button id="stage19w14RunBtn" class="btn mini primary" type="button">Run Paper AI</button>
+              <button id="stage19w14PreviewBtn" class="btn mini" type="button">Preview / sync settings</button>
+              <button id="stage19w14ApplyBtn" class="btn mini" type="button">Apply latest safe edits</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="literatureTab" class="right-tab-panel stage19w10-literature-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Literature / Citations</div>
+            <h2>Specialized literature tools</h2>
+          </div>
+        </div>
+        <div class="settings-note compact">Citation AI and local citation verifier live here. Collection ingestion/search remains in the standalone Literature Assistant.</div>
+        <div class="micro-actions stretch">
+          <a class="btn mini primary" href="literature.html" target="_blank" rel="noopener">Open Literature Assistant</a>
+          <a class="btn mini" href="review.html" target="_blank" rel="noopener">Open Review Corpus</a>
+        </div>
+        <div id="literatureCitationPane" class="stage19w10-workflow-pane active"><div class="settings-note compact">Citation AI cards will appear here.</div></div>
+      </section>
+
+      <section id="projectTab" class="right-tab-panel stage19w10-project-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Project Context</div>
+            <h2>Block context and MCTS-lite</h2>
+          </div>
+        </div>
+        <div class="settings-note compact">Project block parsing, block-local literature/OpenReview matches, citation suggestions, related-work plans, and MCTS-lite live here.</div>
+        <div id="projectContextPane" class="stage19w10-workflow-pane active"><div class="settings-note compact">Project block context card will appear here.</div></div>
+      </section>
+
+      <section id="settingsTab" class="right-tab-panel">
+        <div class="section-head compact">
+          <div>
+            <div class="smallcaps">Settings</div>
+            <h2>Backend URLs and compile settings</h2>
+          </div>
+        </div>
+        <div class="settings-note">Stage 19C2 keeps AI generation, memory storage, compile routing, and GitHub sync as separate services. Backend/API settings are preserved when creating a new project.</div>
+        <label class="field">AI backend proxy URL
+          <input id="aiProxyUrl" data-lumina-ai-proxy-url type="url" value="https://lumina-latex-backend-zugntkn2la-ue.a.run.app/api/lumina/ai" placeholder="https://your-ai-backend.example.com/api/lumina/ai" />
+        </label>
+        <label class="field">AI proxy token, optional
+          <input id="aiProxyToken" data-lumina-ai-proxy-token type="password" autocomplete="off" placeholder="Optional bearer token for AI backend" />
+        </label>
+        <label class="field">Memory backend URL
+          <input id="memoryBackendUrl" data-lumina-memory-backend-url type="url" value="https://lumina-latex-backend-zugntkn2la-ue.a.run.app" placeholder="https://your-memory-backend.example.com or https://.../api/lumina/memory" />
+        </label>
+        <label class="field">Memory proxy token, optional
+          <input id="memoryProxyToken" data-lumina-memory-proxy-token type="password" autocomplete="off" placeholder="Optional bearer token for memory backend" />
+        </label>
+        <div id="memoryBackendStatusCard" class="backend-status-card memory-status-card">
+          <div>
+            <div class="smallcaps">Memory backend status</div>
+            <strong id="memoryBackendStatusText">Not checked</strong>
+            <p id="memoryBackendStatusDetail">Use Test memory backend after setting the Neon-backed memory URL. This writes one harmless diagnostics scope so you can verify memory from an iPad without browser console.</p>
+          </div>
+          <button id="testMemoryBackendBtn" class="btn mini" type="button">Test memory backend</button>
+        </div>
+        <label class="field">GitHub backend URL
+          <input id="githubBackendUrl" data-lumina-github-backend-url type="url" value="https://lumina-github-sync-backend-y4piylmfja-ue.a.run.app/api/lumina/github" placeholder="https://your-github-backend.example.com/api/lumina/github" />
+        </label>
+        <div class="settings-note">The GitHub backend is separate from AI, memory, and compile. It is used only for GitHub load/commit and automatic repository creation from New project.</div>
+        <label class="field">Compile backend URL
+          <input id="compileProxyUrl" type="url" value="/api/lumina/latex/compile" placeholder="https://your-compile-backend.example.com/api/lumina/latex/compile" />
+        </label>
+        <div id="backendStatusCard" class="backend-status-card">
+          <div>
+            <div class="smallcaps">Backend status</div>
+            <strong id="backendStatusText">Not checked</strong>
+            <p id="backendStatusDetail">Use Test backend after setting a compile URL.</p>
+          </div>
+          <button id="testCompileBackendBtn" class="btn mini" type="button">Test backend</button>
+        </div>
+        <label class="field">Compile proxy token, optional
+          <input id="compileProxyToken" type="password" autocomplete="off" placeholder="Optional bearer token for backend compile" />
+        </label>
+        <label class="field">Compiler provider
+          <select id="compilerModeSelect">
+            <option value="backend-texlive">Backend TeX Live</option>
+            <option value="mock-draft">Mock draft check</option>
+            <option value="browser-wasm">Browser WASM: SwiftLaTeX experimental</option>
+            <option value="browser-wasm-texlyre">Browser WASM: TeXlyre BusyTeX experimental</option>
+          </select>
+        </label>
+        <div id="wasmStatusCard" class="backend-status-card wasm-status-card">
+          <div>
+            <div class="smallcaps">Browser engine status</div>
+            <strong id="wasmStatusText">Not checked</strong>
+            <p id="wasmStatusDetail">Browser-WASM compile uses SwiftLaTeX-compatible assets in the browser. Click Test browser engine after setting the asset folder.</p>
+          </div>
+          <button id="testBrowserWasmBtn" class="btn mini" type="button">Test browser engine</button>
+        </div>
+        <label class="field">Browser-WASM asset folder
+          <input id="browserWasmAssetBase" type="text" value="vendor/swiftlatex/pdftex/" placeholder="vendor/swiftlatex/pdftex/" />
+        </label>
+        <label class="field">SwiftLaTeX TeXLive-on-demand endpoint
+          <input id="browserWasmTexliveEndpoint" type="url" value="https://texlive.swiftlatex.com/" placeholder="https://texlive.swiftlatex.com/" />
+        </label>
+        <label class="field checkbox-field">
+          <input id="browserWasmReuseCheck" type="checkbox" checked />
+          Reuse SwiftLaTeX engine after first load (faster repeat compiles)
+        </label>
+        <div id="texlyreStatusCard" class="backend-status-card wasm-status-card">
+          <div>
+            <div class="smallcaps">TeXlyre BusyTeX status</div>
+            <strong id="texlyreStatusText">Not checked</strong>
+            <p id="texlyreStatusDetail">TeXlyre BusyTeX can compile in the browser after the module and BusyTeX assets are configured. Click Test TeXlyre after adding assets.</p>
+          </div>
+          <button id="testTexlyreBtn" class="btn mini" type="button">Test TeXlyre</button>
+        </div>
+        <label class="field">TeXlyre module URL
+          <input id="texlyreModuleUrl" type="text" value="https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js" placeholder="https://cdn.jsdelivr.net/npm/texlyre-busytex@1.1.1/dist/index.js or vendor/texlyre/texlyre-busytex/dist/index.js" />
+        </label>
+        <label class="field">TeXlyre BusyTeX asset base
+          <input id="texlyreBusytexBase" type="text" value="vendor/texlyre/core/busytex" placeholder="vendor/texlyre/core/busytex" />
+        </label>
+        <label class="field checkbox-field">
+          <input id="texlyreReuseCheck" type="checkbox" checked />
+          Reuse TeXlyre runner after first load (faster repeat compiles)
+        </label>
+        <label class="field checkbox-field">
+          <input id="texlyreUseWorkerCheck" type="checkbox" />
+          Use TeXlyre Web Worker mode (experimental; disabled on Safari/iPad in this hotfix)
+        </label>
+        <button id="resetTexlyreDirectModeBtn" class="btn mini" type="button">Reset TeXlyre to direct mode</button>
+        <div class="field-grid two">
+          <label class="field">Root file
+            <select id="rootFileSelect"></select>
+          </label>
+          <label class="field">Engine
+            <select id="engineSelect">
+              <option value="pdflatex">pdfLaTeX</option>
+              <option value="xelatex">XeLaTeX</option>
+              <option value="lualatex">LuaLaTeX</option>
+              <option value="latexmk">latexmk auto</option>
+            </select>
+          </label>
+        </div>
+        <label class="field checkbox-field">
+          <input id="shellEscapeCheck" type="checkbox" />
+          Allow shell escape (disabled on static fallback unless backend permits it)
+        </label>
+        <label class="field checkbox-field">
+          <input id="compileJobsCheck" type="checkbox" checked />
+          Use job-based compile pipeline with status polling
+        </label>
+        <label class="field">Compile poll interval
+          <select id="compilePollSelect">
+            <option value="600">Fast, 0.6s</option>
+            <option value="1000" selected>Normal, 1s</option>
+            <option value="2000">Conservative, 2s</option>
+          </select>
+        </label>
+        <div class="settings-note">
+          Static GitHub Pages can run the editor and draft preview. Stage 1G keeps the real backend runner and adds TeXlyre BusyTeX browser-WASM compile; use Test backend to confirm that your TeX Live backend is reachable before compiling. Default relative /api URLs still fall back to draft validation on static hosts.
+        </div>
+        <div class="settings-note">
+          Reserved sync contract remains <code>POST /api/lumina/projects/:projectId</code> and <code>WS /ws/lumina/projects/:projectId</code>. Compile jobs use <code>POST /api/lumina/latex/compile/jobs</code>, <code>GET /api/lumina/latex/compile/jobs/:jobId</code>, and optional event-stream hooks.
+        </div>
+        <button id="openOverleafBtn" class="btn ghost" type="button">Open root in Overleaf</button>
+        <button id="runAppDiagnosticsBtn" class="btn ghost stage19w10-debug-only" type="button">Run app diagnostics</button>
+        <div id="developerDiagnosticsSection" class="stage19w10-developer-diagnostics stage19w10-debug-only">
+          <div class="section-head compact"><div><div class="smallcaps">Developer</div><h2>Developer / diagnostics</h2></div></div>
+          <div class="settings-note compact">Hidden in normal mode. Add <code>?debug=1</code> to the URL to show AI dashboard, regression checks, context-policy logs, route probes, and other diagnostic cards.</div>
+          <div id="developerDiagnosticsCards" class="stage19w10-debug-card-host"></div>
+        </div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="js/app-kernel.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/project-model.js?v=stage9f-tikz-source-root-compile-fix-1" defer></script>
+<script src="js/project-store.js?v=stage3j-full-project-guard-1" defer></script>
+<script src="js/sync-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/editor-adapter.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/preview-adapter.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/browser-wasm-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/texlyre-busytex-provider.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/compiler-provider.js?v=stage17x-compile-log-diagnostics-surfacing-1" defer></script>
+<script src="js/ai-provider.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1" defer></script>
+<script src="js/backend-url-settings-service.js?v=stage19n1q8-normalized-ai-proxy-url-1" defer></script>
+<script src="js/research-memory-extraction-service.js?v=stage19c-clean-new-project-github-repo-workflow-1" defer></script>
+<script src="js/state.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
+<script src="js/reward-logging-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
+<script src="js/ai-workflow-memory-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
+<script src="js/debate-trajectory-logging-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
+<script src="js/high-value-ai-outcome-memory-service.js?v=stage19k-memory-feedback-loop-1" defer></script>
+<script src="js/editor.js?v=stage4j-always-visible-lai-guard-1" defer></script>
+<script src="js/editor-enhancement-service.js?v=stage18l-shortcut-manager-full-width-layout-1" defer></script>
+<script src="js/file-tree.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
+<script src="js/preview.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/import-export.js?v=latex-stage1g-texlyre-bibtex-auto-hotfix-20260428-1" defer></script>
+<script src="js/selection-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
+<script src="js/source-display-sync.js?v=stage8b-source-display-sync-fix-1" defer></script>
+<script src="js/patch-service.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
+<script src="js/patch-manager.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
+<script src="js/copilot.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
+<script src="js/selection-action-bubble.js?v=stage7c-move-selection-bubble-left-1" defer></script>
+<script src="js/diagnostics.js?v=stage18x6-memory-cors-ipad-fetch-fix-1" defer></script>
+<script src="js/main.js?v=stage19i11-ai-workflow-memory-wiring-completion-1" defer></script>
+<script src="js/lai-stage5e-panel-scroll-pdf-viewer.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
+<script src="js/pdf-region-selection-service.js?v=stage7d-pdf-region-selection-1" defer></script>
+<script src="js/asset-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
+<script src="js/tikz-maker-service.js?v=stage9h-tikz-cursor-regex-fix-1" defer></script>
+<script src="js/image-to-tikz-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
+<script src="js/lai-safe-edit-pipeline-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
+<script src="js/knowledge-context-service.js?v=stage19u9k-paper-ai-collection-context-wiring-1" defer></script>
+<script src="js/collection-synthesis-paper-ai-service.js?v=stage19w15-copilot-audit-edits-cleanup-20260604-1" defer></script>
+<script src="js/document-ai-service.js?v=stage19v2-document-ai-outmode-startup-fix-20260602-1" defer></script>
+<script type="application/latexai-feature-script" data-feature="paper-ai-polish" data-src="js/paper-ai-polish-service.js?v=stage19w15-copilot-audit-edits-cleanup-20260604-1"></script>
+<script type="application/latexai-feature-script" data-feature="competitive-review" data-src="js/competitive-paper-review-service.js?v=stage19u9a-literature-add-to-collection-click-fix-1"></script>
+<script type="application/latexai-feature-script" data-feature="devils-advocate-debate" data-src="js/devils-advocate-debate-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
+<script type="application/latexai-feature-script" data-feature="reviewer-rebuttal-simulator" data-src="js/reviewer-rebuttal-simulator-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1"></script>
+<script type="application/latexai-feature-script" data-feature="ai-revision-history" data-src="js/ai-revision-history-service.js?v=stage16e-ai-revision-history-1"></script>
+<script type="application/latexai-feature-script" data-feature="ai-suggestion-comments" data-src="js/ai-suggestion-comments-service.js?v=stage16f-ai-suggestion-comments-1"></script>
+<script type="application/latexai-feature-script" data-feature="paper-ai-dashboard" data-src="js/paper-ai-dashboard-service.js?v=stage17c-paper-ai-dashboard-1"></script>
+<script type="application/latexai-feature-script" data-feature="ai-reports-browser" data-src="js/ai-report-service.js?v=stage17ef-unified-ai-reports-browser-1"></script>
+<script type="application/latexai-feature-script" data-feature="model-registry" data-src="js/model-registry-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
+<script type="application/latexai-feature-script" data-feature="ai-routing-inspector" data-src="js/ai-routing-inspector-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
+<script type="application/latexai-feature-script" data-feature="citation-ai" data-src="js/citation-ai-service.js?v=stage12c-missing-bibtex-repair-1"></script>
+<script type="application/latexai-feature-script" data-feature="citation-verifier" data-src="js/citation-verifier-service.js?v=stage12f-clickable-link-panel-fix-1"></script>
+<script type="application/latexai-feature-script" data-feature="presentation-export" data-src="js/presentation-export-service.js?v=stage13g-talk-package-validator-zip-1"></script>
+<script type="application/latexai-feature-script" data-feature="compile-root-service" data-src="js/compile-root-service.js?v=stage14a-active-standalone-compile-root-1"></script>
+<script type="application/latexai-feature-script" data-feature="standalone-path-fixer" data-src="js/standalone-path-service.js?v=stage14b-standalone-path-fixer-1"></script>
+<script type="application/latexai-feature-script" data-feature="ui-cleanup" data-src="js/ui-cleanup-service.js?v=stage15ef-safe-mode-backend-diagnostics-1"></script>
+<script type="application/latexai-feature-script" data-feature="backend-diagnostics" data-src="js/backend-diagnostics-service.js?v=stage18x6-memory-cors-ipad-fetch-fix-1"></script>
+<script type="application/latexai-feature-script" data-feature="model-routing" data-src="js/model-provider-service.js?v=stage19n1r-devils-output-saved-runs-learned-branch-bundle-1"></script>
+<script type="application/latexai-feature-script" data-feature="regression-checklist" data-src="js/regression-checklist-service.js?v=stage15h-in-app-regression-checklist-1"></script>
+<script type="application/latexai-feature-script" data-feature="release-verifier" data-src="js/release-verify-service.js?v=stage15i-release-deploy-verifier-1"></script>
+<script type="application/latexai-feature-script" data-feature="right-panel-organizer" data-src="js/right-panel-organizer-service.js?v=stage19w20-audit-ai-header-subtab-stability-20260604-1"></script>
+<script src="js/real-agent-branch-workflow-service.js?v=stage19t2s-end-to-end-regression-audit-panel-1" defer></script>
+<script src="js/figure-editor-service.js?v=stage8g-figure-insert-caret-capture-fix-1" defer></script>
+<script id="stage18a-right-panel-organizer-fallback">
+/* LATEXAI_STAGE18A_RIGHT_PANEL_ORGANIZER_FALLBACK_LOADER: load organizer if the feature loader cache, saved flags, or older deployed query string are stale. */
+window.addEventListener('DOMContentLoaded', function () {
+  setTimeout(function () {
+    try {
+      if (window.LuminaLatex && window.LuminaLatex.RightPanelOrganizerService) {
+        if (window.LuminaLatex.RightPanelOrganizerService.init) window.LuminaLatex.RightPanelOrganizerService.init();
+        return;
+      }
+      var existing = document.querySelector('script[src*="right-panel-organizer-service.js"]');
+      if (existing && existing.dataset.stage18aFallbackLoaded === 'true') return;
+      var s = document.createElement('script');
+      s.src = 'js/right-panel-organizer-service.js?v=stage19w20-audit-ai-header-subtab-stability-20260604-1';
+      s.defer = true;
+      s.dataset.stage18aFallbackLoaded = 'true';
+      document.body.appendChild(s);
+    } catch (err) {
+      try {
+        (window.LUMINA_LATEX_BOOT_ERRORS = window.LUMINA_LATEX_BOOT_ERRORS || []).push('Stage 18A organizer fallback failed: ' + (err && (err.message || err)));
+      } catch (_ignored) {}
+    }
+  }, 900);
+});
+</script>
+
+<script id="stage18q5-reviewer-rebuttal-safe-mode-mount-fix">
+(function () {
+  var SRC = 'js/reviewer-rebuttal-simulator-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1';
+  function service() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
+  function card() { return document.getElementById('reviewerRebuttalCard'); }
+  function tryInit() {
+    try {
+      var svc = service();
+      if (svc && typeof svc.init === 'function') svc.init();
+      return !!card();
+    } catch (err) {
+      try { (window.LUMINA_LATEX_BOOT_ERRORS = window.LUMINA_LATEX_BOOT_ERRORS || []).push('Stage 18Q3 reviewer/rebuttal init failed: ' + (err && (err.message || err))); } catch (_ignored) {}
+      return false;
+    }
+  }
+  function inject(force) {
+    if (tryInit()) return;
+    if (!force && document.querySelector('script[src*="reviewer-rebuttal-simulator-service.js"]')) return;
+    var s = document.createElement('script');
+    s.src = SRC + (force ? '&force=' + Date.now() : '');
+    s.defer = true;
+    s.dataset.feature = 'reviewer-rebuttal-simulator';
+    s.dataset.loadedBy = force ? 'stage18q4-force-fallback' : 'stage18q4-fallback';
+    s.onload = function () { setTimeout(tryInit, 100); };
+    s.onerror = function () {
+      try { (window.LUMINA_LATEX_BOOT_ERRORS = window.LUMINA_LATEX_BOOT_ERRORS || []).push('Stage 18Q4 failed to load reviewer-rebuttal-simulator-service.js'); } catch (_ignored) {}
+    };
+    document.body.appendChild(s);
+  }
+  window.mountReviewerRebuttalSimulator = function () {
+    if (!tryInit()) inject(true);
+    return !!card();
+  };
+  function boot() {
+    setTimeout(function(){ inject(false); }, 700);
+    setTimeout(function(){ if (!card()) inject(true); }, 2200);
+    setTimeout(function(){ if (!card()) tryInit(); }, 3800);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
+})();
+</script>
+
+<script id="stage18q5-reviewer-rebuttal-mount-watchdog">
+(function () {
+  function card() { return document.getElementById('reviewerRebuttalCard'); }
+  function svc() { return window.LuminaLatex && window.LuminaLatex.ReviewerRebuttalSimulatorService; }
+  function init() {
+    try {
+      var service = svc();
+      if (service && typeof service.init === 'function') service.init();
+    } catch (err) {
+      try { (window.LUMINA_LATEX_BOOT_ERRORS = window.LUMINA_LATEX_BOOT_ERRORS || []).push('Stage 18Q5 reviewer/rebuttal watchdog init failed: ' + (err && (err.message || err))); } catch (_ignored) {}
+    }
+    return !!card();
+  }
+  function loadFresh() {
+    if (card()) return;
+    var s = document.createElement('script');
+    s.src = 'js/reviewer-rebuttal-simulator-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1' + Date.now();
+    s.defer = true;
+    s.dataset.loadedBy = 'stage18q5-watchdog';
+    s.onload = function () { setTimeout(init, 100); };
+    document.body.appendChild(s);
+  }
+  function boot() {
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries += 1;
+      if (init() || tries >= 12) clearInterval(timer);
+      if (tries === 4 && !card()) loadFresh();
+    }, 500);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
+})();
+</script>
+
+<script src="js/project-block-context-service.js?v=stage19w12-val-act-policy-foundation-20260602-1" defer></script>
+<script src="js/context-policy-dashboard-service.js?v=stage19w9-context-policy-logging-dashboard-20260602-1" defer></script>
+<script src="js/stage19w10-workflow-tabs-service.js?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" defer></script>
+<script src="js/stage19w16-left-tool-tabs-service.js?v=stage19w20-audit-ai-header-subtab-stability-20260604-1" defer></script>
+</body>
+</html>

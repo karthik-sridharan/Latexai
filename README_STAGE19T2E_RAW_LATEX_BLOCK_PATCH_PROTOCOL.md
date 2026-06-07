@@ -1,6 +1,6 @@
 # Stage 19T2E — Raw LaTeX Block Patch Protocol Frontend
 
-Expected frontend stage: `latex-stage19t2e-raw-latex-block-patch-protocol-20260530-1`.
+Expected frontend stage: `latex-stage19t2f-equation-anchor-safe-insertions-20260530-1`.
 
 The Devil's Advocate editor prompt now asks for raw LaTeX patch blocks rather than JSON strings containing LaTeX. This preserves backslashes in equations/theorems and lets the backend deterministically wrap/validate the edits before apply.
 

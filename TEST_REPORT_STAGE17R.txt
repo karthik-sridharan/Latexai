@@ -1,0 +1,18 @@
+Latexai Stage 17R test report
+==============================
+
+Stage: stage17s-lai-insertion-safety-1
+
+Checks:
+- compiler provider syntax
+- preload compiler provider syntax
+- job endpoint HTTP 400 falls back to direct compile
+- direct compile PDF payload succeeds after job fallback
+- job HTTP 400 plus direct HTTP 400 becomes a clear failed compile result
+
+Commands:
+- node --check js/compiler-provider.js
+- node --check js/compiler-provider-preload.js
+- node tests/stage17s-lai-insertion-safety.test.cjs
+
+Result: pass
