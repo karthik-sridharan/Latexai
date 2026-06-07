@@ -8,7 +8,7 @@
 <script>
 (function(){
   window.LUMINA_LATEX_BOOT_ERRORS=[];
-  window.LUMINA_LATEX_STAGE='stage19w52-literature-link-label-20260606-1';
+  window.LUMINA_LATEX_STAGE='stage19w54-linked-topbar-separated-backends-20260606-1';
   try{
     var p=new URLSearchParams(location.search);
     if(p.has('clearLuminaStorage')){
@@ -79,7 +79,7 @@
 <script src="js/feature-flag-service.js?v=stage19w51-chuvadi-kalvi-project-name-20260606-1"></script>
 </head>
 <body>
-<div class="app-shell" data-stage="stage19w52-literature-link-label-20260606-1">
+<div class="app-shell" data-stage="stage19w54-linked-topbar-separated-backends-20260606-1">
   <header class="topbar">
     <div class="brand-block">
       <div class="brand-mark">C</div>
@@ -426,9 +426,12 @@
           </div>
         </div>
         <div class="settings-note compact">Citation AI and local citation verifier live here. Collection ingestion/search remains in the Literature Survey Assistant.</div>
-        <div class="micro-actions stretch">
+        <div class="toolbar-row compact">
           <a class="btn mini primary" href="literature.html" target="_blank" rel="noopener">Open Literature Assistant</a>
           <a class="btn mini" href="review.html" target="_blank" rel="noopener">Open Review Corpus</a>
+        </div>
+        <div class="micro-actions stretch">
+          <span class="settings-note compact">Standalone literature and review corpus apps are packaged separately from this Chuvadi deployment.</span>
         </div>
         <div id="literatureCitationPane" class="stage19w10-workflow-pane active"><div class="settings-note compact">Citation AI cards will appear here.</div></div>
       </section>
@@ -574,7 +577,7 @@
 <script src="js/patch-manager.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/copilot.js?v=stage19u9a-literature-add-to-collection-click-fix-1" defer></script>
 <script src="js/diagnostics.js?v=stage19w43-help-docs-topbar-20260605-1" defer></script>
-<script src="js/main.js?v=stage19w52-literature-link-label-20260606-1" defer></script>
+<script src="js/main.js?v=stage19w53-chuvadi-standalone-clean-package-20260606-1" defer></script>
 <script src="js/lai-stage5e-panel-scroll-pdf-viewer.js?v=stage6abc-modular-selection-patchservice-1" defer></script>
 <script src="js/pdf-region-selection-service.js?v=stage7d-pdf-region-selection-1" defer></script>
 <script src="js/asset-service.js?v=stage10i-insert-raw-returned-tikz-figure-1" defer></script>
