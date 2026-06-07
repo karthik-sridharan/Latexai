@@ -5,9 +5,11 @@
   const W = window;
   const D = document;
   const NS = (W.LuminaLatex = W.LuminaLatex || {});
-  const STAGE = 'latex-stage19w20-audit-ai-header-subtab-stability-20260604-1';
+  const STAGE = 'latex-stage19w55-paper-ai-run-status-stability-20260607-1';
   const STORAGE_TAB = 'latexai:stage19w10:right-tab';
   const STORAGE_OBJECTIVE = 'latexai:stage19w14:paper-ai-objective';
+  let unifiedRunInFlight = false;
+  let unifiedRunSerial = 0;
 
   const PAPER_WORKFLOW_CARDS = {
     documentAiCard: 'paperWorkflowUnifiedPane',
@@ -189,6 +191,22 @@
     if (!node) return;
     node.classList.toggle('stage19w14-engine-hidden', !!hidden);
     if (hidden) node.setAttribute('aria-hidden', 'true'); else node.removeAttribute('aria-hidden');
+  }
+
+  function requireFn(owner, fnName, label) {
+    const fn = owner && owner[fnName];
+    if (typeof fn !== 'function') {
+      throw new Error(`${label || fnName} is not available. Reload the page with ?v=stage19w55 and check that the backend/AI modules loaded.`);
+    }
+    return fn.bind(owner);
+  }
+
+  function setRunButtonBusy(on) {
+    const btn = el('stage19w14RunBtn');
+    if (!btn) return;
+    btn.disabled = !!on;
+    btn.classList.toggle('is-busy', !!on);
+    btn.textContent = on ? 'Running Paper AI…' : 'Run Paper AI';
   }
 
   function syncUnifiedControlsToEngines() {
@@ -410,66 +428,108 @@
     if (compField) compField.classList.toggle('stage19w14-engine-hidden', !(objectiveMode() === 'ranking' || objectiveMode() === 'combined'));
   }
 
-  function applyObjectiveMode() {
+  function applyObjectiveMode(options) {
+    const opts = options || {};
     ensureUnifiedPaperAiControls();
     syncUnifiedControlsToEngines();
     updateVisibleEngineCards();
     try { localStorage.setItem(STORAGE_OBJECTIVE, objectiveMode()); } catch (_e) {}
+    if (unifiedRunInFlight && !opts.forceStatus) return;
     const obj = objectiveMode();
     const out = outputMode();
     const rounds = roundCount();
     const labels = { quality: 'quality/acceptance', ranking: 'competitive ranking', stress: 'adversarial stress-test', remake: 'full remake', combined: 'combined objective' };
-    setUnifiedStatus(`Objective: ${labels[obj] || obj}; rounds: ${rounds}; output: ${out.replace(/_/g, ' ')}. ${out === 'report_only' ? 'No source edits will be applied.' : 'Safe edits will be prepared with \\laiold/\\lai markup.'}`);
+    setUnifiedStatus(`Objective: ${labels[obj] || obj}; rounds: ${rounds}; output: ${out.replace(/_/g, ' ')}. ${out === 'report_only' ? 'No source edits will be applied.' : 'Safe edits will be prepared with \laiold/\lai markup.'}`);
   }
 
+
   async function runUnifiedPaperAi() {
-    applyObjectiveMode();
+    if (unifiedRunInFlight) {
+      setUnifiedStatus('Paper AI is already running. Please wait for the current run to finish.');
+      return;
+    }
+    const runId = ++unifiedRunSerial;
+    unifiedRunInFlight = true;
+    setRunButtonBusy(true);
+    applyObjectiveMode({ forceStatus: true });
     const obj = objectiveMode();
     const out = outputMode();
-    setUnifiedStatus(`Running Paper AI objective: ${obj}...`);
+    const rounds = roundCount();
+    setUnifiedStatus(`Running Paper AI objective: ${obj}; rounds: ${rounds}; output: ${out.replace(/_/g, ' ')}...`);
     try {
-      if (roundCount() < 0) {
-        if (out === 'report_only') await NS.DocumentAIService?.runDocumentAi?.();
-        else await NS.DocumentAIService?.runAndAppendDocumentAi?.();
-        setUnifiedStatus('Direct prompt/edit run complete. Safe edits are prepared when available.');
+      if (rounds < 0) {
+        const service = NS.DocumentAIService;
+        const fn = out === 'report_only'
+          ? requireFn(service, 'runDocumentAi', 'Direct Paper AI report runner')
+          : requireFn(service, 'runAndAppendDocumentAi', 'Direct Paper AI edit runner');
+        await fn();
+        if (runId === unifiedRunSerial) setUnifiedStatus('Direct Paper AI run complete. Safe edits are prepared when available.');
         return;
       }
       if (obj === 'remake') {
-        if (out === 'report_only') await NS.DocumentAIService?.runDocumentAi?.();
-        else await NS.DocumentAIService?.runAndAppendDocumentAi?.();
-        setUnifiedStatus('Total remake run complete.');
+        const service = NS.DocumentAIService;
+        const fn = out === 'report_only'
+          ? requireFn(service, 'runDocumentAi', 'Total remake report runner')
+          : requireFn(service, 'runAndAppendDocumentAi', 'Total remake edit runner');
+        await fn();
+        if (runId === unifiedRunSerial) setUnifiedStatus('Total remake run complete.');
         return;
       }
       if (obj === 'quality') {
-        const result = await NS.ReviewerRebuttalSimulatorService?.runFullLoop?.();
-        if (out !== 'report_only') await NS.ReviewerRebuttalSimulatorService?.prepareReviewerFinalInsertion?.();
-        setUnifiedStatus(result?.ok === false ? 'Reviewer/rebuttal run finished with warnings.' : 'Reviewer/rebuttal run complete; safe edits are prepared when available.');
+        const service = NS.ReviewerRebuttalSimulatorService;
+        const run = requireFn(service, 'runFullLoop', 'Reviewer/rebuttal Paper AI runner');
+        const result = await run();
+        if (out !== 'report_only') {
+          const prep = requireFn(service, 'prepareReviewerFinalInsertion', 'Reviewer/rebuttal safe-edit preparer');
+          await prep();
+        }
+        if (runId === unifiedRunSerial) {
+          setUnifiedStatus(result?.ok === false
+            ? `Reviewer/rebuttal run finished with warnings${result?.error ? ': ' + result.error : ''}.`
+            : 'Reviewer/rebuttal run complete; safe edits are prepared when available.');
+        }
         return;
       }
       if (obj === 'stress') {
-        await NS.RealAgentBranchWorkflowService?.runSelectedBranch?.();
-        if (out !== 'report_only') await NS.RealAgentBranchWorkflowService?.prepareInsertion?.('targeted');
-        setUnifiedStatus('Adversarial branch run complete; preview/apply localized edits in the engine card if needed.');
+        const service = NS.RealAgentBranchWorkflowService;
+        const run = requireFn(service, 'runSelectedBranch', 'Adversarial branch Paper AI runner');
+        await run();
+        if (out !== 'report_only') {
+          const prep = requireFn(service, 'prepareInsertion', 'Adversarial branch safe-edit preparer');
+          await prep('targeted');
+        }
+        if (runId === unifiedRunSerial) setUnifiedStatus('Adversarial branch run complete; safe edits are prepared when available.');
         return;
       }
       if (obj === 'ranking') {
-        await NS.CompetitivePaperReviewService?.runCompetitiveReview?.();
-        if (out !== 'report_only') await NS.CompetitivePaperReviewService?.generateMemoryAwareFinalPaperRewrite?.('inline');
-        setUnifiedStatus('Competitive run complete; review/apply generated ranking-improvement edits.');
+        const service = NS.CompetitivePaperReviewService;
+        const run = requireFn(service, 'runCompetitiveReview', 'Competitive Paper AI runner');
+        await run();
+        if (out !== 'report_only') {
+          const prep = requireFn(service, 'generateMemoryAwareFinalPaperRewrite', 'Competitive safe-edit preparer');
+          await prep('inline');
+        }
+        if (runId === unifiedRunSerial) setUnifiedStatus('Competitive run complete; review/apply generated ranking-improvement edits.');
         return;
       }
       if (obj === 'combined') {
-        await NS.ReviewerRebuttalSimulatorService?.runFullLoop?.();
-        await NS.RealAgentBranchWorkflowService?.runSelectedBranch?.();
-        await NS.CompetitivePaperReviewService?.runCompetitiveReview?.();
-        setUnifiedStatus('Combined run complete. Underlying outputs are shown below.');
+        await requireFn(NS.ReviewerRebuttalSimulatorService, 'runFullLoop', 'Reviewer/rebuttal Paper AI runner')();
+        await requireFn(NS.RealAgentBranchWorkflowService, 'runSelectedBranch', 'Adversarial branch Paper AI runner')();
+        await requireFn(NS.CompetitivePaperReviewService, 'runCompetitiveReview', 'Competitive Paper AI runner')();
+        if (runId === unifiedRunSerial) setUnifiedStatus('Combined run complete. Underlying outputs are available in logs/reports.');
       }
     } catch (err) {
       const msg = err?.message || String(err);
-      setUnifiedStatus(`Unified Paper AI run failed: ${msg}`);
-      try { console.warn('[Latexai Stage 19W14] unified run failed', err); } catch (_e) {}
+      if (runId === unifiedRunSerial) setUnifiedStatus(`Unified Paper AI run failed: ${msg}`);
+      try { console.warn('[Latexai Stage 19W55] unified run failed', err); } catch (_e) {}
+    } finally {
+      if (runId === unifiedRunSerial) {
+        unifiedRunInFlight = false;
+        setRunButtonBusy(false);
+      }
     }
   }
+
 
   async function applyLatestUnifiedEdits() {
     const obj = objectiveMode();
@@ -533,9 +593,10 @@
     const auditSmall = q('#copilotTab > .section-head.compact .smallcaps');
     if (auditSmall) auditSmall.textContent = 'Audit AI';
 
-    const paperHeading = q('#paperAiTab .section-head h2');
+    const paperTab = el('paperAiTab');
+    const paperHeading = paperTab ? q(':scope > .section-head h2', paperTab) : null;
     if (paperHeading) paperHeading.textContent = 'Paper AI';
-    const paperSmall = q('#paperAiTab .section-head .smallcaps');
+    const paperSmall = paperTab ? q(':scope > .section-head .smallcaps', paperTab) : null;
     if (paperSmall) paperSmall.textContent = 'Paper AI';
     normalizePaperAiSurface();
   }
@@ -605,6 +666,7 @@
     activateRightTab,
     activateWorkflow,
     applyObjectiveMode,
+    runUnifiedPaperAi,
     jumpToWorkflow,
     isDebugMode
   };
