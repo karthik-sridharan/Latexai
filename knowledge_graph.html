@@ -587,12 +587,32 @@ function renderNodeCard(n, showCopyId=true){
       ${showCopyId?`<button class="btn sm" onclick="copyId('${esc(n.node_id)}')">Copy ID</button>`:''}
       <button class="btn sm" onclick="loadNeighborhood('${esc(n.node_id)}')">Neighborhood</button>
       <button class="btn sm" onclick="prefillEdgeSrc('${esc(n.node_id)}')">Use as edge src</button>
+      <button class="btn sm danger" onclick="deleteNode('${esc(n.node_id)}', '${esc(n.title||'this node')}')">Delete</button>
     </div>
   </div>`;
 }
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function copyId(id){ navigator.clipboard.writeText(id); alert('Copied: '+id); }
+
+async function deleteNode(id, title){
+  if(!confirm('Delete node "' + title + '"?\nThis will also delete all its edges.')) return;
+  try{
+    await api('DELETE', '/api/kg/nodes/' + encodeURIComponent(id));
+    // Refresh whichever view is active
+    document.getElementById('browseBtn').click();
+    document.getElementById('refreshStatsBtn').click();
+  }catch(e){ alert('Delete failed: ' + e.message); }
+}
+
+async function deleteEdge(id){
+  if(!confirm('Delete this edge?')) return;
+  try{
+    await api('DELETE', '/api/kg/edges/' + encodeURIComponent(id));
+    document.getElementById('browseEdgesBtn').click();
+    document.getElementById('refreshStatsBtn').click();
+  }catch(e){ alert('Delete failed: ' + e.message); }
+}
 function prefillEdgeSrc(id){ document.getElementById('edgeSrc').value=id; switchToTab('add'); switchToSubtab('edge'); }
 function loadNeighborhood(id){ document.getElementById('vizNodeId').value=id; switchToTab('viz'); document.getElementById('vizBtn').click(); }
 
@@ -638,6 +658,7 @@ document.getElementById('browseEdgesBtn').addEventListener('click', async ()=>{
           <span class="edge-type">${esc(e.rel_type)}</span>
           <span class="badge ${e.rel_category==='empirical'?'empirical':'theoretical'}">${esc(e.rel_category)}</span>
           <span class="conf-badge">conf: ${(+e.confidence||1).toFixed(2)}</span>
+          <button class="btn sm danger" onclick="deleteEdge('${esc(e.edge_id)}')">Delete</button>
         </div>`).join('');
     if(!d.edges?.length) el.innerHTML='<div class="note">No edges found.</div>';
   }catch(e){ document.getElementById('browseResults').innerHTML=`<div class="note bad">Error: ${esc(e.message)}</div>`; }
