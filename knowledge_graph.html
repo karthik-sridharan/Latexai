@@ -287,22 +287,49 @@ a{color:var(--accent);text-decoration:none}
 
     <!-- ── BROWSE ─────────────────────────────────────────────────────── -->
     <div id="view-browse" class="view panel">
-      <h2>Browse nodes</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <div class="field" style="flex:1;min-width:160px"><label>Paper ID</label><input id="browseByPaper" placeholder="1706.03762"/></div>
-        <div class="field" style="flex:0 0 160px"><label>Node type</label>
-          <select id="browseByType">
-            <option value="">All</option>
-            <option value="theorem">Theorem</option>
-            <option value="lemma">Lemma</option>
-            <option value="assumption">Assumption</option>
-            <option value="experiment">Experiment</option>
-            <option value="hypothesis">Hypothesis</option>
-          </select>
-        </div>
-        <div class="field" style="flex:0 0 80px"><label>Limit</label><input id="browseLimit" type="number" value="50" min="1" max="500"/></div>
+      <div class="tabs" style="margin-bottom:14px">
+        <button class="tab active" data-subtab="browse-nodes">Nodes</button>
+        <button class="tab" data-subtab="browse-edges">Edges</button>
       </div>
-      <div class="row" style="margin-bottom:14px"><button class="btn primary sm" id="browseBtn">Load nodes</button><button class="btn sm" id="browseEdgesBtn">Load edges</button></div>
+
+      <!-- Browse nodes subtab -->
+      <div id="sub-browse-nodes" class="view active">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <div class="field" style="flex:1;min-width:140px"><label>Paper ID</label><input id="browseByPaper" placeholder="1909.05207"/></div>
+          <div class="field" style="flex:1;min-width:140px"><label>Node ID (partial ok)</label><input id="browseByNodeId" placeholder="paste node id…"/></div>
+          <div class="field" style="flex:0 0 140px"><label>Node type</label>
+            <select id="browseByType">
+              <option value="">All</option>
+              <option value="theorem">Theorem</option>
+              <option value="lemma">Lemma</option>
+              <option value="assumption">Assumption</option>
+              <option value="experiment">Experiment</option>
+              <option value="hypothesis">Hypothesis</option>
+            </select>
+          </div>
+          <div class="field" style="flex:0 0 70px"><label>Limit</label><input id="browseLimit" type="number" value="50" min="1" max="500"/></div>
+        </div>
+        <div class="row" style="margin-bottom:14px"><button class="btn primary sm" id="browseBtn">Load nodes</button></div>
+      </div>
+
+      <!-- Browse edges subtab -->
+      <div id="sub-browse-edges" class="view">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <div class="field" style="flex:1;min-width:140px"><label>Node ID (src or tgt)</label><input id="browseEdgeByNodeId" placeholder="paste node id to filter…"/></div>
+          <div class="field" style="flex:0 0 140px"><label>Relationship type</label>
+            <select id="browseEdgeByType">
+              <option value="">All</option>
+              <option value="requires">Requires</option>
+              <option value="implies">Implies</option>
+              <option value="contradicts">Contradicts</option>
+              <option value="validates">Validates</option>
+              <option value="motivates">Motivates</option>
+            </select>
+          </div>
+          <div class="field" style="flex:0 0 70px"><label>Limit</label><input id="browseEdgeLimit" type="number" value="100" min="1" max="500"/></div>
+        </div>
+        <div class="row" style="margin-bottom:14px"><button class="btn sm primary" id="browseEdgesBtn">Load edges</button></div>
+      </div>
       <div style="border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:14px;background:#f8fafc">
         <div style="font-size:.82rem;font-weight:800;margin-bottom:6px">AI edge strengthening</div>
         <div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">Enrich edges for any already-ingested paper using an AI model.</div>
@@ -805,15 +832,55 @@ document.getElementById('browseBtn').addEventListener('click', async ()=>{
   showSpinner(btn);
   try{
     const paperId = document.getElementById('browseByPaper').value.trim();
+    const nodeId = document.getElementById('browseByNodeId').value.trim();
     const nodeType = document.getElementById('browseByType').value;
     const limit = document.getElementById('browseLimit').value||50;
+    const el = document.getElementById('browseResults');
+
+    // If node ID provided, fetch that specific node + its neighborhood
+    if(nodeId){
+      try{
+        const node = await api('GET', `/api/kg/nodes/${encodeURIComponent(nodeId)}`);
+        const nb = await api('GET', `/api/kg/nodes/${encodeURIComponent(nodeId)}/neighborhood?hops=1`);
+        el.innerHTML = '<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Node detail + 1-hop neighborhood</p>'
+          + renderNodeCard(node)
+          + `<h3 style="margin:12px 0 8px;font-size:.85rem;font-weight:800;color:var(--muted)">${nb.edges?.length||0} connected edges</h3>`
+          + (nb.edges||[]).map(e=>{
+              const srcN = (nb.nodes||[]).find(n=>n.node_id===e.source_node_id);
+              const tgtN = (nb.nodes||[]).find(n=>n.node_id===e.target_node_id);
+              const srcLabel = srcN ? (srcN.title||srcN.node_id).slice(0,30) : e.source_node_id.slice(-8);
+              const tgtLabel = tgtN ? (tgtN.title||tgtN.node_id).slice(0,30) : e.target_node_id.slice(-8);
+              return `<div class="edge-row">
+                <span style="font-size:.7rem;color:var(--muted);min-width:60px;font-family:var(--mono)">${esc(e.source_node_id.slice(-6))}</span>
+                <span class="edge-node" title="${esc(e.source_node_id)}" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.source_node_id)}')">${esc(srcLabel)}</span>
+                <span class="path-arrow">→</span>
+                <span class="edge-node" title="${esc(e.target_node_id)}" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.target_node_id)}')">${esc(tgtLabel)}</span>
+                <span style="font-size:.7rem;color:var(--muted);font-family:var(--mono)">${esc(e.target_node_id.slice(-6))}</span>
+                <span class="edge-type">${esc(e.rel_type)}</span>
+                <span class="badge ${e.rel_category==='empirical'?'empirical':'theoretical'}">${esc(e.rel_category)}</span>
+                <span class="conf-badge">conf: ${(+e.confidence||1).toFixed(2)}</span>
+                <button class="btn sm" onclick="document.getElementById('browseByNodeId').value='${esc(e.source_node_id)}';document.getElementById('browseBtn').click()">Browse src</button>
+                <button class="btn sm" onclick="document.getElementById('browseByNodeId').value='${esc(e.target_node_id)}';document.getElementById('browseBtn').click()">Browse tgt</button>
+                <button class="btn sm danger" onclick="deleteEdge('${esc(e.edge_id)}')">Delete</button>
+              </div>`;
+            }).join('')
+          + `<h3 style="margin:12px 0 8px;font-size:.85rem;font-weight:800;color:var(--muted)">${(nb.nodes||[]).length-1} neighboring nodes</h3>`
+          + (nb.nodes||[]).filter(n=>n.node_id!==nodeId).map(n=>renderNodeCard(n)).join('');
+        return;
+      }catch(notFound){
+        // Not found by exact ID, fall through to list
+      }
+    }
+
     let url = `/api/kg/nodes/list?limit=${limit}`;
     if(paperId) url+=`&paper_id=${encodeURIComponent(paperId)}`;
     if(nodeType) url+=`&node_type=${encodeURIComponent(nodeType)}`;
     const d = await api('GET', url);
-    const el = document.getElementById('browseResults');
-    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} nodes</p>` + (d.nodes||[]).map(n=>renderNodeCard(n)).join('');
-    if(!d.nodes?.length) el.innerHTML='<div class="note">No nodes found.</div>';
+    // Filter by partial node ID if provided
+    let nodes = d.nodes||[];
+    if(nodeId) nodes = nodes.filter(n=>n.node_id.includes(nodeId)||n.title?.toLowerCase().includes(nodeId.toLowerCase()));
+    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${nodes.length} nodes</p>` + nodes.map(n=>renderNodeCard(n)).join('');
+    if(!nodes.length) el.innerHTML='<div class="note">No nodes found.</div>';
   }catch(e){ document.getElementById('browseResults').innerHTML=`<div class="note bad">Error: ${esc(e.message)}</div>`; }
   finally{ hideSpinner(btn); }
 });
@@ -822,7 +889,11 @@ document.getElementById('browseEdgesBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('browseEdgesBtn');
   showSpinner(btn);
   try{
-    const d = await api('GET','/api/kg/edges/list?limit=100');
+    const nodeId = document.getElementById('browseEdgeByNodeId')?.value?.trim()||'';
+    const limit = document.getElementById('browseEdgeLimit')?.value||100;
+    let url = `/api/kg/edges/list?limit=${limit}`;
+    if(nodeId) url += `&node_id=${encodeURIComponent(nodeId)}`;
+    const d = await api('GET', url);
     const el = document.getElementById('browseResults');
     // Fetch node titles for display
     const nodeIds = [...new Set((d.edges||[]).flatMap(e=>[e.source_node_id,e.target_node_id]))];
@@ -833,18 +904,32 @@ document.getElementById('browseEdgesBtn').addEventListener('click', async ()=>{
         (nr.nodes||[]).forEach(n=>{ nodeTitles[n.node_id]=n.title||n.node_id; });
       }
     }catch(e2){ console.warn('Could not fetch node titles', e2); }
-    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} edges</p>`
-      + (d.edges||[]).map(e=>{
-          const srcTitle = nodeTitles[e.source_node_id] || e.source_node_id.slice(-8);
-          const tgtTitle = nodeTitles[e.target_node_id] || e.target_node_id.slice(-8);
-          return `<div class="edge-row">
-          <span class="edge-node" title="${esc(e.source_node_id)}" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.source_node_id)}')" title="Click to copy ID: ${esc(e.source_node_id)}">${esc(srcTitle.slice(0,25))}</span>
+    const edgeNodeFilter = document.getElementById('browseEdgeByNodeId')?.value?.trim()||'';
+    const edgeTypeFilter = document.getElementById('browseEdgeByType')?.value||'';
+    let filteredEdges = d.edges||[];
+    if(edgeNodeFilter) filteredEdges = filteredEdges.filter(e=>e.source_node_id.includes(edgeNodeFilter)||e.target_node_id.includes(edgeNodeFilter));
+    if(edgeTypeFilter) filteredEdges = filteredEdges.filter(e=>e.rel_type===edgeTypeFilter);
+    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${filteredEdges.length} edges${edgeNodeFilter?' (filtered)':''}</p>`
+      + filteredEdges.map(e=>{
+          const srcTitle = nodeTitles[e.source_node_id] || '?';
+          const tgtTitle = nodeTitles[e.target_node_id] || '?';
+          const srcShort = e.source_node_id.slice(-6);
+          const tgtShort = e.target_node_id.slice(-6);
+          return `<div class="edge-row" style="flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;min-width:120px;max-width:180px">
+            <span class="edge-node" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.source_node_id)}')" title="Click to copy full ID">${esc(srcTitle.slice(0,28))}</span>
+            <span style="font-size:.68rem;color:var(--muted);font-family:var(--mono)">…${srcShort}</span>
+          </div>
           <span class="path-arrow">→</span>
-          <span class="edge-node" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.target_node_id)}')" title="Click to copy ID: ${esc(e.target_node_id)}">${esc(tgtTitle.slice(0,25))}</span>
+          <div style="display:flex;flex-direction:column;min-width:120px;max-width:180px">
+            <span class="edge-node" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.target_node_id)}')" title="Click to copy full ID">${esc(tgtTitle.slice(0,28))}</span>
+            <span style="font-size:.68rem;color:var(--muted);font-family:var(--mono)">…${tgtShort}</span>
+          </div>
           <span class="edge-type">${esc(e.rel_type)}</span>
           <span class="badge ${e.rel_category==='empirical'?'empirical':'theoretical'}">${esc(e.rel_category)}</span>
           <span class="conf-badge">conf: ${(+e.confidence||1).toFixed(2)}</span>
-          <button class="btn sm" onclick="document.getElementById('vizNodeId').value='${esc(e.source_node_id)}';switchToTab('viz');document.getElementById('vizBtn').click()">Viz src</button>
+          <button class="btn sm" onclick="document.getElementById('browseByNodeId').value='${esc(e.source_node_id)}';switchToTab('browse');document.getElementById('browseBtn').click()">Src detail</button>
+          <button class="btn sm" onclick="document.getElementById('vizNodeId').value='${esc(e.source_node_id)}';switchToTab('viz');document.getElementById('vizBtn').click()">Viz</button>
           <button class="btn sm danger" onclick="deleteEdge('${esc(e.edge_id)}')">Delete</button>
         </div>`;
         }).join('');
