@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Kalvi — Knowledge Graph</title>
+<style>
+:root{
+  --bg:#f6f8fb;--panel:#fff;--text:#142033;--muted:#65748b;--muted2:#94a3b8;
+  --border:#dbe4ef;--accent:#2563eb;--accent2:#4f46e5;--accent-soft:#dbeafe;
+  --good:#16a34a;--warn:#b45309;--bad:#dc2626;
+  --shadow:0 18px 50px rgba(15,23,42,.10);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:linear-gradient(135deg,#eef4ff 0%,#f8fafc 45%,#fff 100%);font-family:var(--sans);color:var(--text);min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+.app{padding:18px;max-width:1400px;margin:0 auto}
+
+/* topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:24px;padding:14px 18px;box-shadow:var(--shadow);backdrop-filter:blur(14px);position:sticky;top:12px;z-index:10;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:900;display:grid;place-items:center;font-size:1.1rem}
+.brand h1{font-size:1.2rem;font-weight:800}
+.brand .sub{font-size:.8rem;color:var(--muted);margin-top:2px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--border);background:#fff;border-radius:14px;padding:.65rem .9rem;font-weight:800;color:var(--text);cursor:pointer;font-family:inherit;font-size:.85rem;box-shadow:0 2px 8px rgba(15,23,42,.04);transition:all .15s}
+.btn:hover{border-color:#b7c5d8;background:#f8fafc}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent}
+.btn.primary:hover{opacity:.92}
+.btn.danger{color:#991b1b;background:#fff7f7;border-color:#fecaca}
+.btn.sm{font-size:.78rem;padding:.45rem .65rem;border-radius:11px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* layout */
+.layout{display:grid;grid-template-columns:320px 1fr;gap:16px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+
+/* panels */
+.panel{background:rgba(255,255,255,.94);border:1px solid var(--border);border-radius:22px;box-shadow:var(--shadow);padding:16px}
+.panel+.panel{margin-top:14px}
+.panel h2{font-size:.95rem;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.panel h3{font-size:.85rem;font-weight:800;margin:14px 0 8px;color:var(--muted)}
+
+/* tabs */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.tab{border:1px solid var(--border);border-radius:999px;background:#fff;padding:.5rem .8rem;font-weight:800;cursor:pointer;font-size:.8rem;font-family:inherit;transition:all .15s}
+.tab.active,.tab:hover{background:#0f172a;color:#fff;border-color:#0f172a}
+.view{display:none}.view.active{display:block}
+
+/* form fields */
+.field{margin-bottom:10px}
+.field label{display:block;font-size:.76rem;color:var(--muted);font-weight:800;margin-bottom:4px;letter-spacing:.03em;text-transform:uppercase}
+.field input,.field textarea,.field select{width:100%;border:1px solid var(--border);border-radius:12px;padding:.65rem .75rem;font:inherit;background:#fff;font-size:.88rem;transition:border .15s}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.field textarea{min-height:80px;resize:vertical}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+
+/* status / alerts */
+.note{border:1px solid #bfdbfe;background:#eff6ff;color:#1e40af;border-radius:14px;padding:9px 12px;font-size:.83rem;margin-top:10px;line-height:1.5}
+.note.warn{border-color:#fde68a;background:#fffbeb;color:#92400e}
+.note.bad{border-color:#fecaca;background:#fff1f2;color:#991b1b}
+.note.good{border-color:#bbf7d0;background:#f0fdf4;color:#166534}
+
+/* stat chips */
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.stat{border:1px solid var(--border);border-radius:12px;padding:8px 12px;background:#fff;text-align:center;min-width:80px}
+.stat .val{font-size:1.4rem;font-weight:900;color:var(--accent)}
+.stat .lbl{font-size:.72rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+
+/* node / edge cards */
+.card{border:1px solid var(--border);border-radius:16px;background:#fff;padding:12px;margin-bottom:10px;position:relative}
+.card:last-child{margin-bottom:0}
+.card .card-title{font-weight:800;font-size:.9rem;margin-bottom:4px}
+.card .card-meta{font-size:.75rem;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.card .card-stmt{font-size:.82rem;line-height:1.5;color:#334155;background:#f8fafc;border-radius:10px;padding:8px;border:1px solid #e2e8f0;margin-top:6px;white-space:pre-wrap}
+.card .card-actions{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;gap:3px;border-radius:999px;padding:.18rem .5rem;font-size:.7rem;font-weight:900;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0}
+.badge.theorem{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}
+.badge.lemma{background:#e0e7ff;color:#3730a3;border-color:#c7d2fe}
+.badge.assumption{background:#fef3c7;color:#92400e;border-color:#fde68a}
+.badge.experiment{background:#dcfce7;color:#166534;border-color:#bbf7d0}
+.badge.hypothesis{background:#fce7f3;color:#9d174d;border-color:#f9a8d4}
+.badge.theoretical{background:#e0e7ff;color:#3730a3;border-color:#c7d2fe}
+.badge.empirical{background:#dcfce7;color:#166534;border-color:#bbf7d0}
+.badge.sim{background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe}
+
+/* similarity score bar */
+.sim-bar{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));margin-top:6px}
+
+/* graph vis area */
+#graphCanvas{width:100%;height:420px;border:1px solid var(--border);border-radius:18px;background:#0f172a;cursor:grab;display:block}
+#graphCanvas:active{cursor:grabbing}
+
+/* proof path suggestions */
+.suggestion{border:1px solid var(--border);border-radius:16px;background:#fff;padding:14px;margin-bottom:12px}
+.suggestion .sug-title{font-weight:800;font-size:.92rem;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.suggestion .sug-hint{font-size:.82rem;color:var(--muted);background:#f8fafc;border-radius:10px;padding:8px;border:1px solid #e2e8f0;margin-top:8px}
+.suggestion .sug-path{margin-top:8px}
+.path-node{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:.76rem;margin:2px;background:#fff}
+.path-arrow{color:var(--accent);font-size:.8rem;margin:0 2px}
+
+/* loading spinner */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* output log */
+.log{white-space:pre-wrap;font-family:var(--mono);font-size:.78rem;background:#0f172a;color:#e2e8f0;border-radius:16px;padding:12px;overflow:auto;max-height:340px;margin-top:10px}
+
+/* edge list */
+.edge-row{display:flex;align-items:center;gap:6px;font-size:.8rem;padding:6px 10px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:6px;flex-wrap:wrap}
+.edge-node{font-weight:700;color:var(--accent);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.edge-type{font-size:.72rem;font-weight:800;padding:.15rem .45rem;border-radius:8px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe}
+.conf-badge{font-size:.7rem;color:var(--muted);font-weight:700;margin-left:auto}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="topbar">
+  <div class="brand">
+    <div class="mark">𝒦</div>
+    <div>
+      <div style="font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:800">Kalvi</div>
+      <h1>Knowledge Graph</h1>
+      <div class="sub">ML Research — Nodes · Edges · Proof Paths · World Graph</div>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="literature.html">Literature</a>
+    <button class="btn" id="statusBtn">Check backend</button>
+    <button class="btn primary" id="initBtn">Init / migrate DB</button>
+    <button class="btn sm" id="saveSettingsBtn">Save settings</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── LEFT SIDEBAR ─────────────────────────────────────────────────── -->
+  <aside>
+    <div class="panel">
+      <h2>⚙ Connection</h2>
+      <div class="field"><label>Backend API base</label><input id="apiBase" placeholder="https://…run.app/api/lumina"/></div>
+      <div class="field" style="margin-top:8px"><label>Auth token</label><input id="token" type="password" placeholder="optional"/></div>
+      <div id="statusBox" class="note" style="margin-top:10px">Set the Cloud Run API base, then check backend.</div>
+    </div>
+
+    <div class="panel">
+      <h2>📊 Graph stats</h2>
+      <div class="stats">
+        <div class="stat"><div class="val" id="statNodes">—</div><div class="lbl">Nodes</div></div>
+        <div class="stat"><div class="val" id="statEdges">—</div><div class="lbl">Edges</div></div>
+        <div class="stat"><div class="val" id="statWorld">—</div><div class="lbl">World</div></div>
+      </div>
+      <button class="btn sm" id="refreshStatsBtn">Refresh stats</button>
+    </div>
+
+    <div class="panel">
+      <h2>🔍 Quick search</h2>
+      <div class="field"><label>Statement / theorem query</label><textarea id="quickQuery" rows="3" placeholder="Rademacher complexity bound for finite hypothesis class…"></textarea></div>
+      <div class="field"><label>Node type filter</label>
+        <select id="quickType">
+          <option value="">All types</option>
+          <option value="theorem">Theorem</option>
+          <option value="lemma">Lemma</option>
+          <option value="assumption">Assumption</option>
+          <option value="experiment">Experiment</option>
+          <option value="hypothesis">Hypothesis</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="btn primary sm" id="quickSearchBtn">Search</button>
+        <button class="btn sm" id="proofPathBtn">Proof paths</button>
+      </div>
+      <div id="quickSearchStatus" class="note" style="display:none"></div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ──────────────────────────────────────────────────── -->
+  <main>
+    <div class="tabs">
+      <button class="tab active" data-tab="add">Add nodes & edges</button>
+      <button class="tab" data-tab="browse">Browse</button>
+      <button class="tab" data-tab="search">Search results</button>
+      <button class="tab" data-tab="paths">Proof paths</button>
+      <button class="tab" data-tab="world">World graph</button>
+      <button class="tab" data-tab="viz">Visualize</button>
+      <button class="tab" data-tab="ingest">Ingest papers</button>
+    </div>
+
+    <!-- ── ADD ────────────────────────────────────────────────────────── -->
+    <div id="view-add" class="view active panel">
+      <div class="tabs" style="margin-bottom:14px">
+        <button class="tab active" data-subtab="node">Add node</button>
+        <button class="tab" data-subtab="edge">Add edge</button>
+        <button class="tab" data-subtab="world-add">Add world node</button>
+        <button class="tab" data-subtab="bulk">Bulk JSON</button>
+      </div>
+
+      <!-- add node -->
+      <div id="sub-node" class="view active">
+        <h2>Add / update node</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>Title</label><input id="nodeTitle" placeholder="Rademacher Complexity Bound"/></div>
+          <div class="field"><label>Node type</label>
+            <select id="nodeType">
+              <option value="theorem">Theorem</option>
+              <option value="lemma">Lemma</option>
+              <option value="assumption">Assumption</option>
+              <option value="experiment">Experiment</option>
+              <option value="hypothesis">Hypothesis</option>
+            </select>
+          </div>
+          <div class="field"><label>Paper ID / arXiv ID</label><input id="nodePaperId" placeholder="1706.03762"/></div>
+          <div class="field"><label>Page / section ref</label><input id="nodePageRef" placeholder="Theorem 3.2, p.8"/></div>
+          <div class="field"><label>Subfield</label><input id="nodeSubfield" placeholder="generalization bounds"/></div>
+          <div class="field"><label>Year</label><input id="nodeYear" placeholder="2024" maxlength="4"/></div>
+          <div class="field"><label>Confidence (0–1)</label><input id="nodeConf" type="number" min="0" max="1" step="0.05" value="1.0"/></div>
+          <div class="field"><label>Provenance</label>
+            <select id="nodeProvenance"><option value="real">Real (paper)</option><option value="synthetic">Synthetic</option></select>
+          </div>
+        </div>
+        <div class="field"><label>Statement (full text)</label><textarea id="nodeStatement" rows="4" placeholder="For any hypothesis class H with VC dimension d…"></textarea></div>
+        <div class="row"><button class="btn primary" id="addNodeBtn">Save node + embed</button><button class="btn" id="clearNodeBtn">Clear</button></div>
+        <div id="addNodeStatus" class="note" style="display:none"></div>
+      </div>
+
+      <!-- add edge -->
+      <div id="sub-edge" class="view">
+        <h2>Add edge (dependency)</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>Source node ID</label><input id="edgeSrc" placeholder="node-id-of-premise"/></div>
+          <div class="field"><label>Target node ID</label><input id="edgeTgt" placeholder="node-id-of-conclusion"/></div>
+          <div class="field"><label>Category</label>
+            <select id="edgeCat">
+              <option value="theoretical">Theoretical</option>
+              <option value="empirical">Empirical</option>
+            </select>
+          </div>
+          <div class="field"><label>Relationship type</label>
+            <select id="edgeType">
+              <option value="implies">Implies</option>
+              <option value="requires">Requires</option>
+              <option value="contradicts">Contradicts</option>
+              <option value="validates">Validates</option>
+              <option value="motivates">Motivates</option>
+              <option value="generalizes">Generalizes</option>
+            </select>
+          </div>
+          <div class="field"><label>Confidence (0–1)</label><input id="edgeConf" type="number" min="0" max="1" step="0.05" value="1.0"/></div>
+          <div class="field"><label>Provenance</label>
+            <select id="edgeProvenance"><option value="real">Real</option><option value="synthetic">Synthetic</option><option value="ai_suggested">AI suggested</option></select>
+          </div>
+        </div>
+        <div class="row"><button class="btn primary" id="addEdgeBtn">Save edge</button><button class="btn" id="clearEdgeBtn">Clear</button></div>
+        <div id="addEdgeStatus" class="note" style="display:none"></div>
+      </div>
+
+      <!-- add world node -->
+      <div id="sub-world-add" class="view">
+        <h2>Add world graph abstraction</h2>
+        <div class="field"><label>Node type</label>
+          <select id="wnType"><option value="theorem">Theorem</option><option value="lemma">Lemma</option><option value="assumption">Assumption</option></select>
+        </div>
+        <div class="field"><label>Abstract statement (generalized form)</label><textarea id="wnStmt" rows="4" placeholder="For a hypothesis class with bounded complexity, the generalization gap concentrates around its empirical counterpart…"></textarea></div>
+        <div class="field"><label>Source node IDs (comma-separated)</label><input id="wnSourceIds" placeholder="node-id-1, node-id-2, …"/></div>
+        <div class="row"><button class="btn primary" id="addWorldNodeBtn">Save world node + embed</button></div>
+        <div id="addWorldNodeStatus" class="note" style="display:none"></div>
+      </div>
+
+      <!-- bulk -->
+      <div id="sub-bulk" class="view">
+        <h2>Bulk JSON import</h2>
+        <div class="note" style="margin-bottom:12px">
+          Paste a JSON array of node objects. Each must have at least <code>title</code> and <code>statement</code>.
+          Optional fields: <code>node_type, paper_id, page_ref, subfield, year, confidence, provenance</code>.
+        </div>
+        <div class="field"><label>JSON array</label><textarea id="bulkJson" rows="12" placeholder='[{"title":"Hoeffding inequality","node_type":"theorem","statement":"…","paper_id":"…","subfield":"concentration inequalities","year":"1963"}]'></textarea></div>
+        <div class="row"><button class="btn primary" id="bulkImportBtn">Import nodes</button></div>
+        <div id="bulkStatus" class="note" style="display:none"></div>
+        <div id="bulkLog" class="log" style="display:none"></div>
+      </div>
+    </div><!-- /view-add -->
+
+    <!-- ── BROWSE ─────────────────────────────────────────────────────── -->
+    <div id="view-browse" class="view panel">
+      <h2>Browse nodes</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="field" style="flex:1;min-width:160px"><label>Paper ID</label><input id="browseByPaper" placeholder="1706.03762"/></div>
+        <div class="field" style="flex:0 0 160px"><label>Node type</label>
+          <select id="browseByType">
+            <option value="">All</option>
+            <option value="theorem">Theorem</option>
+            <option value="lemma">Lemma</option>
+            <option value="assumption">Assumption</option>
+            <option value="experiment">Experiment</option>
+            <option value="hypothesis">Hypothesis</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0 0 80px"><label>Limit</label><input id="browseLimit" type="number" value="50" min="1" max="500"/></div>
+      </div>
+      <div class="row" style="margin-bottom:14px"><button class="btn primary sm" id="browseBtn">Load nodes</button><button class="btn sm" id="browseEdgesBtn">Load edges</button></div>
+      <div id="browseResults"></div>
+    </div>
+
+    <!-- ── SEARCH RESULTS ────────────────────────────────────────────── -->
+    <div id="view-search" class="view panel">
+      <h2>Search results</h2>
+      <div id="searchResults"><div class="note">Run a search from the sidebar to see results here.</div></div>
+    </div>
+
+    <!-- ── PROOF PATHS ───────────────────────────────────────────────── -->
+    <div id="view-paths" class="view panel">
+      <h2>Proof path suggestions</h2>
+      <div id="proofPathResults"><div class="note">Enter a theorem in the sidebar and click "Proof paths".</div></div>
+    </div>
+
+    <!-- ── WORLD GRAPH ───────────────────────────────────────────────── -->
+    <div id="view-world" class="view panel">
+      <h2>World graph — abstractions</h2>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn sm primary" id="loadWorldBtn">Load world nodes</button>
+        <div class="field" style="flex:1;min-width:180px;margin-bottom:0"><label>Search world graph</label><input id="worldSearchQ" placeholder="concentration inequality"/></div>
+        <button class="btn sm" id="worldSearchBtn" style="margin-top:20px">Search</button>
+      </div>
+      <div id="worldResults"></div>
+    </div>
+
+    <!-- ── VISUALIZE ─────────────────────────────────────────────────── -->
+    <div id="view-viz" class="view panel">
+      <h2>Graph visualizer</h2>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="field" style="flex:1"><label>Center node ID</label><input id="vizNodeId" placeholder="paste a node_id"/></div>
+        <div class="field" style="flex:0 0 120px"><label>Hops</label>
+          <select id="vizHops"><option value="1">1 hop</option><option value="2">2 hops</option></select>
+        </div>
+        <button class="btn sm primary" id="vizBtn" style="margin-top:20px">Load neighborhood</button>
+      </div>
+      <canvas id="graphCanvas"></canvas>
+      <div id="vizStatus" class="note" style="display:none;margin-top:10px"></div>
+    </div>
+
+
+  <!-- ── INGEST VIEW ──────────────────────────────────────────────────────── -->
+  <div id="view-ingest" class="view panel">
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab active" data-subtab="single">Single paper</button>
+      <button class="tab" data-subtab="author">By author</button>
+      <button class="tab" data-subtab="joblist">Job history</button>
+    </div>
+
+    <!-- Single paper -->
+    <div id="sub-single" class="view active">
+      <h2>📄 Ingest arXiv paper</h2>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div class="field" style="flex:1;min-width:200px;margin-bottom:0">
+          <label>arXiv ID</label>
+          <input id="ingestArxivId" placeholder="e.g. 1706.03762"/>
+        </div>
+        <button class="btn primary" id="ingestStartBtn">Fetch + parse</button>
+      </div>
+      <div id="ingestSingleStatus" class="note" style="display:none"></div>
+      <div id="ingestJobProgress" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin:12px 0 6px">
+          <span id="ingestJobStatusBadge" class="badge">pending</span>
+          <span id="ingestJobTitle" style="font-size:.85rem;font-weight:700"></span>
+          <span class="spinner" id="ingestSpinner" style="display:none"></span>
+        </div>
+        <div id="ingestJobStats" style="font-size:.8rem;color:var(--muted);margin-bottom:10px"></div>
+      </div>
+      <div id="ingestPreview" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h3 style="margin:0">Extracted nodes</h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" id="ingestSelectAllNodes">Select all</button>
+            <button class="btn sm" id="ingestDeselectAllNodes">Deselect all</button>
+          </div>
+        </div>
+        <div id="ingestNodeList" style="max-height:360px;overflow-y:auto;margin-bottom:14px"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h3 style="margin:0">Extracted edges</h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" id="ingestSelectAllEdges">Select all</button>
+            <button class="btn sm" id="ingestDeselectAllEdges">Deselect all</button>
+          </div>
+        </div>
+        <div id="ingestEdgeList" style="max-height:200px;overflow-y:auto;margin-bottom:14px"></div>
+        <div class="row">
+          <button class="btn primary" id="ingestCommitBtn">Commit selected to graph</button>
+        </div>
+        <div id="ingestCommitResult" class="note" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+
+    <!-- Author search -->
+    <div id="sub-author" class="view">
+      <h2>👤 Ingest by author</h2>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div class="field" style="flex:1;min-width:200px;margin-bottom:0">
+          <label>Author name</label>
+          <input id="ingestAuthorName" placeholder="e.g. Sham Kakade"/>
+        </div>
+        <div class="field" style="flex:0 0 100px;margin-bottom:0">
+          <label>Max results</label>
+          <input id="ingestAuthorMax" type="number" value="20" min="1" max="50"/>
+        </div>
+        <button class="btn primary" id="ingestAuthorSearchBtn">Search arXiv</button>
+      </div>
+      <div id="ingestAuthorStatus" class="note" style="display:none"></div>
+      <div id="ingestAuthorResults" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h3 id="ingestAuthorCount" style="margin:0"></h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" id="ingestSelectAllPapers">Select all</button>
+            <button class="btn sm" id="ingestDeselectAllPapers">Deselect none</button>
+          </div>
+        </div>
+        <div id="ingestPaperList" style="max-height:400px;overflow-y:auto;margin-bottom:14px"></div>
+        <button class="btn primary" id="ingestBatchBtn">Queue selected for ingestion</button>
+        <div id="ingestBatchStatus" class="note" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+
+    <!-- Job history -->
+    <div id="sub-joblist" class="view">
+      <h2>📋 Ingestion job history</h2>
+      <div style="margin-bottom:12px">
+        <button class="btn sm primary" id="ingestRefreshJobsBtn">Refresh</button>
+      </div>
+      <div id="ingestJobList"></div>
+    </div>
+  </div>
+  <!-- ── END INGEST VIEW ───────────────────────────────────────────────────── -->
+
+  </main>
+</div><!-- /layout -->
+</div><!-- /app -->
+
+<script>
+// ── Settings ──────────────────────────────────────────────────────────────────
+const LS_KEY = 'kalvi_kg_settings';
+function loadSettings(){
+  try{ return JSON.parse(localStorage.getItem(LS_KEY)||'{}'); }catch{ return {}; }
+}
+function saveSettings(){
+  localStorage.setItem(LS_KEY,JSON.stringify({
+    apiBase: document.getElementById('apiBase').value.trim(),
+    token: document.getElementById('token').value.trim(),
+  }));
+  setStatus(document.getElementById('statusBox'),'Settings saved.','good');
+}
+function getBase(){ return document.getElementById('apiBase').value.trim().replace(/\/$/,''); }
+function getToken(){ return document.getElementById('token').value.trim(); }
+function headers(){ return getToken() ? {'Content-Type':'application/json','X-Lumina-Token':getToken()} : {'Content-Type':'application/json'}; }
+
+// ── On load ───────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',()=>{
+  const s = loadSettings();
+  if(s.apiBase) document.getElementById('apiBase').value = s.apiBase;
+  if(s.token) document.getElementById('token').value = s.token;
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setStatus(el, msg, type='info'){
+  if(!el) return;
+  el.textContent = msg;
+  el.className = 'note' + (type==='good'?' good':type==='bad'?' bad':type==='warn'?' warn':'');
+  el.style.display = 'block';
+}
+function showSpinner(el){ el.innerHTML += '<span class="spinner"></span>'; el.disabled = true; }
+function hideSpinner(el){ el.querySelector('.spinner')?.remove(); el.disabled = false; }
+
+async function api(method, path, body){
+  const base = getBase();
+  if(!base) throw new Error('API base not set');
+  const resp = await fetch(base.replace('/api/lumina','') + path, {
+    method,
+    headers: headers(),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if(!resp.ok){
+    const t = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${t.slice(0,200)}`);
+  }
+  return resp.json();
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab[data-tab]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab[data-tab]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.tab;
+    document.querySelectorAll('.view[id^="view-"]').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+t)?.classList.add('active');
+  });
+});
+document.querySelectorAll('.tab[data-subtab]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const parent = btn.closest('.view');
+    parent.querySelectorAll('.tab[data-subtab]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.subtab;
+    parent.querySelectorAll('.view[id^="sub-"]').forEach(v=>v.classList.remove('active'));
+    parent.querySelector('#sub-'+t)?.classList.add('active');
+  });
+});
+
+// ── Status / init ─────────────────────────────────────────────────────────────
+document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+
+document.getElementById('statusBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('statusBtn');
+  showSpinner(btn);
+  try{
+    const base = getBase();
+    const r = await fetch(base.replace('/api/lumina','')+'/api/kg/status',{headers:headers()});
+    const d = await r.json();
+    if(d.ok){
+      setStatus(document.getElementById('statusBox'),`✓ Backend OK — ${d.nodeCount} nodes, ${d.edgeCount} edges, ${d.worldNodeCount} world nodes`,'good');
+      document.getElementById('statNodes').textContent = d.nodeCount;
+      document.getElementById('statEdges').textContent = d.edgeCount;
+      document.getElementById('statWorld').textContent = d.worldNodeCount;
+    } else {
+      setStatus(document.getElementById('statusBox'),'Backend error: '+(d.error||'unknown'),'bad');
+    }
+  }catch(e){
+    setStatus(document.getElementById('statusBox'),'Could not reach backend: '+e.message,'bad');
+  }finally{ hideSpinner(btn); }
+});
+
+document.getElementById('initBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('initBtn');
+  showSpinner(btn);
+  try{
+    const d = await api('POST','/api/kg/init',{});
+    if(d.initialized){
+      setStatus(document.getElementById('statusBox'),'✓ DB schema initialized / verified.','good');
+    } else {
+      setStatus(document.getElementById('statusBox'),'Init result: '+JSON.stringify(d).slice(0,200),'warn');
+    }
+  }catch(e){
+    setStatus(document.getElementById('statusBox'),'Init failed: '+e.message,'bad');
+  }finally{ hideSpinner(btn); }
+});
+
+document.getElementById('refreshStatsBtn').addEventListener('click', async ()=>{
+  try{
+    const d = await api('GET','/api/kg/status');
+    if(d.ok){
+      document.getElementById('statNodes').textContent = d.nodeCount;
+      document.getElementById('statEdges').textContent = d.edgeCount;
+      document.getElementById('statWorld').textContent = d.worldNodeCount;
+    }
+  }catch(e){ console.warn(e); }
+});
+
+// ── Node type badge ───────────────────────────────────────────────────────────
+function typeBadge(t){
+  return `<span class="badge ${t||'theorem'}">${t||'theorem'}</span>`;
+}
+
+// ── Add node ──────────────────────────────────────────────────────────────────
+document.getElementById('addNodeBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('addNodeBtn');
+  const statusEl = document.getElementById('addNodeStatus');
+  const editId = document.getElementById('nodeTitle').dataset.editId || null;
+  const node = {
+    ...(editId ? {node_id: editId} : {}),
+    title: document.getElementById('nodeTitle').value.trim(),
+    node_type: document.getElementById('nodeType').value,
+    statement: document.getElementById('nodeStatement').value.trim(),
+    paper_id: document.getElementById('nodePaperId').value.trim(),
+    page_ref: document.getElementById('nodePageRef').value.trim(),
+    subfield: document.getElementById('nodeSubfield').value.trim(),
+    year: document.getElementById('nodeYear').value.trim(),
+    confidence: parseFloat(document.getElementById('nodeConf').value)||1.0,
+    provenance: document.getElementById('nodeProvenance').value,
+  };
+  if(!node.title && !node.statement){ setStatus(statusEl,'Title or statement is required.','bad'); return; }
+  showSpinner(btn);
+  try{
+    const d = await api('POST','/api/kg/nodes', node);
+    const saved = d.nodes?.[0];
+    setStatus(statusEl,`✓ Saved node ${saved?.node_id||'?'} — embedded: ${saved?.embedded}. Copy ID: ${saved?.node_id||'?'}`,'good');
+    // Reset edit mode
+    document.getElementById('nodeTitle').dataset.editId = '';
+    const saveBtn = document.getElementById('addNodeBtn');
+    saveBtn.textContent = 'Save node + embed';
+    saveBtn.style.background = '';
+  }catch(e){
+    setStatus(statusEl,'Error: '+e.message,'bad');
+  }finally{ hideSpinner(btn); }
+});
+document.getElementById('clearNodeBtn').addEventListener('click',()=>{
+  ['nodeTitle','nodeStatement','nodePaperId','nodePageRef','nodeSubfield','nodeYear'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('nodeConf').value='1.0';
+  document.getElementById('nodeTitle').dataset.editId = '';
+  const saveBtn = document.getElementById('addNodeBtn');
+  saveBtn.textContent = 'Save node + embed';
+  saveBtn.style.background = '';
+  document.getElementById('addNodeStatus').style.display = 'none';
+});
+
+// ── Add edge ──────────────────────────────────────────────────────────────────
+document.getElementById('addEdgeBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('addEdgeBtn');
+  const statusEl = document.getElementById('addEdgeStatus');
+  const edge = {
+    source_node_id: document.getElementById('edgeSrc').value.trim(),
+    target_node_id: document.getElementById('edgeTgt').value.trim(),
+    rel_category: document.getElementById('edgeCat').value,
+    rel_type: document.getElementById('edgeType').value,
+    confidence: parseFloat(document.getElementById('edgeConf').value)||1.0,
+    provenance: document.getElementById('edgeProvenance').value,
+  };
+  if(!edge.source_node_id||!edge.target_node_id){ setStatus(statusEl,'Source and target node IDs required.','bad'); return; }
+  showSpinner(btn);
+  try{
+    const d = await api('POST','/api/kg/edges', edge);
+    setStatus(statusEl,`✓ Saved edge ${d.edges?.[0]?.edge_id||'?'}. ${edge.rel_category} / ${edge.rel_type}`,'good');
+  }catch(e){
+    setStatus(statusEl,'Error: '+e.message,'bad');
+  }finally{ hideSpinner(btn); }
+});
+document.getElementById('clearEdgeBtn').addEventListener('click',()=>{
+  ['edgeSrc','edgeTgt'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('edgeConf').value='1.0';
+});
+
+// ── Add world node ────────────────────────────────────────────────────────────
+document.getElementById('addWorldNodeBtn').addEventListener('click', async ()=>{
+  const statusEl = document.getElementById('addWorldNodeStatus');
+  const stmt = document.getElementById('wnStmt').value.trim();
+  if(!stmt){ setStatus(statusEl,'Abstract statement is required.','bad'); return; }
+  const srcRaw = document.getElementById('wnSourceIds').value.trim();
+  const src = srcRaw ? srcRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  try{
+    const d = await api('POST','/api/kg/world-nodes',{
+      node_type: document.getElementById('wnType').value,
+      abstract_stmt: stmt,
+      source_node_ids: src,
+    });
+    setStatus(statusEl,`✓ Saved world node ${d.world_node_id} — embedded: ${d.embedded}`,'good');
+  }catch(e){ setStatus(statusEl,'Error: '+e.message,'bad'); }
+});
+
+// ── Bulk import ───────────────────────────────────────────────────────────────
+document.getElementById('bulkImportBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('bulkImportBtn');
+  const statusEl = document.getElementById('bulkStatus');
+  const logEl = document.getElementById('bulkLog');
+  let nodes;
+  try{ nodes = JSON.parse(document.getElementById('bulkJson').value); }
+  catch(e){ setStatus(statusEl,'Invalid JSON: '+e.message,'bad'); return; }
+  if(!Array.isArray(nodes)){ setStatus(statusEl,'Expected a JSON array.','bad'); return; }
+  showSpinner(btn);
+  setStatus(statusEl,`Importing ${nodes.length} nodes…`,'info');
+  try{
+    const d = await api('POST','/api/kg/nodes', nodes);
+    setStatus(statusEl,`✓ Saved ${d.saved} / ${nodes.length}. Errors: ${d.errors?.length||0}`,'good');
+    if(d.errors?.length){
+      logEl.textContent = JSON.stringify(d.errors, null, 2);
+      logEl.style.display='block';
+    }
+  }catch(e){ setStatus(statusEl,'Error: '+e.message,'bad'); }
+  finally{ hideSpinner(btn); }
+});
+
+// ── Browse ────────────────────────────────────────────────────────────────────
+// Node store so we can pass full node objects without inline JSON in HTML
+const _nodeStore = {};
+
+function renderNodeCard(n, showCopyId=true){
+  const mt = (n.metadata && typeof n.metadata==='object') ? n.metadata : {};
+  _nodeStore[n.node_id] = n;
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      ${typeBadge(n.node_type)}
+      ${n.provenance==='synthetic'?'<span class="badge sim">synthetic</span>':''}
+      <span class="badge" style="margin-left:auto">conf: ${(+n.confidence||1).toFixed(2)}</span>
+    </div>
+    <div class="card-title">${esc(n.title||'(untitled)')}</div>
+    <div class="card-meta">
+      ${n.paper_id?`<span>📄 ${esc(n.paper_id)}</span>`:''}
+      ${n.page_ref?`<span>p. ${esc(n.page_ref)}</span>`:''}
+      ${n.subfield?`<span>🏷 ${esc(n.subfield)}</span>`:''}
+      ${n.year?`<span>📅 ${esc(n.year)}</span>`:''}
+    </div>
+    ${n.statement?`<div class="card-stmt">${esc(n.statement.slice(0,400))}${n.statement.length>400?'…':''}</div>`:''}
+    ${n.similarity!=null?`<div style="margin-top:6px;font-size:.76rem;color:var(--muted)">Similarity: <strong>${n.similarity}</strong><div class="sim-bar" style="width:${Math.round(n.similarity*100)}%"></div></div>`:''}
+    <div class="card-actions">
+      ${showCopyId?`<button class="btn sm" onclick="copyId('${esc(n.node_id)}')">Copy ID</button>`:''}
+      <button class="btn sm" onclick="loadNeighborhood('${esc(n.node_id)}')">Neighborhood</button>
+      <button class="btn sm" onclick="prefillEdgeSrc('${esc(n.node_id)}')">Use as edge src</button>
+      <button class="btn sm" onclick="editNode('${esc(n.node_id)}')">Edit</button>
+      <button class="btn sm danger" onclick="deleteNode('${esc(n.node_id)}', '${esc((n.title||'this node').replace(/'/g,"\'"))}')">Delete</button>
+    </div>
+  </div>`;
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function copyId(id){ navigator.clipboard.writeText(id); alert('Copied: '+id); }
+
+async function deleteNode(id, title){
+  if(!confirm('Delete node "' + title + '"?\nThis will also delete all its edges.')) return;
+  try{
+    await api('DELETE', '/api/kg/nodes/' + encodeURIComponent(id));
+    // Refresh whichever view is active
+    document.getElementById('browseBtn').click();
+    document.getElementById('refreshStatsBtn').click();
+  }catch(e){ alert('Delete failed: ' + e.message); }
+}
+
+async function deleteEdge(id){
+  if(!confirm('Delete this edge?')) return;
+  try{
+    await api('DELETE', '/api/kg/edges/' + encodeURIComponent(id));
+    document.getElementById('browseEdgesBtn').click();
+    document.getElementById('refreshStatsBtn').click();
+  }catch(e){ alert('Delete failed: ' + e.message); }
+}
+
+function editNode(id){
+  const n = _nodeStore[id];
+  if(!n){ alert('Node data not found. Please reload the list.'); return; }
+  // Pre-fill the Add node form with existing node data
+  document.getElementById('nodeTitle').value = n.title || '';
+  document.getElementById('nodeType').value = n.node_type || 'theorem';
+  document.getElementById('nodeStatement').value = n.statement || '';
+  document.getElementById('nodePaperId').value = n.paper_id || '';
+  document.getElementById('nodePageRef').value = n.page_ref || '';
+  document.getElementById('nodeSubfield').value = n.subfield || '';
+  document.getElementById('nodeYear').value = n.year || '';
+  document.getElementById('nodeConf').value = n.confidence != null ? n.confidence : 1.0;
+  document.getElementById('nodeProvenance').value = n.provenance || 'real';
+  // Store node_id so the upsert updates rather than creates
+  document.getElementById('nodeTitle').dataset.editId = n.node_id;
+  // Switch to Add node tab
+  switchToTab('add');
+  switchToSubtab('node');
+  // Update button label to indicate edit mode
+  const btn = document.getElementById('addNodeBtn');
+  btn.textContent = 'Update node + re-embed';
+  btn.style.background = 'linear-gradient(135deg,#059669,#0d9488)';
+  document.getElementById('addNodeStatus').style.display = 'none';
+  // Show a note
+  const statusEl = document.getElementById('addNodeStatus');
+  setStatus(statusEl, 'Editing node: ' + (n.title||n.node_id) + ' — make changes and click Update.', 'info');
+}
+function prefillEdgeSrc(id){ document.getElementById('edgeSrc').value=id; switchToTab('add'); switchToSubtab('edge'); }
+function loadNeighborhood(id){ document.getElementById('vizNodeId').value=id; switchToTab('viz'); document.getElementById('vizBtn').click(); }
+
+function switchToTab(t){
+  document.querySelectorAll('.tab[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  document.querySelectorAll('.view[id^="view-"]').forEach(v=>v.classList.toggle('active',v.id==='view-'+t));
+}
+function switchToSubtab(t){
+  const parent = document.getElementById('view-add');
+  parent.querySelectorAll('.tab[data-subtab]').forEach(b=>b.classList.toggle('active',b.dataset.subtab===t));
+  parent.querySelectorAll('.view[id^="sub-"]').forEach(v=>v.classList.toggle('active',v.id==='sub-'+t));
+}
+
+document.getElementById('browseBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('browseBtn');
+  showSpinner(btn);
+  try{
+    const paperId = document.getElementById('browseByPaper').value.trim();
+    const nodeType = document.getElementById('browseByType').value;
+    const limit = document.getElementById('browseLimit').value||50;
+    let url = `/api/kg/nodes/list?limit=${limit}`;
+    if(paperId) url+=`&paper_id=${encodeURIComponent(paperId)}`;
+    if(nodeType) url+=`&node_type=${encodeURIComponent(nodeType)}`;
+    const d = await api('GET', url);
+    const el = document.getElementById('browseResults');
+    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} nodes</p>` + (d.nodes||[]).map(n=>renderNodeCard(n)).join('');
+    if(!d.nodes?.length) el.innerHTML='<div class="note">No nodes found.</div>';
+  }catch(e){ document.getElementById('browseResults').innerHTML=`<div class="note bad">Error: ${esc(e.message)}</div>`; }
+  finally{ hideSpinner(btn); }
+});
+
+document.getElementById('browseEdgesBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('browseEdgesBtn');
+  showSpinner(btn);
+  try{
+    const d = await api('GET','/api/kg/edges/list?limit=100');
+    const el = document.getElementById('browseResults');
+    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} edges</p>`
+      + (d.edges||[]).map(e=>`<div class="edge-row">
+          <span class="edge-node" title="${esc(e.source_node_id)}">${esc(e.source_node_id.slice(-8))}</span>
+          <span class="path-arrow">→</span>
+          <span class="edge-node" title="${esc(e.target_node_id)}">${esc(e.target_node_id.slice(-8))}</span>
+          <span class="edge-type">${esc(e.rel_type)}</span>
+          <span class="badge ${e.rel_category==='empirical'?'empirical':'theoretical'}">${esc(e.rel_category)}</span>
+          <span class="conf-badge">conf: ${(+e.confidence||1).toFixed(2)}</span>
+          <button class="btn sm danger" onclick="deleteEdge('${esc(e.edge_id)}')">Delete</button>
+        </div>`).join('');
+    if(!d.edges?.length) el.innerHTML='<div class="note">No edges found.</div>';
+  }catch(e){ document.getElementById('browseResults').innerHTML=`<div class="note bad">Error: ${esc(e.message)}</div>`; }
+  finally{ hideSpinner(btn); }
+});
+
+// ── Search ────────────────────────────────────────────────────────────────────
+document.getElementById('quickSearchBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('quickSearchBtn');
+  const q = document.getElementById('quickQuery').value.trim();
+  if(!q){ setStatus(document.getElementById('quickSearchStatus'),'Enter a query.','warn'); return; }
+  showSpinner(btn);
+  document.getElementById('quickSearchStatus').style.display='none';
+  try{
+    const d = await api('POST','/api/kg/search',{
+      query:q,
+      top_k:10,
+      node_type: document.getElementById('quickType').value||undefined,
+    });
+    const el = document.getElementById('searchResults');
+    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} results for "${esc(q)}"</p>`
+      + (d.results||[]).map(n=>renderNodeCard(n)).join('');
+    if(!d.results?.length) el.innerHTML='<div class="note">No results.</div>';
+    switchToTab('search');
+  }catch(e){
+    setStatus(document.getElementById('quickSearchStatus'),'Search error: '+e.message,'bad');
+  }finally{ hideSpinner(btn); }
+});
+
+// ── Proof paths ───────────────────────────────────────────────────────────────
+document.getElementById('proofPathBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('proofPathBtn');
+  const q = document.getElementById('quickQuery').value.trim();
+  if(!q){ setStatus(document.getElementById('quickSearchStatus'),'Enter a target theorem.','warn'); return; }
+  showSpinner(btn);
+  try{
+    const d = await api('POST','/api/kg/suggest-proof-paths',{target:q,top_k:5,hops:1});
+    const el = document.getElementById('proofPathResults');
+    let html = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Proof path suggestions for: <em>${esc(q)}</em></p>`;
+
+    if(d.worldGraphHits?.length){
+      html+=`<h3 style="font-size:.85rem;font-weight:800;margin-bottom:8px;color:var(--muted)">World graph matches</h3>`;
+      html+=d.worldGraphHits.map(w=>`<div class="card">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${typeBadge(w.node_type)}<span class="badge" style="margin-left:auto">sim: ${w.similarity}</span></div>
+        <div class="card-stmt">${esc(w.abstract_stmt?.slice(0,300)||'')}</div>
+      </div>`).join('');
+    }
+
+    const suggs = d.suggestions||[];
+    html+=`<h3 style="font-size:.85rem;font-weight:800;margin-top:14px;margin-bottom:8px;color:var(--muted)">Concrete proof paths (${suggs.length} found)</h3>`;
+    if(!suggs.length) html+='<div class="note">No similar nodes found.</div>';
+    html+=suggs.map((s,i)=>{
+      const n = s.similar_node;
+      const assump = s.assumptions_feeding_in||[];
+      const concl = s.conclusions_flowing_out||[];
+      return `<div class="suggestion">
+        <div class="sug-title">${i+1}. ${typeBadge(n.node_type)} <span>${esc(n.title||'(untitled)')}</span>
+          <span style="margin-left:auto;font-size:.76rem;color:var(--muted)">sim: ${n.similarity}</span></div>
+        ${n.statement?`<div class="card-stmt">${esc(n.statement.slice(0,300))}${n.statement.length>300?'…':''}</div>`:''}
+        <div class="sug-path">
+          ${assump.length?`<div style="margin-top:8px;font-size:.76rem;color:var(--muted);font-weight:800">Assumptions feeding in:</div>
+            ${assump.map(a=>`<span class="path-node">${typeBadge(a.node_type)} ${esc(a.title?.slice(0,40)||'?')}</span>`).join('')}`:''}
+          ${concl.length?`<div style="margin-top:6px;font-size:.76rem;color:var(--muted);font-weight:800">Leads to:</div>
+            ${concl.map(c=>`<span class="path-node">${typeBadge(c.node_type)} ${esc(c.title?.slice(0,40)||'?')}</span>`).join('')}`:''}
+        </div>
+        <div class="sug-hint">${esc(s.proof_path_hint||'')}</div>
+        <div class="card-actions" style="margin-top:8px">
+          <button class="btn sm" onclick="loadNeighborhood('${esc(n.node_id)}')">Visualize neighborhood</button>
+          <button class="btn sm" onclick="copyId('${esc(n.node_id)}')">Copy ID</button>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = html;
+    switchToTab('paths');
+    console.log("Proof paths rendered:", suggs.length, "suggestions");
+  }catch(e){
+    setStatus(document.getElementById('quickSearchStatus'),'Error: '+e.message,'bad');
+  }finally{ hideSpinner(btn); }
+});
+
+// ── World graph ───────────────────────────────────────────────────────────────
+document.getElementById('loadWorldBtn').addEventListener('click', async ()=>{
+  try{
+    const d = await api('GET','/api/kg/world-nodes/list?limit=100');
+    const el = document.getElementById('worldResults');
+    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} world nodes</p>`
+      + (d.worldNodes||[]).map(w=>`<div class="card">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${typeBadge(w.node_type)}</div>
+          <div class="card-stmt">${esc(w.abstract_stmt?.slice(0,400)||'')}</div>
+          <div style="font-size:.74rem;color:var(--muted);margin-top:6px">Sources: ${(w.source_node_ids||[]).length} nodes</div>
+        </div>`).join('');
+    if(!d.worldNodes?.length) el.innerHTML='<div class="note">No world nodes yet.</div>';
+  }catch(e){ document.getElementById('worldResults').innerHTML=`<div class="note bad">Error: ${esc(e.message)}</div>`; }
+});
+
+document.getElementById('worldSearchBtn').addEventListener('click', async ()=>{
+  const q = document.getElementById('worldSearchQ').value.trim();
+  if(!q) return;
+  try{
+    const d = await api('POST','/api/kg/world-nodes/search',{query:q,top_k:10});
+    const el = document.getElementById('worldResults');
+    el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} results</p>`
+      + (d.results||[]).map(w=>`<div class="card">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${typeBadge(w.node_type)}<span class="badge" style="margin-left:auto">sim: ${w.similarity}</span></div>
+          <div class="card-stmt">${esc(w.abstract_stmt?.slice(0,400)||'')}</div>
+          <div style="font-size:.74rem;color:var(--muted);margin-top:6px">Sources: ${(w.source_node_ids||[]).length} nodes</div>
+        </div>`).join('');
+  }catch(e){ document.getElementById('worldResults').innerHTML=`<div class="note bad">Error: ${esc(e.message)}</div>`; }
+});
+
+// ── Graph visualizer ──────────────────────────────────────────────────────────
+document.getElementById('vizBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('vizBtn');
+  const nodeId = document.getElementById('vizNodeId').value.trim();
+  const hops = parseInt(document.getElementById('vizHops').value)||1;
+  const statusEl = document.getElementById('vizStatus');
+  if(!nodeId){ setStatus(statusEl,'Enter a node ID.','warn'); return; }
+  showSpinner(btn);
+  try{
+    const d = await api('GET',`/api/kg/nodes/${encodeURIComponent(nodeId)}/neighborhood?hops=${hops}`);
+    renderGraph(d.nodes||[], d.edges||[]);
+    setStatus(statusEl,`Showing ${d.nodes?.length||0} nodes, ${d.edges?.length||0} edges.`,'good');
+  }catch(e){ setStatus(statusEl,'Error: '+e.message,'bad'); }
+  finally{ hideSpinner(btn); }
+});
+
+// simple force-directed canvas visualizer
+const TYPE_COLORS = {theorem:'#3b82f6',lemma:'#6366f1',assumption:'#f59e0b',experiment:'#22c55e',hypothesis:'#ec4899',default:'#94a3b8'};
+function renderGraph(nodes, edges){
+  const canvas = document.getElementById('graphCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  canvas.width = W; canvas.height = H;
+
+  // init positions
+  const pos = {};
+  nodes.forEach((n,i)=>{
+    const angle = (2*Math.PI*i)/nodes.length;
+    pos[n.node_id] = {x: W/2 + (W*0.35)*Math.cos(angle), y: H/2 + (H*0.35)*Math.sin(angle), vx:0, vy:0};
+  });
+
+  // force simulation
+  for(let iter=0;iter<200;iter++){
+    // repulsion
+    for(let i=0;i<nodes.length;i++) for(let j=i+1;j<nodes.length;j++){
+      const a=pos[nodes[i].node_id], b=pos[nodes[j].node_id];
+      const dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy)||1;
+      const f=3000/(dist*dist);
+      const fx=f*dx/dist, fy=f*dy/dist;
+      a.vx-=fx; a.vy-=fy; b.vx+=fx; b.vy+=fy;
+    }
+    // attraction along edges
+    edges.forEach(e=>{
+      const a=pos[e.source_node_id], b=pos[e.target_node_id];
+      if(!a||!b) return;
+      const dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy)||1;
+      const f=dist/80;
+      const fx=f*dx/dist, fy=f*dy/dist;
+      a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy;
+    });
+    // center gravity + damping
+    nodes.forEach(n=>{
+      const p=pos[n.node_id];
+      p.vx=(p.vx+(W/2-p.x)*0.01)*0.85;
+      p.vy=(p.vy+(H/2-p.y)*0.01)*0.85;
+      p.x+=p.vx; p.y+=p.vy;
+      p.x=Math.max(40,Math.min(W-40,p.x));
+      p.y=Math.max(40,Math.min(H-40,p.y));
+    });
+  }
+
+  // draw
+  ctx.clearRect(0,0,W,H);
+  // edges
+  edges.forEach(e=>{
+    const a=pos[e.source_node_id], b=pos[e.target_node_id];
+    if(!a||!b) return;
+    ctx.beginPath();
+    ctx.moveTo(a.x,a.y);
+    ctx.lineTo(b.x,b.y);
+    ctx.strokeStyle=e.rel_category==='empirical'?'rgba(34,197,94,.6)':'rgba(99,102,241,.6)';
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+    // arrowhead
+    const angle=Math.atan2(b.y-a.y,b.x-a.x);
+    const r=18;
+    ctx.beginPath();
+    ctx.moveTo(b.x-r*Math.cos(angle)+r*0.3*Math.cos(angle-Math.PI/2),b.y-r*Math.sin(angle)+r*0.3*Math.sin(angle-Math.PI/2));
+    ctx.lineTo(b.x-r*Math.cos(angle),b.y-r*Math.sin(angle));
+    ctx.lineTo(b.x-r*Math.cos(angle)+r*0.3*Math.cos(angle+Math.PI/2),b.y-r*Math.sin(angle)+r*0.3*Math.sin(angle+Math.PI/2));
+    ctx.strokeStyle=e.rel_category==='empirical'?'rgba(34,197,94,.9)':'rgba(99,102,241,.9)';
+    ctx.stroke();
+  });
+  // nodes
+  nodes.forEach(n=>{
+    const p=pos[n.node_id];
+    const col=TYPE_COLORS[n.node_type]||TYPE_COLORS.default;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,14,0,2*Math.PI);
+    ctx.fillStyle=col;
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.4)';
+    ctx.lineWidth=2;
+    ctx.stroke();
+    // label
+    ctx.fillStyle='#e2e8f0';
+    ctx.font='bold 10px ui-sans-serif,system-ui';
+    ctx.textAlign='center';
+    ctx.fillText((n.title||n.node_type||'?').slice(0,18),p.x,p.y+26);
+  });
+}
+// ═══════════════════════════════════════════════════════════════════════════
+// INGEST TAB LOGIC
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _currentJobId = null;
+let _pollInterval = null;
+let _jobNodes = [];
+let _jobEdges = [];
+
+function _stopPoll() {
+  if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+}
+
+function _ingestStatusBadgeClass(status) {
+  return {pending:'badge',running:'badge theorem',done:'badge experiment',failed:'badge',committed:'badge lemma'}[status] || 'badge';
+}
+
+document.getElementById('ingestStartBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestStartBtn');
+  const arxivId = document.getElementById('ingestArxivId').value.trim();
+  if (!arxivId) { setStatus(document.getElementById('ingestSingleStatus'), 'Enter an arXiv ID.', 'warn'); return; }
+  _stopPoll();
+  document.getElementById('ingestPreview').style.display = 'none';
+  document.getElementById('ingestJobProgress').style.display = 'none';
+  showSpinner(btn);
+  try {
+    const d = await api('POST', '/api/kg/ingest/arxiv', { arxiv_id: arxivId });
+    _currentJobId = d.job_id;
+    setStatus(document.getElementById('ingestSingleStatus'), 'Job started: ' + d.job_id, 'good');
+    document.getElementById('ingestJobProgress').style.display = 'block';
+    document.getElementById('ingestJobStatusBadge').textContent = 'running';
+    document.getElementById('ingestJobStatusBadge').className = 'badge theorem';
+    document.getElementById('ingestSpinner').style.display = 'inline-block';
+    _pollInterval = setInterval(_pollJob, 3000);
+  } catch(e) {
+    setStatus(document.getElementById('ingestSingleStatus'), 'Error: ' + e.message, 'bad');
+  } finally { hideSpinner(btn); }
+});
+
+async function _pollJob() {
+  if (!_currentJobId) return;
+  try {
+    const d = await api('GET', '/api/kg/ingest/jobs/' + _currentJobId);
+    const badge = document.getElementById('ingestJobStatusBadge');
+    badge.textContent = d.status;
+    badge.className = _ingestStatusBadgeClass(d.status);
+    document.getElementById('ingestJobTitle').textContent = d.paper_title || d.arxiv_id || '';
+    if (d.stats) {
+      const s = typeof d.stats === 'string' ? JSON.parse(d.stats) : d.stats;
+      const byType = Object.entries(s.by_type || {}).map(([t,n]) => n + ' ' + t + 's').join(', ');
+      document.getElementById('ingestJobStats').textContent =
+        (s.total_nodes || 0) + ' nodes (' + byType + '), ' + (s.total_edges || 0) + ' edges extracted';
+    }
+    if (d.status === 'done') {
+      _stopPoll();
+      document.getElementById('ingestSpinner').style.display = 'none';
+      _jobNodes = d.nodes || [];
+      _jobEdges = d.edges || [];
+      _renderIngestPreview(_jobNodes, _jobEdges);
+    } else if (d.status === 'failed') {
+      _stopPoll();
+      document.getElementById('ingestSpinner').style.display = 'none';
+      setStatus(document.getElementById('ingestSingleStatus'), 'Job failed: ' + (d.error || 'unknown'), 'bad');
+    }
+  } catch(e) { console.warn('Poll error:', e); }
+}
+
+function _renderIngestPreview(nodes, edges) {
+  const preview = document.getElementById('ingestPreview');
+  preview.style.display = 'block';
+  const nodeList = document.getElementById('ingestNodeList');
+  nodeList.innerHTML = nodes.length === 0
+    ? '<div class="note warn">No theorem/lemma/assumption environments found.</div>'
+    : nodes.map(n => '<div class="card" style="margin-bottom:8px"><label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer"><input type="checkbox" class="ingest-node-cb" data-id="' + esc(n.node_id) + '" checked style="margin-top:3px;flex-shrink:0"/><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">' + typeBadge(n.node_type) + '<span style="font-weight:800;font-size:.88rem">' + esc(n.title) + '</span></div><div class="card-stmt" style="font-size:.78rem">' + esc((n.statement||'').slice(0,300)) + ((n.statement||'').length>300?'…':'') + '</div></div></label></div>').join('');
+  const edgeList = document.getElementById('ingestEdgeList');
+  edgeList.innerHTML = edges.length === 0
+    ? '<div class="note" style="font-size:.8rem">No intra-paper edges extracted.</div>'
+    : edges.map(e => {
+        const src = nodes.find(n => n.node_id === e.source_node_id);
+        const tgt = nodes.find(n => n.node_id === e.target_node_id);
+        return '<div class="edge-row"><input type="checkbox" class="ingest-edge-cb" data-id="' + esc(e.edge_id) + '" checked style="flex-shrink:0"/><span class="edge-node">' + esc((src?.title||e.source_node_id).slice(0,30)) + '</span><span class="path-arrow">→</span><span class="edge-node">' + esc((tgt?.title||e.target_node_id).slice(0,30)) + '</span><span class="edge-type">' + esc(e.rel_type) + '</span><span class="conf-badge">conf: ' + (+e.confidence||1).toFixed(2) + '</span></div>';
+      }).join('');
+}
+
+document.getElementById('ingestSelectAllNodes').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-node-cb').forEach(cb => cb.checked = true);
+});
+document.getElementById('ingestDeselectAllNodes').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-node-cb').forEach(cb => cb.checked = false);
+});
+document.getElementById('ingestSelectAllEdges').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-edge-cb').forEach(cb => cb.checked = true);
+});
+document.getElementById('ingestDeselectAllEdges').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-edge-cb').forEach(cb => cb.checked = false);
+});
+
+document.getElementById('ingestCommitBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestCommitBtn');
+  const resultEl = document.getElementById('ingestCommitResult');
+  if (!_currentJobId) { setStatus(resultEl, 'No active job.', 'bad'); return; }
+  const selectedNodeIds = [...document.querySelectorAll('.ingest-node-cb:checked')].map(cb => cb.dataset.id);
+  const selectedEdgeIds = [...document.querySelectorAll('.ingest-edge-cb:checked')].map(cb => cb.dataset.id);
+  showSpinner(btn);
+  try {
+    const d = await api('POST', '/api/kg/ingest/jobs/' + _currentJobId + '/commit', {
+      node_ids: selectedNodeIds, edge_ids: selectedEdgeIds,
+    });
+    setStatus(resultEl, '✓ Committed ' + d.saved_nodes + ' nodes and ' + d.saved_edges + ' edges.' + (d.errors?.length ? ' ' + d.errors.length + ' errors.' : ''), d.errors?.length ? 'warn' : 'good');
+    document.getElementById('refreshStatsBtn').click();
+  } catch(e) { setStatus(resultEl, 'Commit failed: ' + e.message, 'bad'); }
+  finally { hideSpinner(btn); }
+});
+
+let _authorPapers = [];
+
+document.getElementById('ingestAuthorSearchBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestAuthorSearchBtn');
+  const author = document.getElementById('ingestAuthorName').value.trim();
+  const maxResults = parseInt(document.getElementById('ingestAuthorMax').value) || 20;
+  const statusEl = document.getElementById('ingestAuthorStatus');
+  if (!author) { setStatus(statusEl, 'Enter an author name.', 'warn'); return; }
+  showSpinner(btn);
+  document.getElementById('ingestAuthorResults').style.display = 'none';
+  try {
+    const d = await api('POST', '/api/kg/ingest/author', { author, max_results: maxResults });
+    _authorPapers = d.papers || [];
+    document.getElementById('ingestAuthorCount').textContent = d.count + ' papers by "' + author + '"';
+    const list = document.getElementById('ingestPaperList');
+    list.innerHTML = _authorPapers.length === 0 ? '<div class="note">No papers found.</div>'
+      : _authorPapers.map(p => '<div class="card" style="margin-bottom:8px"><label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer"><input type="checkbox" class="author-paper-cb" data-id="' + esc(p.arxiv_id) + '" checked style="margin-top:3px;flex-shrink:0"/><div><div style="font-weight:800;font-size:.88rem;margin-bottom:2px">' + esc(p.title) + '</div><div style="font-size:.76rem;color:var(--muted);margin-bottom:4px">' + esc(p.arxiv_id) + ' · ' + esc(p.year) + ' · ' + esc(p.authors) + '</div>' + (p.abstract ? '<div style="font-size:.78rem;color:#475569">' + esc(p.abstract) + '…</div>' : '') + '</div></label></div>').join('');
+    document.getElementById('ingestAuthorResults').style.display = 'block';
+    setStatus(statusEl, 'Found ' + d.count + ' papers.', 'good');
+  } catch(e) { setStatus(statusEl, 'Search failed: ' + e.message, 'bad'); }
+  finally { hideSpinner(btn); }
+});
+
+document.getElementById('ingestSelectAllPapers').addEventListener('click', () => {
+  document.querySelectorAll('.author-paper-cb').forEach(cb => cb.checked = true);
+});
+document.getElementById('ingestDeselectAllPapers').addEventListener('click', () => {
+  document.querySelectorAll('.author-paper-cb').forEach(cb => cb.checked = false);
+});
+
+document.getElementById('ingestBatchBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestBatchBtn');
+  const statusEl = document.getElementById('ingestBatchStatus');
+  const selectedIds = [...document.querySelectorAll('.author-paper-cb:checked')].map(cb => cb.dataset.id);
+  if (!selectedIds.length) { setStatus(statusEl, 'Select at least one paper.', 'warn'); return; }
+  if (selectedIds.length > 20) { setStatus(statusEl, 'Maximum 20 papers per batch.', 'warn'); return; }
+  showSpinner(btn);
+  try {
+    const d = await api('POST', '/api/kg/ingest/author/batch', { arxiv_ids: selectedIds });
+    setStatus(statusEl, '✓ Queued ' + d.count + ' jobs. Check Job history tab.', 'good');
+    setTimeout(() => {
+      document.querySelector('.tab[data-subtab="joblist"]')?.click();
+      document.getElementById('ingestRefreshJobsBtn').click();
+    }, 1500);
+  } catch(e) { setStatus(statusEl, 'Batch failed: ' + e.message, 'bad'); }
+  finally { hideSpinner(btn); }
+});
+
+document.getElementById('ingestRefreshJobsBtn').addEventListener('click', async () => {
+  const el = document.getElementById('ingestJobList');
+  try {
+    const d = await api('GET', '/api/kg/ingest/jobs?limit=20');
+    if (!(d.jobs || []).length) { el.innerHTML = '<div class="note">No jobs yet.</div>'; return; }
+    el.innerHTML = (d.jobs || []).map(j => {
+      const s = (typeof j.stats === 'string' ? JSON.parse(j.stats||'{}') : j.stats) || {};
+      const statsText = s.total_nodes != null ? s.total_nodes + ' nodes · ' + (s.total_edges||0) + ' edges' : '';
+      const errText = j.error ? ' · ' + esc(j.error.slice(0,80)) : '';
+      const reviewBtn = j.status === 'done'
+        ? '<div class="card-actions" style="margin-top:6px"><button class="btn sm primary" onclick="loadJobForReview(this.dataset.jid)" data-jid="' + esc(j.job_id) + '">Review & commit</button></div>'
+        : '';
+      return '<div class="card" style="margin-bottom:8px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">'
+        + '<span class="' + _ingestStatusBadgeClass(j.status) + '">' + esc(j.status) + '</span>'
+        + '<span style="font-weight:800;font-size:.88rem">' + esc(j.paper_title||j.arxiv_id) + '</span>'
+        + '<span style="font-size:.76rem;color:var(--muted);margin-left:auto">' + esc(j.arxiv_id) + '</span>'
+        + '</div>'
+        + '<div style="font-size:.78rem;color:var(--muted)">' + statsText + errText + '</div>'
+        + reviewBtn
+        + '</div>';
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="note bad">Error: ' + esc(e.message) + '</div>'; }
+});
+
+async function loadJobForReview(btnOrId) {
+  const jobId = (typeof btnOrId === 'string') ? btnOrId : btnOrId.dataset.jid;
+  try {
+    const d = await api('GET', '/api/kg/ingest/jobs/' + jobId);
+    _currentJobId = jobId;
+    _jobNodes = d.nodes || [];
+    _jobEdges = d.edges || [];
+    document.getElementById('ingestArxivId').value = d.arxiv_id || '';
+    document.getElementById('ingestJobProgress').style.display = 'block';
+    document.getElementById('ingestJobStatusBadge').textContent = d.status;
+    document.getElementById('ingestJobStatusBadge').className = _ingestStatusBadgeClass(d.status);
+    document.getElementById('ingestJobTitle').textContent = d.paper_title || d.arxiv_id || '';
+    document.getElementById('ingestSpinner').style.display = 'none';
+    _renderIngestPreview(_jobNodes, _jobEdges);
+    document.querySelector('.tab[data-subtab="single"]')?.click();
+  } catch(e) { alert('Could not load job: ' + e.message); }
+}
+
+</script>
+</body>
+</html>
