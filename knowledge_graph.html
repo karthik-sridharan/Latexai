@@ -578,8 +578,12 @@ document.getElementById('bulkImportBtn').addEventListener('click', async ()=>{
 });
 
 // ── Browse ────────────────────────────────────────────────────────────────────
+// Node store so we can pass full node objects without inline JSON in HTML
+const _nodeStore = {};
+
 function renderNodeCard(n, showCopyId=true){
   const mt = (n.metadata && typeof n.metadata==='object') ? n.metadata : {};
+  _nodeStore[n.node_id] = n;
   return `<div class="card">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
       ${typeBadge(n.node_type)}
@@ -599,8 +603,8 @@ function renderNodeCard(n, showCopyId=true){
       ${showCopyId?`<button class="btn sm" onclick="copyId('${esc(n.node_id)}')">Copy ID</button>`:''}
       <button class="btn sm" onclick="loadNeighborhood('${esc(n.node_id)}')">Neighborhood</button>
       <button class="btn sm" onclick="prefillEdgeSrc('${esc(n.node_id)}')">Use as edge src</button>
-      <button class="btn sm" onclick="editNode(${JSON.stringify(n).replace(/"/g,'&quot;')})">Edit</button>
-      <button class="btn sm danger" onclick="deleteNode('${esc(n.node_id)}', '${esc(n.title||'this node')}')">Delete</button>
+      <button class="btn sm" onclick="editNode('${esc(n.node_id)}')">Edit</button>
+      <button class="btn sm danger" onclick="deleteNode('${esc(n.node_id)}', '${esc((n.title||'this node').replace(/'/g,"\'"))}')">Delete</button>
     </div>
   </div>`;
 }
@@ -627,7 +631,9 @@ async function deleteEdge(id){
   }catch(e){ alert('Delete failed: ' + e.message); }
 }
 
-function editNode(n){
+function editNode(id){
+  const n = _nodeStore[id];
+  if(!n){ alert('Node data not found. Please reload the list.'); return; }
   // Pre-fill the Add node form with existing node data
   document.getElementById('nodeTitle').value = n.title || '';
   document.getElementById('nodeType').value = n.node_type || 'theorem';
@@ -746,8 +752,10 @@ document.getElementById('proofPathBtn').addEventListener('click', async ()=>{
       </div>`).join('');
     }
 
-    html+=`<h3 style="font-size:.85rem;font-weight:800;margin-top:14px;margin-bottom:8px;color:var(--muted)">Concrete proof paths</h3>`;
-    html+=(d.suggestions||[]).map((s,i)=>{
+    const suggs = d.suggestions||[];
+    html+=`<h3 style="font-size:.85rem;font-weight:800;margin-top:14px;margin-bottom:8px;color:var(--muted)">Concrete proof paths (${suggs.length} found)</h3>`;
+    if(!suggs.length) html+='<div class="note">No similar nodes found.</div>';
+    html+=suggs.map((s,i)=>{
       const n = s.similar_node;
       const assump = s.assumptions_feeding_in||[];
       const concl = s.conclusions_flowing_out||[];
@@ -770,6 +778,7 @@ document.getElementById('proofPathBtn').addEventListener('click', async ()=>{
     }).join('');
     el.innerHTML = html;
     switchToTab('paths');
+    console.log("Proof paths rendered:", suggs.length, "suggestions");
   }catch(e){
     setStatus(document.getElementById('quickSearchStatus'),'Error: '+e.message,'bad');
   }finally{ hideSpinner(btn); }
