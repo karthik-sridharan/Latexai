@@ -441,15 +441,30 @@ a{color:var(--accent);text-decoration:none}
 
 <script>
 // ── Settings ──────────────────────────────────────────────────────────────────
-const LS_KEY = 'kalvi_kg_settings';
+function _setCookie(name, value, days){
+  const d = new Date();
+  d.setTime(d.getTime() + days*24*60*60*1000);
+  document.cookie = name + '=' + encodeURIComponent(value) + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+}
+function _getCookie(name){
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : '';
+}
 function loadSettings(){
-  try{ return JSON.parse(localStorage.getItem(LS_KEY)||'{}'); }catch{ return {}; }
+  try{
+    const ls = JSON.parse(localStorage.getItem('kalvi_kg')||'{}');
+    if(ls.apiBase) return ls;
+  }catch{}
+  // fallback to cookies
+  return { apiBase: _getCookie('kalvi_api'), token: _getCookie('kalvi_token') };
 }
 function saveSettings(){
-  localStorage.setItem(LS_KEY,JSON.stringify({
-    apiBase: document.getElementById('apiBase').value.trim(),
-    token: document.getElementById('token').value.trim(),
-  }));
+  const apiBase = document.getElementById('apiBase').value.trim();
+  const token = document.getElementById('token').value.trim();
+  // Save to both localStorage and cookies
+  try{ localStorage.setItem('kalvi_kg', JSON.stringify({apiBase, token})); }catch{}
+  _setCookie('kalvi_api', apiBase, 30);
+  _setCookie('kalvi_token', token, 30);
   setStatus(document.getElementById('statusBox'),'Settings saved.','good');
 }
 function getBase(){ return document.getElementById('apiBase').value.trim().replace(/\/$/,''); }
@@ -461,6 +476,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   const s = loadSettings();
   if(s.apiBase) document.getElementById('apiBase').value = s.apiBase;
   if(s.token) document.getElementById('token').value = s.token;
+  // Auto-check backend if URL is set
+  if(s.apiBase) setTimeout(()=>document.getElementById('statusBtn').click(), 500);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -501,6 +518,7 @@ document.querySelectorAll('.tab[data-tab]').forEach(btn=>{
 document.querySelectorAll('.tab[data-subtab]').forEach(btn=>{
   btn.addEventListener('click',()=>{
     const parent = btn.closest('.view');
+    if(!parent) return;
     parent.querySelectorAll('.tab[data-subtab]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     const t = btn.dataset.subtab;
@@ -1174,15 +1192,29 @@ document.getElementById('ingestRefreshJobsBtn').addEventListener('click', async 
   const el = document.getElementById('ingestJobList');
   try {
     const d = await api('GET', '/api/kg/ingest/jobs?limit=20');
-    el.innerHTML = (d.jobs || []).length === 0 ? '<div class="note">No jobs yet.</div>'
-      : (d.jobs || []).map(j => {
-          const s = (typeof j.stats === 'string' ? JSON.parse(j.stats||'{}') : j.stats) || {};
-          return '<div class="card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap"><span class="' + _ingestStatusBadgeClass(j.status) + '">' + esc(j.status) + '</span><span style="font-weight:800;font-size:.88rem">' + esc(j.paper_title||j.arxiv_id) + '</span><span style="font-size:.76rem;color:var(--muted);margin-left:auto">' + esc(j.arxiv_id) + '</span></div><div style="font-size:.78rem;color:var(--muted)">' + (s.total_nodes != null ? s.total_nodes + ' nodes · ' + (s.total_edges||0) + ' edges' : '') + (j.error ? '<span style="color:var(--bad)"> · ' + esc(j.error.slice(0,80)) + '</span>' : '') + '</div>' + (j.status === 'done' ? '<div class="card-actions" style="margin-top:6px"><button class="btn sm primary" onclick="loadJobForReview('' + esc(j.job_id) + '')">Review & commit</button></div>' : '') + '</div>';
-        }).join('');
+    if (!(d.jobs || []).length) { el.innerHTML = '<div class="note">No jobs yet.</div>'; return; }
+    el.innerHTML = (d.jobs || []).map(j => {
+      const s = (typeof j.stats === 'string' ? JSON.parse(j.stats||'{}') : j.stats) || {};
+      const statsText = s.total_nodes != null ? s.total_nodes + ' nodes · ' + (s.total_edges||0) + ' edges' : '';
+      const errText = j.error ? ' · ' + esc(j.error.slice(0,80)) : '';
+      const reviewBtn = j.status === 'done'
+        ? '<div class="card-actions" style="margin-top:6px"><button class="btn sm primary" onclick="loadJobForReview(this.dataset.jid)" data-jid="' + esc(j.job_id) + '">Review & commit</button></div>'
+        : '';
+      return '<div class="card" style="margin-bottom:8px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">'
+        + '<span class="' + _ingestStatusBadgeClass(j.status) + '">' + esc(j.status) + '</span>'
+        + '<span style="font-weight:800;font-size:.88rem">' + esc(j.paper_title||j.arxiv_id) + '</span>'
+        + '<span style="font-size:.76rem;color:var(--muted);margin-left:auto">' + esc(j.arxiv_id) + '</span>'
+        + '</div>'
+        + '<div style="font-size:.78rem;color:var(--muted)">' + statsText + errText + '</div>'
+        + reviewBtn
+        + '</div>';
+    }).join('');
   } catch(e) { el.innerHTML = '<div class="note bad">Error: ' + esc(e.message) + '</div>'; }
 });
 
-async function loadJobForReview(jobId) {
+async function loadJobForReview(btnOrId) {
+  const jobId = (typeof btnOrId === 'string') ? btnOrId : btnOrId.dataset.jid;
   try {
     const d = await api('GET', '/api/kg/ingest/jobs/' + jobId);
     _currentJobId = jobId;
