@@ -821,6 +821,21 @@ document.getElementById('browseEdgesBtn').addEventListener('click', async ()=>{
   finally{ hideSpinner(btn); }
 });
 
+document.getElementById('browseStrengthenBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('browseStrengthenBtn');
+  const resultEl = document.getElementById('browseStrengthenResult');
+  const paperId = document.getElementById('browseStrengthenId').value.trim();
+  if(!paperId){ setStatus(resultEl, 'Enter an arXiv ID.', 'warn'); return; }
+  showSpinner(btn);
+  try {
+    const d = await api('POST', '/api/kg/ingest/strengthen-edges', { paper_id: paperId, max_nodes: 30 });
+    if(d.error){ setStatus(resultEl, 'Error: ' + d.error, 'bad'); return; }
+    setStatus(resultEl, '✓ AI suggested ' + d.suggested + ' edges, saved ' + d.saved + ' new edges to graph.', 'good');
+    document.getElementById('refreshStatsBtn').click();
+  } catch(e){ setStatus(resultEl, 'Failed: ' + e.message, 'bad'); }
+  finally{ hideSpinner(btn); }
+});
+
 // ── Search ────────────────────────────────────────────────────────────────────
 document.getElementById('quickSearchBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('quickSearchBtn');
