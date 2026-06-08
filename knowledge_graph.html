@@ -343,16 +343,99 @@ a{color:var(--accent);text-decoration:none}
       <div id="vizStatus" class="note" style="display:none;margin-top:10px"></div>
     </div>
 
-  <!-- 
-  INGEST TAB SNIPPET
-  ==================
-  1. Add "Ingest" tab button alongside existing tabs in knowledge_graph.html:
-     <button class="tab" data-tab="ingest">Ingest papers</button>
 
-  2. Add this entire block as a new view after the existing view-viz div.
+  <!-- ── INGEST VIEW ──────────────────────────────────────────────────────── -->
+  <div id="view-ingest" class="view panel">
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab active" data-subtab="single">Single paper</button>
+      <button class="tab" data-subtab="author">By author</button>
+      <button class="tab" data-subtab="joblist">Job history</button>
+    </div>
 
-  3. Add the
-</main>
+    <!-- Single paper -->
+    <div id="sub-single" class="view active">
+      <h2>📄 Ingest arXiv paper</h2>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div class="field" style="flex:1;min-width:200px;margin-bottom:0">
+          <label>arXiv ID</label>
+          <input id="ingestArxivId" placeholder="e.g. 1706.03762"/>
+        </div>
+        <button class="btn primary" id="ingestStartBtn">Fetch + parse</button>
+      </div>
+      <div id="ingestSingleStatus" class="note" style="display:none"></div>
+      <div id="ingestJobProgress" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin:12px 0 6px">
+          <span id="ingestJobStatusBadge" class="badge">pending</span>
+          <span id="ingestJobTitle" style="font-size:.85rem;font-weight:700"></span>
+          <span class="spinner" id="ingestSpinner" style="display:none"></span>
+        </div>
+        <div id="ingestJobStats" style="font-size:.8rem;color:var(--muted);margin-bottom:10px"></div>
+      </div>
+      <div id="ingestPreview" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h3 style="margin:0">Extracted nodes</h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" id="ingestSelectAllNodes">Select all</button>
+            <button class="btn sm" id="ingestDeselectAllNodes">Deselect all</button>
+          </div>
+        </div>
+        <div id="ingestNodeList" style="max-height:360px;overflow-y:auto;margin-bottom:14px"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h3 style="margin:0">Extracted edges</h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" id="ingestSelectAllEdges">Select all</button>
+            <button class="btn sm" id="ingestDeselectAllEdges">Deselect all</button>
+          </div>
+        </div>
+        <div id="ingestEdgeList" style="max-height:200px;overflow-y:auto;margin-bottom:14px"></div>
+        <div class="row">
+          <button class="btn primary" id="ingestCommitBtn">Commit selected to graph</button>
+        </div>
+        <div id="ingestCommitResult" class="note" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+
+    <!-- Author search -->
+    <div id="sub-author" class="view">
+      <h2>👤 Ingest by author</h2>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div class="field" style="flex:1;min-width:200px;margin-bottom:0">
+          <label>Author name</label>
+          <input id="ingestAuthorName" placeholder="e.g. Sham Kakade"/>
+        </div>
+        <div class="field" style="flex:0 0 100px;margin-bottom:0">
+          <label>Max results</label>
+          <input id="ingestAuthorMax" type="number" value="20" min="1" max="50"/>
+        </div>
+        <button class="btn primary" id="ingestAuthorSearchBtn">Search arXiv</button>
+      </div>
+      <div id="ingestAuthorStatus" class="note" style="display:none"></div>
+      <div id="ingestAuthorResults" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h3 id="ingestAuthorCount" style="margin:0"></h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" id="ingestSelectAllPapers">Select all</button>
+            <button class="btn sm" id="ingestDeselectAllPapers">Deselect none</button>
+          </div>
+        </div>
+        <div id="ingestPaperList" style="max-height:400px;overflow-y:auto;margin-bottom:14px"></div>
+        <button class="btn primary" id="ingestBatchBtn">Queue selected for ingestion</button>
+        <div id="ingestBatchStatus" class="note" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+
+    <!-- Job history -->
+    <div id="sub-joblist" class="view">
+      <h2>📋 Ingestion job history</h2>
+      <div style="margin-bottom:12px">
+        <button class="btn sm primary" id="ingestRefreshJobsBtn">Refresh</button>
+      </div>
+      <div id="ingestJobList"></div>
+    </div>
+  </div>
+  <!-- ── END INGEST VIEW ───────────────────────────────────────────────────── -->
+
+  </main>
 </div><!-- /layout -->
 </div><!-- /app -->
 
