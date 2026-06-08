@@ -188,6 +188,7 @@ a{color:var(--accent);text-decoration:none}
       <button class="tab" data-tab="paths">Proof paths</button>
       <button class="tab" data-tab="world">World graph</button>
       <button class="tab" data-tab="viz">Visualize</button>
+      <button class="tab" data-tab="ingest">Ingest papers</button>
     </div>
 
     <!-- ── ADD ────────────────────────────────────────────────────────── -->
@@ -342,7 +343,16 @@ a{color:var(--accent);text-decoration:none}
       <div id="vizStatus" class="note" style="display:none;margin-top:10px"></div>
     </div>
 
-  </main>
+  <!-- 
+  INGEST TAB SNIPPET
+  ==================
+  1. Add "Ingest" tab button alongside existing tabs in knowledge_graph.html:
+     <button class="tab" data-tab="ingest">Ingest papers</button>
+
+  2. Add this entire block as a new view after the existing view-viz div.
+
+  3. Add the
+</main>
 </div><!-- /layout -->
 </div><!-- /app -->
 
@@ -915,6 +925,7 @@ function renderGraph(nodes, edges){
     ctx.fillText((n.title||n.node_type||'?').slice(0,18),p.x,p.y+26);
   });
 }
+<script> block at the bottom of the existing
 </script>
 </body>
 </html>
