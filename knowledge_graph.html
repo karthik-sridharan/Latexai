@@ -303,6 +303,15 @@ a{color:var(--accent);text-decoration:none}
         <div class="field" style="flex:0 0 80px"><label>Limit</label><input id="browseLimit" type="number" value="50" min="1" max="500"/></div>
       </div>
       <div class="row" style="margin-bottom:14px"><button class="btn primary sm" id="browseBtn">Load nodes</button><button class="btn sm" id="browseEdgesBtn">Load edges</button></div>
+      <div style="border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:14px;background:#f8fafc">
+        <div style="font-size:.82rem;font-weight:800;margin-bottom:6px">AI edge strengthening</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">Enrich edges for any already-ingested paper using an AI model.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="browseStrengthenId" placeholder="arXiv ID of ingested paper" style="flex:1;min-width:160px;border:1px solid var(--border);border-radius:10px;padding:.55rem .7rem;font:inherit;font-size:.83rem"/>
+          <button class="btn sm primary" id="browseStrengthenBtn">Strengthen with AI</button>
+        </div>
+        <div id="browseStrengthenResult" class="note" style="display:none;margin-top:8px"></div>
+      </div>
       <div id="browseResults"></div>
     </div>
 
@@ -392,6 +401,15 @@ a{color:var(--accent);text-decoration:none}
           <button class="btn primary" id="ingestCommitBtn">Commit selected to graph</button>
         </div>
         <div id="ingestCommitResult" class="note" style="display:none;margin-top:10px"></div>
+        <div id="ingestStrengthenSection" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <h3 style="margin-bottom:8px">AI edge strengthening</h3>
+          <div style="font-size:.82rem;color:var(--muted);margin-bottom:8px">Use AI to suggest additional dependency edges between committed nodes.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="ingestStrengthenPaperId" placeholder="arXiv ID (auto-filled after commit)" style="flex:1;min-width:160px;border:1px solid var(--border);border-radius:10px;padding:.55rem .7rem;font:inherit;font-size:.83rem"/>
+            <button class="btn sm primary" id="ingestStrengthenBtn">Strengthen with AI</button>
+          </div>
+          <div id="ingestStrengthenResult" class="note" style="display:none;margin-top:8px"></div>
+        </div>
       </div>
     </div>
 
