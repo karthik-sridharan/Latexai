@@ -84,6 +84,7 @@ a{color:var(--accent);text-decoration:none}
 .badge.assumption{background:#fef3c7;color:#92400e;border-color:#fde68a}
 .badge.experiment{background:#dcfce7;color:#166534;border-color:#bbf7d0}
 .badge.hypothesis{background:#fce7f3;color:#9d174d;border-color:#f9a8d4}
+.badge.definition{background:#f0fdf4;color:#166534;border-color:#86efac}
 .badge.theoretical{background:#e0e7ff;color:#3730a3;border-color:#c7d2fe}
 .badge.empirical{background:#dcfce7;color:#166534;border-color:#bbf7d0}
 .badge.sim{background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe}
@@ -212,6 +213,7 @@ a{color:var(--accent);text-decoration:none}
               <option value="assumption">Assumption</option>
               <option value="experiment">Experiment</option>
               <option value="hypothesis">Hypothesis</option>
+              <option value="definition">Definition</option>
             </select>
           </div>
           <div class="field"><label>Paper ID / arXiv ID</label><input id="nodePaperId" placeholder="1706.03762"/></div>
@@ -305,6 +307,7 @@ a{color:var(--accent);text-decoration:none}
               <option value="assumption">Assumption</option>
               <option value="experiment">Experiment</option>
               <option value="hypothesis">Hypothesis</option>
+              <option value="definition">Definition</option>
             </select>
           </div>
           <div class="field" style="flex:0 0 70px"><label>Limit</label><input id="browseLimit" type="number" value="50" min="1" max="500"/></div>
@@ -1074,7 +1077,7 @@ document.getElementById('vizBtn').addEventListener('click', async ()=>{
 });
 
 // simple force-directed canvas visualizer
-const TYPE_COLORS = {theorem:'#3b82f6',lemma:'#6366f1',assumption:'#f59e0b',experiment:'#22c55e',hypothesis:'#ec4899',default:'#94a3b8'};
+const TYPE_COLORS = {theorem:'#3b82f6',lemma:'#6366f1',assumption:'#f59e0b',experiment:'#22c55e',hypothesis:'#ec4899',definition:'#10b981',default:'#94a3b8'};
 function renderGraph(nodes, edges){
   const canvas = document.getElementById('graphCanvas');
   const ctx = canvas.getContext('2d');
