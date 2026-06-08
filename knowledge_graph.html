@@ -824,16 +824,30 @@ document.getElementById('browseEdgesBtn').addEventListener('click', async ()=>{
   try{
     const d = await api('GET','/api/kg/edges/list?limit=100');
     const el = document.getElementById('browseResults');
+    // Fetch node titles for display
+    const nodeIds = [...new Set((d.edges||[]).flatMap(e=>[e.source_node_id,e.target_node_id]))];
+    const nodeTitles = {};
+    try{
+      if(nodeIds.length){
+        const nr = await api('GET', '/api/kg/nodes/list?limit=500');
+        (nr.nodes||[]).forEach(n=>{ nodeTitles[n.node_id]=n.title||n.node_id; });
+      }
+    }catch(e2){ console.warn('Could not fetch node titles', e2); }
     el.innerHTML = `<p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">${d.count} edges</p>`
-      + (d.edges||[]).map(e=>`<div class="edge-row">
-          <span class="edge-node" title="${esc(e.source_node_id)}">${esc(e.source_node_id.slice(-8))}</span>
+      + (d.edges||[]).map(e=>{
+          const srcTitle = nodeTitles[e.source_node_id] || e.source_node_id.slice(-8);
+          const tgtTitle = nodeTitles[e.target_node_id] || e.target_node_id.slice(-8);
+          return `<div class="edge-row">
+          <span class="edge-node" title="${esc(e.source_node_id)}" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.source_node_id)}')" title="Click to copy ID: ${esc(e.source_node_id)}">${esc(srcTitle.slice(0,25))}</span>
           <span class="path-arrow">→</span>
-          <span class="edge-node" title="${esc(e.target_node_id)}">${esc(e.target_node_id.slice(-8))}</span>
+          <span class="edge-node" style="cursor:pointer" onclick="navigator.clipboard.writeText('${esc(e.target_node_id)}')" title="Click to copy ID: ${esc(e.target_node_id)}">${esc(tgtTitle.slice(0,25))}</span>
           <span class="edge-type">${esc(e.rel_type)}</span>
           <span class="badge ${e.rel_category==='empirical'?'empirical':'theoretical'}">${esc(e.rel_category)}</span>
           <span class="conf-badge">conf: ${(+e.confidence||1).toFixed(2)}</span>
+          <button class="btn sm" onclick="document.getElementById('vizNodeId').value='${esc(e.source_node_id)}';switchToTab('viz');document.getElementById('vizBtn').click()">Viz src</button>
           <button class="btn sm danger" onclick="deleteEdge('${esc(e.edge_id)}')">Delete</button>
-        </div>`).join('');
+        </div>`;
+        }).join('');
     if(!d.edges?.length) el.innerHTML='<div class="note">No edges found.</div>';
   }catch(e){ document.getElementById('browseResults').innerHTML=`<div class="note bad">Error: ${esc(e.message)}</div>`; }
   finally{ hideSpinner(btn); }
