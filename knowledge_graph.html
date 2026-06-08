@@ -925,7 +925,197 @@ function renderGraph(nodes, edges){
     ctx.fillText((n.title||n.node_type||'?').slice(0,18),p.x,p.y+26);
   });
 }
-<script> block at the bottom of the existing
+// ═══════════════════════════════════════════════════════════════════════════
+// INGEST TAB LOGIC
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _currentJobId = null;
+let _pollInterval = null;
+let _jobNodes = [];
+let _jobEdges = [];
+
+function _stopPoll() {
+  if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+}
+
+function _ingestStatusBadgeClass(status) {
+  return {pending:'badge',running:'badge theorem',done:'badge experiment',failed:'badge',committed:'badge lemma'}[status] || 'badge';
+}
+
+document.getElementById('ingestStartBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestStartBtn');
+  const arxivId = document.getElementById('ingestArxivId').value.trim();
+  if (!arxivId) { setStatus(document.getElementById('ingestSingleStatus'), 'Enter an arXiv ID.', 'warn'); return; }
+  _stopPoll();
+  document.getElementById('ingestPreview').style.display = 'none';
+  document.getElementById('ingestJobProgress').style.display = 'none';
+  showSpinner(btn);
+  try {
+    const d = await api('POST', '/api/kg/ingest/arxiv', { arxiv_id: arxivId });
+    _currentJobId = d.job_id;
+    setStatus(document.getElementById('ingestSingleStatus'), 'Job started: ' + d.job_id, 'good');
+    document.getElementById('ingestJobProgress').style.display = 'block';
+    document.getElementById('ingestJobStatusBadge').textContent = 'running';
+    document.getElementById('ingestJobStatusBadge').className = 'badge theorem';
+    document.getElementById('ingestSpinner').style.display = 'inline-block';
+    _pollInterval = setInterval(_pollJob, 3000);
+  } catch(e) {
+    setStatus(document.getElementById('ingestSingleStatus'), 'Error: ' + e.message, 'bad');
+  } finally { hideSpinner(btn); }
+});
+
+async function _pollJob() {
+  if (!_currentJobId) return;
+  try {
+    const d = await api('GET', '/api/kg/ingest/jobs/' + _currentJobId);
+    const badge = document.getElementById('ingestJobStatusBadge');
+    badge.textContent = d.status;
+    badge.className = _ingestStatusBadgeClass(d.status);
+    document.getElementById('ingestJobTitle').textContent = d.paper_title || d.arxiv_id || '';
+    if (d.stats) {
+      const s = typeof d.stats === 'string' ? JSON.parse(d.stats) : d.stats;
+      const byType = Object.entries(s.by_type || {}).map(([t,n]) => n + ' ' + t + 's').join(', ');
+      document.getElementById('ingestJobStats').textContent =
+        (s.total_nodes || 0) + ' nodes (' + byType + '), ' + (s.total_edges || 0) + ' edges extracted';
+    }
+    if (d.status === 'done') {
+      _stopPoll();
+      document.getElementById('ingestSpinner').style.display = 'none';
+      _jobNodes = d.nodes || [];
+      _jobEdges = d.edges || [];
+      _renderIngestPreview(_jobNodes, _jobEdges);
+    } else if (d.status === 'failed') {
+      _stopPoll();
+      document.getElementById('ingestSpinner').style.display = 'none';
+      setStatus(document.getElementById('ingestSingleStatus'), 'Job failed: ' + (d.error || 'unknown'), 'bad');
+    }
+  } catch(e) { console.warn('Poll error:', e); }
+}
+
+function _renderIngestPreview(nodes, edges) {
+  const preview = document.getElementById('ingestPreview');
+  preview.style.display = 'block';
+  const nodeList = document.getElementById('ingestNodeList');
+  nodeList.innerHTML = nodes.length === 0
+    ? '<div class="note warn">No theorem/lemma/assumption environments found.</div>'
+    : nodes.map(n => '<div class="card" style="margin-bottom:8px"><label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer"><input type="checkbox" class="ingest-node-cb" data-id="' + esc(n.node_id) + '" checked style="margin-top:3px;flex-shrink:0"/><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">' + typeBadge(n.node_type) + '<span style="font-weight:800;font-size:.88rem">' + esc(n.title) + '</span></div><div class="card-stmt" style="font-size:.78rem">' + esc((n.statement||'').slice(0,300)) + ((n.statement||'').length>300?'…':'') + '</div></div></label></div>').join('');
+  const edgeList = document.getElementById('ingestEdgeList');
+  edgeList.innerHTML = edges.length === 0
+    ? '<div class="note" style="font-size:.8rem">No intra-paper edges extracted.</div>'
+    : edges.map(e => {
+        const src = nodes.find(n => n.node_id === e.source_node_id);
+        const tgt = nodes.find(n => n.node_id === e.target_node_id);
+        return '<div class="edge-row"><input type="checkbox" class="ingest-edge-cb" data-id="' + esc(e.edge_id) + '" checked style="flex-shrink:0"/><span class="edge-node">' + esc((src?.title||e.source_node_id).slice(0,30)) + '</span><span class="path-arrow">→</span><span class="edge-node">' + esc((tgt?.title||e.target_node_id).slice(0,30)) + '</span><span class="edge-type">' + esc(e.rel_type) + '</span><span class="conf-badge">conf: ' + (+e.confidence||1).toFixed(2) + '</span></div>';
+      }).join('');
+}
+
+document.getElementById('ingestSelectAllNodes').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-node-cb').forEach(cb => cb.checked = true);
+});
+document.getElementById('ingestDeselectAllNodes').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-node-cb').forEach(cb => cb.checked = false);
+});
+document.getElementById('ingestSelectAllEdges').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-edge-cb').forEach(cb => cb.checked = true);
+});
+document.getElementById('ingestDeselectAllEdges').addEventListener('click', () => {
+  document.querySelectorAll('.ingest-edge-cb').forEach(cb => cb.checked = false);
+});
+
+document.getElementById('ingestCommitBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestCommitBtn');
+  const resultEl = document.getElementById('ingestCommitResult');
+  if (!_currentJobId) { setStatus(resultEl, 'No active job.', 'bad'); return; }
+  const selectedNodeIds = [...document.querySelectorAll('.ingest-node-cb:checked')].map(cb => cb.dataset.id);
+  const selectedEdgeIds = [...document.querySelectorAll('.ingest-edge-cb:checked')].map(cb => cb.dataset.id);
+  showSpinner(btn);
+  try {
+    const d = await api('POST', '/api/kg/ingest/jobs/' + _currentJobId + '/commit', {
+      node_ids: selectedNodeIds, edge_ids: selectedEdgeIds,
+    });
+    setStatus(resultEl, '✓ Committed ' + d.saved_nodes + ' nodes and ' + d.saved_edges + ' edges.' + (d.errors?.length ? ' ' + d.errors.length + ' errors.' : ''), d.errors?.length ? 'warn' : 'good');
+    document.getElementById('refreshStatsBtn').click();
+  } catch(e) { setStatus(resultEl, 'Commit failed: ' + e.message, 'bad'); }
+  finally { hideSpinner(btn); }
+});
+
+let _authorPapers = [];
+
+document.getElementById('ingestAuthorSearchBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestAuthorSearchBtn');
+  const author = document.getElementById('ingestAuthorName').value.trim();
+  const maxResults = parseInt(document.getElementById('ingestAuthorMax').value) || 20;
+  const statusEl = document.getElementById('ingestAuthorStatus');
+  if (!author) { setStatus(statusEl, 'Enter an author name.', 'warn'); return; }
+  showSpinner(btn);
+  document.getElementById('ingestAuthorResults').style.display = 'none';
+  try {
+    const d = await api('POST', '/api/kg/ingest/author', { author, max_results: maxResults });
+    _authorPapers = d.papers || [];
+    document.getElementById('ingestAuthorCount').textContent = d.count + ' papers by "' + author + '"';
+    const list = document.getElementById('ingestPaperList');
+    list.innerHTML = _authorPapers.length === 0 ? '<div class="note">No papers found.</div>'
+      : _authorPapers.map(p => '<div class="card" style="margin-bottom:8px"><label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer"><input type="checkbox" class="author-paper-cb" data-id="' + esc(p.arxiv_id) + '" checked style="margin-top:3px;flex-shrink:0"/><div><div style="font-weight:800;font-size:.88rem;margin-bottom:2px">' + esc(p.title) + '</div><div style="font-size:.76rem;color:var(--muted);margin-bottom:4px">' + esc(p.arxiv_id) + ' · ' + esc(p.year) + ' · ' + esc(p.authors) + '</div>' + (p.abstract ? '<div style="font-size:.78rem;color:#475569">' + esc(p.abstract) + '…</div>' : '') + '</div></label></div>').join('');
+    document.getElementById('ingestAuthorResults').style.display = 'block';
+    setStatus(statusEl, 'Found ' + d.count + ' papers.', 'good');
+  } catch(e) { setStatus(statusEl, 'Search failed: ' + e.message, 'bad'); }
+  finally { hideSpinner(btn); }
+});
+
+document.getElementById('ingestSelectAllPapers').addEventListener('click', () => {
+  document.querySelectorAll('.author-paper-cb').forEach(cb => cb.checked = true);
+});
+document.getElementById('ingestDeselectAllPapers').addEventListener('click', () => {
+  document.querySelectorAll('.author-paper-cb').forEach(cb => cb.checked = false);
+});
+
+document.getElementById('ingestBatchBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('ingestBatchBtn');
+  const statusEl = document.getElementById('ingestBatchStatus');
+  const selectedIds = [...document.querySelectorAll('.author-paper-cb:checked')].map(cb => cb.dataset.id);
+  if (!selectedIds.length) { setStatus(statusEl, 'Select at least one paper.', 'warn'); return; }
+  if (selectedIds.length > 20) { setStatus(statusEl, 'Maximum 20 papers per batch.', 'warn'); return; }
+  showSpinner(btn);
+  try {
+    const d = await api('POST', '/api/kg/ingest/author/batch', { arxiv_ids: selectedIds });
+    setStatus(statusEl, '✓ Queued ' + d.count + ' jobs. Check Job history tab.', 'good');
+    setTimeout(() => {
+      document.querySelector('.tab[data-subtab="joblist"]')?.click();
+      document.getElementById('ingestRefreshJobsBtn').click();
+    }, 1500);
+  } catch(e) { setStatus(statusEl, 'Batch failed: ' + e.message, 'bad'); }
+  finally { hideSpinner(btn); }
+});
+
+document.getElementById('ingestRefreshJobsBtn').addEventListener('click', async () => {
+  const el = document.getElementById('ingestJobList');
+  try {
+    const d = await api('GET', '/api/kg/ingest/jobs?limit=20');
+    el.innerHTML = (d.jobs || []).length === 0 ? '<div class="note">No jobs yet.</div>'
+      : (d.jobs || []).map(j => {
+          const s = (typeof j.stats === 'string' ? JSON.parse(j.stats||'{}') : j.stats) || {};
+          return '<div class="card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap"><span class="' + _ingestStatusBadgeClass(j.status) + '">' + esc(j.status) + '</span><span style="font-weight:800;font-size:.88rem">' + esc(j.paper_title||j.arxiv_id) + '</span><span style="font-size:.76rem;color:var(--muted);margin-left:auto">' + esc(j.arxiv_id) + '</span></div><div style="font-size:.78rem;color:var(--muted)">' + (s.total_nodes != null ? s.total_nodes + ' nodes · ' + (s.total_edges||0) + ' edges' : '') + (j.error ? '<span style="color:var(--bad)"> · ' + esc(j.error.slice(0,80)) + '</span>' : '') + '</div>' + (j.status === 'done' ? '<div class="card-actions" style="margin-top:6px"><button class="btn sm primary" onclick="loadJobForReview('' + esc(j.job_id) + '')">Review & commit</button></div>' : '') + '</div>';
+        }).join('');
+  } catch(e) { el.innerHTML = '<div class="note bad">Error: ' + esc(e.message) + '</div>'; }
+});
+
+async function loadJobForReview(jobId) {
+  try {
+    const d = await api('GET', '/api/kg/ingest/jobs/' + jobId);
+    _currentJobId = jobId;
+    _jobNodes = d.nodes || [];
+    _jobEdges = d.edges || [];
+    document.getElementById('ingestArxivId').value = d.arxiv_id || '';
+    document.getElementById('ingestJobProgress').style.display = 'block';
+    document.getElementById('ingestJobStatusBadge').textContent = d.status;
+    document.getElementById('ingestJobStatusBadge').className = _ingestStatusBadgeClass(d.status);
+    document.getElementById('ingestJobTitle').textContent = d.paper_title || d.arxiv_id || '';
+    document.getElementById('ingestSpinner').style.display = 'none';
+    _renderIngestPreview(_jobNodes, _jobEdges);
+    document.querySelector('.tab[data-subtab="single"]')?.click();
+  } catch(e) { alert('Could not load job: ' + e.message); }
+}
+
 </script>
 </body>
 </html>
