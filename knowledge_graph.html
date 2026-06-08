@@ -85,6 +85,15 @@ a{color:var(--accent);text-decoration:none}
 .badge.experiment{background:#dcfce7;color:#166534;border-color:#bbf7d0}
 .badge.hypothesis{background:#fce7f3;color:#9d174d;border-color:#f9a8d4}
 .badge.definition{background:#f0fdf4;color:#166534;border-color:#86efac}
+.badge.conjecture{background:#fef9c3;color:#854d0e;border-color:#fde047}
+.badge.external_ref{background:#f1f5f9;color:#475569;border-color:#cbd5e1}
+.badge.proven{background:#dcfce7;color:#166534;border-color:#bbf7d0}
+.badge.conjectured{background:#fef9c3;color:#854d0e;border-color:#fde047}
+.badge.empirical{background:#dbeafe;color:#1e40af;border-color:#bfdbfe}
+.badge.assumed{background:#fce7f3;color:#9d174d;border-color:#f9a8d4}
+.badge.whp{background:#f0f9ff;color:#0369a1;border-color:#bae6fd}
+.badge.forall{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
+.badge.exists{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
 .badge.theoretical{background:#e0e7ff;color:#3730a3;border-color:#c7d2fe}
 .badge.empirical{background:#dcfce7;color:#166534;border-color:#bbf7d0}
 .badge.sim{background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe}
@@ -213,6 +222,8 @@ a{color:var(--accent);text-decoration:none}
               <option value="assumption">Assumption</option>
               <option value="experiment">Experiment</option>
               <option value="hypothesis">Hypothesis</option>
+              <option value="conjecture">Conjecture</option>
+              <option value="external_ref">External ref</option>
               <option value="definition">Definition</option>
             </select>
           </div>
@@ -223,6 +234,12 @@ a{color:var(--accent);text-decoration:none}
           <div class="field"><label>Confidence (0–1)</label><input id="nodeConf" type="number" min="0" max="1" step="0.05" value="1.0"/></div>
           <div class="field"><label>Provenance</label>
             <select id="nodeProvenance"><option value="real">Real (paper)</option><option value="synthetic">Synthetic</option></select>
+          </div>
+          <div class="field"><label>Proof status</label>
+            <select id="nodeProofStatus"><option value="proven">Proven</option><option value="conjectured">Conjectured</option><option value="empirical">Empirical</option><option value="assumed">Assumed</option></select>
+          </div>
+          <div class="field"><label>Quantifier type</label>
+            <select id="nodeQuantifier"><option value="none">None</option><option value="forall">For all</option><option value="exists">There exists</option><option value="whp">With high prob.</option><option value="asymptotic">Asymptotic</option></select>
           </div>
         </div>
         <div class="field"><label>Statement (full text)</label><textarea id="nodeStatement" rows="4" placeholder="For any hypothesis class H with VC dimension d…"></textarea></div>
@@ -256,6 +273,10 @@ a{color:var(--accent);text-decoration:none}
           <div class="field"><label>Provenance</label>
             <select id="edgeProvenance"><option value="real">Real</option><option value="synthetic">Synthetic</option><option value="ai_suggested">AI suggested</option></select>
           </div>
+          <div class="field"><label>Quantifier type</label>
+            <select id="edgeQuantifier"><option value="none">None</option><option value="forall">For all</option><option value="exists">There exists</option><option value="whp">With high prob.</option><option value="asymptotic">Asymptotic</option></select>
+          </div>
+          <div class="field"><label>Conditions (optional)</label><input id="edgeConditions" placeholder="Conditions that must hold for this edge"/></div>
         </div>
         <div class="row"><button class="btn primary" id="addEdgeBtn">Save edge</button><button class="btn" id="clearEdgeBtn">Clear</button></div>
         <div id="addEdgeStatus" class="note" style="display:none"></div>
@@ -307,6 +328,8 @@ a{color:var(--accent);text-decoration:none}
               <option value="assumption">Assumption</option>
               <option value="experiment">Experiment</option>
               <option value="hypothesis">Hypothesis</option>
+              <option value="conjecture">Conjecture</option>
+              <option value="external_ref">External ref</option>
               <option value="definition">Definition</option>
             </select>
           </div>
@@ -645,6 +668,13 @@ document.getElementById('addNodeBtn').addEventListener('click', async ()=>{
     year: document.getElementById('nodeYear').value.trim(),
     confidence: parseFloat(document.getElementById('nodeConf').value)||1.0,
     provenance: document.getElementById('nodeProvenance').value,
+    metadata: {
+      proof_status: document.getElementById('nodeProofStatus')?.value || 'proven',
+      quantifier_type: document.getElementById('nodeQuantifier')?.value || 'none',
+      is_negative: false,
+      is_condition: false,
+      needs_review: false,
+    },
   };
   if(!node.title && !node.statement){ setStatus(statusEl,'Title or statement is required.','bad'); return; }
   showSpinner(btn);
@@ -682,6 +712,10 @@ document.getElementById('addEdgeBtn').addEventListener('click', async ()=>{
     rel_type: document.getElementById('edgeType').value,
     confidence: parseFloat(document.getElementById('edgeConf').value)||1.0,
     provenance: document.getElementById('edgeProvenance').value,
+    metadata: {
+      quantifier_type: document.getElementById('edgeQuantifier')?.value || 'none',
+      conditions: document.getElementById('edgeConditions')?.value?.trim() || '',
+    },
   };
   if(!edge.source_node_id||!edge.target_node_id){ setStatus(statusEl,'Source and target node IDs required.','bad'); return; }
   showSpinner(btn);
@@ -752,9 +786,15 @@ function renderNodeCard(n, showCopyId=true){
     <div class="card-title">${esc(n.title||'(untitled)')}</div>
     <div class="card-meta">
       ${n.paper_id?`<span>📄 ${esc(n.paper_id)}</span>`:''}
-      ${n.page_ref?`<span>p. ${esc(n.page_ref)}</span>`:''}
+      ${n.page_ref?`<span>📍 ${esc(n.page_ref)}</span>`:''}
       ${n.subfield?`<span>🏷 ${esc(n.subfield)}</span>`:''}
       ${n.year?`<span>📅 ${esc(n.year)}</span>`:''}
+      ${n.metadata?.authors?`<span>👤 ${esc(n.metadata.authors.slice(0,60))}</span>`:''}
+      ${n.metadata?.arxiv_version?`<span>${esc(n.metadata.arxiv_version)}</span>`:''}
+      ${n.metadata?.proof_status&&n.metadata.proof_status!=='proven'?`<span class="badge ${esc(n.metadata.proof_status)}">${esc(n.metadata.proof_status)}</span>`:''}
+      ${n.metadata?.quantifier_type&&n.metadata.quantifier_type!=='none'?`<span class="badge ${esc(n.metadata.quantifier_type)}">${esc(n.metadata.quantifier_type)}</span>`:''}
+      ${n.metadata?.is_negative?`<span class="badge" style="background:#fee2e2;color:#991b1b;border-color:#fecaca">negative result</span>`:''}
+      ${n.metadata?.is_condition?`<span class="badge warn">condition — needs review</span>`:''}
     </div>
     ${n.statement?`<div class="card-stmt">${esc(n.statement.slice(0,400))}${n.statement.length>400?'…':''}</div>`:''}
     ${n.similarity!=null?`<div style="margin-top:6px;font-size:.76rem;color:var(--muted)">Similarity: <strong>${n.similarity}</strong><div class="sim-bar" style="width:${Math.round(n.similarity*100)}%"></div></div>`:''}
@@ -1077,7 +1117,7 @@ document.getElementById('vizBtn').addEventListener('click', async ()=>{
 });
 
 // simple force-directed canvas visualizer
-const TYPE_COLORS = {theorem:'#3b82f6',lemma:'#6366f1',assumption:'#f59e0b',experiment:'#22c55e',hypothesis:'#ec4899',definition:'#10b981',default:'#94a3b8'};
+const TYPE_COLORS = {theorem:'#3b82f6',lemma:'#6366f1',assumption:'#f59e0b',experiment:'#22c55e',hypothesis:'#ec4899',definition:'#10b981',conjecture:'#eab308',external_ref:'#94a3b8',default:'#64748b'};
 function renderGraph(nodes, edges){
   const canvas = document.getElementById('graphCanvas');
   const ctx = canvas.getContext('2d');
