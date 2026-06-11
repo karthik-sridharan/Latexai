@@ -125,9 +125,53 @@ a{color:var(--accent);text-decoration:none}
 .edge-node{font-weight:700;color:var(--accent);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .edge-type{font-size:.72rem;font-weight:800;padding:.15rem .45rem;border-radius:8px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe}
 .conf-badge{font-size:.7rem;color:var(--muted);font-weight:700;margin-left:auto}
+
+/* node detail modal */
+#nodeModal{display:none;position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px}
+#nodeModal.open{display:flex}
+#nodeModalBox{background:#fff;border-radius:22px;box-shadow:0 32px 80px rgba(15,23,42,.22);max-width:720px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+#nodeModalHeader{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px}
+#nodeModalTitle{font-size:1.05rem;font-weight:800;flex:1;line-height:1.4}
+#nodeModalClose{border:none;background:none;font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px;flex-shrink:0}
+#nodeModalClose:hover{color:var(--text)}
+#nodeModalBody{padding:18px 20px;overflow-y:auto;flex:1}
+.modal-section{margin-bottom:16px}
+.modal-section-label{font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px}
+.modal-stmt{font-size:.88rem;line-height:1.65;color:#1e293b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;white-space:pre-wrap;word-break:break-word}
+.modal-body-text{font-size:.84rem;line-height:1.65;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:12px;white-space:pre-wrap;word-break:break-word}
+.modal-source-link{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:10px;padding:.45rem .75rem;font-size:.82rem;font-weight:700;color:var(--accent);background:#fff;text-decoration:none}
+.modal-source-link:hover{background:#eff6ff;border-color:#bfdbfe}
+.card-title-link{cursor:pointer;text-decoration:none;color:inherit}
+.card-title-link:hover{color:var(--accent)}
 </style>
 </head>
 <body>
+
+<!-- Node detail modal -->
+<div id="nodeModal" role="dialog" aria-modal="true">
+  <div id="nodeModalBox">
+    <div id="nodeModalHeader">
+      <div id="nodeModalTitle"></div>
+      <button id="nodeModalClose" aria-label="Close">✕</button>
+    </div>
+    <div id="nodeModalBody">
+      <div class="modal-section" id="modalBadges"></div>
+      <div class="modal-section" id="modalMeta"></div>
+      <div class="modal-section" id="modalStmt" style="display:none">
+        <div class="modal-section-label">Statement</div>
+        <div class="modal-stmt" id="modalStmtText"></div>
+      </div>
+      <div class="modal-section" id="modalFullText" style="display:none">
+        <div class="modal-section-label" id="modalFullTextLabel">Source text</div>
+        <div class="modal-body-text" id="modalFullTextContent"></div>
+      </div>
+      <div class="modal-section" id="modalSource" style="display:none">
+        <div class="modal-section-label">Source</div>
+        <div id="modalSourceContent"></div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="app">
 
 <header class="topbar">
@@ -813,7 +857,7 @@ function renderNodeCard(n, showCopyId=true){
       ${n.provenance==='synthetic'?'<span class="badge sim">synthetic</span>':''}
       <span class="badge" style="margin-left:auto">conf: ${(+n.confidence||1).toFixed(2)}</span>
     </div>
-    <div class="card-title">${esc(n.title||'(untitled)')}</div>
+    <div class="card-title"><span class="card-title-link" onclick="showNodeModal('${esc(n.node_id)}')">${esc(n.title||'(untitled)')}</span></div>
     <div class="card-meta">
       ${n.paper_id?`<span>📄 ${esc(n.paper_id)}</span>`:''}
       ${n.page_ref?`<span>📍 ${esc(n.page_ref)}</span>`:''}
@@ -841,6 +885,84 @@ function renderNodeCard(n, showCopyId=true){
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function copyId(id){ navigator.clipboard.writeText(id); alert('Copied: '+id); }
+
+function showNodeModal(id){
+  const n = _nodeStore[id];
+  if(!n){ alert('Node data not available. Reload the list first.'); return; }
+  const mt = (n.metadata && typeof n.metadata==='object') ? n.metadata : {};
+
+  document.getElementById('nodeModalTitle').textContent = n.title || '(untitled)';
+
+  // badges
+  const badgeHtml = [
+    typeBadge(n.node_type),
+    n.provenance==='synthetic' ? '<span class="badge sim">synthetic</span>' : '',
+    `<span class="badge">conf: ${(+n.confidence||1).toFixed(2)}</span>`,
+    mt.proof_status && mt.proof_status!=='proven' ? `<span class="badge ${esc(mt.proof_status)}">${esc(mt.proof_status)}</span>` : '',
+    mt.quantifier_type && mt.quantifier_type!=='none' ? `<span class="badge ${esc(mt.quantifier_type)}">${esc(mt.quantifier_type)}</span>` : '',
+    mt.is_negative ? '<span class="badge" style="background:#fee2e2;color:#991b1b;border-color:#fecaca">negative result</span>' : '',
+    mt.is_condition ? '<span class="badge warn">condition</span>' : '',
+  ].filter(Boolean).join(' ');
+  document.getElementById('modalBadges').innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap">${badgeHtml}</div>`;
+
+  // meta row
+  const metaParts = [
+    n.subfield ? `<span>🏷 ${esc(n.subfield)}</span>` : '',
+    n.year    ? `<span>📅 ${esc(n.year)}</span>` : '',
+    n.page_ref ? `<span>📍 ${esc(n.page_ref)}</span>` : '',
+    mt.authors ? `<span>👤 ${esc(mt.authors)}</span>` : '',
+    mt.arxiv_version ? `<span>${esc(mt.arxiv_version)}</span>` : '',
+  ].filter(Boolean).join('');
+  document.getElementById('modalMeta').innerHTML = metaParts
+    ? `<div style="font-size:.78rem;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">${metaParts}</div>` : '';
+
+  // full statement
+  const stmtEl = document.getElementById('modalStmt');
+  if(n.statement){
+    document.getElementById('modalStmtText').textContent = n.statement;
+    stmtEl.style.display = '';
+  } else { stmtEl.style.display = 'none'; }
+
+  // extended body text: wiki_body or embed_description
+  const bodyText = mt.wiki_body || mt.embed_description || '';
+  const fullTextEl = document.getElementById('modalFullText');
+  if(bodyText){
+    document.getElementById('modalFullTextLabel').textContent =
+      mt.wiki_body ? 'Wikipedia article text' : 'Full description';
+    document.getElementById('modalFullTextContent').textContent = bodyText;
+    fullTextEl.style.display = '';
+  } else { fullTextEl.style.display = 'none'; }
+
+  // source link
+  const srcEl = document.getElementById('modalSource');
+  const srcContent = document.getElementById('modalSourceContent');
+  const wikiTitle = mt.wiki_title || '';
+  const paperId = n.paper_id || '';
+  if(wikiTitle){
+    const wikiUrl = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(wikiTitle.replace(/ /g,'_'));
+    srcContent.innerHTML = `<a class="modal-source-link" href="${esc(wikiUrl)}" target="_blank" rel="noopener">📖 Wikipedia: ${esc(wikiTitle)}</a>`;
+    srcEl.style.display = '';
+  } else if(paperId){
+    const arxivUrl = 'https://arxiv.org/abs/' + encodeURIComponent(paperId);
+    srcContent.innerHTML = `<a class="modal-source-link" href="${esc(arxivUrl)}" target="_blank" rel="noopener">📄 arXiv: ${esc(paperId)}</a>`;
+    srcEl.style.display = '';
+  } else { srcEl.style.display = 'none'; }
+
+  document.getElementById('nodeModal').classList.add('open');
+}
+
+(function(){
+  document.getElementById('nodeModalClose').addEventListener('click', ()=>{
+    document.getElementById('nodeModal').classList.remove('open');
+  });
+  document.getElementById('nodeModal').addEventListener('click', e=>{
+    if(e.target === document.getElementById('nodeModal'))
+      document.getElementById('nodeModal').classList.remove('open');
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Escape') document.getElementById('nodeModal').classList.remove('open');
+  });
+}());
 
 async function deleteNode(id, title){
   if(!confirm('Delete node "' + title + '"?\nThis will also delete all its edges.')) return;
