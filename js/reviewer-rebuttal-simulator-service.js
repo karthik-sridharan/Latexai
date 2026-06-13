@@ -1278,10 +1278,12 @@ ${trajectory}` : ''
     }
     setOutput(fullReport());
 
+    setStatus(`Running ${payload.reviewers.length} reviewer${payload.reviewers.length > 1 ? 's' : ''} in parallel…`);
     try {
-      for (const reviewer of payload.reviewers) {
+      // Run all reviewers concurrently — each is an independent AI call with no
+      // cross-dependency, so parallelising cuts wall-clock time from N×T to ~T.
+      const reviewResults = await Promise.all(payload.reviewers.map(async (reviewer) => {
         if (cancelled) throw new Error('Review simulation cancelled.');
-        setStatus(`${reviewer.name} is reviewing the paper...`);
         const knowledgeBlock = reviewerKnowledgeBlock(payload);
         const reviewCorpusBlock = reviewerReviewCorpusBlock(payload);
         const instructions = [
@@ -1292,7 +1294,7 @@ ${trajectory}` : ''
           'Use a realistic academic-review structure: summary, strengths, weaknesses, questions for authors, required changes, minor issues, score/confidence.',
           'Do not produce a rebuttal. Do not rewrite the paper yet.',
           knowledgeBlock ? 'Use the retrieved literature context to assess novelty, missing comparisons, related work, assumptions, and positioning. Cite retrieved paper numbers like [1], [2] in review prose when useful.' : '',
-          reviewCorpusBlock ? 'Use the retrieved review/rebuttal corpus examples to make this simulated review more realistic: borrow issue types, review structure, likely objections, confidence/score style, and decision-relevant concerns. Cite examples as [R1], [R2] when useful; do not copy text verbatim.' : '',
+          reviewCorpusBlock ? 'Use the retrieved review/rebuttal corpus examples to make this simulated review more realistic: borrow issue types, review structure, likely objections, confidence/score style, and decision-likely concerns. Cite examples as [R1], [R2] when useful; do not copy text verbatim.' : '',
           payload.globalInstructions ? `Extra global instructions: ${payload.globalInstructions}` : ''
         ].filter(Boolean).join('\n');
         const input = [
@@ -1312,22 +1314,21 @@ ${trajectory}` : ''
         const memoryContext = await loadReviewerMemoryContext(stepName, 10, `${reviewer.name} ${reviewer.style}\n${instructions}\n${input}`, 'critic');
         const memoryBlock = memoryContextMarkdown(memoryContext);
         const text = await askAI(
-          memoryBlock ? `${instructions}
-
-${memoryBlock}` : instructions,
-          memoryBlock ? `${memoryBlock}
-
-${input}` : input,
+          memoryBlock ? `${instructions}\n\n${memoryBlock}` : instructions,
+          memoryBlock ? `${memoryBlock}\n\n${input}` : input,
           4500,
           0.3,
           'latexai-simulated-reviewer',
           { stepName, memoryContext, memoryBlock, reviewerName: reviewer.name, reviewerStyle: reviewer.style, agentRole: 'critic' }
         );
-        lastReviews.push({ ...reviewer, text: text.trim() });
         await markMemoryUse(stepName, text && text.trim() ? 'success' : 'used', text && text.trim() ? `${reviewer.name} completed review with memory context.` : `${reviewer.name} returned empty review.`);
         await saveReviewerMemory('simulated_review', text, payload, { reviewerName: reviewer.name, reviewerStyle: reviewer.style, reviewerIndex: reviewer.index });
-        setOutput(fullReport());
-      }
+        return { ...reviewer, text: text.trim() };
+      }));
+
+      // Restore index order (Promise.all preserves insertion order)
+      lastReviews.push(...reviewResults);
+      setOutput(fullReport());
       setStatus('Reviewer simulation complete. Add rebuttal guidance, then generate rebuttal.');
       return { ok: true, reviews: lastReviews, payload };
     } catch (err) {

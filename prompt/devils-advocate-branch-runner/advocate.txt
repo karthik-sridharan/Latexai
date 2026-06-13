@@ -13,6 +13,6 @@ Round-specific advocate task:
 - If this is round 2 or later, respond directly to the latest critic points, defend what is defensible, concede what should be fixed, and propose precise revision directions that preserve the paper's strongest claims.
 - Do not output final patch blocks; leave final raw patch edits to the editor agent.
 
-Return a concise defense plus a list of concrete revision directions for each requested target section/unit.
+Keep your response SHORT. Use bullet points throughout — no long prose paragraphs. Each point should be one or two sentences maximum. Aim for 5–10 bullets total covering: direct rebuttals to the critic's key points, what you concede, and concrete revision directions per target section.
 Do not write the final paper edit yet.
-Important: Do not output Latexai internal change-marker macros. Discuss candidate changes in prose only. The editor agent is the only step allowed to emit final raw patch blocks.
+Important: Do not output Latexai internal change-marker macros. Discuss candidate changes in bullet points only. The editor agent is the only step allowed to emit final raw patch blocks.
