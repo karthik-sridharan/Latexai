@@ -299,6 +299,18 @@
       node.addEventListener(ev, () => { applyObjectiveMode(); }, true);
       node.addEventListener('change', () => { applyObjectiveMode(); }, true);
     });
+    // Sync unified reviewer count → reviewer service whenever it changes.
+    const unifiedCount = el('stage19w14ReviewerCount');
+    if (unifiedCount && !unifiedCount.dataset.stage19w14CountBound) {
+      unifiedCount.dataset.stage19w14CountBound = 'true';
+      unifiedCount.addEventListener('change', () => {
+        const native = el('reviewerSimCount');
+        if (native && native.value !== unifiedCount.value) {
+          native.value = unifiedCount.value;
+          try { native.dispatchEvent(new Event('change', { bubbles: true })); } catch (_e) {}
+        }
+      }, true);
+    }
     const runBtn = el('stage19w14RunBtn');
     if (runBtn && runBtn.dataset.stage19w14Bound !== 'true') {
       runBtn.dataset.stage19w14Bound = 'true';
@@ -407,6 +419,11 @@
       '    <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show internal legacy engine cards (debug)</label>',
       '  </div>',
       '</details>',
+      '<details id="stage19w14ReviewerDetails" class="stage19w14-reviewer-details stage19w14-engine-hidden">',
+      '  <summary>Configure reviewers</summary>',
+      '  <p class="settings-note compact">Customize the name and expertise focus for each simulated reviewer.</p>',
+      '  <div id="stage19w14ReviewerRowsContainer" class="devils-agent-grid"></div>',
+      '</details>',
       '<div id="stage19w14Status" class="settings-note compact">Unified Paper AI ready. Review/rebuttal and other engines are internal; choose an objective and click Run Paper AI.</div>',
       '<div class="micro-actions stretch devils-actions compact">',
       '  <button id="stage19w14RunBtn" class="btn mini primary" type="button">Run Paper AI</button>',
@@ -438,6 +455,23 @@
     D.body.classList.toggle('stage19w14-show-engine-cards', showEngine);
     const compField = q('.stage19w14-competitor-field');
     if (compField) compField.classList.toggle('stage19w14-engine-hidden', !(objectiveMode() === 'ranking' || objectiveMode() === 'combined'));
+    // Show the inline reviewer config panel when objective involves reviewing.
+    const reviewerDetails = el('stage19w14ReviewerDetails');
+    if (reviewerDetails) reviewerDetails.classList.toggle('stage19w14-engine-hidden', !v.reviewer);
+  }
+
+  function hoistReviewerConfig() {
+    const container = el('stage19w14ReviewerRowsContainer');
+    const rows = el('reviewerSimRows');
+    if (!container || !rows || container.contains(rows)) return;
+    container.appendChild(rows);
+    // Sync unified reviewer count → native reviewer service count and re-render rows.
+    const unified = el('stage19w14ReviewerCount');
+    const native = el('reviewerSimCount');
+    if (unified && native && unified.value !== native.value) {
+      native.value = unified.value;
+      try { native.dispatchEvent(new Event('change', { bubbles: true })); } catch (_e) {}
+    }
   }
 
   function applyObjectiveMode(options) {
@@ -603,6 +637,7 @@
     Object.entries(LITERATURE_CARDS).forEach(([card, target]) => moveCard(card, target));
     Object.entries(PROJECT_CARDS).forEach(([card, target]) => moveCard(card, target));
     el('copilotTab')?.classList.add('stage19w10-local-copilot-only');
+    hoistReviewerConfig();
     document.dispatchEvent(new CustomEvent('stage19w10:cards-moved', { bubbles: false }));
   }
 
