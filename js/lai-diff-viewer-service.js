@@ -349,27 +349,49 @@
   }
 
   // ── DOM injection ──────────────────────────────────────────────────────────
+  // Stage 19W16 architecture: the right panel is Preview/Logs only.
+  // All tool tabs live in #stage19w16LeftTabs / #stage19w16LeftContent.
+
+  function activateEditsTab() {
+    // Deactivate all left tool tab buttons, activate ours
+    D.querySelectorAll('[data-left-tool-tab]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.leftToolTab === 'edits');
+    });
+    // Hide all left tool panels, show ours
+    D.querySelectorAll('.stage19w16-left-tool-panel').forEach((p) => {
+      const show = p.dataset.leftToolPanel === 'edits';
+      p.classList.toggle('active', show);
+      if (show) p.removeAttribute('aria-hidden');
+      else p.setAttribute('aria-hidden', 'true');
+    });
+  }
 
   function injectUI() {
-    // 1. Tab button
-    const tabList = D.querySelector('.right-tabs');
-    if (tabList && !el('editsTabBtn')) {
+    const leftTabs    = el('stage19w16LeftTabs');
+    const leftContent = el('stage19w16LeftContent');
+
+    // 1. Tab button — goes into the left panel tab bar
+    if (leftTabs && !el('editsTabBtn')) {
       const btn = D.createElement('button');
       btn.id = 'editsTabBtn';
-      btn.className = 'right-tab';
+      btn.className = 'stage19w16-left-tab';
       btn.type = 'button';
-      btn.dataset.rightTab = 'edits';
-
+      btn.dataset.leftToolTab = 'edits';
       btn.innerHTML = 'Edits <span id="editsTabBadge" style="display:none"></span>';
-      tabList.appendChild(btn);
+      leftTabs.appendChild(btn);
+      btn.addEventListener('click', activateEditsTab, true);
     }
 
-    // 2. Panel section (sibling of #previewTab / #logsTab)
-    if (!el('editsTab')) {
+    // 2. Panel — goes into the left panel content area
+    if (!el('leftEditsTab')) {
       const section = D.createElement('section');
-      section.id = 'editsTab';
-      section.className = 'right-tab-panel';
-      section.style.cssText = 'overflow-y:auto;padding:12px 14px;box-sizing:border-box;height:100%;';
+      section.id = 'leftEditsTab';
+      section.className = 'stage19w16-left-tool-panel';
+      section.dataset.leftToolPanel = 'edits';
+      section.setAttribute('role', 'tabpanel');
+      section.setAttribute('aria-label', 'AI edit review');
+      section.setAttribute('aria-hidden', 'true');
+      section.style.cssText = 'overflow-y:auto;padding:12px 14px;box-sizing:border-box;';
 
       // Section head
       const head = D.createElement('div');
@@ -414,14 +436,12 @@
       section.appendChild(bulkBar);
       section.appendChild(list);
 
-      // Insert alongside existing right-panel sections
-      const preview = el('previewTab');
-      if (preview && preview.parentNode) {
-        preview.parentNode.appendChild(section);
+      if (leftContent) {
+        leftContent.appendChild(section);
       } else {
-        // Fallback: append to .right-panel
-        const rightPanel = D.querySelector('.right-panel');
-        if (rightPanel) rightPanel.appendChild(section);
+        // Fallback when left shell not yet built: retry once after a short delay
+        setTimeout(injectUI, 400);
+        return;
       }
     }
   }
@@ -462,14 +482,14 @@
     setTimeout(init, 0);
   }
 
-  // Retry subscription after a short delay in case NS.State was not yet
-  // registered when init() ran (deferred script ordering).
+  // Retry in case NS.State or the left panel shell wasn't ready yet.
+  // The left shell is built by stage19w16-left-tool-tabs-service.js (deferred,
+  // runs before this service), but reconcile() fires at 250ms so we wait 600ms.
   setTimeout(() => {
-    if (!_subscribed) {
-      subscribeToState();
-      render();
-    }
-  }, 800);
+    if (!el('editsTabBtn')) injectUI();
+    if (!_subscribed) subscribeToState();
+    render();
+  }, 600);
 
   NS.LaiDiffViewerService = { STAGE, init, render, parseEdits };
 })();
