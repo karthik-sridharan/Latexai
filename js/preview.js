@@ -17,6 +17,7 @@
     document.getElementById('cancelCompileBtn')?.addEventListener('click', () => NS.CompilerProvider?.cancelActiveJob?.());
     document.getElementById('showDraftPreviewBtn')?.addEventListener('click', () => setPreviewMode('draft'));
     document.getElementById('showPdfPreviewBtn')?.addEventListener('click', () => setPreviewMode('pdf'));
+    document.getElementById('testCompileBackendBtn')?.addEventListener('click', () => testCompileBackend());
     document.getElementById('engineSelect')?.addEventListener('change', (event) => State().setSetting('engine', event.target.value));
     const compilerModeNode = document.getElementById('compilerModeSelect');
     if (compilerModeNode) compilerModeNode.value = 'backend-texlive';
@@ -281,11 +282,45 @@
     const draftBtn = document.getElementById('showDraftPreviewBtn');
     const pdfBtn = document.getElementById('showPdfPreviewBtn');
     const isPdf = mode === 'pdf';
+    if (isPdf && !lastPdfObjectUrl && !(pdf && pdf.src && !pdf.src.endsWith(window.location.href))) {
+      NS.Main?.toast?.('No PDF available. Compile your document first.');
+      return;
+    }
     draft?.classList.toggle('hidden', isPdf);
     pdf?.classList.toggle('hidden', !isPdf);
     draftBtn?.classList.toggle('active', !isPdf);
     pdfBtn?.classList.toggle('active', isPdf);
     State().setSetting('previewMode', isPdf ? 'pdf' : 'draft');
+  }
+
+  function setBackendStatus(text, detail, ok) {
+    const title = document.getElementById('backendStatusText');
+    const body = document.getElementById('backendStatusDetail');
+    const card = document.getElementById('backendStatusCard');
+    if (title) title.textContent = text || 'Not checked';
+    if (body) body.textContent = detail || '';
+    if (card) {
+      card.classList.toggle('ok', ok === true);
+      card.classList.toggle('bad', ok === false);
+    }
+  }
+
+  async function testCompileBackend() {
+    const settings = NS.CompilerProvider?.currentSettings?.() || State().state.settings;
+    const url = settings?.backendStatusUrl || DEFAULT_BACKEND_STATUS_URL;
+    setBackendStatus('Testing backend...', `Checking ${url}`, null);
+    try {
+      const result = await NS.CompilerProvider?.testBackend?.(settings);
+      if (result?.ok) {
+        const tex = result.tex || {};
+        const engines = Array.isArray(tex.engines) ? tex.engines.join(', ') : 'unknown';
+        setBackendStatus('Backend OK', `Connected to ${url}. Stage: ${result.stage || 'unknown'}. Engines: ${engines}.`, true);
+      } else {
+        setBackendStatus('Backend unreachable', result?.message || `Could not reach ${url}.`, false);
+      }
+    } catch (err) {
+      setBackendStatus('Backend test failed', `${url}: ${err?.message || String(err)}`, false);
+    }
   }
 
   async function compile() {

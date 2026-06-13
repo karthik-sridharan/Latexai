@@ -314,10 +314,14 @@
       applyBtn.dataset.stage19w14Bound = 'true';
       applyBtn.addEventListener('click', () => { void applyLatestUnifiedEdits(); }, true);
     }
-    try {
-      const saved = localStorage.getItem(STORAGE_OBJECTIVE);
-      if (saved && el('stage19w14Objective')) el('stage19w14Objective').value = saved;
-    } catch (_e) {}
+    const objNode = el('stage19w14Objective');
+    if (objNode && !objNode.dataset.stage19w14ObjectiveRestored) {
+      objNode.dataset.stage19w14ObjectiveRestored = 'true';
+      try {
+        const saved = localStorage.getItem(STORAGE_OBJECTIVE);
+        if (saved) objNode.value = saved;
+      } catch (_e) {}
+    }
   }
 
   function ensureUnifiedPaperAiControls() {
@@ -599,6 +603,7 @@
     Object.entries(LITERATURE_CARDS).forEach(([card, target]) => moveCard(card, target));
     Object.entries(PROJECT_CARDS).forEach(([card, target]) => moveCard(card, target));
     el('copilotTab')?.classList.add('stage19w10-local-copilot-only');
+    document.dispatchEvent(new CustomEvent('stage19w10:cards-moved', { bubbles: false }));
   }
 
   function normalizePaperAiSurface() {
