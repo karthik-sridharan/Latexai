@@ -25,7 +25,27 @@
     NS.State.subscribe((snapshot, reason) => {
       if (['project-rename','load','reset','save'].includes(reason)) updateProjectTitle();
       if (reason === 'settings') NS.State.save();
+      if (['load','reset','save','project-rename'].includes(reason)) {
+        const name = NS.State.state.project?.name;
+        if (name) trackRecentProject(name);
+      }
     });
+    // Inject recent projects UI below the project actions card
+    const actionsCard = document.getElementById('projectActionsCard');
+    if (actionsCard) {
+      const div = document.createElement('div');
+      div.id = 'recentProjectsList';
+      div.style.cssText = 'padding:0 0 4px;display:flex;flex-direction:column;gap:3px;';
+      div.hidden = true;
+      actionsCard.after(div);
+      renderRecentProjects();
+      div.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-recent-project]');
+        if (!btn) return;
+        const name = decodeURIComponent(btn.dataset.recentProject || '');
+        if (name) toast(`To reopen "${name}", use Open Project and select the matching repository.`);
+      });
+    }
     setTimeout(() => {
       const report = NS.Diagnostics.run();
       console.info('Chuvadi diagnostics', report);
@@ -195,7 +215,43 @@ ${err?.message || err}`);
     toastTimer = setTimeout(() => { el.hidden = true; }, 1800);
   }
 
-  NS.Main = { init, toast };
+  const LS_RECENT = 'latexai:recentProjects';
+  const MAX_RECENT = 5;
+
+  function trackRecentProject(name) {
+    if (!name || !String(name).trim()) return;
+    try {
+      const list = getRecentProjects().filter((p) => p.name !== name);
+      list.unshift({ name: String(name).trim(), at: new Date().toISOString() });
+      W.localStorage.setItem(LS_RECENT, JSON.stringify(list.slice(0, MAX_RECENT)));
+      renderRecentProjects();
+    } catch (_e) {}
+  }
+
+  function getRecentProjects() {
+    try { return JSON.parse(W.localStorage.getItem(LS_RECENT) || '[]'); } catch (_e) { return []; }
+  }
+
+  function renderRecentProjects() {
+    const container = document.getElementById('recentProjectsList');
+    if (!container) return;
+    const list = getRecentProjects();
+    if (!list.length) { container.hidden = true; return; }
+    container.hidden = false;
+    container.innerHTML = '<div class="smallcaps" style="font-size:10px;margin-bottom:4px;opacity:.6;">Recent</div>' +
+      list.map((p) => {
+        const ago = (() => {
+          const diff = Date.now() - new Date(p.at).getTime();
+          if (diff < 60000) return 'just now';
+          if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+          if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+          return `${Math.floor(diff / 86400000)}d ago`;
+        })();
+        return `<button class="btn mini" style="width:100%;text-align:left;justify-content:space-between;display:flex;gap:4px;" data-recent-project="${encodeURIComponent(p.name)}" type="button"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</span><span style="opacity:.5;font-size:10px;flex-shrink:0;">${ago}</span></button>`;
+      }).join('');
+  }
+
+  NS.Main = { init, toast, trackRecentProject };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();

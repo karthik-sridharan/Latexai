@@ -416,7 +416,6 @@
       '    <label class="field checkbox-field"><input id="stage19w14UseProjectMemory" type="checkbox" checked /> Use project memory</label>',
       '    <label class="field checkbox-field"><input id="stage19w14UseCollections" type="checkbox" checked /> Use selected collections / literature</label>',
       '    <label class="field checkbox-field"><input id="stage19w14UseReviewCorpus" type="checkbox" /> Use OpenReview examples</label>',
-      '    <label class="field checkbox-field"><input id="stage19w14ShowEngineCards" type="checkbox" /> Show internal legacy engine cards (debug)</label>',
       '  </div>',
       '</details>',
       '<details id="stage19w14ReviewerDetails" class="stage19w14-reviewer-details stage19w14-engine-hidden">',
@@ -552,10 +551,13 @@
         return result;
       }
       if (obj === 'quality') {
+        const totalSteps = out !== 'report_only' ? 2 : 1;
+        if (runId === unifiedRunSerial) setUnifiedStatus(`Step 1/${totalSteps}: Running reviewer simulation…`);
         const service = NS.ReviewerRebuttalSimulatorService;
         const run = requireFn(service, 'runFullLoop', 'Reviewer/rebuttal Paper AI runner');
         const result = await run();
         if (out !== 'report_only') {
+          if (runId === unifiedRunSerial) setUnifiedStatus(`Step 2/${totalSteps}: Preparing safe edits…`);
           const prep = requireFn(service, 'prepareReviewerFinalInsertion', 'Reviewer/rebuttal safe-edit preparer');
           await prep();
         }
@@ -567,10 +569,13 @@
         return;
       }
       if (obj === 'stress') {
+        const totalSteps = out !== 'report_only' ? 2 : 1;
+        if (runId === unifiedRunSerial) setUnifiedStatus(`Step 1/${totalSteps}: Running adversarial critique…`);
         const service = NS.RealAgentBranchWorkflowService;
         const run = requireFn(service, 'runSelectedBranch', 'Adversarial branch Paper AI runner');
         await run();
         if (out !== 'report_only') {
+          if (runId === unifiedRunSerial) setUnifiedStatus(`Step 2/${totalSteps}: Preparing safe edits…`);
           const prep = requireFn(service, 'prepareInsertion', 'Adversarial branch safe-edit preparer');
           await prep('targeted');
         }
@@ -578,10 +583,13 @@
         return;
       }
       if (obj === 'ranking') {
+        const totalSteps = out !== 'report_only' ? 2 : 1;
+        if (runId === unifiedRunSerial) setUnifiedStatus(`Step 1/${totalSteps}: Running competitive review…`);
         const service = NS.CompetitivePaperReviewService;
         const run = requireFn(service, 'runCompetitiveReview', 'Competitive Paper AI runner');
         await run();
         if (out !== 'report_only') {
+          if (runId === unifiedRunSerial) setUnifiedStatus(`Step 2/${totalSteps}: Generating ranking-improvement edits…`);
           const prep = requireFn(service, 'generateMemoryAwareFinalPaperRewrite', 'Competitive safe-edit preparer');
           await prep('inline');
         }
@@ -589,8 +597,11 @@
         return;
       }
       if (obj === 'combined') {
+        if (runId === unifiedRunSerial) setUnifiedStatus('Step 1/3: Running reviewer simulation…');
         await requireFn(NS.ReviewerRebuttalSimulatorService, 'runFullLoop', 'Reviewer/rebuttal Paper AI runner')();
+        if (runId === unifiedRunSerial) setUnifiedStatus('Step 2/3: Running adversarial critique…');
         await requireFn(NS.RealAgentBranchWorkflowService, 'runSelectedBranch', 'Adversarial branch Paper AI runner')();
+        if (runId === unifiedRunSerial) setUnifiedStatus('Step 3/3: Running competitive review…');
         await requireFn(NS.CompetitivePaperReviewService, 'runCompetitiveReview', 'Competitive Paper AI runner')();
         if (runId === unifiedRunSerial) setUnifiedStatus('Combined run complete. Underlying outputs are available in logs/reports.');
       }

@@ -1132,6 +1132,13 @@ ${trajectory}` : ''
     ];
   }
 
+  function lsGetReviewer(i, key) {
+    try { return W.localStorage?.getItem?.(`latexai:reviewerSim:${key}${i}`) || ''; } catch (_e) { return ''; }
+  }
+  function lsSetReviewer(i, key, val) {
+    try { W.localStorage?.setItem?.(`latexai:reviewerSim:${key}${i}`, val || ''); } catch (_e) {}
+  }
+
   function syncReviewerRows() {
     const count = Math.max(1, Math.min(4, Number(el('reviewerSimCount')?.value || 3)));
     const holder = el('reviewerSimRows');
@@ -1139,7 +1146,9 @@ ${trajectory}` : ''
     const defaults = reviewerDefaults();
     const existing = [];
     for (let i = 0; i < 4; i += 1) {
-      existing.push({ name: clean(el(`reviewerSimName${i}`)?.value), style: clean(el(`reviewerSimStyle${i}`)?.value) });
+      const domName = clean(el(`reviewerSimName${i}`)?.value);
+      const domStyle = clean(el(`reviewerSimStyle${i}`)?.value);
+      existing.push({ name: domName || lsGetReviewer(i, 'name'), style: domStyle || lsGetReviewer(i, 'style') });
     }
     holder.innerHTML = '';
     for (let i = 0; i < count; i += 1) {
@@ -1151,6 +1160,13 @@ ${trajectory}` : ''
         `<label>Reviewer style / expertise <textarea id="reviewerSimStyle${i}" rows="3">${escapeHtml(existing[i]?.style || defaults[i].style)}</textarea></label>`
       ].join('');
       holder.appendChild(row);
+      const idx = i;
+      const persist = () => {
+        lsSetReviewer(idx, 'name', D.getElementById(`reviewerSimName${idx}`)?.value || '');
+        lsSetReviewer(idx, 'style', D.getElementById(`reviewerSimStyle${idx}`)?.value || '');
+      };
+      D.getElementById(`reviewerSimName${i}`)?.addEventListener('blur', persist);
+      D.getElementById(`reviewerSimStyle${i}`)?.addEventListener('blur', persist);
     }
   }
 

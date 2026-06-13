@@ -83,6 +83,18 @@
     State().subscribe((snapshot, reason) => {
       if (['load','reset','active-file','file-create','file-remove','file-rename','file-import-overwrite'].includes(reason)) render(snapshot);
       if (reason === 'file-change') updateLineGutter();
+      if (reason === 'save') {
+        const s = document.getElementById('autosaveStatus');
+        if (s && !autosaveTimer) s.textContent = 'Autosaved locally';
+      }
+      if (reason === 'save-error') {
+        const s = document.getElementById('autosaveStatus');
+        if (s) s.textContent = 'Save failed — check connection';
+      }
+      if (['settings','project-rename'].includes(reason)) {
+        const s = document.getElementById('autosaveStatus');
+        if (s && !autosaveTimer) s.textContent = 'Unsaved changes';
+      }
     });
 
     render();

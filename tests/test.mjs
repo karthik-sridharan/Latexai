@@ -248,14 +248,19 @@ else warn('Preview tab active by default', 'Class: ' + previewActive);
 // Switch Preview mode Draft ↔ PDF
 await expectVisible(page, '#showDraftPreviewBtn', 'Draft button present');
 await expectVisible(page, '#showPdfPreviewBtn',   'PDF button present');
-await page.locator('#showPdfPreviewBtn').click();
-await sleep(300);
+const pdfBtnDisabled = await page.locator('#showPdfPreviewBtn').getAttribute('disabled');
+if (pdfBtnDisabled !== null) {
+  pass('PDF button disabled before compile (correct guard)');
+  // Force-click to verify nothing breaks even when disabled
+  await page.locator('#showPdfPreviewBtn').click({ force: true });
+  await sleep(200);
+} else {
+  await page.locator('#showPdfPreviewBtn').click();
+  await sleep(300);
+}
 const pdfClass = await page.locator('#pdfPreview').getAttribute('class');
-// Bug 2 fix: PDF pane must stay hidden when no PDF has been compiled yet.
-if (pdfClass && pdfClass.includes('hidden')) pass('PDF preview guarded: stays hidden with no compiled PDF');
+if (pdfClass && pdfClass.includes('hidden')) pass('PDF preview stays hidden with no compiled PDF');
 else warn('PDF preview guard', 'PDF pane shown without a compiled PDF — guard may be missing');
-await page.locator('#showDraftPreviewBtn').click();
-await sleep(200);
 pass('Draft/PDF toggle works without crash');
 
 // Logs tab

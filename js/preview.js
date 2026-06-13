@@ -11,6 +11,15 @@
   let previewTimer = null;
   let lastPdfObjectUrl = null;
 
+  function updatePdfButtonState() {
+    const btn = document.getElementById('showPdfPreviewBtn');
+    if (!btn) return;
+    const hasPdf = !!lastPdfObjectUrl;
+    btn.disabled = !hasPdf;
+    btn.title = hasPdf ? 'View compiled PDF' : 'Compile your document first to view the PDF';
+    btn.style.opacity = hasPdf ? '' : '0.45';
+  }
+
   function init() {
     document.getElementById('togglePreviewBtn')?.addEventListener('click', renderDraftPreview);
     document.getElementById('compileBtn')?.addEventListener('click', compile);
@@ -18,6 +27,7 @@
     document.getElementById('showDraftPreviewBtn')?.addEventListener('click', () => setPreviewMode('draft'));
     document.getElementById('showPdfPreviewBtn')?.addEventListener('click', () => setPreviewMode('pdf'));
     document.getElementById('testCompileBackendBtn')?.addEventListener('click', () => testCompileBackend());
+    updatePdfButtonState();
     document.getElementById('engineSelect')?.addEventListener('change', (event) => State().setSetting('engine', event.target.value));
     const compilerModeNode = document.getElementById('compilerModeSelect');
     if (compilerModeNode) compilerModeNode.value = 'backend-texlive';
@@ -29,6 +39,10 @@
       State().setSetting('compileUrl', compileUrl);
       State().setSetting('compileStatusUrl', deriveCompileJobsUrl(compileUrl));
       State().setSetting('backendStatusUrl', deriveBackendStatusUrl(compileUrl));
+      const isValid = (() => { try { const u = new URL(compileUrl); return /^https?:$/.test(u.protocol); } catch (_e) { return false; } })();
+      event.target.style.outline = isValid ? '2px solid #22c55e' : '2px solid #ef4444';
+      event.target.title = isValid ? '' : 'Invalid URL — must be a full https:// address';
+      setTimeout(() => { if (event.target) event.target.style.outline = ''; }, 2500);
     });
     document.getElementById('compileJobsCheck')?.addEventListener('change', (event) => {
       State().setSetting('compileJobsUserEnabled', !!event.target.checked);
@@ -362,6 +376,7 @@
 
   function showPdf(base64) {
     lastPdfObjectUrl = NS.PreviewAdapter?.showPdf?.(base64) || lastPdfObjectUrl;
+    updatePdfButtonState();
     return lastPdfObjectUrl;
   }
 
