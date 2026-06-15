@@ -17,3 +17,21 @@ body {
   font-size: 0 !important;
   letter-spacing: 0 !important;
 }
+
+/* Nav icon tiles — used in topbar for page links */
+.nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: transform .12s ease, opacity .12s ease;
+  border: none;
+}
+.nav-icon:hover {
+  transform: translateY(-2px);
+  opacity: .82;
+}
