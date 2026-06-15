@@ -18,20 +18,21 @@ body {
   letter-spacing: 0 !important;
 }
 
-/* Nav icon tiles — used in topbar for page links */
+/* Nav icon tiles — mini versions of the page mark tiles */
 .nav-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   text-decoration: none;
   flex-shrink: 0;
-  transition: transform .12s ease, opacity .12s ease;
   border: none;
+  box-shadow: 0 6px 16px rgba(15,23,42,.18);
+  transition: transform .13s ease, box-shadow .13s ease;
 }
 .nav-icon:hover {
   transform: translateY(-2px);
-  opacity: .82;
+  box-shadow: 0 10px 24px rgba(15,23,42,.24);
 }
