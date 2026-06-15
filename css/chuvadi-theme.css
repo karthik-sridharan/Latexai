@@ -1,0 +1,19 @@
+/* Chuvadi LaTeX AI — Blue-Indigo Theme (Style 1) */
+
+body {
+  background: linear-gradient(135deg,#eef4ff 0%,#f8fafc 45%,#fff 100%) fixed !important;
+}
+
+/* Floating pill topbar */
+.topbar {
+  border-radius: 26px !important;
+  position: sticky !important;
+  top: 12px !important;
+}
+
+/* Suppress letter inside mark tiles so only the SVG shows */
+.mark,
+.brand-mark {
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+}
